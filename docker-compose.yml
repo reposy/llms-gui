@@ -1,0 +1,26 @@
+services:
+  frontend:
+    build:
+      context: ./frontend-react-ts
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend-react-ts:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: npm run dev
+
+  backend:
+    build:
+      context: ./backend-fastapi-py
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend-fastapi-py:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
