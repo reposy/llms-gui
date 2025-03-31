@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Edge, Node } from 'reactflow';
-import { LLMNodeData, NodeData, NodeExecutionStateData, OutputNodeData } from '../types/nodes';
+import { LLMNodeData, NodeData, NodeExecutionStateData, OutputNodeData, APINodeData } from '../types/nodes';
 
 interface FlowExecutionState {
   nodeStates: Record<string, NodeExecutionStateData>;
@@ -198,8 +198,49 @@ export const useFlowExecution = create<FlowExecutionStore>((set, get) => ({
             }
           })
         );
+      } else if (node.data.type === 'api') {
+        const apiData = node.data as APINodeData;
+        const parentResults = getParentNodes(node.id, edges, nodes).reduce((acc, parentNode) => {
+          const parentState = get().nodeStates[parentNode.id];
+          if (parentState?.result !== undefined) {
+            acc[parentNode.id] = parentState.result;
+          }
+          return acc;
+        }, {} as Record<string, any>);
+        
+        const result = await executeAPINode(node as Node<APINodeData>, parentResults);
+
+        setNodeState(node.id, {
+          status: 'completed',
+          result,
+          timestamp: Date.now()
+        });
+
+        // Find connected output nodes
+        const outputEdges = edges.filter(edge => edge.source === node.id);
+        const outputNodes = nodes.filter(n => 
+          outputEdges.some(e => e.target === n.id) && 
+          n.data.type === 'output'
+        );
+
+        // Update output nodes with the result
+        outputNodes.forEach(outputNode => {
+          setNodeState(outputNode.id, {
+            status: 'completed',
+            result,
+            timestamp: Date.now()
+          });
+        });
+
+        // Execute child nodes
+        const childEdges = edges.filter(edge => edge.source === node.id);
+        const childNodes = nodes.filter(n => 
+          childEdges.some(e => e.target === n.id) && 
+          n.data.type !== 'output'
+        );
+
+        await Promise.all(childNodes.map(child => get().executeNode(child, edges, nodes)));
       }
-      // Output nodes are handled as part of LLM node execution
     } catch (error) {
       const errorState = {
         status: 'error',
@@ -346,4 +387,126 @@ async function executeOpenAINode(data: LLMNodeData) {
     text: result.choices[0].message.content,
     raw: result,
   };
-} 
+}
+
+const executeAPINode = async (node: Node<APINodeData>, parentResults: Record<string, any>): Promise<any> => {
+  const { data } = node;
+  if (!data.url) {
+    throw new Error('URL is required');
+  }
+
+  // Interpolate variables in URL, headers, and body
+  const interpolateVariables = (text: string) => {
+    return text.replace(/{{([^}]+)}}/g, (match, path) => {
+      const [nodeId, field] = path.split('.');
+      const parentResult = parentResults[nodeId];
+      if (!parentResult) return match;
+      
+      if (field && typeof parentResult === 'object' && parentResult !== null) {
+        return parentResult[field]?.toString() || match;
+      }
+      return typeof parentResult === 'string' 
+        ? parentResult 
+        : JSON.stringify(parentResult);
+    });
+  };
+
+  // Ensure URL has a scheme
+  let url = interpolateVariables(data.url);
+  if (!url.match(/^https?:\/\//)) {
+    url = `https://${url}`;
+  }
+  
+  // Build headers with default Content-Type
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(data.headers || {})
+  };
+  
+  Object.entries(headers).forEach(([key, value]) => {
+    headers[key] = interpolateVariables(value);
+  });
+
+  // Build query parameters for GET requests
+  if (data.method === 'GET' && data.bodyParams) {
+    try {
+      const urlObj = new URL(url);
+      const enabledParams = data.bodyParams.filter(p => p.enabled && p.key);
+      enabledParams.forEach(({ key, value }) => {
+        urlObj.searchParams.append(key, interpolateVariables(value));
+      });
+      url = urlObj.toString();
+    } catch (error) {
+      console.error('Failed to append query parameters:', error);
+    }
+  }
+
+  // Build body based on format
+  let body: string | FormData | undefined;
+  if (data.method && !['GET', 'HEAD'].includes(data.method)) {
+    if (data.bodyFormat === 'raw') {
+      body = data.body ? interpolateVariables(data.body) : undefined;
+    } else if (data.bodyParams) {
+      const enabledParams = data.bodyParams.filter(p => p.enabled && p.key);
+      
+      if (data.contentType === 'application/json') {
+        const obj = enabledParams.reduce((acc, { key, value }) => ({
+          ...acc,
+          [key]: interpolateVariables(value)
+        }), {});
+        body = JSON.stringify(obj);
+        headers['Content-Type'] = 'application/json';
+      } else if (data.contentType === 'multipart/form-data') {
+        const formData = new FormData();
+        enabledParams.forEach(({ key, value }) => {
+          formData.append(key, interpolateVariables(value));
+        });
+        body = formData;
+        // Let the browser set the Content-Type for FormData
+        delete headers['Content-Type'];
+      } else {
+        // x-www-form-urlencoded
+        body = enabledParams
+          .map(({ key, value }) => `${encodeURIComponent(key)}=${encodeURIComponent(interpolateVariables(value))}`)
+          .join('&');
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      }
+    }
+  }
+
+  try {
+    // Make the request
+    const response = await fetch(url, {
+      method: data.method || 'GET',
+      headers,
+      body,
+    });
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    }
+
+    // Parse response based on content type
+    const contentType = response.headers.get('content-type');
+    let result;
+    
+    if (contentType?.includes('application/json')) {
+      result = await response.json();
+    } else {
+      result = await response.text();
+    }
+
+    // Return a structured result that can be used by child nodes
+    return {
+      data: result,
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+      url: response.url,
+      method: data.method || 'GET',
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    console.error('API execution error:', error);
+    throw new Error(error instanceof Error ? error.message : 'Failed to execute API request');
+  }
+}; 

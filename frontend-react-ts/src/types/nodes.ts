@@ -34,11 +34,10 @@ export interface FlowExecutionState {
 
 // 공통 노드 데이터 타입
 export interface BaseNodeData {
-  type: NodeType;
-  label: string;
-  isExecuting: boolean;
+  type: string;
+  isExecuting?: boolean;
   error?: string;
-  result?: LLMResult | string;
+  result?: string | object;
 }
 
 // LLM 노드 데이터
@@ -49,32 +48,38 @@ export interface LLMNodeData extends BaseNodeData {
   prompt: string;
   temperature: number;
   ollamaUrl?: string;
+  label: string;
 }
 
 // API 노드 데이터
 export interface APINodeData extends BaseNodeData {
   type: 'api';
-  method: APIMethod;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   url: string;
-  headers: Record<string, string>;
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
   body?: string;
-  useInputAsBody: boolean;
+  contentType?: string;
+  bodyFormat?: 'key-value' | 'raw';
+  bodyParams?: Array<{ key: string; value: string; enabled: boolean }>;
+  label?: string;
 }
 
 // Output 노드 데이터
 export interface OutputNodeData extends BaseNodeData {
   type: 'output';
-  format: OutputFormat;
+  format: 'text' | 'json';
   content?: string;
 }
 
-export type NodeData = LLMNodeData | APINodeData | OutputNodeData;
+export type NodeData = APINodeData | LLMNodeData | OutputNodeData;
 
 // 플로우 상태 관리
 export interface FlowState {
   nodes: Node<NodeData>[];
   edges: Edge[];
   nodeExecutionStates: Record<string, NodeExecutionState>;
+  selectedNodeId: string | null;
 }
 
 export type FlowNode = Node<NodeData>;
@@ -99,4 +104,4 @@ export type NodeTypes = {
   };
 };
 
-export type LLMProvider = 'ollama' | 'openai'; 
+export type LLMProvider = 'ollama' | 'openai';

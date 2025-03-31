@@ -6,12 +6,62 @@ const initialState: FlowState = {
   nodes: [],
   edges: [],
   nodeExecutionStates: {},
+  selectedNodeId: null,
 };
 
 interface AddNodePayload {
   type: NodeType;
   position?: { x: number; y: number };
+  viewport?: { x: number; y: number; zoom: number };
 }
+
+// Constants for node positioning
+const NODE_WIDTH = 300;
+const NODE_HEIGHT = 200;
+const NODE_SPACING_X = 50;
+const NODE_SPACING_Y = 50;
+
+// Helper function to calculate node position
+const calculateNodePosition = (
+  nodes: Node<NodeData>[],
+  selectedNodeId: string | null,
+  viewport?: { x: number; y: number; zoom: number }
+) => {
+  // If there's a selected node, position relative to it
+  if (selectedNodeId) {
+    const selectedNode = nodes.find(node => node.id === selectedNodeId);
+    if (selectedNode) {
+      return {
+        x: selectedNode.position.x + NODE_WIDTH + NODE_SPACING_X,
+        y: selectedNode.position.y + NODE_SPACING_Y
+      };
+    }
+  }
+
+  // If there are existing nodes but none selected, position near the last node
+  if (nodes.length > 0) {
+    const lastNode = nodes[nodes.length - 1];
+    return {
+      x: lastNode.position.x + NODE_WIDTH + NODE_SPACING_X,
+      y: lastNode.position.y
+    };
+  }
+
+  // If viewport is provided, center in viewport
+  if (viewport) {
+    const viewportCenter = {
+      x: -viewport.x / viewport.zoom + window.innerWidth / 2 / viewport.zoom,
+      y: -viewport.y / viewport.zoom + window.innerHeight / 2 / viewport.zoom
+    };
+    return {
+      x: viewportCenter.x - NODE_WIDTH / 2,
+      y: viewportCenter.y - NODE_HEIGHT / 2
+    };
+  }
+
+  // Default position if no other conditions are met
+  return { x: 100, y: 100 };
+};
 
 // 새로운 노드 생성을 위한 기본 데이터
 const createDefaultNodeData = (type: NodeType): NodeData => {
@@ -59,8 +109,13 @@ const flowSlice = createSlice({
     setEdges: (state, action: PayloadAction<Edge[]>) => {
       state.edges = action.payload;
     },
+    setSelectedNodeId: (state, action: PayloadAction<string | null>) => {
+      state.selectedNodeId = action.payload;
+    },
     addNode: (state, action: PayloadAction<AddNodePayload>) => {
-      const { type, position = { x: 100, y: 100 } } = action.payload;
+      const { type, viewport } = action.payload;
+      const position = calculateNodePosition(state.nodes, state.selectedNodeId, viewport);
+      
       const newNode: Node<NodeData> = {
         id: `${type}-${Date.now()}`,
         type,
@@ -70,23 +125,17 @@ const flowSlice = createSlice({
       state.nodes.push(newNode);
     },
     updateNodeData: (state, action: PayloadAction<{ nodeId: string; data: Partial<NodeData> }>) => {
-      const node = state.nodes.find((n) => n.id === action.payload.nodeId);
+      const node = state.nodes.find(node => node.id === action.payload.nodeId);
       if (!node) return;
 
-      // OUTPUT 노드의 경우 content 필드는 무시
-      if (node.data.type === 'output') {
-        const { content: _, ...otherData } = action.payload.data as Partial<OutputNodeData>;
-        node.data = {
-          ...node.data,
-          ...otherData,
-        } as OutputNodeData;
-        return;
+      // Since we're already checking node.type, TypeScript should narrow the type correctly
+      if (node.type === 'output') {
+        Object.assign(node.data, action.payload.data as Partial<OutputNodeData>);
+      } else if (node.type === 'api') {
+        Object.assign(node.data, action.payload.data as Partial<APINodeData>);
+      } else if (node.type === 'llm') {
+        Object.assign(node.data, action.payload.data as Partial<LLMNodeData>);
       }
-
-      node.data = {
-        ...node.data,
-        ...action.payload.data,
-      } as NodeData;
     },
     setNodeExecutionState: (state, action: PayloadAction<{ nodeId: string; state: NodeExecutionStateData }>) => {
       const { nodeId, state: executionState } = action.payload;
@@ -132,5 +181,5 @@ const flowSlice = createSlice({
   },
 });
 
-export const { setNodes, setEdges, addNode, updateNodeData, setNodeExecutionState } = flowSlice.actions;
+export const { setNodes, setEdges, addNode, updateNodeData, setNodeExecutionState, setSelectedNodeId } = flowSlice.actions;
 export default flowSlice.reducer; 

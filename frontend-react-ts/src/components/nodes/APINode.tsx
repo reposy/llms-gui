@@ -1,104 +1,323 @@
-import { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position } from 'reactflow';
-import type { NodeProps } from 'reactflow';
-import { NodeData, APINodeData } from '../../types/nodes';
+import { useDispatch } from 'react-redux';
+import { updateNodeData } from '../../store/flowSlice';
+import { APINodeData } from '../../types/nodes';
 
-const APINode = ({ data, id }: NodeProps<NodeData>) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface KeyValuePair {
+  key: string;
+  value: string;
+  enabled: boolean;
+}
 
-  if (data.type !== 'api') return null;
+const APINode: React.FC<{ data: APINodeData; id: string }> = ({ data, id }) => {
+  const dispatch = useDispatch();
+  
+  // IME composition states and drafts
+  const [isComposing, setIsComposing] = useState(false);
+  const [isKeyComposing, setIsKeyComposing] = useState(false);
+  const [keyDrafts, setKeyDrafts] = useState<Record<number, string>>({});
+  const [isValueComposing, setIsValueComposing] = useState(false);
+  const [valueDrafts, setValueDrafts] = useState<Record<number, string>>({});
+  const [urlDraft, setUrlDraft] = useState(data.url ?? '');
 
-  const apiData = data as APINodeData;
-
-  const handleExecute = useCallback(async () => {
-    if (!apiData.url) {
-      setError('URL을 설정해주세요.');
-      return;
+  // Update draft when data.url changes externally
+  React.useEffect(() => {
+    if (!isComposing) {
+      setUrlDraft(data.url ?? '');
     }
+  }, [data.url, isComposing]);
 
-    setIsLoading(true);
-    setError(null);
-
+  // Parse URL and extract query parameters without forcing https://
+  const parseUrlAndQueryParams = useCallback((urlString: string) => {
     try {
-      const response = await fetch(apiData.url, {
-        method: apiData.method || 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...apiData.headers,
-        },
+      const hasProtocol = /^[a-zA-Z]+:\/\//.test(urlString);
+      const url = new URL(hasProtocol ? urlString : `http://${urlString}`);
+      const params: KeyValuePair[] = [];
+      url.searchParams.forEach((value, key) => {
+        params.push({ key, value: decodeURIComponent(String(value)), enabled: true });
       });
-
-      if (!response.ok) {
-        throw new Error(`API 요청 실패: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      // Store the result in the node's data
-      const event = new CustomEvent('nodeExecuted', {
-        detail: { nodeId: id, result }
-      });
-      window.dispatchEvent(event);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'API 호출 중 오류가 발생했습니다.');
-    } finally {
-      setIsLoading(false);
+      return {
+        baseUrl: hasProtocol ? `${url.protocol}//${url.host}${url.pathname}` : url.host + url.pathname,
+        queryParams: params
+      };
+    } catch (error) {
+      return { baseUrl: urlString, queryParams: [] };
     }
-  }, [apiData, id]);
+  }, []);
+
+  // Update URL when query parameters change
+  const updateUrlFromQueryParams = useCallback((baseUrl: string, params: KeyValuePair[]) => {
+    try {
+      // Only try to parse as URL if it contains a protocol
+      const hasProtocol = /^[a-zA-Z]+:\/\//.test(baseUrl);
+      const url = new URL(hasProtocol ? baseUrl : `http://${baseUrl}`);
+      url.search = '';
+      params.forEach(param => {
+        if (param.enabled && param.key) {
+          url.searchParams.set(param.key, encodeURIComponent(param.value));
+        }
+      });
+      return hasProtocol ? url.toString() : url.host + url.pathname + url.search;
+    } catch (error) {
+      return baseUrl;
+    }
+  }, []);
+
+  // Sync drafts with data changes
+  useEffect(() => {
+    const initialKeyDrafts: Record<number, string> = {};
+    const initialValueDrafts: Record<number, string> = {};
+    if (data.queryParams) {
+      Object.entries(data.queryParams).forEach(([key, value], index) => {
+        initialKeyDrafts[index] = key;
+        initialValueDrafts[index] = String(value);
+      });
+    }
+    setKeyDrafts(initialKeyDrafts);
+    setValueDrafts(initialValueDrafts);
+  }, [data]);
+
+  // Handle URL input change
+  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setUrlDraft(newValue);
+    
+    if (!isComposing) {
+      const { baseUrl, queryParams: newParams } = parseUrlAndQueryParams(newValue);
+      dispatch(updateNodeData({
+        nodeId: id,
+        data: {
+          ...data,
+          url: newValue,
+          queryParams: newParams.reduce((acc, param) => ({
+            ...acc,
+            [param.key]: param.value
+          }), {})
+        } as APINodeData
+      }));
+    }
+  }, [dispatch, id, data, parseUrlAndQueryParams, isComposing]);
+
+  // Handle URL composition end
+  const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
+    setIsComposing(false);
+    const newValue = e.currentTarget.value;
+    const { baseUrl, queryParams: newParams } = parseUrlAndQueryParams(newValue);
+    
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: {
+        ...data,
+        url: newValue,
+        queryParams: newParams.reduce((acc, param) => ({
+          ...acc,
+          [param.key]: param.value
+        }), {})
+      } as APINodeData
+    }));
+  }, [dispatch, id, data, parseUrlAndQueryParams]);
+
+  // Handle query parameter changes
+  const handleQueryParamChange = useCallback((index: number, field: keyof KeyValuePair, value: string | boolean) => {
+    if (field === 'key') {
+      setKeyDrafts(prev => ({ ...prev, [index]: value as string }));
+      if (!isKeyComposing) {
+        const queryParams = Object.entries(data.queryParams || {}).map(([key, val], i) => ({
+          key: i === index ? value as string : key,
+          value: val,
+          enabled: true
+        }));
+        
+        const { baseUrl } = parseUrlAndQueryParams(data.url || '');
+        const newUrl = updateUrlFromQueryParams(baseUrl, queryParams);
+        
+        dispatch(updateNodeData({
+          nodeId: id,
+          data: {
+            ...data,
+            url: newUrl,
+            queryParams: queryParams.reduce((acc, param) => ({
+              ...acc,
+              [param.key]: param.value
+            }), {})
+          } as APINodeData
+        }));
+      }
+    } else if (field === 'value') {
+      setValueDrafts(prev => ({ ...prev, [index]: value as string }));
+      if (!isValueComposing) {
+        const queryParams = Object.entries(data.queryParams || {}).map(([key, val], i) => ({
+          key,
+          value: i === index ? value as string : val,
+          enabled: true
+        }));
+        
+        const { baseUrl } = parseUrlAndQueryParams(data.url || '');
+        const newUrl = updateUrlFromQueryParams(baseUrl, queryParams);
+        
+        dispatch(updateNodeData({
+          nodeId: id,
+          data: {
+            ...data,
+            url: newUrl,
+            queryParams: queryParams.reduce((acc, param) => ({
+              ...acc,
+              [param.key]: param.value
+            }), {})
+          } as APINodeData
+        }));
+      }
+    } else if (field === 'enabled') {
+      const queryParams = Object.entries(data.queryParams || {}).map(([key, val], i) => ({
+        key,
+        value: val,
+        enabled: i === index ? value as boolean : true
+      }));
+      
+      const { baseUrl } = parseUrlAndQueryParams(data.url || '');
+      const newUrl = updateUrlFromQueryParams(baseUrl, queryParams);
+      
+      dispatch(updateNodeData({
+        nodeId: id,
+        data: {
+          ...data,
+          url: newUrl,
+          queryParams: queryParams.reduce((acc, param) => ({
+            ...acc,
+            [param.key]: param.value
+          }), {})
+        } as APINodeData
+      }));
+    }
+  }, [dispatch, id, data, parseUrlAndQueryParams, updateUrlFromQueryParams, isKeyComposing, isValueComposing]);
+
+  const handleQueryParamBlur = useCallback((index: number, field: keyof KeyValuePair) => {
+    const queryParams = Object.entries(data.queryParams || {}).map(([key, val], i) => ({
+      key: field === 'key' && i === index ? keyDrafts[index] || key : key,
+      value: field === 'value' && i === index ? valueDrafts[index] || val : val,
+      enabled: true
+    }));
+    
+    const { baseUrl } = parseUrlAndQueryParams(data.url || '');
+    const newUrl = updateUrlFromQueryParams(baseUrl, queryParams);
+    
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: {
+        ...data,
+        url: newUrl,
+        queryParams: queryParams.reduce((acc, param) => ({
+          ...acc,
+          [param.key]: param.value
+        }), {})
+      } as APINodeData
+    }));
+  }, [dispatch, id, data, keyDrafts, valueDrafts, parseUrlAndQueryParams, updateUrlFromQueryParams]);
 
   return (
-    <div className="px-4 py-3 shadow-lg rounded-xl bg-white border-2 border-green-500/50 hover:border-green-500 transition-colors duration-200">
-      <Handle type="target" position={Position.Top} className="w-2 h-2" />
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="text-lg font-bold text-green-500">API</div>
-            {apiData.method && (
-              <div className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                {apiData.method}
-              </div>
-            )}
+    <div className="relative px-4 py-3 rounded-lg border-2 border-gray-200 bg-white shadow-sm min-w-[300px] max-w-[600px]">
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        className="w-2 h-2 !bg-gray-400 rounded-full border-2 border-white"
+        style={{ 
+          position: 'absolute',
+          left: '-6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          zIndex: 50
+        }}
+      />
+      
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className={`shrink-0 px-2 py-1 text-xs font-medium rounded ${
+            data.method === 'GET' ? 'bg-blue-100 text-blue-700' :
+            data.method === 'POST' ? 'bg-green-100 text-green-700' :
+            data.method === 'PUT' ? 'bg-yellow-100 text-yellow-700' :
+            data.method === 'DELETE' ? 'bg-red-100 text-red-700' :
+            'bg-purple-100 text-purple-700'
+          }`}>
+            {data.method}
+          </span>
+          <input
+            type="text"
+            value={urlDraft}
+            onChange={handleUrlChange}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={handleUrlCompositionEnd}
+            placeholder="Enter URL (e.g., api.example.com/endpoint)"
+            className="flex-1 min-w-0 p-2 text-sm bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        {data.method === 'GET' && data.queryParams && Object.keys(data.queryParams).length > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-medium text-gray-500">Query Parameters</span>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(data.queryParams).map(([key, value], index) => (
+                <div key={index} className="grid grid-cols-[auto,1fr,auto,1fr,auto] items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={true}
+                    onChange={(e) => handleQueryParamChange(index, 'enabled', e.target.checked)}
+                    className="w-3 h-3"
+                  />
+                  <input
+                    type="text"
+                    value={keyDrafts[index] ?? key}
+                    onChange={(e) => handleQueryParamChange(index, 'key', e.target.value)}
+                    onCompositionStart={() => setIsKeyComposing(true)}
+                    onCompositionEnd={() => {
+                      setIsKeyComposing(false);
+                      handleQueryParamChange(index, 'key', keyDrafts[index] ?? key);
+                    }}
+                    onBlur={() => handleQueryParamBlur(index, 'key')}
+                    placeholder="key"
+                    className="w-full min-w-0 px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <span className="text-gray-400 justify-self-center">=</span>
+                  <input
+                    type="text"
+                    value={valueDrafts[index] ?? value}
+                    onChange={(e) => handleQueryParamChange(index, 'value', e.target.value)}
+                    onCompositionStart={() => setIsValueComposing(true)}
+                    onCompositionEnd={() => {
+                      setIsValueComposing(false);
+                      handleQueryParamChange(index, 'value', valueDrafts[index] ?? value);
+                    }}
+                    onBlur={() => handleQueryParamBlur(index, 'value')}
+                    placeholder="value"
+                    className="w-full min-w-0 px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-          <button
-            onClick={handleExecute}
-            disabled={isLoading}
-            className="px-3 py-1 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 flex items-center gap-1"
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span>실행 중</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                </svg>
-                <span>실행</span>
-              </>
-            )}
-          </button>
-        </div>
-        <div className="text-sm text-gray-600 flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          {apiData.url || 'URL 미설정'}
-        </div>
-        {error && (
-          <div className="text-sm text-red-500 bg-red-50 px-2 py-1 rounded-lg flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {error}
+        )}
+
+        {data.method !== 'GET' && (
+          <div className="text-xs text-gray-500">
+            {data.contentType || 'application/json'}
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        className="w-2 h-2 !bg-gray-400 rounded-full border-2 border-white"
+        style={{ 
+          position: 'absolute',
+          right: '-6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          zIndex: 50
+        }}
+      />
     </div>
   );
 };
