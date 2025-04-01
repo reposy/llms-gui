@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect } from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -14,6 +14,9 @@ import ReactFlow, {
   Viewport,
   applyEdgeChanges,
   applyNodeChanges,
+  getConnectedEdges,
+  getNodesBounds,
+  GetViewport,
 } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import 'reactflow/dist/style.css';
@@ -24,7 +27,7 @@ import OutputNode from './nodes/OutputNode';
 import JSONExtractorNode from './nodes/JSONExtractorNode';
 import { NodeData, NodeType } from '../types/nodes';
 import { RootState } from '../store/store';
-import { setNodes, setEdges } from '../store/flowSlice';
+import { setNodes, setEdges, addNode } from '../store/flowSlice';
 
 // Custom wrapper to remove default React Flow node styling
 const NodeWrapper = ({ children, ...props }: { children: React.ReactNode } & any) => (
@@ -63,42 +66,126 @@ interface FlowCanvasProps {
 
 const defaultViewport = { x: 0, y: 0, zoom: 1 };
 
+// Type for clipboard
+interface CopiedData {
+  nodes: Node<NodeData>[];
+  edges: Edge[];
+}
+
+// Type for history stack item
+interface HistoryItem {
+  nodes: Node<NodeData>[];
+  edges: Edge[];
+}
+
 export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
   const dispatch = useDispatch();
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodes = useSelector((state: RootState) => state.flow.nodes);
   const edges = useSelector((state: RootState) => state.flow.edges);
-  const { project } = useReactFlow();
+  const { project, getNodes, getEdges, setNodes: rfSetNodes, setEdges: rfSetEdges, getViewport: rfGetViewport } = useReactFlow();
+
+  // State for clipboard and history
+  const clipboard = useRef<CopiedData | null>(null);
+  const history = useRef<HistoryItem[]>([]);
+  const historyIndex = useRef<number>(-1);
+  const ignoreHistoryUpdate = useRef<boolean>(false);
+
+  // Initialize history on mount
+  useEffect(() => {
+    if (history.current.length === 0) {
+      history.current.push({ nodes: getNodes(), edges: getEdges() });
+      historyIndex.current = 0;
+      console.log('History initialized.');
+    }
+  }, [getNodes, getEdges]); // Should only run once
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const updatedNodes = applyNodeChanges(changes, nodes);
-    dispatch(setNodes(updatedNodes));
-  }, [dispatch, nodes]);
+    if (ignoreHistoryUpdate.current) {
+      ignoreHistoryUpdate.current = false;
+      return;
+    }
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const nextNodes = applyNodeChanges(changes, currentNodes);
+    pushToHistory(currentNodes, currentEdges);
+    dispatch(setNodes(nextNodes));
+  }, [dispatch, getNodes, getEdges]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const newEdges = applyEdgeChanges(changes, edges);
-    dispatch(setEdges(newEdges));
-  }, [dispatch, edges]);
+    if (ignoreHistoryUpdate.current) {
+      ignoreHistoryUpdate.current = false;
+      return;
+    }
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const nextEdges = applyEdgeChanges(changes, currentEdges);
+    pushToHistory(currentNodes, currentEdges);
+    dispatch(setEdges(nextEdges));
+  }, [dispatch, getNodes, getEdges]);
 
   const onConnect = useCallback((params: Connection) => {
-    // Validate connection based on node types
-    const sourceNode = nodes.find(n => n.id === params.source);
-    const targetNode = nodes.find(n => n.id === params.target);
+    if (ignoreHistoryUpdate.current) {
+      ignoreHistoryUpdate.current = false;
+      return;
+    }
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const sourceNode = currentNodes.find(n => n.id === params.source);
+    const targetNode = currentNodes.find(n => n.id === params.target);
 
     if (!sourceNode || !targetNode) return;
-
-    // Validate source handle is output and target handle is input
     if (!params.sourceHandle?.endsWith('-source') || !params.targetHandle?.endsWith('-target')) return;
 
-    // Allow connections:
-    // 1. From LLM to LLM (chaining)
-    // 2. From LLM to Output
-    // 3. From API to Output
     if ((sourceNode.type === 'llm' && (targetNode.type === 'llm' || targetNode.type === 'output')) ||
         (sourceNode.type === 'api' && targetNode.type === 'output')) {
-      const newEdges = addEdge(params, edges);
-      dispatch(setEdges(newEdges));
+      const newEdge = { ...params, id: `edge-${Date.now()}` };
+      const nextEdges = addEdge(newEdge, currentEdges);
+      pushToHistory(currentNodes, currentEdges);
+      dispatch(setEdges(nextEdges));
     }
-  }, [dispatch, edges, nodes]);
+  }, [dispatch, getNodes, getEdges]);
+
+  const pushToHistory = useCallback((nodesToSave: Node[], edgesToSave: Edge[]) => {
+    if (historyIndex.current < history.current.length - 1) {
+      history.current.splice(historyIndex.current + 1);
+    }
+    history.current.push({ nodes: nodesToSave, edges: edgesToSave });
+    if (history.current.length > 50) {
+      history.current.shift();
+    }
+    historyIndex.current = history.current.length - 1;
+    console.log('History pushed. Index:', historyIndex.current, 'Size:', history.current.length);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyIndex.current <= 0) return;
+
+    if (historyIndex.current === history.current.length - 1) {
+       pushToHistory(getNodes(), getEdges());
+       historyIndex.current = historyIndex.current - 1; 
+    }
+    
+    historyIndex.current -= 1;
+    const prevState = history.current[historyIndex.current];
+    console.log('Undoing to index:', historyIndex.current);
+    ignoreHistoryUpdate.current = true;
+    dispatch(setNodes(prevState.nodes));
+    ignoreHistoryUpdate.current = true;
+    dispatch(setEdges(prevState.edges));
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
+
+  const redo = useCallback(() => {
+    if (historyIndex.current >= history.current.length - 1) return;
+
+    historyIndex.current += 1;
+    const nextState = history.current[historyIndex.current];
+    console.log('Redoing to index:', historyIndex.current);
+    ignoreHistoryUpdate.current = true;
+    dispatch(setNodes(nextState.nodes));
+    ignoreHistoryUpdate.current = true;
+    dispatch(setEdges(nextState.edges));
+  }, [dispatch]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     onNodeSelect(node);
@@ -125,8 +212,157 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     }
   }, []);
 
+  // --- Copy/Paste/Delete ---
+  const copySelected = useCallback(() => {
+    const selectedNodes = getNodes().filter(n => n.selected);
+    if (selectedNodes.length === 0) return;
+
+    const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+    // Only copy edges that connect *between* selected nodes
+    const internalEdges = getEdges().filter(e => 
+      selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
+    );
+
+    clipboard.current = {
+      nodes: selectedNodes.map(n => ({ ...n, selected: false })), // Deselect nodes in clipboard
+      edges: internalEdges
+    };
+    console.log('Copied to clipboard:', clipboard.current);
+  }, [getNodes, getEdges]);
+
+  const pasteNodes = useCallback(() => {
+    if (!clipboard.current || !reactFlowWrapper.current) return;
+
+    const { nodes: copiedNodes, edges: copiedEdges } = clipboard.current;
+    if (copiedNodes.length === 0) return;
+
+    // Calculate position for pasting (e.g., center of viewport or offset from original)
+    const bounds = getNodesBounds(copiedNodes);
+    const viewport = rfGetViewport();
+    const position = project({
+        x: (viewport.x * -1 + reactFlowWrapper.current.clientWidth / 2) / viewport.zoom - bounds.width / 2,
+        y: (viewport.y * -1 + reactFlowWrapper.current.clientHeight / 2) / viewport.zoom - bounds.height / 2,
+    });
+    
+    const idMapping: Record<string, string> = {};
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    pushToHistory(currentNodes, currentEdges); // Save state before paste
+
+    // Create new nodes with unique IDs and offset positions
+    copiedNodes.forEach(node => {
+      const newNodeId = `${node.type}-${Date.now()}-${Math.random().toString(16).substring(2, 6)}`;
+      idMapping[node.id] = newNodeId;
+      newNodes.push({
+        ...node,
+        id: newNodeId,
+        position: {
+          x: position.x + (node.positionAbsolute?.x ?? node.position.x) - bounds.x,
+          y: position.y + (node.positionAbsolute?.y ?? node.position.y) - bounds.y,
+        },
+        selected: true, // Select pasted nodes
+        data: { ...node.data } // Ensure data is copied deeply if needed
+      });
+    });
+
+    // Create new edges referencing the new node IDs
+    copiedEdges.forEach(edge => {
+      const newSourceId = idMapping[edge.source];
+      const newTargetId = idMapping[edge.target];
+      if (newSourceId && newTargetId) {
+        newEdges.push({
+          ...edge,
+          id: `edge-${Date.now()}-${Math.random().toString(16).substring(2, 6)}`,
+          source: newSourceId,
+          target: newTargetId,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+        });
+      }
+    });
+
+    // Deselect currently selected nodes before pasting new ones
+    const nodesToUpdate = currentNodes.map(n => ({ ...n, selected: false }));
+
+    dispatch(setNodes([...nodesToUpdate, ...newNodes]));
+    dispatch(setEdges([...currentEdges, ...newEdges]));
+
+    console.log('Pasted nodes:', newNodes, 'Pasted edges:', newEdges);
+
+  }, [dispatch, getNodes, getEdges, project, rfGetViewport, pushToHistory]);
+
+  const deleteSelected = useCallback(() => {
+    const selectedNodes = getNodes().filter(n => n.selected);
+    const selectedEdges = getEdges().filter(e => e.selected);
+    
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    pushToHistory(currentNodes, currentEdges); // Save state before delete
+
+    const nodesToRemoveIds = new Set(selectedNodes.map(n => n.id));
+    const edgesToRemove = getConnectedEdges(selectedNodes, currentEdges);
+    const edgesToRemoveIds = new Set([...edgesToRemove.map(e => e.id), ...selectedEdges.map(e => e.id)]);
+
+    const nextNodes = currentNodes.filter(n => !nodesToRemoveIds.has(n.id));
+    const nextEdges = currentEdges.filter(e => !edgesToRemoveIds.has(e.id));
+
+    dispatch(setNodes(nextNodes));
+    dispatch(setEdges(nextEdges));
+    console.log('Deleted nodes:', nodesToRemoveIds, 'Deleted edges:', edgesToRemoveIds);
+
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
+
+  // --- Effect for Keyboard Shortcuts (Updated) ---
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore shortcuts if focus is inside an input/textarea
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        // Allow backspace/delete in inputs
+        if (event.key === 'Backspace' || event.key === 'Delete') return;
+        // Allow copy/paste in inputs
+        if ((event.metaKey || event.ctrlKey) && (event.key === 'c' || event.key === 'v' || event.key === 'x')) return;
+        // Allow undo/redo in inputs
+        if ((event.metaKey || event.ctrlKey) && event.key === 'z') return;
+        // Block other shortcuts if focus is on input/textarea
+        if (event.metaKey || event.ctrlKey) return;
+      }
+      
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modKey = isMac ? event.metaKey : event.ctrlKey;
+
+      if (modKey && event.key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if (modKey && event.key === 'c') {
+        event.preventDefault();
+        copySelected();
+      } else if (modKey && event.key === 'v') {
+        event.preventDefault();
+        pasteNodes();
+      } else if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        deleteSelected();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+    // Add copy/paste/delete handlers to dependency array
+  }, [undo, redo, copySelected, pasteNodes, deleteSelected]);
+
   return (
-    <div className="w-full h-full" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}>
+    <div ref={reactFlowWrapper} className="w-full h-full" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -140,6 +376,9 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
         fitView
         style={{ background: '#f8fafc', width: '100%', height: '100%' }}
         proOptions={{ hideAttribution: true }}
+        deleteKeyCode={['Backspace', 'Delete']}
+        multiSelectionKeyCode={'Shift'}
+        selectNodesOnDrag={true}
       >
         <Background gap={16} color="#94a3b8" />
         <Controls showInteractive={false} />
