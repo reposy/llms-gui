@@ -87,8 +87,10 @@ export interface JSONExtractorNodeData extends BaseNodeData {
 // Add InputNodeData
 export interface InputNodeData extends BaseNodeData {
   type: 'input';
-  label?: string;
-  text: string; // Multiline text input
+  label: string;
+  inputType?: 'text' | 'file' | 'list'; // Type of input
+  text?: string; // For single text input
+  items?: string[]; // For list/file input (e.g., lines from a file)
 }
 
 // Add GroupNodeData

@@ -123,6 +123,17 @@ export const FlowEditor = () => {
               </svg>
               입력
             </button>
+            {/* Add Group Node Button */}
+            <button
+              className="w-full aspect-square rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
+              onClick={() => handleAddNode('group')}
+            >
+              {/* Simple Group Icon (SVG - Folder) */}
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              Group
+            </button>
           </div>
         </div>
 

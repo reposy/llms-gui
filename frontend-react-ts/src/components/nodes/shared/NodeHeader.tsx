@@ -10,7 +10,7 @@ interface Props {
   isRootNode: boolean;
   isRunning: boolean;
   viewMode: typeof VIEW_MODES.COMPACT | typeof VIEW_MODES.EXPANDED;
-  themeColor: 'blue' | 'green' | 'purple' | 'gray'; // For theming buttons/labels
+  themeColor: 'blue' | 'green' | 'purple' | 'gray' | 'orange'; // For theming buttons/labels
   onRun: () => void;
   onLabelUpdate: (nodeId: string, newLabel: string) => void;
   onToggleView: () => void;
@@ -36,6 +36,12 @@ const getThemeClasses = (color: Props['themeColor']) => {
         runButton: 'bg-purple-100 text-purple-700 hover:bg-purple-200',
         label: 'text-purple-500 hover:bg-purple-50',
         input: 'text-purple-500 border-purple-200 focus:ring-purple-500',
+      };
+    case 'orange':
+      return {
+        runButton: 'bg-orange-100 text-orange-700 hover:bg-orange-200',
+        label: 'text-orange-600 hover:bg-orange-50',
+        input: 'text-orange-700 border-orange-200 focus:ring-orange-500',
       };
     case 'gray': // Fallback/default theme
     default:

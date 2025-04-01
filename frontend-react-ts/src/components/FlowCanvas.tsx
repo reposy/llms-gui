@@ -26,6 +26,7 @@ import APINode from './nodes/APINode';
 import OutputNode from './nodes/OutputNode';
 import JSONExtractorNode from './nodes/JSONExtractorNode';
 import InputNode from './nodes/InputNode';
+import GroupNode from './nodes/GroupNode';
 import { NodeData, NodeType } from '../types/nodes';
 import { RootState } from '../store/store';
 import { setNodes, setEdges, addNode } from '../store/flowSlice';
@@ -63,6 +64,9 @@ const nodeTypes = {
     <NodeWrapper {...props}>
       <InputNode {...props} />
     </NodeWrapper>
+  ),
+  group: (props: any) => (
+    <GroupNode {...props} />
   ),
 };
 
@@ -191,15 +195,18 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
 
     // Define allowed connections
     const allowedConnections: Record<NodeType, NodeType[]> = {
-      input: ['llm', 'api', 'json-extractor'], // Input can connect to processing nodes
-      llm: ['llm', 'output', 'json-extractor'], // LLM can chain, go to output or extractor
-      api: ['output', 'json-extractor'],      // API can go to output or extractor
-      output: [],                             // Output cannot connect out
-      'json-extractor': ['llm', 'api', 'output'], // Extractor can feed into others or output
+      input: ['llm', 'api', 'json-extractor'], 
+      llm: ['llm', 'output', 'json-extractor'], 
+      api: ['output', 'json-extractor'],      
+      output: [],                             
+      'json-extractor': ['llm', 'api', 'output'], 
+      group: [], // Group node itself cannot connect out directly
     };
 
     // Check if connection is allowed based on types
-    if (allowedConnections[sourceNode.type as NodeType]?.includes(targetNode.type as NodeType)) {
+    // Also prevent connecting *to* a group node directly for now
+    if (targetNode.type !== 'group' && 
+        allowedConnections[sourceNode.type as NodeType]?.includes(targetNode.type as NodeType)) {
       const newEdge = { ...params, id: `edge-${Date.now()}` }; 
       const nextEdges = addEdge(newEdge, currentEdges);
       pushToHistory(currentNodes, currentEdges); 

@@ -1,5 +1,5 @@
 import { Node } from 'reactflow';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData } from '../types/nodes';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -102,9 +102,19 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
       return {
         ...baseData,
         type: 'input',
-        label: 'Input', // Specific default label
-        text: '' // Default empty text
+        label: 'Input',
+        inputType: 'text', // Default to text input
+        text: '', 
+        items: [] // Default empty items array
       } as InputNodeData;
+    case 'group':
+      return {
+        ...baseData,
+        type: 'group',
+        label: 'Group', // Specific default label
+        isCollapsed: false // Default to expanded
+        // iterationConfig is initially undefined
+      } as GroupNodeData; // Cast to GroupNodeData
     default:
       // If an unknown type is passed, it's an error.
       // This ensures the function always returns a valid NodeData type or throws.
