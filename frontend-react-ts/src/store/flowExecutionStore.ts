@@ -380,13 +380,19 @@ export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
           break;
         }
 
+        // Add case for Input Node
+        case 'input': {
+          result = node.data.text;
+          break;
+        }
+
         default:
           setNodeState(nodeId, { 
-            status: 'error', 
-            result: null, 
-            error: `Unknown node type: ${node?.type}` 
+            status: 'error',
+            result: null,
+            error: `Unsupported node type for execution: ${node.type}` 
           });
-          throw new Error(`Unknown node type: ${node.type}`);
+          throw new Error(`Unsupported node type: ${node.type}`);
       }
 
       // --- Execution successful --- 

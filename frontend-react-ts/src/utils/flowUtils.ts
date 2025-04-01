@@ -1,5 +1,5 @@
 import { Node } from 'reactflow';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData } from '../types/nodes';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -91,14 +91,20 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         format: 'text',
         content: '' // Add default content field
       } as OutputNodeData;
-    // Add case for 'json-extractor'
     case 'json-extractor':
       return {
         ...baseData,
         type: 'json-extractor',
         label: 'JSON Extractor',
         path: '' // Add default path field
-      } as JSONExtractorNodeData; // Added explicit cast for clarity/consistency
+      } as JSONExtractorNodeData;
+    case 'input':
+      return {
+        ...baseData,
+        type: 'input',
+        label: 'Input', // Specific default label
+        text: '' // Default empty text
+      } as InputNodeData;
     default:
       // If an unknown type is passed, it's an error.
       // This ensures the function always returns a valid NodeData type or throws.

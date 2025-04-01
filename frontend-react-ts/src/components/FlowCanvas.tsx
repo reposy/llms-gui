@@ -25,6 +25,7 @@ import LLMNode from './nodes/LLMNode';
 import APINode from './nodes/APINode';
 import OutputNode from './nodes/OutputNode';
 import JSONExtractorNode from './nodes/JSONExtractorNode';
+import InputNode from './nodes/InputNode';
 import { NodeData, NodeType } from '../types/nodes';
 import { RootState } from '../store/store';
 import { setNodes, setEdges, addNode } from '../store/flowSlice';
@@ -56,6 +57,11 @@ const nodeTypes = {
   'json-extractor': (props: any) => (
     <NodeWrapper {...props}>
       <JSONExtractorNode {...props} />
+    </NodeWrapper>
+  ),
+  input: (props: any) => (
+    <NodeWrapper {...props}>
+      <InputNode {...props} />
     </NodeWrapper>
   ),
 };
@@ -100,63 +106,21 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     }
   }, [getNodes, getEdges]); // Should only run once
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    if (ignoreHistoryUpdate.current) {
-      ignoreHistoryUpdate.current = false;
-      return;
-    }
-    const currentNodes = getNodes();
-    const currentEdges = getEdges();
-    const nextNodes = applyNodeChanges(changes, currentNodes);
-    pushToHistory(currentNodes, currentEdges);
-    dispatch(setNodes(nextNodes));
-  }, [dispatch, getNodes, getEdges]);
-
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    if (ignoreHistoryUpdate.current) {
-      ignoreHistoryUpdate.current = false;
-      return;
-    }
-    const currentNodes = getNodes();
-    const currentEdges = getEdges();
-    const nextEdges = applyEdgeChanges(changes, currentEdges);
-    pushToHistory(currentNodes, currentEdges);
-    dispatch(setEdges(nextEdges));
-  }, [dispatch, getNodes, getEdges]);
-
-  const onConnect = useCallback((params: Connection) => {
-    if (ignoreHistoryUpdate.current) {
-      ignoreHistoryUpdate.current = false;
-      return;
-    }
-    const currentNodes = getNodes();
-    const currentEdges = getEdges();
-    const sourceNode = currentNodes.find(n => n.id === params.source);
-    const targetNode = currentNodes.find(n => n.id === params.target);
-
-    if (!sourceNode || !targetNode) return;
-    if (!params.sourceHandle?.endsWith('-source') || !params.targetHandle?.endsWith('-target')) return;
-
-    if ((sourceNode.type === 'llm' && (targetNode.type === 'llm' || targetNode.type === 'output')) ||
-        (sourceNode.type === 'api' && targetNode.type === 'output')) {
-      const newEdge = { ...params, id: `edge-${Date.now()}` };
-      const nextEdges = addEdge(newEdge, currentEdges);
-      pushToHistory(currentNodes, currentEdges);
-      dispatch(setEdges(nextEdges));
-    }
-  }, [dispatch, getNodes, getEdges]);
-
+  // --- History Management (Declare before usage in other callbacks) ---
   const pushToHistory = useCallback((nodesToSave: Node[], edgesToSave: Edge[]) => {
+    // Clear redo stack
     if (historyIndex.current < history.current.length - 1) {
       history.current.splice(historyIndex.current + 1);
     }
+    // Push new state
     history.current.push({ nodes: nodesToSave, edges: edgesToSave });
+    // Limit history size (e.g., 50 steps)
     if (history.current.length > 50) {
       history.current.shift();
     }
     historyIndex.current = history.current.length - 1;
     console.log('History pushed. Index:', historyIndex.current, 'Size:', history.current.length);
-  }, []);
+  }, []); // Empty dependency array as it doesn't depend on external state/props
 
   const undo = useCallback(() => {
     if (historyIndex.current <= 0) return;
@@ -187,30 +151,61 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     dispatch(setEdges(nextState.edges));
   }, [dispatch]);
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    onNodeSelect(node);
-  }, [onNodeSelect]);
-
-  const onPaneClick = useCallback(() => {
-    onNodeSelect(null);
-  }, [onNodeSelect]);
-
-  const resetView = useCallback(() => {
-    project({ x: 0, y: 0 } as Viewport);
-  }, [project]);
-
-  const miniMapNodeColor = useCallback((node: Node) => {
-    switch (node.type as NodeType) {
-      case 'llm':
-        return '#3b82f6';
-      case 'api':
-        return '#22c55e';
-      case 'output':
-        return '#8b5cf6';
-      default:
-        return '#94a3b8';
+  // --- Basic React Flow Handlers (modified for history) ---
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    if (ignoreHistoryUpdate.current) {
+      ignoreHistoryUpdate.current = false;
+      return;
     }
-  }, []);
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const nextNodes = applyNodeChanges(changes, currentNodes);
+    pushToHistory(currentNodes, currentEdges);
+    dispatch(setNodes(nextNodes));
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
+
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    if (ignoreHistoryUpdate.current) {
+      ignoreHistoryUpdate.current = false;
+      return;
+    }
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const nextEdges = applyEdgeChanges(changes, currentEdges);
+    pushToHistory(currentNodes, currentEdges);
+    dispatch(setEdges(nextEdges));
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
+
+  const onConnect = useCallback((params: Connection) => {
+    if (ignoreHistoryUpdate.current) {
+      ignoreHistoryUpdate.current = false;
+      return;
+    }
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const sourceNode = currentNodes.find(n => n.id === params.source);
+    const targetNode = currentNodes.find(n => n.id === params.target);
+
+    if (!sourceNode || !targetNode) return;
+    if (!params.sourceHandle?.endsWith('-source') || !params.targetHandle?.endsWith('-target')) return;
+
+    // Define allowed connections
+    const allowedConnections: Record<NodeType, NodeType[]> = {
+      input: ['llm', 'api', 'json-extractor'], // Input can connect to processing nodes
+      llm: ['llm', 'output', 'json-extractor'], // LLM can chain, go to output or extractor
+      api: ['output', 'json-extractor'],      // API can go to output or extractor
+      output: [],                             // Output cannot connect out
+      'json-extractor': ['llm', 'api', 'output'], // Extractor can feed into others or output
+    };
+
+    // Check if connection is allowed based on types
+    if (allowedConnections[sourceNode.type as NodeType]?.includes(targetNode.type as NodeType)) {
+      const newEdge = { ...params, id: `edge-${Date.now()}` }; 
+      const nextEdges = addEdge(newEdge, currentEdges);
+      pushToHistory(currentNodes, currentEdges); 
+      dispatch(setEdges(nextEdges));
+    }
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
 
   // --- Copy/Paste/Delete ---
   const copySelected = useCallback(() => {
@@ -372,6 +367,31 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     };
     // Add copy/paste/delete handlers to dependency array
   }, [undo, redo, copySelected, pasteNodes, deleteSelected]);
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    onNodeSelect(node);
+  }, [onNodeSelect]);
+
+  const onPaneClick = useCallback(() => {
+    onNodeSelect(null);
+  }, [onNodeSelect]);
+
+  const resetView = useCallback(() => {
+    project({ x: 0, y: 0 } as Viewport);
+  }, [project]);
+
+  const miniMapNodeColor = useCallback((node: Node) => {
+    switch (node.type as NodeType) {
+      case 'llm':
+        return '#3b82f6';
+      case 'api':
+        return '#22c55e';
+      case 'output':
+        return '#8b5cf6';
+      default:
+        return '#94a3b8';
+    }
+  }, []);
 
   return (
     <div ref={reactFlowWrapper} className="w-full h-full" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}>

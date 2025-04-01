@@ -1,6 +1,6 @@
 import { Node, Edge } from 'reactflow';
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -71,7 +71,7 @@ export interface APINodeData extends BaseNodeData {
 // Output 노드 데이터
 export interface OutputNodeData extends BaseNodeData {
   type: 'output';
-  format: 'text' | 'json';
+  format: 'json' | 'text';
   content?: string;
   label?: string;
   viewMode?: ViewMode;
@@ -84,7 +84,20 @@ export interface JSONExtractorNodeData extends BaseNodeData {
   viewMode?: ViewMode;
 }
 
-export type NodeData = LLMNodeData | APINodeData | OutputNodeData | JSONExtractorNodeData;
+// Add InputNodeData
+export interface InputNodeData extends BaseNodeData {
+  type: 'input';
+  label?: string;
+  text: string; // Multiline text input
+}
+
+// Update NodeData union type
+export type NodeData = 
+  | LLMNodeData 
+  | APINodeData 
+  | OutputNodeData
+  | JSONExtractorNodeData
+  | InputNodeData; // Add InputNodeData to the union
 
 export type ViewMode = 'compact' | 'expanded' | 'auto';
 
