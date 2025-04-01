@@ -236,14 +236,20 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     const { nodes: copiedNodes, edges: copiedEdges } = clipboard.current;
     if (copiedNodes.length === 0) return;
 
-    // Calculate position for pasting (e.g., center of viewport or offset from original)
-    const bounds = getNodesBounds(copiedNodes);
+    // Get viewport center projected onto the flow plane
     const viewport = rfGetViewport();
-    const position = project({
-        x: (viewport.x * -1 + reactFlowWrapper.current.clientWidth / 2) / viewport.zoom - bounds.width / 2,
-        y: (viewport.y * -1 + reactFlowWrapper.current.clientHeight / 2) / viewport.zoom - bounds.height / 2,
+    const flowWrapperBounds = reactFlowWrapper.current.getBoundingClientRect();
+    const center = project({
+      x: flowWrapperBounds.width / 2,
+      y: flowWrapperBounds.height / 2,
     });
-    
+
+    // Calculate the bounds of the nodes being pasted to find their collective top-left corner
+    const bounds = getNodesBounds(copiedNodes);
+    // Use the absolute position if available (might be more accurate after dragging)
+    const topLeftX = bounds.x;
+    const topLeftY = bounds.y;
+
     const idMapping: Record<string, string> = {};
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
@@ -252,16 +258,22 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     const currentEdges = getEdges();
     pushToHistory(currentNodes, currentEdges); // Save state before paste
 
-    // Create new nodes with unique IDs and offset positions
+    // Create new nodes, positioning their top-left corner relative to the viewport center
     copiedNodes.forEach(node => {
       const newNodeId = `${node.type}-${Date.now()}-${Math.random().toString(16).substring(2, 6)}`;
       idMapping[node.id] = newNodeId;
+      
+      // Calculate offset from the original group's top-left
+      const offsetX = (node.positionAbsolute?.x ?? node.position.x) - topLeftX;
+      const offsetY = (node.positionAbsolute?.y ?? node.position.y) - topLeftY;
+      
       newNodes.push({
         ...node,
         id: newNodeId,
         position: {
-          x: position.x + (node.positionAbsolute?.x ?? node.position.x) - bounds.x,
-          y: position.y + (node.positionAbsolute?.y ?? node.position.y) - bounds.y,
+          // Place node relative to the calculated center, maintaining its offset within the group
+          x: center.x + offsetX,
+          y: center.y + offsetY,
         },
         selected: true, // Select pasted nodes
         data: { ...node.data } // Ensure data is copied deeply if needed
@@ -290,9 +302,9 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     dispatch(setNodes([...nodesToUpdate, ...newNodes]));
     dispatch(setEdges([...currentEdges, ...newEdges]));
 
-    console.log('Pasted nodes:', newNodes, 'Pasted edges:', newEdges);
+    console.log('Pasted nodes at viewport center:', newNodes);
 
-  }, [dispatch, getNodes, getEdges, project, rfGetViewport, pushToHistory]);
+  }, [dispatch, getNodes, getEdges, project, rfGetViewport, getNodesBounds, pushToHistory]);
 
   const deleteSelected = useCallback(() => {
     const selectedNodes = getNodes().filter(n => n.selected);

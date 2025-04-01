@@ -176,31 +176,16 @@ export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
         error: undefined
       });
 
-      // Update connected output nodes immediately
+      // Update connected output nodes immediately (Fix: Pass original cached result)
       const connectedEdges = edges.filter(e => e.source === nodeId);
       connectedEdges.forEach(edge => {
         const targetNode = nodes.find(n => n.id === edge.target);
         if (targetNode?.type === 'output') {
-          let content = '';
-          const result = currentState.result;
-          
-          if (typeof result === 'string') {
-            content = result;
-          } else if (result && typeof result === 'object') {
-            if ('content' in result) {
-              content = typeof result.content === 'string' 
-                ? result.content 
-                : JSON.stringify(result.content);
-            } else if ('text' in result) {
-              content = String(result.text);
-            } else {
-              content = JSON.stringify(result);
-            }
-          }
-
+          // REMOVED content extraction logic here
+          // Pass the original cached result object directly
           setNodeState(edge.target, {
             status: 'success',
-            result: content,
+            result: currentState.result, // Pass the original cached result object
             error: undefined
           });
         }
@@ -417,25 +402,11 @@ export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
       connectedEdgesSuccess.forEach(edge => {
         const targetNode = nodes.find(n => n.id === edge.target);
         if (targetNode?.type === 'output') {
-          let content = '';
-          // Re-use the result formatting logic
-          if (typeof result === 'string') {
-            content = result;
-          } else if (result && typeof result === 'object') {
-            if (node.type === 'llm' && 'content' in result) { // LLM Result format
-                content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
-            } else if ('text' in result) {
-                content = String(result.text);
-            } else { // General object formatting
-                content = JSON.stringify(result);
-            }
-          } else {
-              content = String(result); // Handle null/undefined/other primitives
-          }
-
+          // Pass the *entire* result object from the parent node
+          // The Output node component itself will handle formatting based on its toggle state
           setNodeState(edge.target, {
             status: 'success',
-            result: content,
+            result: result, // Pass the original result object
             error: undefined
           });
         }
@@ -461,9 +432,10 @@ export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
       connectedEdgesError.forEach(edge => {
         const targetNode = nodes.find(n => n.id === edge.target);
         if (targetNode?.type === 'output') {
+          // Keep error state update as is
           setNodeState(edge.target, {
             status: 'error',
-            result: `Error from ${node.data.label || node.id}`, // Indicate source of error
+            result: `Error from ${node.data.label || node.id}`, 
             error: errorMessage
           });
         }
