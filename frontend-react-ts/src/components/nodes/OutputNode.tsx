@@ -6,6 +6,7 @@ import { useDispatch } from 'react-redux';
 import { updateNodeData } from '../../store/flowSlice';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
+import { downloadFile } from '../../utils/downloadUtils';
 
 interface Props {
   id: string;
@@ -39,7 +40,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     if (result === null || result === undefined) return '';
 
     if (format === 'json') {
-      // JSON Mode: Always stringify the entire result object prettily
+      // JSON Mode: Stringify if object, otherwise convert to string
       if (typeof result === 'object') {
         try {
           return JSON.stringify(result, null, 2);
@@ -48,20 +49,23 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
           return String(result); // Fallback
         }
       }
-      return String(result); // Non-objects as string
+      // For non-objects in JSON mode, just convert to string (might be number, boolean, etc.)
+      return String(result); 
     } else {
-      // TEXT Mode: Prioritize 'content' or 'text' properties, otherwise stringify
+      // TEXT Mode: Prioritize 'content' or 'text' properties, otherwise stringify basic object or convert primitive
       if (typeof result === 'object') {
         if ('content' in result && result.content !== null && result.content !== undefined) {
+          // If content itself is an object, stringify it for text view
           return typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
         } 
         if ('text' in result && result.text !== null && result.text !== undefined) {
           return String(result.text);
         }
-        // Fallback for objects in text mode if no specific field found
+        // Fallback for objects in text mode if no specific field found (simple stringify)
         return JSON.stringify(result); 
       }
-      return String(result); // Primitives as string
+      // For primitives in text mode, just convert to string
+      return String(result); 
     }
   };
 
@@ -102,6 +106,21 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     }
     return '결과 없음';
   };
+
+  // Handler for the download button
+  const handleDownload = useCallback(() => {
+    if (nodeState?.status !== 'success' || nodeState.result === null || nodeState.result === undefined) {
+      console.warn('No successful result to download.');
+      return;
+    }
+    const contentToDownload = formatResultBasedOnFormat(nodeState.result, data.format);
+    const fileExtension = data.format === 'json' ? 'json' : 'txt';
+    const mimeType = data.format === 'json' ? 'application/json' : 'text/plain';
+    const filename = `output-${id}.${fileExtension}`;
+
+    downloadFile(contentToDownload, filename, mimeType);
+
+  }, [nodeState?.status, nodeState?.result, data.format, id]);
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -154,7 +173,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
             <div className="flex items-center">
               <div className="font-bold text-purple-500">{data.label || 'Output'}</div>
             </div>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => handleFormatChange('json')}
                 className={`px-2 py-1 text-xs rounded transition-colors ${
@@ -176,6 +195,16 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
                 title="Show as plain text"
               >
                 TEXT
+              </button>
+              <button
+                onClick={handleDownload}
+                disabled={nodeState?.status !== 'success' || nodeState.result === null || nodeState.result === undefined}
+                className="p-1 text-gray-400 rounded transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download result"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
               </button>
             </div>
           </div>
