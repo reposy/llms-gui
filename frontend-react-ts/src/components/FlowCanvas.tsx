@@ -21,14 +21,40 @@ import 'reactflow/dist/style.css';
 import LLMNode from './nodes/LLMNode';
 import APINode from './nodes/APINode';
 import OutputNode from './nodes/OutputNode';
+import JSONExtractorNode from './nodes/JSONExtractorNode';
 import { NodeData, NodeType } from '../types/nodes';
 import { RootState } from '../store/store';
 import { setNodes, setEdges } from '../store/flowSlice';
 
+// Custom wrapper to remove default React Flow node styling
+const NodeWrapper = ({ children, ...props }: { children: React.ReactNode } & any) => (
+  <div style={{ position: 'relative' }} className="react-flow__node">
+    {children}
+  </div>
+);
+
+// Override default node styles completely
 const nodeTypes = {
-  llm: LLMNode,
-  api: APINode,
-  output: OutputNode,
+  llm: (props: any) => (
+    <NodeWrapper {...props}>
+      <LLMNode {...props} />
+    </NodeWrapper>
+  ),
+  api: (props: any) => (
+    <NodeWrapper {...props}>
+      <APINode {...props} />
+    </NodeWrapper>
+  ),
+  output: (props: any) => (
+    <NodeWrapper {...props}>
+      <OutputNode {...props} />
+    </NodeWrapper>
+  ),
+  'json-extractor': (props: any) => (
+    <NodeWrapper {...props}>
+      <JSONExtractorNode {...props} />
+    </NodeWrapper>
+  ),
 };
 
 interface FlowCanvasProps {
@@ -54,9 +80,25 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
   }, [dispatch, edges]);
 
   const onConnect = useCallback((params: Connection) => {
-    const newEdges = addEdge(params, edges);
-    dispatch(setEdges(newEdges));
-  }, [dispatch, edges]);
+    // Validate connection based on node types
+    const sourceNode = nodes.find(n => n.id === params.source);
+    const targetNode = nodes.find(n => n.id === params.target);
+
+    if (!sourceNode || !targetNode) return;
+
+    // LLM node can only connect its output to Output node's input
+    if (sourceNode.type === 'llm' && targetNode.type === 'output' && 
+        params.sourceHandle?.endsWith('-source') && params.targetHandle?.endsWith('-target')) {
+      const newEdges = addEdge(params, edges);
+      dispatch(setEdges(newEdges));
+    }
+    // API node can only connect its output to Output node's input
+    else if (sourceNode.type === 'api' && targetNode.type === 'output' &&
+             params.sourceHandle?.endsWith('-source') && params.targetHandle?.endsWith('-target')) {
+      const newEdges = addEdge(params, edges);
+      dispatch(setEdges(newEdges));
+    }
+  }, [dispatch, edges, nodes]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     onNodeSelect(node);

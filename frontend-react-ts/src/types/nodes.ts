@@ -1,6 +1,6 @@
 import { Node, Edge } from 'reactflow';
 
-export type NodeType = 'llm' | 'api' | 'output';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -49,6 +49,7 @@ export interface LLMNodeData extends BaseNodeData {
   temperature: number;
   ollamaUrl?: string;
   label: string;
+  viewMode?: ViewMode;
 }
 
 // API 노드 데이터
@@ -59,10 +60,12 @@ export interface APINodeData extends BaseNodeData {
   headers?: Record<string, string>;
   queryParams?: Record<string, string>;
   body?: string;
+  useInputAsBody?: boolean;
   contentType?: string;
   bodyFormat?: 'key-value' | 'raw';
   bodyParams?: Array<{ key: string; value: string; enabled: boolean }>;
   label?: string;
+  viewMode?: ViewMode;
 }
 
 // Output 노드 데이터
@@ -70,16 +73,29 @@ export interface OutputNodeData extends BaseNodeData {
   type: 'output';
   format: 'text' | 'json';
   content?: string;
+  label?: string;
+  viewMode?: ViewMode;
 }
 
-export type NodeData = APINodeData | LLMNodeData | OutputNodeData;
+// JSON Extractor node data
+export interface JSONExtractorNodeData extends BaseNodeData {
+  label?: string;
+  path: string;
+  viewMode?: ViewMode;
+}
 
-// 플로우 상태 관리
+export type NodeData = LLMNodeData | APINodeData | OutputNodeData | JSONExtractorNodeData;
+
+export type ViewMode = 'compact' | 'expanded' | 'auto';
+
 export interface FlowState {
   nodes: Node<NodeData>[];
   edges: Edge[];
   nodeExecutionStates: Record<string, NodeExecutionState>;
   selectedNodeId: string | null;
+  globalViewMode: ViewMode;
+  nodeViewModes: Record<string, ViewMode>;
+  lastManualViewMode: 'compact' | 'expanded';
 }
 
 export type FlowNode = Node<NodeData>;

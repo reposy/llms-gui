@@ -28,33 +28,44 @@ body {
   height: 100vh;
 }
 
+/* Remove ALL default node styles */
 .react-flow__node {
-  width: 250px !important;
-}
-
-.react-flow__handle {
-  width: 8px !important;
-  height: 8px !important;
-  background: #64748b !important;
-  border: 2px solid white !important;
-}
-
-.react-flow__handle-top {
-  top: -4px !important;
-}
-
-.react-flow__handle-bottom {
-  bottom: -4px !important;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
 }
 
 .react-flow__node-default {
-  border-radius: 8px;
-  border: 2px solid #e2e8f0;
-  padding: 16px;
-  background: white;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
+/* Override handle styles */
+.react-flow__handle {
+  position: absolute !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+}
+
+.react-flow__handle-right {
+  right: -6px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.react-flow__handle-left {
+  left: -6px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+/* Keep other necessary React Flow styles */
 .react-flow__controls {
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   border-radius: 8px;

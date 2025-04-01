@@ -9,6 +9,7 @@ import type { Node } from 'reactflow';
 import { RootState } from '../store/store';
 import { addNode } from '../store/flowSlice';
 import { NodeType } from '../types/nodes';
+import FlowToolbar from './FlowToolbar';
 
 export const FlowEditor = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -127,6 +128,7 @@ export const FlowEditor = () => {
         {/* Right Sidebar */}
         <NodeConfigSidebar selectedNodeId={selectedNodeId} />
       </div>
+      <FlowToolbar />
     </div>
   );
 }; 

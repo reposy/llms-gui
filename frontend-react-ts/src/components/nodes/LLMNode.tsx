@@ -1,211 +1,420 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { Handle, Position, useEdges, useNodes, Node } from 'reactflow';
-import { useDispatch } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
-import { LLMNodeData, NodeData } from '../../types/nodes';
-import { useFlowExecution } from '../../store/flowExecutionStore';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Handle, Position, useReactFlow } from 'reactflow';
+import { useDispatch, useSelector } from 'react-redux';
+import { updateNodeData, setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode, GlobalViewMode } from '../../store/flowSlice';
+import { LLMNodeData } from '../../types/nodes';
+import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
+import { RootState } from '../../store/store';
+import NodeErrorBoundary from './NodeErrorBoundary';
+import clsx from 'clsx';
 
 interface Props {
   id: string;
   data: LLMNodeData;
+  isConnectable: boolean;
+  selected?: boolean;
 }
 
-const LLMNode: React.FC<Props> = ({ id, data }) => {
+const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const dispatch = useDispatch();
-  const edges = useEdges();
-  const nodes = useNodes() as Node<NodeData>[];
-  const flowExecution = useFlowExecution();
-  const executionState = flowExecution.getNodeState(id);
-  const [prompt, setPrompt] = useState(data.prompt || '');
-  const isInitialMount = useRef(true);
-  const isRoot = flowExecution.isRootNode(id, edges);
+  const isRootNode = useIsRootNode(id);
+  const nodeState = useNodeState(id);
+  const { getZoom } = useReactFlow();
+  const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
+  const globalViewMode = useSelector((state: RootState) => state.flow.globalViewMode) as GlobalViewMode;
+  const [promptDraft, setPromptDraft] = useState(data.prompt || '');
+  const [isComposing, setIsComposing] = useState(false);
+  const [isEditingLabel, setIsEditingLabel] = useState(false);
+  const [labelDraft, setLabelDraft] = useState(data.label || 'LLM');
 
-  // Only update prompt when data.prompt changes externally
+  // Update drafts when data changes externally
   useEffect(() => {
-    if (data.prompt !== prompt) {
-      setPrompt(data.prompt || '');
+    if (!isComposing) {
+      setPromptDraft(data.prompt || '');
     }
-  }, [data.prompt]);
+  }, [data.prompt, isComposing]);
 
-  // Initialize default values only once on mount
+  // Update label draft when data changes externally
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      const updates: Partial<LLMNodeData> = {};
-      
-      if (data.temperature === undefined) {
-        updates.temperature = 0.5;
-      }
-      if (data.ollamaUrl === undefined) {
-        updates.ollamaUrl = 'http://localhost:11434';
-      }
-      if (data.model === undefined) {
-        updates.model = data.provider === 'openai' ? 'gpt-3.5-turbo' : 'llama2';
-      }
-
-      if (Object.keys(updates).length > 0) {
-        dispatch(updateNodeData({
-          nodeId: id,
-          data: { ...data, ...updates }
-        }));
-      }
-    }
-  }, []);
-
-  const handleChange = useCallback((key: string, value: any) => {
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: { ...data, [key]: value }
-    }));
-  }, [dispatch, id, data]);
+    setLabelDraft(data.label || 'LLM');
+  }, [data.label]);
 
   const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newPrompt = e.target.value;
-    setPrompt(newPrompt);
-    handleChange('prompt', newPrompt);
-  }, [handleChange]);
+    setPromptDraft(newPrompt);
+    
+    if (!isComposing) {
+      dispatch(updateNodeData({
+        nodeId: id,
+        data: { ...data, prompt: newPrompt }
+      }));
+    }
+  }, [dispatch, id, data, isComposing]);
 
-  const handleExecute = useCallback(async () => {
-    if (!isRoot) return;
-    await flowExecution.executeFlow(nodes, edges);
-  }, [isRoot, nodes, edges, flowExecution]);
+  const handlePromptCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    setIsComposing(false);
+    const newPrompt = e.currentTarget.value;
+    
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, prompt: newPrompt }
+    }));
+  }, [dispatch, id, data]);
 
-  const isExecuting = executionState.status === 'running';
-  const hasError = executionState.status === 'error';
-  const errorMessage = executionState.error;
+  const handleLabelChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setLabelDraft(e.target.value);
+  }, []);
 
-  return (
-    <div className="relative px-4 py-2 shadow-md rounded-md bg-white border-2 border-blue-500 min-w-[300px]">
+  const handleLabelBlur = useCallback(() => {
+    setIsEditingLabel(false);
+    if (labelDraft.trim() !== data.label) {
+      dispatch(updateNodeData({
+        nodeId: id,
+        data: { ...data, label: labelDraft.trim() || 'LLM' }
+      }));
+    }
+  }, [dispatch, id, data, labelDraft]);
+
+  const handleLabelKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      setIsEditingLabel(false);
+      setLabelDraft(data.label || 'LLM');
+    }
+  }, [data.label]);
+
+  const handleProviderChange = useCallback((provider: 'ollama' | 'openai') => {
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { 
+        ...data, 
+        provider,
+        // Reset model when changing provider
+        model: provider === 'ollama' ? 'llama2' : 'gpt-3.5-turbo'
+      }
+    }));
+  }, [dispatch, id, data]);
+
+  const handleModelChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, model: e.target.value }
+    }));
+  }, [dispatch, id, data]);
+
+  const handleTemperatureChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const temp = parseFloat(e.target.value);
+    if (!isNaN(temp) && temp >= 0 && temp <= 1) {
+      dispatch(updateNodeData({
+        nodeId: id,
+        data: { ...data, temperature: temp }
+      }));
+    }
+  }, [dispatch, id, data]);
+
+  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, ollamaUrl: e.target.value }
+    }));
+  }, [dispatch, id, data]);
+
+  const handleRun = useCallback(() => {
+    executeFlow(id);
+  }, [id]);
+
+  const toggleNodeView = () => {
+    dispatch(setNodeViewMode({
+      nodeId: id,
+      mode: viewMode === VIEW_MODES.COMPACT ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
+    }));
+  };
+
+  // Auto-collapse based on zoom level if in auto mode
+  useEffect(() => {
+    if (globalViewMode === VIEW_MODES.AUTO) {
+      const zoom = getZoom();
+      const shouldBeCompact = zoom < 0.7;
+      dispatch(setNodeViewMode({ 
+        nodeId: id, 
+        mode: shouldBeCompact ? VIEW_MODES.COMPACT : VIEW_MODES.EXPANDED 
+      }));
+    }
+  }, [globalViewMode, getZoom, id, dispatch]);
+
+  const renderCompactView = () => (
+    <>
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-blue-500 rounded-full mr-2" />
-          <div className="font-bold text-blue-500">{data.label || 'LLM'}</div>
-        </div>
-        {isRoot && (
+        <div className="flex items-center gap-2">
+          {isRootNode ? (
+            <button
+              onClick={handleRun}
+              className="shrink-0 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+              title="Run full flow from this node"
+            >
+              {nodeState?.status === 'running' ? '⏳' : '▶'} Run
+            </button>
+          ) : (
+            <div 
+              className="shrink-0 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400 rounded cursor-not-allowed"
+              title="Only root nodes can be executed"
+            >
+              ▶
+            </div>
+          )}
+          
+          {isEditingLabel ? (
+            <input
+              type="text"
+              value={labelDraft}
+              onChange={handleLabelChange}
+              onBlur={handleLabelBlur}
+              onKeyDown={handleLabelKeyDown}
+              className="px-1 py-0.5 text-sm font-bold text-blue-500 border border-blue-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+              style={{ width: `${Math.max(labelDraft.length * 8, 60)}px` }}
+            />
+          ) : (
+            <div
+              onClick={() => setIsEditingLabel(true)}
+              className="font-bold text-blue-500 cursor-text hover:bg-blue-50 px-1 py-0.5 rounded"
+              title="Click to edit node name"
+            >
+              {data.label || 'LLM'}
+            </div>
+          )}
+
           <button
-            onClick={handleExecute}
-            disabled={isExecuting}
-            className="flex items-center justify-center gap-1 px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600 disabled:bg-blue-300 disabled:cursor-not-allowed flex-shrink-0 ml-2"
+            onClick={toggleNodeView}
+            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs text-gray-400 hover:text-gray-600 transition-colors rounded hover:bg-gray-100"
+            title={viewMode === VIEW_MODES.COMPACT ? 'Show more details' : 'Show less details'}
           >
-            {isExecuting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                실행중
-              </>
-            ) : (
-              '실행'
-            )}
+            {viewMode === VIEW_MODES.COMPACT ? '⌄' : '⌃'}
           </button>
-        )}
+        </div>
+      </div>
+
+      <div className="text-sm text-gray-600">
+        {data.provider} | {data.model}
+        {data.temperature && ` | ${data.temperature}`}
+      </div>
+      <div className="text-sm text-gray-600 line-clamp-2">
+        {data.prompt || 'No prompt set'}
+      </div>
+      {nodeState?.status !== 'idle' && (
+        <div className="flex items-center gap-1 text-xs py-1">
+          {nodeState.status === 'running' && (
+            <span className="text-yellow-600">⏳ Running...</span>
+          )}
+          {nodeState.status === 'success' && (
+            <span className="text-green-600">✅ Success</span>
+          )}
+          {nodeState.status === 'error' && (
+            <span className="text-red-600" title={nodeState.error}>❌ Error</span>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const renderExpandedView = () => (
+    <>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {isRootNode ? (
+            <button
+              onClick={handleRun}
+              className="shrink-0 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+              title="Run full flow from this node"
+            >
+              {nodeState?.status === 'running' ? '⏳' : '▶'} Run
+            </button>
+          ) : (
+            <div 
+              className="shrink-0 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400 rounded cursor-not-allowed"
+              title="Only root nodes can be executed"
+            >
+              ▶
+            </div>
+          )}
+          
+          {isEditingLabel ? (
+            <input
+              type="text"
+              value={labelDraft}
+              onChange={handleLabelChange}
+              onBlur={handleLabelBlur}
+              onKeyDown={handleLabelKeyDown}
+              className="px-1 py-0.5 text-sm font-bold text-blue-500 border border-blue-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+              style={{ width: `${Math.max(labelDraft.length * 8, 60)}px` }}
+            />
+          ) : (
+            <div
+              onClick={() => setIsEditingLabel(true)}
+              className="font-bold text-blue-500 cursor-text hover:bg-blue-50 px-1 py-0.5 rounded"
+              title="Click to edit node name"
+            >
+              {data.label || 'LLM'}
+            </div>
+          )}
+
+          <button
+            onClick={toggleNodeView}
+            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs text-gray-400 hover:text-gray-600 transition-colors rounded hover:bg-gray-100"
+            title={viewMode === VIEW_MODES.COMPACT ? 'Show more details' : 'Show less details'}
+          >
+            {viewMode === VIEW_MODES.COMPACT ? '⌄' : '⌃'}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2">
         <div className="flex gap-2">
           <select
-            value={data.provider || 'ollama'}
-            onChange={(e) => handleChange('provider', e.target.value)}
-            className="flex-1 p-1 text-sm border rounded bg-white"
+            value={data.provider}
+            onChange={(e) => dispatch(updateNodeData({
+              nodeId: id,
+              data: { ...data, provider: e.target.value as 'ollama' | 'openai' }
+            }))}
+            className="shrink-0 px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="ollama">Ollama</option>
             <option value="openai">OpenAI</option>
           </select>
-          {data.provider === 'openai' ? (
-            <select
-              value={data.model || 'gpt-3.5-turbo'}
-              onChange={(e) => handleChange('model', e.target.value)}
-              className="flex-1 p-1 text-sm border rounded bg-white"
-            >
-              <option value="gpt-4">GPT-4</option>
-              <option value="gpt-4-0125-preview">GPT-4-0125-preview</option>
-              <option value="gpt-4-turbo-preview">GPT-4-turbo-preview</option>
-              <option value="gpt-3.5-turbo">GPT-3.5-turbo</option>
-              <option value="gpt-3.5-turbo-0125">GPT-3.5-turbo-0125</option>
-            </select>
-          ) : null}
+
+          <input
+            type="text"
+            value={data.model}
+            onChange={(e) => dispatch(updateNodeData({
+              nodeId: id,
+              data: { ...data, model: e.target.value }
+            }))}
+            placeholder="Model name"
+            className="flex-1 px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
 
-        {data.provider === 'ollama' && (
-          <div className="space-y-2">
-            <div>
-              <label className="block text-sm font-medium mb-1">URL:</label>
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-gray-600">Prompt</div>
+          <textarea
+            value={promptDraft}
+            onChange={handlePromptChange}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={handlePromptCompositionEnd}
+            placeholder="Enter your prompt here..."
+            className="w-full h-32 px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-gray-600">Settings</div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <div className="text-xs text-gray-600 mb-1">Temperature</div>
               <input
-                type="text"
-                value={data.ollamaUrl || 'http://localhost:11434'}
-                onChange={(e) => handleChange('ollamaUrl', e.target.value)}
-                placeholder="http://localhost:11434"
-                className="w-full p-1 text-sm border rounded bg-white"
+                type="range"
+                min="0"
+                max="2"
+                step="0.1"
+                value={data.temperature || 0.7}
+                onChange={(e) => dispatch(updateNodeData({
+                  nodeId: id,
+                  data: { ...data, temperature: parseFloat(e.target.value) }
+                }))}
+                className="w-full"
               />
+              <div className="text-xs text-gray-600 text-right">{data.temperature || 0.7}</div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Model:</label>
-              <input
-                type="text"
-                value={data.model || 'llama2'}
-                onChange={(e) => handleChange('model', e.target.value)}
-                placeholder="llama2, mistral"
-                className="w-full p-1 text-sm border rounded bg-white"
-              />
-            </div>
+          </div>
+        </div>
+
+        {/* Execution Status */}
+        {nodeState?.status !== 'idle' && (
+          <div className="flex items-center gap-1 text-xs">
+            {nodeState.status === 'running' && (
+              <span className="text-yellow-600">⏳ Running...</span>
+            )}
+            {nodeState.status === 'success' && (
+              <span className="text-green-600">✅ Success</span>
+            )}
+            {nodeState.status === 'error' && (
+              <span className="text-red-600" title={nodeState.error}>❌ Error</span>
+            )}
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Temperature:</label>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={data.temperature ?? 0.5}
-            onChange={(e) => handleChange('temperature', parseFloat(e.target.value))}
-            className="flex-1"
-          />
-          <span className="text-sm">{data.temperature ?? 0.5}</span>
-        </div>
+        {/* Result Preview */}
+        {nodeState?.result && (
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-gray-600">Result</div>
+            <div className="p-2 text-xs font-mono bg-gray-50 rounded border border-gray-200 max-h-[100px] overflow-auto">
+              {typeof nodeState.result === 'string' 
+                ? nodeState.result 
+                : JSON.stringify(nodeState.result, null, 2)}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Prompt:</label>
-          <textarea
-            value={prompt}
-            onChange={handlePromptChange}
-            placeholder="프롬프트를 입력하세요..."
-            className="w-full p-2 text-sm border rounded resize-none h-[50px] bg-white"
-            rows={2}
-          />
+  return (
+    <NodeErrorBoundary nodeId={id}>
+      <div className="relative overflow-visible">
+        {/* Input handle */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          id={`${id}-target`}
+          isConnectable={isConnectable}
+          style={{
+            background: '#3b82f6',
+            border: '1px solid white',
+            width: '8px',
+            height: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 50
+          }}
+        />
+
+        {/* Output handle */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          id={`${id}-source`}
+          isConnectable={isConnectable}
+          style={{
+            background: '#3b82f6',
+            border: '1px solid white',
+            width: '8px',
+            height: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 50
+          }}
+        />
+
+        {/* Node content box */}
+        <div className={clsx(
+          'w-[350px] px-4 py-2 bg-white rounded-md',
+          'ring-1 ring-blue-100',
+          selected ? [
+            'ring-2 ring-blue-500',
+            'shadow-[0_0_0_1px_rgba(59,130,246,0.5)]'
+          ] : [
+            'shadow-sm'
+          ]
+        )}>
+          <div className="space-y-2">
+            {viewMode === VIEW_MODES.COMPACT ? renderCompactView() : renderExpandedView()}
+          </div>
         </div>
       </div>
-
-      {hasError && errorMessage && (
-        <div className="mt-2 text-sm text-red-500">
-          {errorMessage}
-        </div>
-      )}
-
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{
-          width: '8px',
-          height: '8px',
-          backgroundColor: 'rgb(59 130 246)',
-          left: '-4px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-        }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          width: '8px',
-          height: '8px',
-          backgroundColor: 'rgb(59 130 246)',
-          right: '-4px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-        }}
-      />
-    </div>
+    </NodeErrorBoundary>
   );
 };
 

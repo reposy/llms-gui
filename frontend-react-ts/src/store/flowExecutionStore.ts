@@ -1,512 +1,563 @@
 import { create } from 'zustand';
 import { Edge, Node } from 'reactflow';
-import { LLMNodeData, NodeData, NodeExecutionStateData, OutputNodeData, APINodeData } from '../types/nodes';
+import { APINodeData, LLMNodeData, OutputNodeData, LLMResult } from '../types/nodes';
+import axios from 'axios';
+import { store } from './store';
+import { useSelector } from 'react-redux';
+import React from 'react';
+import { RootState } from './store';
+
+interface NodeState {
+  status: 'idle' | 'running' | 'success' | 'error';
+  result: any;
+  error: string | undefined;
+  _lastUpdate: number;
+}
 
 interface FlowExecutionState {
-  nodeStates: Record<string, NodeExecutionStateData>;
-  executingNodes: Set<string>;
-  completedNodes: Set<string>;
-  parentCompletionCount: Record<string, number>;
-}
-
-interface FlowExecutionStore extends FlowExecutionState {
+  nodeStates: Record<string, NodeState>;
+  edges: Edge[];
+  nodes: Node[];
+  setEdges: (edges: Edge[]) => void;
+  setNodes: (nodes: Node[]) => void;
+  isExecuting: boolean;
+  
   // Node state management
-  getNodeState: (nodeId: string) => NodeExecutionStateData;
-  setNodeState: (nodeId: string, state: NodeExecutionStateData) => void;
-  resetExecution: () => void;
+  getNodeState: (nodeId: string) => NodeState | undefined;
+  setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
+  resetNodeStates: () => void;
   
-  // Flow execution
-  executeFlow: (nodes: Node<NodeData>[], edges: Edge[]) => Promise<void>;
-  executeNode: (node: Node<NodeData>, edges: Edge[], nodes: Node<NodeData>[]) => Promise<void>;
+  // Node relationship helpers
+  isNodeRoot: (nodeId: string) => boolean;
+  getRootNodes: () => string[];
+  getDownstreamNodes: (nodeId: string) => string[];
+  getUpstreamNodes: (nodeId: string) => string[];
   
-  // Helper functions
-  isRootNode: (nodeId: string, edges: Edge[]) => boolean;
-  getChildNodes: (nodeId: string, edges: Edge[], nodes: Node<NodeData>[]) => Node<NodeData>[];
-  getConnectedOutputs: (nodeId: string, edges: Edge[], nodes: Node<NodeData>[]) => Node<OutputNodeData>[];
-  getParentNodes: (nodeId: string, edges: Edge[], nodes: Node<NodeData>[]) => Node<NodeData>[];
-  areAllParentsCompleted: (nodeId: string, edges: Edge[]) => boolean;
-  buildChainedPrompt: (node: Node<LLMNodeData>, parentNodes: Node<NodeData>[], nodeStates: Record<string, NodeExecutionStateData>) => string;
+  // Execution methods
+  executeNode: (nodeId: string) => Promise<void>;
+  executeFlow: (nodeId: string) => Promise<void>;
 }
 
-const initialState: FlowExecutionState = {
-  nodeStates: {},
-  executingNodes: new Set(),
-  completedNodes: new Set(),
-  parentCompletionCount: {},
+const defaultNodeState: NodeState = {
+  status: 'idle',
+  result: null,
+  error: undefined,
+  _lastUpdate: 0
 };
 
-export const useFlowExecution = create<FlowExecutionStore>((set, get) => ({
-  ...initialState,
+// Helper to check if a node is a root node
+const isNodeRoot = (nodeId: string, edges: Edge[]): boolean => {
+  return !edges.some(edge => edge.target === nodeId);
+};
+
+const extractValue = (obj: any, path: string): any => {
+  try {
+    if (!path) return obj;
+    const jsonObj = typeof obj === 'string' ? JSON.parse(obj) : obj;
+    return path.split('.').reduce((acc, part) => {
+      if (part.includes('[') && part.includes(']')) {
+        const [arrayName, indexStr] = part.split('[');
+        const index = parseInt(indexStr.replace(']', ''));
+        return acc[arrayName][index];
+      }
+      if (acc === null || acc === undefined) return undefined;
+      return acc[part];
+    }, jsonObj);
+  } catch (error) {
+    console.error('Error extracting value:', error);
+    throw new Error(`Failed to extract value at path "${path}": ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
+  nodeStates: {},
+  edges: [],
+  nodes: [],
+  isExecuting: false,
+  
+  setEdges: (edges) => {
+    set({ edges });
+  },
+
+  setNodes: (nodes) => {
+    set({ nodes });
+  },
 
   getNodeState: (nodeId) => {
-    return get().nodeStates[nodeId] || { status: 'idle' };
+    return get().nodeStates[nodeId] || defaultNodeState;
   },
 
   setNodeState: (nodeId, state) => {
-    set((prev) => ({
-      nodeStates: { ...prev.nodeStates, [nodeId]: state },
-    }));
-  },
-
-  resetExecution: () => {
-    set(initialState);
-  },
-
-  isRootNode: (nodeId, edges) => {
-    return !edges.some(edge => edge.target === nodeId);
-  },
-
-  getChildNodes: (nodeId, edges, nodes) => {
-    const childEdges = edges.filter(edge => edge.source === nodeId);
-    return childEdges
-      .map(edge => nodes.find(node => node.id === edge.target))
-      .filter((node): node is Node<NodeData> => node !== undefined && node.data.type !== 'output');
-  },
-
-  getConnectedOutputs: (nodeId, edges, nodes) => {
-    const outputEdges = edges.filter(edge => edge.source === nodeId);
-    return outputEdges
-      .map(edge => nodes.find(node => node.id === edge.target))
-      .filter((node): node is Node<OutputNodeData> => 
-        node !== undefined && node.data.type === 'output'
-      );
-  },
-
-  getParentNodes: (nodeId, edges, nodes) => {
-    const parentEdges = edges.filter(edge => edge.target === nodeId);
-    return parentEdges
-      .map(edge => nodes.find(node => node.id === edge.source))
-      .filter((node): node is Node<NodeData> => node !== undefined);
-  },
-
-  areAllParentsCompleted: (nodeId, edges) => {
-    const parentEdges = edges.filter(edge => edge.target === nodeId);
-    const { completedNodes } = get();
-    return parentEdges.every(edge => completedNodes.has(edge.source));
-  },
-
-  buildChainedPrompt: (node: Node<LLMNodeData>, parentNodes: Node<NodeData>[], nodeStates: Record<string, NodeExecutionStateData>) => {
-    const parts: string[] = [];
-
-    // Add parent results in order of edges
-    parentNodes.forEach((parentNode, index) => {
-      const parentState = nodeStates[parentNode.id];
-      if (!parentState?.result) return;
-
-      const result = parentState.result;
-      const content = typeof result === 'string' 
-        ? result 
-        : result.content || result.text || JSON.stringify(result);
-
-      parts.push(`[Input ${String.fromCharCode(65 + index)}]\n${content.trim()}\n`);
+    set(prev => {
+      const newState = {
+        ...prev.nodeStates,
+        [nodeId]: {
+          ...defaultNodeState,
+          ...prev.nodeStates[nodeId],
+          ...state,
+          _lastUpdate: Date.now()
+        }
+      };
+      return { nodeStates: newState };
     });
-
-    // Add original prompt at the end
-    if (parts.length > 0) {
-      parts.push(`\nPrompt: ${node.data.prompt.trim()}`);
-    } else {
-      parts.push(node.data.prompt.trim());
-    }
-
-    return parts.join('\n\n');
   },
 
-  executeNode: async (node, edges, nodes) => {
-    const {
-      setNodeState,
-      getChildNodes,
-      getConnectedOutputs,
-      getParentNodes,
-      areAllParentsCompleted,
-      buildChainedPrompt,
-      executingNodes,
-      completedNodes,
-      nodeStates
-    } = get();
+  resetNodeStates: () => {
+    set({ nodeStates: {} });
+  },
 
-    // Skip if already executing or completed
-    if (executingNodes.has(node.id) || completedNodes.has(node.id)) {
-      return;
+  isNodeRoot: (nodeId) => {
+    const { edges } = get();
+    return isNodeRoot(nodeId, edges);
+  },
+
+  getRootNodes: () => {
+    const { nodes, edges } = get();
+    return nodes
+      .filter(node => isNodeRoot(node.id, edges))
+      .map(node => node.id);
+  },
+
+  getDownstreamNodes: (nodeId: string) => {
+    const { edges } = get();
+    const downstream = new Set<string>();
+    const queue = [nodeId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const outgoingEdges = edges.filter(e => e.source === currentId);
+      
+      for (const edge of outgoingEdges) {
+        if (!downstream.has(edge.target)) {
+          downstream.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
     }
 
-    // For non-root nodes, check if all parents are completed
-    if (!get().isRootNode(node.id, edges) && !areAllParentsCompleted(node.id, edges)) {
-      return;
+    return Array.from(downstream);
+  },
+
+  getUpstreamNodes: (nodeId: string) => {
+    const { edges } = get();
+    const upstream = new Set<string>();
+    const queue = [nodeId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const incomingEdges = edges.filter(e => e.target === currentId);
+      
+      for (const edge of incomingEdges) {
+        if (!upstream.has(edge.source)) {
+          upstream.add(edge.source);
+          queue.push(edge.source);
+        }
+      }
     }
 
-    // Mark node as executing
-    set(state => ({
-      executingNodes: new Set([...state.executingNodes, node.id])
-    }));
+    return Array.from(upstream);
+  },
 
-    // Set node and connected outputs to running state
-    setNodeState(node.id, {
-      status: 'running',
-      timestamp: Date.now()
-    });
+  executeNode: async (nodeId: string): Promise<any> => {
+    const { nodes, edges, setNodeState, getNodeState } = get();
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) {
+      console.error(`Node not found: ${nodeId}`);
+      throw new Error(`Node not found: ${nodeId}`);
+    }
 
-    // Set all connected output nodes to running state
-    const outputNodes = getConnectedOutputs(node.id, edges, nodes);
-    outputNodes.forEach(outputNode => {
-      setNodeState(outputNode.id, {
-        status: 'running',
-        timestamp: Date.now()
+    // Check current state - only update if needed
+    const currentState = getNodeState(nodeId);
+    if (currentState?.status === 'success') {
+      // Force a state refresh even for cached results
+      setNodeState(nodeId, { 
+        status: 'success',
+        result: currentState.result,
+        error: undefined
       });
-    });
+
+      // Update connected output nodes immediately
+      const connectedEdges = edges.filter(e => e.source === nodeId);
+      connectedEdges.forEach(edge => {
+        const targetNode = nodes.find(n => n.id === edge.target);
+        if (targetNode?.type === 'output') {
+          let content = '';
+          const result = currentState.result;
+          
+          if (typeof result === 'string') {
+            content = result;
+          } else if (result && typeof result === 'object') {
+            if ('content' in result) {
+              content = typeof result.content === 'string' 
+                ? result.content 
+                : JSON.stringify(result.content);
+            } else if ('text' in result) {
+              content = String(result.text);
+            } else {
+              content = JSON.stringify(result);
+            }
+          }
+
+          setNodeState(edge.target, {
+            status: 'success',
+            result: content,
+            error: undefined
+          });
+        }
+      });
+      
+      // For LLM nodes, only return the content when passing to downstream nodes
+      if (node.type === 'llm' && currentState.result?.content) {
+        return currentState.result.content;
+      }
+      return currentState.result;
+    }
+
+    // Set running state only if not already running
+    if (currentState?.status !== 'running') {
+      setNodeState(nodeId, { 
+        status: 'running', 
+        result: null, 
+        error: undefined 
+      });
+
+      // Set connected output nodes to running state
+      const connectedEdges = edges.filter(e => e.source === nodeId);
+      connectedEdges.forEach(edge => {
+        const targetNode = nodes.find(n => n.id === edge.target);
+        if (targetNode?.type === 'output') {
+          setNodeState(edge.target, {
+            status: 'running',
+            result: '처리 중...',
+            error: undefined
+          });
+        }
+      });
+    }
 
     try {
-      // Execute based on node type
-      if (node.data.type === 'llm') {
-        const llmData = node.data as LLMNodeData;
+      // --- Wait for and Get input from parent nodes ---
+      const parentEdges = edges.filter(e => e.target === nodeId);
+      const parentResults: Record<string, string> = {};
+
+      // Execute parent nodes sequentially and collect results
+      for (const edge of parentEdges) {
+        const parentNode = nodes.find(n => n.id === edge.source);
+        if (!parentNode) {
+          throw new Error(`Parent node ${edge.source} not found for edge ${edge.id}`);
+        }
         
-        // Get parent nodes and build chained prompt
-        const parentNodes = getParentNodes(node.id, edges, nodes);
-        const chainedPrompt = buildChainedPrompt(node as Node<LLMNodeData>, parentNodes, nodeStates);
-        
-        // Execute LLM with chained prompt
-        const result = await (llmData.provider === 'ollama' 
-          ? executeOllamaNode({ ...llmData, prompt: chainedPrompt })
-          : executeOpenAINode({ ...llmData, prompt: chainedPrompt }));
-
-        // Update LLM node state
-        setNodeState(node.id, {
-          status: 'completed',
-          result,
-          timestamp: Date.now()
-        });
-
-        // Update all connected output nodes with the result
-        outputNodes.forEach(outputNode => {
-          setNodeState(outputNode.id, {
-            status: 'completed',
-            result,
-            timestamp: Date.now()
-          });
-        });
-
-        // Mark as completed
-        set(state => ({
-          completedNodes: new Set([...state.completedNodes, node.id])
-        }));
-
-        // Get non-output child nodes and execute them if all their parents are completed
-        const childNodes = getChildNodes(node.id, edges, nodes);
-        await Promise.all(
-          childNodes.map(async childNode => {
-            if (areAllParentsCompleted(childNode.id, edges)) {
-              await get().executeNode(childNode, edges, nodes);
+        try {
+          console.log(`Node ${nodeId}: Awaiting parent ${parentNode.id}`);
+          const parentResult: any = await get().executeNode(parentNode.id);
+          
+          // Extract text content from parent result
+          let textContent: string;
+          
+          if (parentResult === null || parentResult === undefined) {
+            textContent = '';
+          } else if (typeof parentResult === 'string') {
+            textContent = parentResult;
+          } else if (typeof parentResult === 'object') {
+            // For LLM nodes, we already return just the content above
+            // This is for other object types
+            const resultObj = parentResult as Record<string, unknown>;
+            if ('content' in resultObj && resultObj.content) {
+              textContent = typeof resultObj.content === 'string' 
+                ? resultObj.content 
+                : JSON.stringify(resultObj.content);
+            } else if ('text' in resultObj && resultObj.text) {
+              textContent = String(resultObj.text);
+            } else {
+              textContent = JSON.stringify(resultObj);
             }
-          })
-        );
-      } else if (node.data.type === 'api') {
-        const apiData = node.data as APINodeData;
-        const parentResults = getParentNodes(node.id, edges, nodes).reduce((acc, parentNode) => {
-          const parentState = get().nodeStates[parentNode.id];
-          if (parentState?.result !== undefined) {
-            acc[parentNode.id] = parentState.result;
+          } else {
+            textContent = String(parentResult);
           }
-          return acc;
-        }, {} as Record<string, any>);
-        
-        const result = await executeAPINode(node as Node<APINodeData>, parentResults);
 
-        setNodeState(node.id, {
-          status: 'completed',
-          result,
-          timestamp: Date.now()
-        });
+          // Store result based on handle or node ID
+          const handleKey = edge.targetHandle || edge.source;
+          parentResults[handleKey] = textContent;
+          console.log(`Node ${nodeId}: Received result from parent ${parentNode.id}`);
 
-        // Find connected output nodes
-        const outputEdges = edges.filter(edge => edge.source === node.id);
-        const outputNodes = nodes.filter(n => 
-          outputEdges.some(e => e.target === n.id) && 
-          n.data.type === 'output'
-        );
-
-        // Update output nodes with the result
-        outputNodes.forEach(outputNode => {
-          setNodeState(outputNode.id, {
-            status: 'completed',
-            result,
-            timestamp: Date.now()
+        } catch (error: any) {
+          console.error(`Node ${nodeId}: Error executing parent ${parentNode.id}:`, error);
+          setNodeState(nodeId, { 
+            status: 'error', 
+            result: null, 
+            error: `Parent node ${parentNode.id} failed: ${error.message}` 
           });
+          throw error;
+        }
+      }
+
+      // --- Execute this node based on type ---
+      let result: any;
+      console.log(`Node ${nodeId}: Executing self`);
+      
+      switch (node.type) {
+        case 'api': {
+          const data = node.data as APINodeData;
+          const inputData = parentResults[Object.keys(parentResults)[0]];
+
+          const hasProtocol = /^[a-zA-Z]+:\/\//.test(data.url);
+          const url = hasProtocol ? data.url : `http://${data.url}`;
+          
+          let requestBody = data.method !== 'GET' ? data.body : undefined;
+          let requestParams = data.method === 'GET' ? data.queryParams : undefined;
+
+          if (data.useInputAsBody && data.method !== 'GET' && inputData) {
+            requestBody = inputData;
+          }
+
+          const response = await axios({
+            method: data.method.toLowerCase(),
+            url,
+            headers: data.headers,
+            params: requestParams,
+            data: requestBody,
+          });
+          
+          result = response.data;
+          break;
+        }
+        
+        case 'llm': {
+          const data = node.data as LLMNodeData;
+          
+          // Combine parent results as plain text
+          const inputs = Object.values(parentResults).join('\n\n');
+          
+          let prompt = data.prompt;
+          if (inputs) {
+            prompt = `${prompt}\n\nInput:\n${inputs}`;
+          }
+
+          if (data.provider === 'ollama') {
+            const response = await axios.post(`${data.ollamaUrl || 'http://localhost:11434'}/api/generate`, {
+              model: data.model,
+              prompt: prompt,
+              stream: false,
+              temperature: data.temperature === undefined ? 0.7 : data.temperature
+            });
+
+            const content = response.data.response;
+            result = {
+              content: content,
+              model: data.model,
+              provider: data.provider
+            };
+          } else if (data.provider === 'openai') {
+            setNodeState(nodeId, { 
+              status: 'error', 
+              result: null, 
+              error: 'OpenAI implementation pending' 
+            });
+            throw new Error('OpenAI implementation pending');
+          } else {
+            setNodeState(nodeId, { 
+              status: 'error', 
+              result: null, 
+              error: `Unknown LLM provider: ${data.provider}` 
+            });
+            throw new Error(`Unknown LLM provider: ${data.provider}`);
+          }
+          break;
+        }
+        
+        case 'output': {
+          // Output node should display text content from parent immediately
+          const parentContent = parentResults[Object.keys(parentResults)[0]];
+          result = parentContent;
+          break;
+        }
+
+        case 'json-extractor': {
+          const input = parentResults[Object.keys(parentResults)[0]];
+          if (!input) {
+            setNodeState(nodeId, { 
+              status: 'error', 
+              result: null, 
+              error: 'No input data received for JSON extraction.' 
+            });
+            throw new Error('No input data received');
+          }
+          try {
+            result = extractValue(input, node.data.path);
+          } catch(extractError: any) {
+            setNodeState(nodeId, { 
+              status: 'error', 
+              result: null, 
+              error: `JSON Extraction failed: ${extractError.message}` 
+            });
+            throw extractError;
+          }
+          break;
+        }
+
+        default:
+          setNodeState(nodeId, { 
+            status: 'error', 
+            result: null, 
+            error: `Unknown node type: ${node?.type}` 
+          });
+          throw new Error(`Unknown node type: ${node.type}`);
+      }
+
+      // --- Update success state ---
+      console.log(`Node ${nodeId}: Execution successful, setting state.`);
+      setNodeState(nodeId, { 
+        status: 'success', 
+        result, 
+        error: undefined 
+      });
+
+      // Update connected output nodes immediately after success
+      const connectedEdges = edges.filter(e => e.source === nodeId);
+      connectedEdges.forEach(edge => {
+        const targetNode = nodes.find(n => n.id === edge.target);
+        if (targetNode?.type === 'output') {
+          let content = '';
+          if (typeof result === 'string') {
+            content = result;
+          } else if (result && typeof result === 'object') {
+            if ('content' in result) {
+              content = typeof result.content === 'string' 
+                ? result.content 
+                : JSON.stringify(result.content);
+            } else if ('text' in result) {
+              content = String(result.text);
+            } else {
+              content = JSON.stringify(result);
+            }
+          }
+
+          setNodeState(edge.target, {
+            status: 'success',
+            result: content,
+            error: undefined
+          });
+        }
+      });
+
+      // For LLM nodes, return only the content to downstream nodes
+      if (node.type === 'llm' && result?.content) {
+        return result.content;
+      }
+
+      return result;
+
+    } catch (error: any) {
+      console.error(`Node ${nodeId}: Execution failed:`, error);
+      if (getNodeState(nodeId)?.status !== 'error') {
+        setNodeState(nodeId, { 
+          status: 'error', 
+          result: null, 
+          error: error.message || String(error) 
         });
 
-        // Execute child nodes
-        const childEdges = edges.filter(edge => edge.source === node.id);
-        const childNodes = nodes.filter(n => 
-          childEdges.some(e => e.target === n.id) && 
-          n.data.type !== 'output'
-        );
-
-        await Promise.all(childNodes.map(child => get().executeNode(child, edges, nodes)));
+        // Update connected output nodes to error state
+        const connectedEdges = edges.filter(e => e.source === nodeId);
+        connectedEdges.forEach(edge => {
+          const targetNode = nodes.find(n => n.id === edge.target);
+          if (targetNode?.type === 'output') {
+            setNodeState(edge.target, {
+              status: 'error',
+              result: `Error: ${error.message || String(error)}`,
+              error: error.message || String(error)
+            });
+          }
+        });
       }
-    } catch (error) {
-      const errorState = {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-        timestamp: Date.now()
-      } as NodeExecutionStateData;
-
-      // Set error state for both LLM and connected output nodes
-      setNodeState(node.id, errorState);
-      outputNodes.forEach(outputNode => {
-        setNodeState(outputNode.id, errorState);
-      });
-    } finally {
-      // Remove from executing set
-      set(state => ({
-        executingNodes: new Set(
-          [...state.executingNodes].filter(id => id !== node.id)
-        )
-      }));
+      throw error;
     }
   },
 
-  executeFlow: async (nodes, edges) => {
-    // Reset execution state
-    get().resetExecution();
+  executeFlow: async (startNodeId: string) => {
+    const { resetNodeStates, nodes, edges, setNodes, setEdges } = get();
+    
+    // Update nodes/edges from store
+    const currentNodes = store.getState().flow.nodes;
+    const currentEdges = store.getState().flow.edges;
+    setNodes(currentNodes);
+    setEdges(currentEdges);
 
-    // Find all root nodes
-    const rootNodes = nodes.filter(node => get().isRootNode(node.id, edges));
+    console.log(`Executing flow starting from node: ${startNodeId}`);
+    
+    // Only reset states for nodes in the execution path
+    const downstreamNodes = get().getDownstreamNodes(startNodeId);
+    const nodesToReset = [startNodeId, ...downstreamNodes];
+    
+    // Reset only affected nodes
+    const { nodeStates } = get();
+    const newNodeStates = { ...nodeStates };
+    nodesToReset.forEach(nodeId => {
+      delete newNodeStates[nodeId];
+    });
+    set({ nodeStates: newNodeStates });
+    
+    set({ isExecuting: true });
 
-    // Execute all root nodes in parallel
-    await Promise.all(
-      rootNodes.map(node => get().executeNode(node, edges, nodes))
-    );
-  },
+    try {
+      // Execute the start node and wait for completion
+      await get().executeNode(startNodeId);
+      
+      // Execute downstream nodes in sequence
+      for (const nodeId of downstreamNodes) {
+        try {
+          await get().executeNode(nodeId);
+        } catch (error) {
+          console.error(`Error executing downstream node ${nodeId}:`, error);
+          // Continue with other nodes
+        }
+      }
+      
+      console.log(`Flow execution completed from ${startNodeId}`);
+    } catch (error: any) {
+      console.error(`Flow execution failed starting from ${startNodeId}:`, error);
+    } finally {
+      set({ isExecuting: false });
+    }
+  }
 }));
 
-// Helper functions for executing LLM nodes
-async function executeOllamaNode(data: LLMNodeData) {
-  const { ollamaUrl = 'http://localhost:11434', model, prompt } = data;
+// Custom hook to get node state with safety and force updates
+export const useNodeState = (nodeId: string): NodeState => {
+  const getNodeState = useFlowExecution(state => state.getNodeState);
+  const nodeState = getNodeState(nodeId) || defaultNodeState;
   
-  // Log the full prompt for debugging
-  console.log('Executing Ollama node with prompt:', {
-    model,
-    promptLength: prompt.length,
-    prompt: prompt,
-  });
-  
-  try {
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        model, 
-        prompt, 
-        stream: false,
-        // Add some safety parameters
-        num_predict: 2048, // Limit response length
-        context_window: 4096, // Maximum context window
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      
-      // Handle specific error cases
-      if (errorText.includes('unexpected EOF')) {
-        throw new Error(`Prompt too long or malformed. Length: ${prompt.length} chars. Try reducing the input size or splitting the content.`);
+  // Force component update when node state changes
+  const [, forceUpdate] = React.useState({});
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      const currentState = getNodeState(nodeId);
+      if (currentState?._lastUpdate !== nodeState._lastUpdate) {
+        forceUpdate({});
       }
-      
-      if (errorText.includes('context window')) {
-        throw new Error(`Prompt exceeds model's context window. Length: ${prompt.length} chars. Try reducing the input size.`);
-      }
-      
-      // Log the full error details
-      console.error('Ollama API error details:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
-        promptLength: prompt.length,
-      });
-      
-      throw new Error(`Ollama API error (${response.status}): ${errorText}`);
-    }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [nodeId, nodeState._lastUpdate]);
 
-    const result = await response.json();
-    
-    // Log successful execution
-    console.log('Ollama execution successful:', {
-      promptLength: prompt.length,
-      responseLength: result.response.length,
-      totalTokens: result.total_tokens,
-    });
-    
-    return {
-      content: result.response,
-      text: result.response,
-      raw: result,
-    };
-  } catch (error) {
-    // Enhance error message with prompt details
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const enhancedError = new Error(
-      `Ollama execution failed: ${errorMessage}\nPrompt length: ${prompt.length} chars`
-    );
-    
-    // Preserve the original stack trace
-    if (error instanceof Error) {
-      enhancedError.stack = error.stack;
-    }
-    
-    throw enhancedError;
-  }
-}
+  return nodeState;
+};
 
-async function executeOpenAINode(data: LLMNodeData) {
-  const { model, prompt } = data;
-  const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
+// Custom hook to check if a node is a root node
+export const useIsRootNode = (nodeId: string): boolean => {
+  const edges = useSelector((state: RootState) => state.flow.edges);
+  const setEdges = useFlowExecution(state => state.setEdges);
+  const setNodes = useFlowExecution(state => state.setNodes);
+  const nodes = useSelector((state: RootState) => state.flow.nodes);
   
-  if (!apiKey) {
-    throw new Error('OpenAI API key is not set');
-  }
-  
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: data.temperature || 0,
-    }),
-  });
+  // Keep flow execution store in sync with Redux
+  React.useEffect(() => {
+    setEdges(edges);
+    setNodes(nodes);
+  }, [edges, nodes, setEdges, setNodes]);
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.error?.message || `OpenAI API error: ${response.statusText}`);
-  }
+  return useFlowExecution(state => state.isNodeRoot(nodeId));
+};
 
-  const result = await response.json();
-  return {
-    content: result.choices[0].message.content,
-    text: result.choices[0].message.content,
-    raw: result,
-  };
-}
-
-const executeAPINode = async (node: Node<APINodeData>, parentResults: Record<string, any>): Promise<any> => {
-  const { data } = node;
-  if (!data.url) {
-    throw new Error('URL is required');
-  }
-
-  // Interpolate variables in URL, headers, and body
-  const interpolateVariables = (text: string) => {
-    return text.replace(/{{([^}]+)}}/g, (match, path) => {
-      const [nodeId, field] = path.split('.');
-      const parentResult = parentResults[nodeId];
-      if (!parentResult) return match;
-      
-      if (field && typeof parentResult === 'object' && parentResult !== null) {
-        return parentResult[field]?.toString() || match;
-      }
-      return typeof parentResult === 'string' 
-        ? parentResult 
-        : JSON.stringify(parentResult);
-    });
-  };
-
-  // Ensure URL has a scheme
-  let url = interpolateVariables(data.url);
-  if (!url.match(/^https?:\/\//)) {
-    url = `https://${url}`;
-  }
-  
-  // Build headers with default Content-Type
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(data.headers || {})
-  };
-  
-  Object.entries(headers).forEach(([key, value]) => {
-    headers[key] = interpolateVariables(value);
-  });
-
-  // Build query parameters for GET requests
-  if (data.method === 'GET' && data.bodyParams) {
-    try {
-      const urlObj = new URL(url);
-      const enabledParams = data.bodyParams.filter(p => p.enabled && p.key);
-      enabledParams.forEach(({ key, value }) => {
-        urlObj.searchParams.append(key, interpolateVariables(value));
-      });
-      url = urlObj.toString();
-    } catch (error) {
-      console.error('Failed to append query parameters:', error);
-    }
-  }
-
-  // Build body based on format
-  let body: string | FormData | undefined;
-  if (data.method && !['GET', 'HEAD'].includes(data.method)) {
-    if (data.bodyFormat === 'raw') {
-      body = data.body ? interpolateVariables(data.body) : undefined;
-    } else if (data.bodyParams) {
-      const enabledParams = data.bodyParams.filter(p => p.enabled && p.key);
-      
-      if (data.contentType === 'application/json') {
-        const obj = enabledParams.reduce((acc, { key, value }) => ({
-          ...acc,
-          [key]: interpolateVariables(value)
-        }), {});
-        body = JSON.stringify(obj);
-        headers['Content-Type'] = 'application/json';
-      } else if (data.contentType === 'multipart/form-data') {
-        const formData = new FormData();
-        enabledParams.forEach(({ key, value }) => {
-          formData.append(key, interpolateVariables(value));
-        });
-        body = formData;
-        // Let the browser set the Content-Type for FormData
-        delete headers['Content-Type'];
-      } else {
-        // x-www-form-urlencoded
-        body = enabledParams
-          .map(({ key, value }) => `${encodeURIComponent(key)}=${encodeURIComponent(interpolateVariables(value))}`)
-          .join('&');
-        headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      }
-    }
-  }
-
-  try {
-    // Make the request
-    const response = await fetch(url, {
-      method: data.method || 'GET',
-      headers,
-      body,
-    });
-
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-    }
-
-    // Parse response based on content type
-    const contentType = response.headers.get('content-type');
-    let result;
-    
-    if (contentType?.includes('application/json')) {
-      result = await response.json();
-    } else {
-      result = await response.text();
-    }
-
-    // Return a structured result that can be used by child nodes
-    return {
-      data: result,
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      url: response.url,
-      method: data.method || 'GET',
-      timestamp: Date.now()
-    };
-  } catch (error) {
-    console.error('API execution error:', error);
-    throw new Error(error instanceof Error ? error.message : 'Failed to execute API request');
-  }
+// Non-hook version for direct execution
+export const executeFlow = (nodeId: string) => {
+  return useFlowExecution.getState().executeFlow(nodeId);
 }; 
