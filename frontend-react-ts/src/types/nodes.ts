@@ -1,6 +1,6 @@
 import { Node, Edge } from 'reactflow';
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -91,13 +91,26 @@ export interface InputNodeData extends BaseNodeData {
   text: string; // Multiline text input
 }
 
+// Add GroupNodeData
+export interface GroupNodeData extends BaseNodeData {
+  type: 'group';
+  label?: string;
+  isCollapsed?: boolean; // For UI later
+  // Config to link this group to an iterable data source for looping
+  iterationConfig?: {
+    sourceNodeId: string; // ID of the node providing the array (e.g., an InputNode)
+    // sourceHandleId?: string; // Optional: specify which output handle if source has multiple
+  };
+}
+
 // Update NodeData union type
 export type NodeData = 
   | LLMNodeData 
   | APINodeData 
   | OutputNodeData
   | JSONExtractorNodeData
-  | InputNodeData; // Add InputNodeData to the union
+  | InputNodeData
+  | GroupNodeData; // Add GroupNodeData
 
 export type ViewMode = 'compact' | 'expanded' | 'auto';
 
