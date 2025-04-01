@@ -14,103 +14,102 @@ interface Props {
   isConnectable?: boolean;
 }
 
+// Helper to format result specifically for node display (prioritizes JSON for objects)
+const formatResultForNodeDisplay = (result: any): string => {
+  if (result === null || result === undefined) return '';
+  if (typeof result === 'string') return result;
+  if (typeof result === 'object') {
+    try {
+      return JSON.stringify(result, null, 2); // Always format objects nicely for display
+    } catch (e) {
+      console.error("Error stringifying result for display:", e);
+      return String(result); // Fallback
+    }
+  }
+  return String(result); // Handle primitives
+};
+
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const dispatch = useDispatch();
   const nodeState = useNodeState(id);
   const contentRef = useRef<HTMLPreElement>(null);
   
+  // This function remains for handling the JSON/TEXT toggle effect on data.content
   const handleFormatChange = useCallback((format: 'json' | 'text') => {
-    if (format === data.format) return; // Don't dispatch if format hasn't changed
-    
+    if (format === data.format) return;
     dispatch(updateNodeData({
       nodeId: id,
       data: { 
         ...data, 
         format,
-        // Reset content to ensure it's reformatted
-        content: nodeState?.result ? formatContent(nodeState.result, format) : data.content
+        // Trigger reformat based on toggle
+        content: nodeState?.result ? formatContentBasedOnToggle(nodeState.result, format) : data.content
       }
     }));
-  }, [dispatch, id, data, nodeState]);
+  }, [dispatch, id, data, nodeState?.result]); // Added nodeState.result dependency
 
-  // Format content based on type and selected format
-  const formatContent = (result: any, format: 'json' | 'text'): string => {
+  // This formats content based on the selected toggle (used for data.content update)
+  const formatContentBasedOnToggle = (result: any, format: 'json' | 'text'): string => {
     if (!result) return '';
-
-    // Handle LLM results
     if (typeof result === 'object' && ('content' in result)) {
       const llmResult = result as LLMResult;
       const content = llmResult.content;
-
       if (format === 'text') {
-        return typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-      } else {
-        // For JSON format, if content is already an object, stringify it
-        // If it's a string that looks like JSON, try to parse and re-stringify it
-        if (typeof content === 'object') {
-          return JSON.stringify(content, null, 2);
-        }
+        return typeof content === 'string' ? content : JSON.stringify(content);
+      } else { // JSON format requested
+        if (typeof content === 'object') return JSON.stringify(content, null, 2);
         try {
-          if (typeof content === 'string' && 
-             (content.trim().startsWith('{') || content.trim().startsWith('['))) {
+          if (typeof content === 'string' && (content.trim().startsWith('{') || content.trim().startsWith('['))) {
             return JSON.stringify(JSON.parse(content), null, 2);
           }
-        } catch (e) {
-          // If parsing fails, return the original content
-          console.warn('Failed to parse JSON content:', e);
-        }
-        return JSON.stringify(llmResult, null, 2);
+        } catch (e) { /* Ignore parse error, treat as string */ }
+        // If it's not parseable JSON or not an object, stringify the whole LLMResult for JSON view
+        return JSON.stringify(llmResult, null, 2); 
       }
     }
-
-    // Handle other types of results
     if (typeof result === 'object') {
       return format === 'json' ? JSON.stringify(result, null, 2) : JSON.stringify(result);
     }
-
     return String(result);
   };
 
-  // Update content when node state changes
+  // Update data.content when node result or format changes
   useEffect(() => {
-    if (nodeState?.result) {
-      const formattedContent = formatContent(nodeState.result, data.format);
+    if (nodeState?.status === 'success' && nodeState.result) {
+      const formattedContent = formatContentBasedOnToggle(nodeState.result, data.format);
+      // Only dispatch if the formatted content actually changes
       if (formattedContent !== data.content) {
-        dispatch(updateNodeData({
-          nodeId: id,
-          data: { ...data, content: formattedContent }
-        }));
+         dispatch(updateNodeData({
+           nodeId: id,
+           data: { ...data, content: formattedContent }
+         }));
       }
+    } else if (nodeState?.status === 'running' && data.content !== '처리 중...') {
+        dispatch(updateNodeData({ nodeId: id, data: { ...data, content: '처리 중...' } }));
+    } else if (nodeState?.status === 'error' && data.content !== `오류: ${nodeState.error}`) {
+        dispatch(updateNodeData({ nodeId: id, data: { ...data, content: `오류: ${nodeState.error}` } }));
+    } else if (nodeState?.status === 'idle' && data.content !== '실행 대기 중...') {
+        dispatch(updateNodeData({ nodeId: id, data: { ...data, content: '실행 대기 중...' } }));
     }
-  }, [nodeState?.result, data.format]);
+    // Add all relevant dependencies
+  }, [nodeState?.status, nodeState?.result, nodeState?.error, data.format, data.content, dispatch, id]);
 
-  // Check if content overflows one line
-  const isContentOverflowing = (): boolean => {
-    const element = contentRef.current;
-    if (!element) return false;
-    
-    const lineHeight = parseInt(getComputedStyle(element).lineHeight);
-    return element.scrollHeight > lineHeight;
-  };
-
-  const renderContent = () => {
+  // This function now determines the *displayed* content in the node
+  const renderContentForDisplay = () => {
     if (!nodeState || nodeState.status === 'idle') {
       return '실행 대기 중...';
     }
-
     if (nodeState.status === 'running') {
       return '처리 중...';
     }
-
     if (nodeState.status === 'error') {
       return `오류: ${nodeState.error}`;
     }
-
-    if (!nodeState.result) {
-      return '결과 없음';
+    if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
+      // Use the new display-specific formatter
+      return formatResultForNodeDisplay(nodeState.result);
     }
-
-    return formatContent(nodeState.result, data.format);
+    return '결과 없음'; // Fallback if success but result is null/undefined
   };
 
   return (
@@ -192,9 +191,10 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
           <div className="mt-2 text-sm">
             <pre 
               ref={contentRef}
-              className="whitespace-pre-wrap font-mono overflow-hidden text-ellipsis"
+              className="whitespace-pre-wrap font-mono overflow-hidden text-ellipsis line-clamp-3"
+              title={renderContentForDisplay()}
             >
-              {renderContent()}
+              {renderContentForDisplay()}
             </pre>
           </div>
         </div>
