@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Node, Edge } from 'reactflow';
 import { FlowState, NodeExecutionState, NodeExecutionStateData, NodeData, LLMNodeData, APINodeData, OutputNodeData, NodeType } from '../types/nodes';
+import { calculateNodePosition, createDefaultNodeData } from '../utils/flowUtils'; // Import helpers
 
 export const VIEW_MODES = {
   COMPACT: 'compact',
@@ -142,67 +143,16 @@ const flowSlice = createSlice({
       const node = state.nodes.find(node => node.id === action.payload.nodeId);
       if (!node) return;
 
-      // Since we're already checking node.type, TypeScript should narrow the type correctly
-      if (node.type === 'output') {
-        Object.assign(node.data, action.payload.data as Partial<OutputNodeData>);
-      } else if (node.type === 'api') {
-        Object.assign(node.data, action.payload.data as Partial<APINodeData>);
-      } else if (node.type === 'llm') {
-        Object.assign(node.data, action.payload.data as Partial<LLMNodeData>);
-      }
+      // Using Object.assign is fine, but ensure types are handled
+      // This assumes the incoming data matches the node type, which should be ensured by the calling component
+      Object.assign(node.data, action.payload.data);
     },
     setNodeExecutionState: (state, action: PayloadAction<{ nodeId: string; state: NodeExecutionStateData }>) => {
       const { nodeId, state: executionState } = action.payload;
-      
-      // NodeExecutionState 타입에 맞게 저장
       state.nodeExecutionStates[nodeId] = {
         nodeId,
         state: executionState,
       };
-
-      // 실행이 완료되고 결과가 있는 경우에만 OUTPUT 노드 업데이트
-      if (executionState.status === 'completed' && executionState.result) {
-        // 현재 노드에 연결된 모든 OUTPUT 노드 찾기
-        const connectedEdges = state.edges.filter(edge => edge.source === nodeId);
-        
-        connectedEdges.forEach(edge => {
-          const targetNode = state.nodes.find(node => node.id === edge.target);
-          if (targetNode?.data.type === 'output') {
-            let content = '';
-            const result = executionState.result;
-            
-            if (typeof result === 'string') {
-              content = result;
-            } else if (result && typeof result === 'object') {
-              if ('text' in result) {
-                content = result.text as string;
-              } else if ('content' in result) {
-                content = result.content as string;
-              } else {
-                content = JSON.stringify(result, null, 2);
-              }
-            }
-
-            // OUTPUT 노드의 content만 업데이트
-            targetNode.data = {
-              ...targetNode.data,
-              content,
-            } as OutputNodeData;
-          }
-        });
-      } else if (executionState.status === 'running') {
-        // If the parent node is running, set OUTPUT node to '처리 중...'
-        const connectedEdges = state.edges.filter(edge => edge.source === nodeId);
-        connectedEdges.forEach(edge => {
-          const targetNode = state.nodes.find(node => node.id === edge.target);
-          if (targetNode?.data.type === 'output') {
-            targetNode.data = {
-              ...targetNode.data,
-              content: '처리 중...'
-            } as OutputNodeData;
-          }
-        });
-      }
     },
     setGlobalViewMode: (state, action: PayloadAction<GlobalViewMode>) => {
       state.globalViewMode = action.payload;

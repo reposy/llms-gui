@@ -7,6 +7,9 @@ import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecut
 import { RootState } from '../../store/store';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
+// Import shared components
+import { NodeHeader } from './shared/NodeHeader';
+import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 
 interface Props {
   id: string;
@@ -24,8 +27,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const globalViewMode = useSelector((state: RootState) => state.flow.globalViewMode) as GlobalViewMode;
   const [promptDraft, setPromptDraft] = useState(data.prompt || '');
   const [isComposing, setIsComposing] = useState(false);
-  const [isEditingLabel, setIsEditingLabel] = useState(false);
-  const [labelDraft, setLabelDraft] = useState(data.label || 'LLM');
 
   // Update drafts when data changes externally
   useEffect(() => {
@@ -33,11 +34,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       setPromptDraft(data.prompt || '');
     }
   }, [data.prompt, isComposing]);
-
-  // Update label draft when data changes externally
-  useEffect(() => {
-    setLabelDraft(data.label || 'LLM');
-  }, [data.label]);
 
   const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newPrompt = e.target.value;
@@ -60,30 +56,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       data: { ...data, prompt: newPrompt }
     }));
   }, [dispatch, id, data]);
-
-  const handleLabelChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLabelDraft(e.target.value);
-  }, []);
-
-  const handleLabelBlur = useCallback(() => {
-    setIsEditingLabel(false);
-    if (labelDraft.trim() !== data.label) {
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { ...data, label: labelDraft.trim() || 'LLM' }
-      }));
-    }
-  }, [dispatch, id, data, labelDraft]);
-
-  const handleLabelKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      e.currentTarget.blur();
-    } else if (e.key === 'Escape') {
-      setIsEditingLabel(false);
-      setLabelDraft(data.label || 'LLM');
-    }
-  }, [data.label]);
 
   const handleProviderChange = useCallback((provider: 'ollama' | 'openai') => {
     dispatch(updateNodeData({
@@ -121,6 +93,11 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     }));
   }, [dispatch, id, data]);
 
+  // Encapsulate label update logic for the shared component
+  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
+    dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
+  }, [dispatch, data]); // id is implicitly captured
+
   const handleRun = useCallback(() => {
     executeFlow(id);
   }, [id]);
@@ -146,56 +123,21 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   const renderCompactView = () => (
     <>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {isRootNode ? (
-            <button
-              onClick={handleRun}
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-              title="Run full flow from this node"
-            >
-              {nodeState?.status === 'running' ? '⏳' : '▶'} Run
-            </button>
-          ) : (
-            <div 
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400 rounded cursor-not-allowed"
-              title="Only root nodes can be executed"
-            >
-              ▶
-            </div>
-          )}
-          
-          {isEditingLabel ? (
-            <input
-              type="text"
-              value={labelDraft}
-              onChange={handleLabelChange}
-              onBlur={handleLabelBlur}
-              onKeyDown={handleLabelKeyDown}
-              className="px-1 py-0.5 text-sm font-bold text-blue-500 border border-blue-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              autoFocus
-              style={{ width: `${Math.max(labelDraft.length * 8, 60)}px` }}
-            />
-          ) : (
-            <div
-              onClick={() => setIsEditingLabel(true)}
-              className="font-bold text-blue-500 cursor-text hover:bg-blue-50 px-1 py-0.5 rounded"
-              title="Click to edit node name"
-            >
-              {data.label || 'LLM'}
-            </div>
-          )}
-
-          <button
-            onClick={toggleNodeView}
-            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs text-gray-400 hover:text-gray-600 transition-colors rounded hover:bg-gray-100"
-            title={viewMode === VIEW_MODES.COMPACT ? 'Show more details' : 'Show less details'}
-          >
-            {viewMode === VIEW_MODES.COMPACT ? '⌄' : '⌃'}
-          </button>
-        </div>
-      </div>
-
+      {/* Use NodeHeader */}
+      <NodeHeader
+        nodeId={id}
+        label={data.label || 'LLM'}
+        placeholderLabel="LLM"
+        isRootNode={isRootNode}
+        isRunning={nodeState?.status === 'running'}
+        viewMode={viewMode}
+        themeColor="blue"
+        onRun={handleRun}
+        onLabelUpdate={handleLabelUpdate}
+        onToggleView={toggleNodeView}
+      />
+      
+      {/* Compact content */}
       <div className="text-sm text-gray-600">
         {data.provider} | {data.model}
         {data.temperature && ` | ${data.temperature}`}
@@ -203,74 +145,29 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       <div className="text-sm text-gray-600 line-clamp-2">
         {data.prompt || 'No prompt set'}
       </div>
-      {nodeState?.status !== 'idle' && (
-        <div className="flex items-center gap-1 text-xs py-1">
-          {nodeState.status === 'running' && (
-            <span className="text-yellow-600">⏳ Running...</span>
-          )}
-          {nodeState.status === 'success' && (
-            <span className="text-green-600">✅ Success</span>
-          )}
-          {nodeState.status === 'error' && (
-            <span className="text-red-600" title={nodeState.error}>❌ Error</span>
-          )}
-        </div>
-      )}
+
+      {/* Use NodeStatusIndicator */}
+      <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
     </>
   );
 
   const renderExpandedView = () => (
     <>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {isRootNode ? (
-            <button
-              onClick={handleRun}
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-              title="Run full flow from this node"
-            >
-              {nodeState?.status === 'running' ? '⏳' : '▶'} Run
-            </button>
-          ) : (
-            <div 
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400 rounded cursor-not-allowed"
-              title="Only root nodes can be executed"
-            >
-              ▶
-            </div>
-          )}
-          
-          {isEditingLabel ? (
-            <input
-              type="text"
-              value={labelDraft}
-              onChange={handleLabelChange}
-              onBlur={handleLabelBlur}
-              onKeyDown={handleLabelKeyDown}
-              className="px-1 py-0.5 text-sm font-bold text-blue-500 border border-blue-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              autoFocus
-              style={{ width: `${Math.max(labelDraft.length * 8, 60)}px` }}
-            />
-          ) : (
-            <div
-              onClick={() => setIsEditingLabel(true)}
-              className="font-bold text-blue-500 cursor-text hover:bg-blue-50 px-1 py-0.5 rounded"
-              title="Click to edit node name"
-            >
-              {data.label || 'LLM'}
-            </div>
-          )}
+      {/* Use NodeHeader */}
+      <NodeHeader
+        nodeId={id}
+        label={data.label || 'LLM'}
+        placeholderLabel="LLM"
+        isRootNode={isRootNode}
+        isRunning={nodeState?.status === 'running'}
+        viewMode={viewMode}
+        themeColor="blue"
+        onRun={handleRun}
+        onLabelUpdate={handleLabelUpdate}
+        onToggleView={toggleNodeView}
+      />
 
-          <button
-            onClick={toggleNodeView}
-            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs text-gray-400 hover:text-gray-600 transition-colors rounded hover:bg-gray-100"
-            title={viewMode === VIEW_MODES.COMPACT ? 'Show more details' : 'Show less details'}
-          >
-            {viewMode === VIEW_MODES.COMPACT ? '⌄' : '⌃'}
-          </button>
-        </div>
-      </div>
-
+      {/* Expanded content */}
       <div className="space-y-2">
         <div className="flex gap-2">
           <select
@@ -331,20 +228,8 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
           </div>
         </div>
 
-        {/* Execution Status */}
-        {nodeState?.status !== 'idle' && (
-          <div className="flex items-center gap-1 text-xs">
-            {nodeState.status === 'running' && (
-              <span className="text-yellow-600">⏳ Running...</span>
-            )}
-            {nodeState.status === 'success' && (
-              <span className="text-green-600">✅ Success</span>
-            )}
-            {nodeState.status === 'error' && (
-              <span className="text-red-600" title={nodeState.error}>❌ Error</span>
-            )}
-          </div>
-        )}
+        {/* Use NodeStatusIndicator */}
+        <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
 
         {/* Result Preview */}
         {nodeState?.result && (
@@ -363,8 +248,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <div className="relative overflow-visible">
-        {/* Input handle */}
+      <div className="relative w-[350px]">
         <Handle
           type="target"
           position={Position.Left}
@@ -377,11 +261,11 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             height: '8px',
             top: '50%',
             transform: 'translateY(-50%)',
+            left: '-4px',
             zIndex: 50
           }}
         />
 
-        {/* Output handle */}
         <Handle
           type="source"
           position={Position.Right}
@@ -394,24 +278,21 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             height: '8px',
             top: '50%',
             transform: 'translateY(-50%)',
+            right: '-4px',
             zIndex: 50
           }}
         />
 
-        {/* Node content box */}
-        <div className={clsx(
-          'w-[350px] px-4 py-2 bg-white rounded-md',
-          'ring-1 ring-blue-100',
-          selected ? [
-            'ring-2 ring-blue-500',
-            'shadow-[0_0_0_1px_rgba(59,130,246,0.5)]'
-          ] : [
-            'shadow-sm'
-          ]
-        )}>
-          <div className="space-y-2">
-            {viewMode === VIEW_MODES.COMPACT ? renderCompactView() : renderExpandedView()}
-          </div>
+        <div
+          className={clsx(
+            'px-4 py-2 shadow-md rounded-md bg-white',
+            'border',
+            selected
+              ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
+              : 'border-blue-200 shadow-sm'
+          )}
+        >
+          {viewMode === VIEW_MODES.COMPACT ? renderCompactView() : renderExpandedView()}
         </div>
       </div>
     </NodeErrorBoundary>

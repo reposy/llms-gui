@@ -86,15 +86,15 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
 
     if (!sourceNode || !targetNode) return;
 
-    // LLM node can only connect its output to Output node's input
-    if (sourceNode.type === 'llm' && targetNode.type === 'output' && 
-        params.sourceHandle?.endsWith('-source') && params.targetHandle?.endsWith('-target')) {
-      const newEdges = addEdge(params, edges);
-      dispatch(setEdges(newEdges));
-    }
-    // API node can only connect its output to Output node's input
-    else if (sourceNode.type === 'api' && targetNode.type === 'output' &&
-             params.sourceHandle?.endsWith('-source') && params.targetHandle?.endsWith('-target')) {
+    // Validate source handle is output and target handle is input
+    if (!params.sourceHandle?.endsWith('-source') || !params.targetHandle?.endsWith('-target')) return;
+
+    // Allow connections:
+    // 1. From LLM to LLM (chaining)
+    // 2. From LLM to Output
+    // 3. From API to Output
+    if ((sourceNode.type === 'llm' && (targetNode.type === 'llm' || targetNode.type === 'output')) ||
+        (sourceNode.type === 'api' && targetNode.type === 'output')) {
       const newEdges = addEdge(params, edges);
       dispatch(setEdges(newEdges));
     }

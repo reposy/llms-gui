@@ -404,32 +404,33 @@ export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
           throw new Error(`Unknown node type: ${node.type}`);
       }
 
-      // --- Update success state ---
-      console.log(`Node ${nodeId}: Execution successful, setting state.`);
+      // --- Execution successful --- 
+      console.log(`Node ${nodeId}: Execution successful`);
       setNodeState(nodeId, { 
         status: 'success', 
-        result, 
+        result: result, 
         error: undefined 
       });
 
-      // Update connected output nodes immediately after success
-      const connectedEdges = edges.filter(e => e.source === nodeId);
-      connectedEdges.forEach(edge => {
+      // --- Update connected Output Nodes on Success ---
+      const connectedEdgesSuccess = edges.filter(e => e.source === nodeId);
+      connectedEdgesSuccess.forEach(edge => {
         const targetNode = nodes.find(n => n.id === edge.target);
         if (targetNode?.type === 'output') {
           let content = '';
+          // Re-use the result formatting logic
           if (typeof result === 'string') {
             content = result;
           } else if (result && typeof result === 'object') {
-            if ('content' in result) {
-              content = typeof result.content === 'string' 
-                ? result.content 
-                : JSON.stringify(result.content);
+            if (node.type === 'llm' && 'content' in result) { // LLM Result format
+                content = typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
             } else if ('text' in result) {
-              content = String(result.text);
-            } else {
-              content = JSON.stringify(result);
+                content = String(result.text);
+            } else { // General object formatting
+                content = JSON.stringify(result);
             }
+          } else {
+              content = String(result); // Handle null/undefined/other primitives
           }
 
           setNodeState(edge.target, {
@@ -440,35 +441,35 @@ export const useFlowExecution = create<FlowExecutionState>((set, get) => ({
         }
       });
 
-      // For LLM nodes, return only the content to downstream nodes
+      // For LLM nodes, only return the content when passing to downstream nodes
       if (node.type === 'llm' && result?.content) {
         return result.content;
       }
-
       return result;
 
     } catch (error: any) {
-      console.error(`Node ${nodeId}: Execution failed:`, error);
-      if (getNodeState(nodeId)?.status !== 'error') {
-        setNodeState(nodeId, { 
-          status: 'error', 
-          result: null, 
-          error: error.message || String(error) 
-        });
+      console.error(`Node ${nodeId}: Execution failed`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setNodeState(nodeId, { 
+        status: 'error', 
+        result: null, 
+        error: errorMessage 
+      });
 
-        // Update connected output nodes to error state
-        const connectedEdges = edges.filter(e => e.source === nodeId);
-        connectedEdges.forEach(edge => {
-          const targetNode = nodes.find(n => n.id === edge.target);
-          if (targetNode?.type === 'output') {
-            setNodeState(edge.target, {
-              status: 'error',
-              result: `Error: ${error.message || String(error)}`,
-              error: error.message || String(error)
-            });
-          }
-        });
-      }
+      // --- Update connected Output Nodes on Error ---
+      const connectedEdgesError = edges.filter(e => e.source === nodeId);
+      connectedEdgesError.forEach(edge => {
+        const targetNode = nodes.find(n => n.id === edge.target);
+        if (targetNode?.type === 'output') {
+          setNodeState(edge.target, {
+            status: 'error',
+            result: `Error from ${node.data.label || node.id}`, // Indicate source of error
+            error: errorMessage
+          });
+        }
+      });
+
+      // Rethrow the error to stop the flow execution down this path
       throw error;
     }
   },

@@ -8,6 +8,8 @@ import { RootState } from '../../store/store';
 import axios from 'axios';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
+import { NodeHeader } from './shared/NodeHeader';
+import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 
 interface Props {
   id: string;
@@ -34,14 +36,12 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const { getZoom } = useReactFlow();
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id));
   const globalViewMode = useSelector((state: RootState) => state.flow.globalViewMode);
-  const isCompactMode = viewMode === 'compact';
+  const isCompactMode = viewMode === VIEW_MODES.COMPACT;
   const [urlDraft, setUrlDraft] = useState(data.url || '');
   const [isComposing, setIsComposing] = useState(false);
   const [paramDrafts, setParamDrafts] = useState<QueryParamDrafts>({});
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testResponse, setTestResponse] = useState<any>(null);
-  const [isEditingLabel, setIsEditingLabel] = useState(false);
-  const [labelDraft, setLabelDraft] = useState(data.label || 'API');
 
   // Update drafts when data changes externally
   useEffect(() => {
@@ -54,11 +54,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       setParamDrafts(newDrafts);
     }
   }, [data.url, data.queryParams, isComposing]);
-
-  // Update label draft when data changes externally
-  useEffect(() => {
-    setLabelDraft(data.label || 'API');
-  }, [data.label]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
@@ -159,29 +154,10 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     });
   }, [dispatch, id, data]);
 
-  const handleLabelChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLabelDraft(e.target.value);
-  }, []);
-
-  const handleLabelBlur = useCallback(() => {
-    setIsEditingLabel(false);
-    if (labelDraft.trim() !== data.label) {
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { ...data, label: labelDraft.trim() || 'API' }
-      }));
-    }
-  }, [dispatch, id, data, labelDraft]);
-
-  const handleLabelKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      e.currentTarget.blur();
-    } else if (e.key === 'Escape') {
-      setIsEditingLabel(false);
-      setLabelDraft(data.label || 'API');
-    }
-  }, [data.label]);
+  // Encapsulate label update logic
+  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
+    dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
+  }, [dispatch, data]);
 
   // Run full flow
   const handleRun = useCallback(() => {
@@ -248,7 +224,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const toggleNodeView = () => {
     dispatch(setNodeViewMode({
       nodeId: id,
-      mode: isCompactMode ? 'expanded' : 'compact'
+      mode: isCompactMode ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
     }));
   };
 
@@ -259,133 +235,48 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       const shouldBeCompact = zoom < 0.7;
       dispatch(setNodeViewMode({ 
         nodeId: id, 
-        mode: shouldBeCompact ? 'compact' : 'expanded' 
+        mode: shouldBeCompact ? VIEW_MODES.COMPACT : VIEW_MODES.EXPANDED 
       }));
     }
   }, [globalViewMode, getZoom, id, dispatch]);
 
   const renderCompactView = () => (
     <>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {isRootNode ? (
-            <button
-              onClick={handleRun}
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-              title="Run full flow from this node"
-            >
-              {nodeState?.status === 'running' ? '⏳' : '▶'} Run
-            </button>
-          ) : (
-            <div 
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400 rounded cursor-not-allowed"
-              title="Only root nodes can be executed"
-            >
-              ▶
-            </div>
-          )}
-          
-          {isEditingLabel ? (
-            <input
-              type="text"
-              value={labelDraft}
-              onChange={handleLabelChange}
-              onBlur={handleLabelBlur}
-              onKeyDown={handleLabelKeyDown}
-              className="px-1 py-0.5 text-sm font-bold text-green-500 border border-green-200 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
-              autoFocus
-              style={{ width: `${Math.max(labelDraft.length * 8, 60)}px` }}
-            />
-          ) : (
-            <div
-              onClick={() => setIsEditingLabel(true)}
-              className="font-bold text-green-500 cursor-text hover:bg-green-50 px-1 py-0.5 rounded"
-              title="Click to edit node name"
-            >
-              {data.label || 'API'}
-            </div>
-          )}
-
-          <button
-            onClick={toggleNodeView}
-            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs text-gray-400 hover:text-gray-600 transition-colors rounded hover:bg-gray-100"
-            title={viewMode === VIEW_MODES.COMPACT ? 'Show more details' : 'Show less details'}
-          >
-            {viewMode === VIEW_MODES.COMPACT ? '⌄' : '⌃'}
-          </button>
-        </div>
-      </div>
+      <NodeHeader
+        nodeId={id}
+        label={data.label || 'API'}
+        placeholderLabel="API"
+        isRootNode={isRootNode}
+        isRunning={nodeState?.status === 'running'}
+        viewMode={viewMode}
+        themeColor="green"
+        onRun={handleRun}
+        onLabelUpdate={handleLabelUpdate}
+        onToggleView={toggleNodeView}
+      />
 
       <div className="text-sm text-gray-600">
         {data.method} | {data.url || 'No URL set'}
       </div>
-      {nodeState?.status !== 'idle' && (
-        <div className="flex items-center gap-1 text-xs py-1">
-          {nodeState.status === 'running' && (
-            <span className="text-yellow-600">⏳ Running...</span>
-          )}
-          {nodeState.status === 'success' && (
-            <span className="text-green-600">✅ Success</span>
-          )}
-          {nodeState.status === 'error' && (
-            <span className="text-red-600" title={nodeState.error ?? undefined}>❌ Error</span>
-          )}
-        </div>
-      )}
+
+      <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
     </>
   );
 
   const renderExpandedView = () => (
     <>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {isRootNode ? (
-            <button
-              onClick={handleRun}
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-              title="Run full flow from this node"
-            >
-              {nodeState?.status === 'running' ? '⏳' : '▶'} Run
-            </button>
-          ) : (
-            <div 
-              className="shrink-0 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400 rounded cursor-not-allowed"
-              title="Only root nodes can be executed"
-            >
-              ▶
-            </div>
-          )}
-          
-          {isEditingLabel ? (
-            <input
-              type="text"
-              value={labelDraft}
-              onChange={handleLabelChange}
-              onBlur={handleLabelBlur}
-              onKeyDown={handleLabelKeyDown}
-              className="px-1 py-0.5 text-sm font-bold text-green-500 border border-green-200 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
-              autoFocus
-              style={{ width: `${Math.max(labelDraft.length * 8, 60)}px` }}
-            />
-          ) : (
-            <div
-              onClick={() => setIsEditingLabel(true)}
-              className="font-bold text-green-500 cursor-text hover:bg-green-50 px-1 py-0.5 rounded"
-              title="Click to edit node name"
-            >
-              {data.label || 'API'}
-            </div>
-          )}
-
-          <button
-            onClick={toggleNodeView}
-            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs text-gray-400 hover:text-gray-600 transition-colors rounded hover:bg-gray-100"
-            title={viewMode === VIEW_MODES.COMPACT ? 'Show more details' : 'Show less details'}
-          >
-            {viewMode === VIEW_MODES.COMPACT ? '⌄' : '⌃'}
-          </button>
-        </div>
-      </div>
+      <NodeHeader
+        nodeId={id}
+        label={data.label || 'API'}
+        placeholderLabel="API"
+        isRootNode={isRootNode}
+        isRunning={nodeState?.status === 'running'}
+        viewMode={viewMode}
+        themeColor="green"
+        onRun={handleRun}
+        onLabelUpdate={handleLabelUpdate}
+        onToggleView={toggleNodeView}
+      />
 
       <div className="space-y-2">
         <div className="flex gap-2">
@@ -486,67 +377,59 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             </pre>
           </div>
         )}
+
+        <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
       </div>
     </>
   );
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <div className="relative overflow-visible">
-        {/* Input handle */}
+      <div className="relative w-[350px]">
         <Handle
           type="target"
           position={Position.Left}
-          id="input"
+          id={`${id}-target`}
+          isConnectable={isConnectable}
           style={{
-            position: 'absolute',
+            background: '#22c55e',
+            border: '1px solid white',
             width: '8px',
             height: '8px',
-            left: '-6px',
             top: '50%',
             transform: 'translateY(-50%)',
-            background: '#22c55e',
-            borderRadius: '50%',
-            border: '1px solid white',
-            zIndex: 50,
-            pointerEvents: 'auto',
+            left: '-4px',
+            zIndex: 50
           }}
-          isConnectable={isConnectable}
         />
 
-        {/* Output handle */}
         <Handle
           type="source"
           position={Position.Right}
-          id="output"
+          id={`${id}-source`}
+          isConnectable={isConnectable}
           style={{
-            position: 'absolute',
+            background: '#22c55e',
+            border: '1px solid white',
             width: '8px',
             height: '8px',
-            right: '-6px',
             top: '50%',
             transform: 'translateY(-50%)',
-            background: '#22c55e',
-            borderRadius: '50%',
-            border: '1px solid white',
-            zIndex: 50,
-            pointerEvents: 'auto',
+            right: '-4px',
+            zIndex: 50
           }}
-          isConnectable={isConnectable}
         />
 
-        {/* Node content box */}
-        <div className={clsx(
-          'w-[350px] px-4 py-2 bg-white rounded-md',
-          'ring-1 ring-green-100',
-          selected ? [
-            'ring-2 ring-green-500',
-            'shadow-[0_0_0_1px_rgba(34,197,94,0.5)]'
-          ] : [
-            'shadow-sm'
-          ]
-        )}>
-          {isCompactMode ? renderCompactView() : renderExpandedView()}
+        <div
+          className={clsx(
+            'px-4 py-2 shadow-md rounded-md bg-white',
+            'border',
+            selected
+              ? 'border-green-500 ring-2 ring-green-300 ring-offset-1 shadow-lg'
+              : 'border-green-200 shadow-sm'
+          )}
+        >
+          {viewMode === VIEW_MODES.COMPACT ? renderCompactView() : renderExpandedView()}
         </div>
       </div>
     </NodeErrorBoundary>

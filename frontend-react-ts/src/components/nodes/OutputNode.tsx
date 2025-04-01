@@ -114,95 +114,92 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
   };
 
   return (
-    <div className="relative w-[350px]">
-      {/* Input Handle */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={`${id}-target`}
-        isConnectable={isConnectable}
-        style={{
-          background: '#a855f7',
-          border: '1px solid white',
-          width: '8px',
-          height: '8px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          zIndex: 50
-        }}
-      />
+    <NodeErrorBoundary nodeId={id}>
+      <div className="relative w-[350px]">
+        {/* Input Handle */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          id={`${id}-target`}
+          isConnectable={isConnectable}
+          style={{
+            background: '#a855f7',
+            border: '1px solid white',
+            width: '8px',
+            height: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            left: '-4px',
+            zIndex: 50
+          }}
+        />
 
-      {/* Output Handle */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={`${id}-source`}
-        isConnectable={isConnectable}
-        style={{
-          background: '#a855f7',
-          border: '1px solid white',
-          width: '8px',
-          height: '8px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          zIndex: 50
-        }}
-      />
+        {/* Output Handle */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          id={`${id}-source`}
+          isConnectable={isConnectable}
+          style={{
+            background: '#a855f7',
+            border: '1px solid white',
+            width: '8px',
+            height: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            right: '-4px',
+            zIndex: 50
+          }}
+        />
 
-      {/* Node content box */}
-      <div className={clsx(
-        'px-4 py-2 shadow-md rounded-md bg-white',
-        'ring-1 ring-purple-100',
-        selected ? [
-          'ring-2 ring-purple-500',
-          'shadow-[0_0_0_1px_rgba(168,85,247,0.5)]'
-        ] : [
-          'shadow-sm'
-        ]
-      )}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center">
-            <div className="font-bold text-purple-500">{data.label || 'Output'}</div>
+        {/* Node content box */}
+        <div className={clsx(
+          'px-4 py-2 shadow-md rounded-md bg-white',
+          'border',
+          selected
+            ? 'border-purple-500 ring-2 ring-purple-300 ring-offset-1 shadow-lg'
+            : 'border-purple-200 shadow-sm'
+        )}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center">
+              <div className="font-bold text-purple-500">{data.label || 'Output'}</div>
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => handleFormatChange('json')}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  data.format === 'json' 
+                    ? 'bg-purple-500 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                title="Show as formatted JSON"
+              >
+                JSON
+              </button>
+              <button
+                onClick={() => handleFormatChange('text')}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  data.format === 'text' 
+                    ? 'bg-purple-500 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                title="Show as plain text"
+              >
+                TEXT
+              </button>
+            </div>
           </div>
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleFormatChange('json')}
-              className={`px-2 py-1 text-xs rounded transition-colors ${
-                data.format === 'json' 
-                  ? 'bg-purple-500 text-white' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Show as formatted JSON"
+          <div className="mt-2 text-sm">
+            <pre 
+              ref={contentRef}
+              className="whitespace-pre-wrap font-mono overflow-hidden text-ellipsis"
             >
-              JSON
-            </button>
-            <button
-              onClick={() => handleFormatChange('text')}
-              className={`px-2 py-1 text-xs rounded transition-colors ${
-                data.format === 'text' 
-                  ? 'bg-purple-500 text-white' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Show as plain text"
-            >
-              TEXT
-            </button>
+              {renderContent()}
+            </pre>
           </div>
-        </div>
-        <div className="mt-2 text-sm">
-          <pre 
-            ref={contentRef}
-            className="whitespace-pre-wrap font-mono overflow-hidden text-ellipsis"
-            style={{
-              maxHeight: isContentOverflowing() ? '1.5em' : 'auto',
-              lineHeight: '1.5em'
-            }}
-          >
-            {renderContent()}
-          </pre>
         </div>
       </div>
-    </div>
+    </NodeErrorBoundary>
   );
 };
 
