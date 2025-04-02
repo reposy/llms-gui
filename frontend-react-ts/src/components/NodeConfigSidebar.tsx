@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Node } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, LLMResult } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, LLMResult, MergerNodeData } from '../types/nodes';
 import { updateNodeData } from '../store/flowSlice';
 import { RootState } from '../store/store';
-import { useFlowExecutionStore } from '../store/flowExecutionStore';
+import { useFlowExecutionStore, defaultNodeState } from '../store/flowExecutionStore';
+import { MergerNodeSidebar } from './sidebars/MergerNodeSidebar';
 
 // Constants
 const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
@@ -159,44 +160,54 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
 
   // Update node data when query parameters change
   const updateNodeQueryParams = useCallback((newParams: KeyValuePair[]) => {
-    // Type Guard: Ensure selectedNode exists and is an API node
-    if (!selectedNode || selectedNode.type !== 'api') return;
+    if (!selectedNode) { // Check for selected node first
+      console.error("No node selected");
+      return;
+    }
 
-    // selectedNode.data is now guaranteed to be APINodeData here
-    const apiData = selectedNode.data;
+    // ** PROCESS ONLY IF IT IS AN API NODE **
+    if (selectedNode.type === 'api') {
+      const apiData = selectedNode.data as APINodeData;
 
-    const enabledParams = newParams
-      .filter(p => p.enabled && p.key)
-      .reduce((acc, { key, value }) => ({ ...acc, [key]: value }), {});
+      const enabledParams = newParams
+        .filter(p => p.enabled && p.key)
+        .reduce((acc, { key, value }) => ({ ...acc, [key]: value }), {});
 
-    // Update URL with new query parameters
-    try {
-      // Construct URL safely using apiData
-      const currentUrl = apiData.url || ''; // Use apiData here
-      const urlBase = currentUrl.startsWith('http') ? currentUrl : `https://${currentUrl}`;
-      // Add basic check for empty URL base before creating URL object
-      if (!urlBase || urlBase === 'https://') {
-         throw new Error("Invalid base URL for adding query parameters.");
+      try {
+        const currentUrl = (apiData as APINodeData).url || '';
+        const urlBase = currentUrl.startsWith('http') ? currentUrl : `https://${currentUrl}`;
+        if (!urlBase || urlBase === 'https://') {
+           throw new Error("Invalid base URL for adding query parameters.");
+        }
+        const url = new URL(urlBase);
+        url.search = '';
+        Object.entries(enabledParams).forEach(([key, value]) => {
+          url.searchParams.set(key, encodeURIComponent(String(value)));
+        });
+        const newUrl = url.toString();
+
+        const updatePayload: Partial<APINodeData> = {
+          url: newUrl,
+          queryParams: enabledParams
+        };
+
+        dispatch(updateNodeData({
+          nodeId: selectedNode.id,
+          data: updatePayload 
+        }));
+      } catch (error) {
+        console.error("Error parsing or updating URL with query params:", error);
+        const updatePayload: Partial<APINodeData> = {
+            queryParams: enabledParams
+        };
+        dispatch(updateNodeData({
+          nodeId: selectedNode.id,
+          data: updatePayload
+        }));
       }
-      const url = new URL(urlBase);
-      url.search = ''; // Clear existing params before setting new ones
-      Object.entries(enabledParams).forEach(([key, value]) => {
-        url.searchParams.set(key, encodeURIComponent(String(value)));
-      });
-      const newUrl = url.toString();
-
-      dispatch(updateNodeData({
-        nodeId: selectedNode.id,
-        data: { url: newUrl, queryParams: enabledParams } // Update both
-      }));
-    } catch (error) { // Handle invalid URL or other errors
-      console.error("Error parsing or updating URL with query params:", error);
-      // If URL processing fails, just update the query parameters in data
-      // Add explicit type assertion here
-      dispatch(updateNodeData({
-        nodeId: selectedNode.id,
-        data: { queryParams: enabledParams } as Partial<APINodeData> // Assert type
-      }));
+    } else {
+      // Log or handle cases where it's not an API node (optional)
+      console.warn("updateNodeQueryParams called for non-API node type:", selectedNode.type);
     }
   }, [dispatch, selectedNode]);
 
@@ -878,32 +889,38 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
     );
   };
 
-  return (
-    <div className="w-80 bg-white border-l border-gray-200 p-6 shadow-lg overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className={`w-3 h-3 rounded-full ${
-          selectedNode.type === 'llm' ? 'bg-blue-500' :
-          selectedNode.type === 'api' ? 'bg-green-500' :
-          'bg-purple-500'
-        }`} />
-        <h2 className="text-lg font-semibold text-gray-900">
-          {selectedNode.type?.toUpperCase()} 설정
-        </h2>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="ml-auto text-gray-400 hover:text-gray-500"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+  const renderMergerConfig = (data: MergerNodeData) => (
+    <MergerNodeSidebar nodeId={selectedNodeId!} nodeData={data} nodeState={executionState || defaultNodeState} />
+  );
 
-      {/* Node-specific Configuration */}
-      {selectedNode.type === 'llm' && renderLLMConfig(selectedNode.data as LLMNodeData)}
-      {selectedNode.type === 'api' && renderAPIConfig(selectedNode.data as APINodeData)}
-      {selectedNode.type === 'output' && renderOutputConfig(selectedNode.data as OutputNodeData)}
+  const renderNodeConfig = () => {
+    if (!selectedNode) {
+      return <div className="p-6 text-sm text-gray-500">Select a node to configure it.</div>;
+    }
+
+    switch (selectedNode.type) {
+      case 'llm':
+        return renderLLMConfig(selectedNode.data as LLMNodeData);
+      case 'api':
+        return renderAPIConfig(selectedNode.data as APINodeData);
+      case 'output':
+        return renderOutputConfig(selectedNode.data as OutputNodeData);
+      case 'merger':
+        return renderMergerConfig(selectedNode.data as MergerNodeData);
+      case 'input':
+      case 'json-extractor':
+      case 'conditional':
+        return <div className="p-6 text-sm text-gray-600">Configuration for {selectedNode.type} node.</div>;
+      default:
+        return <div className="p-6 text-sm text-gray-500">No configuration available for this node type.</div>;
+    }
+  };
+
+  return (
+    <div className={`w-96 flex-none bg-white border-l border-gray-200 shadow-lg z-10 overflow-y-auto transition-transform duration-300 ease-in-out ${
+      isOpen ? 'translate-x-0' : 'translate-x-full'
+    }`}>
+      {renderNodeConfig()}
     </div>
   );
 }; 

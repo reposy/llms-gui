@@ -99,8 +99,11 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   }, [dispatch, data]); // id is implicitly captured
 
   const handleRun = useCallback(() => {
-    executeFlow(id);
-  }, [id]);
+    const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
+    if (isGroupRootNode) {
+      executeFlow(id);
+    }
+  }, [id, isRootNode]);
 
   const toggleNodeView = () => {
     dispatch(setNodeViewMode({

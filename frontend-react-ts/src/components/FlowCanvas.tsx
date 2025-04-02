@@ -34,6 +34,7 @@ import JSONExtractorNode from './nodes/JSONExtractorNode';
 import InputNode from './nodes/InputNode';
 import GroupNode from './nodes/GroupNode';
 import ConditionalNode from './nodes/ConditionalNode';
+import MergerNode from './nodes/MergerNode';
 import { NodeData, NodeType, InputNodeData, GroupNodeData } from '../types/nodes';
 import { RootState } from '../store/store';
 import { setNodes, setEdges, addNode, updateNodeData } from '../store/flowSlice';
@@ -72,10 +73,15 @@ const nodeTypes = {
       <InputNode {...props} />
     </NodeWrapper>
   ),
-  group: GroupNode, // Render GroupNode directly without wrapper
+  group: GroupNode,
   conditional: (props: any) => (
     <NodeWrapper>
       <ConditionalNode {...props} />
+    </NodeWrapper>
+  ),
+  merger: (props: any) => (
+    <NodeWrapper>
+      <MergerNode {...props} />
     </NodeWrapper>
   ),
 };
@@ -235,28 +241,35 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
       // Define allowed connections
       const allowedConnections: Record<NodeType, NodeType[]> = {
         input: ['llm', 'api', 'json-extractor', 'group'], 
-        llm: ['llm', 'output', 'json-extractor', 'conditional'], // Allow output to conditional 
-        api: ['output', 'json-extractor', 'conditional'], // Allow output to conditional     
-        output: [],                             
-        'json-extractor': ['llm', 'api', 'output', 'conditional'], // Allow output to conditional
-        group: ['output', 'json-extractor', 'conditional'],
-        conditional: ['llm', 'api', 'output', 'json-extractor', 'group', 'conditional'], // Conditional can output to almost anything
+        llm: ['llm', 'output', 'json-extractor', 'conditional', 'merger'], // LLM can feed Merger
+        api: ['output', 'json-extractor', 'conditional', 'merger'], // API can feed Merger   
+        output: [], // Output cannot feed Merger directly (usually end of chain or input to Merger)                           
+        'json-extractor': ['llm', 'api', 'output', 'conditional', 'merger'], // Extractor can feed Merger
+        group: ['output', 'json-extractor', 'conditional', 'merger'], // Group standard output can feed Merger
+        conditional: ['llm', 'api', 'output', 'json-extractor', 'group', 'conditional', 'merger'], // Conditional branches can feed Merger
+        merger: ['llm', 'output', 'api', 'json-extractor'] // Merger output (array) can feed LLM, Output, API, Extractor
       };
 
       // --- Connection Logic Update --- 
-      // Existing validation logic needs to be smarter to check handle IDs if present
       let isAllowed = false;
-      const sourceHandleId = params.sourceHandle; // Can be null, 'output', 'group-results', etc.
-      
-      // Basic check based on node types (existing logic)
-      const basicAllowed = allowedConnections[sourceNode.type as NodeType]?.includes(targetNode.type as NodeType);
+      const sourceHandleId = params.sourceHandle;
+      const targetHandleId = params.targetHandle; // Also consider target handle if needed
 
+      // Basic check based only on node types
+      const sourceAllowedTargets = allowedConnections[sourceNode.type as NodeType] || [];
+      const basicAllowed = sourceAllowedTargets.includes(targetNode.type as NodeType);
+
+      // Handle specific connections
       if (sourceNode.type === 'group' && sourceHandleId === 'group-results') {
-        // Specific rule for group results output
-        isAllowed = ['output'].includes(targetNode.type as NodeType); // Only allow connection to Output for now
-      } else if (sourceNode.type === 'conditional' && (sourceHandleId === 'true' || sourceHandleId === 'false')) {
+        // Group results (array) can feed Merger or Output
+        isAllowed = ['output', 'merger'].includes(targetNode.type as NodeType);
+      } else if (sourceNode.type === 'conditional') {
          // Conditional node output can go anywhere its type allows in the map
+         // (The map already lists Merger as a valid target)
          isAllowed = basicAllowed;
+      } else if (targetNode.type === 'merger') {
+        // Any allowed source type can connect to Merger's default input
+        isAllowed = basicAllowed;
       } else {
         // Default case: Use the basic node type mapping
         isAllowed = basicAllowed;

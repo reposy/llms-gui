@@ -149,6 +149,19 @@ export const FlowEditor = () => {
               </svg>
               Conditional
             </button>
+            {/* Add Merger Node Button */}
+            <button
+              className="w-full aspect-square rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
+              onClick={() => handleAddNode('merger')}
+            >
+              {/* Simple Merger Icon (SVG - converging arrows) */}
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4" /> {/* Simple arrow towards center */}
+                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4" /> {/* Another arrow towards center */}
+              </svg>
+              Merger
+            </button>
           </div>
         </div>
 

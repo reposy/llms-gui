@@ -1,5 +1,5 @@
 import { Node } from 'reactflow';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData } from '../types/nodes';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -124,6 +124,14 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         conditionValue: '' // Default empty value/path
         // lastEvaluationResult is initially undefined
       } as ConditionalNodeData; // Cast to ConditionalNodeData
+    case 'merger': // Add case for merger node
+      return {
+        ...baseData,
+        type: 'merger',
+        label: 'Merger',
+        items: [], // Initialize items array
+        // result is initially null / handled by execution store
+      } as MergerNodeData; // Cast to MergerNodeData
     default:
       // If an unknown type is passed, it's an error.
       // This ensures the function always returns a valid NodeData type or throws.

@@ -1,6 +1,6 @@
 import { Node, Edge } from 'reactflow';
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -115,6 +115,15 @@ export interface ConditionalNodeData extends BaseNodeData {
   lastEvaluationResult?: boolean | null; // Store the result of the last evaluation
 }
 
+// Add MergerNodeData
+export interface MergerNodeData extends BaseNodeData {
+  type: 'merger';
+  label?: string;
+  // Array to store manually edited/managed items via sidebar
+  items?: string[]; 
+  // Options like deduplication could be added later
+}
+
 // Update NodeData union type
 export type NodeData = 
   | LLMNodeData 
@@ -123,7 +132,8 @@ export type NodeData =
   | JSONExtractorNodeData
   | InputNodeData
   | GroupNodeData
-  | ConditionalNodeData; // Add ConditionalNodeData
+  | ConditionalNodeData
+  | MergerNodeData; // Add MergerNodeData
 
 export type ViewMode = 'compact' | 'expanded' | 'auto';
 

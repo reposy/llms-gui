@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Edge, Node } from 'reactflow';
-import { APINodeData, LLMNodeData, OutputNodeData, LLMResult, GroupNodeData, NodeData, JSONExtractorNodeData, InputNodeData, ConditionalNodeData, ConditionType } from '../types/nodes';
+import { APINodeData, LLMNodeData, OutputNodeData, LLMResult, GroupNodeData, NodeData, JSONExtractorNodeData, InputNodeData, ConditionalNodeData, ConditionType, MergerNodeData } from '../types/nodes';
 import axios from 'axios';
 import { store } from './store';
 import { useSelector } from 'react-redux';
@@ -12,7 +12,8 @@ import { getIncomers, getOutgoers } from 'reactflow';
 import jsonpath from 'jsonpath';
 import { updateNodeData } from './flowSlice';
 
-interface NodeState {
+// Export the interface
+export interface NodeState {
   status: 'idle' | 'running' | 'success' | 'error';
   result: any; // This will hold GroupExecutionItemResult[] for groups
   error: string | undefined;
@@ -29,7 +30,8 @@ export interface GroupExecutionItemResult {
   error?: string;
 }
 
-interface FlowExecutionState {
+// Export the interface
+export interface FlowExecutionState {
   nodeStates: Record<string, NodeState>;
   edges: Edge[];
   nodes: Node<NodeData>[];
@@ -61,7 +63,8 @@ interface FlowExecutionState {
   executeFlowForGroup: (groupId: string) => Promise<void>;
 }
 
-const defaultNodeState: NodeState = {
+// Export default state object
+export const defaultNodeState: NodeState = {
   status: 'idle',
   result: null,
   error: undefined,
@@ -246,8 +249,8 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
         },
 
         executeNode: async (nodeId: string, executionContext = { isSubExecution: false }): Promise<any> => {
-          const { 
-            nodes, edges, setNodeState, getNodeState, 
+          const {
+            nodes, edges, setNodeState, getNodeState,
             currentIterationItem, currentIterationIndex, _executeSubgraph
           } = get();
           const node = nodes.find(n => n.id === nodeId);
@@ -277,14 +280,14 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
           // Set running state
           setNodeState(nodeId, { status: 'running', result: null, error: undefined });
 
-          // --- Get Input Data --- 
-          let inputData: Record<string, any> = {};
+          // --- Get Input Data ---
+          let inputData: Record<string, any[]> = {}; // Values will be arrays to handle multiple inputs per handle
           // If inside an iterating group, the primary input is the item
           if (node.parentNode && currentIterationItem !== undefined) {
             // Check if this node is directly connected to the group's implicit input
             // For simplicity, assume nodes inside a group primarily use the 'item' 
             // or results from other nodes *within the same iteration*
-            inputData['item'] = currentIterationItem; 
+            inputData['item'] = [currentIterationItem]; // Store item as an array too for consistency
             
             // Additionally, gather results from *internal* parent nodes within the group
             const groupNodes = get().getNodesInGroup(node.parentNode);
@@ -294,39 +297,43 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
             for (const edge of internalParentEdges) {
                 const parentState = getNodeState(edge.source);
                 if (parentState?.status === 'success') {
-                    inputData[edge.targetHandle || edge.source] = parentState.result;
+                    const inputKey = edge.targetHandle || 'default_input'; // Consistent key for default handle
+                    if (!inputData[inputKey]) {
+                        inputData[inputKey] = [];
+                    }
+                    inputData[inputKey].push(parentState.result); // Add result to the handle's array
                 } else {
-                    // This case should ideally be handled by sequential execution within the group
                     console.warn(`Node ${nodeId}: Internal parent ${edge.source} hasn't succeeded yet.`);
-                    // We might need to await parent execution here if the order isn't guaranteed
-                    // For now, assume sequential execution handles this.
                 }
             }
             
           } else {
-            // Standard execution: Get results from all connected parent nodes
+            // Standard execution: Get results ONLY from successfully completed parent nodes
             const parentEdges = edges.filter(e => e.target === nodeId);
+            console.log(`Node ${nodeId}: Gathering inputs. Found ${parentEdges.length} parent edges.`); // Log edge count
             for (const edge of parentEdges) {
-              try {
-                const parentState = getNodeState(edge.source);
-                let parentResult = parentState?.result;
-                if (parentState?.status !== 'success') {
-                    console.log(`Node ${nodeId}: Triggering parent ${edge.source}`);
-                    parentResult = await get().executeNode(edge.source);
-                }
-                const inputKey = edge.targetHandle || edge.source;
-                inputData[inputKey] = parentResult;
-                console.log(`Node ${nodeId}: Received input on handle '${inputKey}' from ${edge.source}`, parentResult);
-              } catch (error: any) {
-                console.error(`Node ${nodeId}: Error executing parent ${edge.source}:`, error);
-                const errorMessage = `Parent ${edge.source} failed: ${error.message}`;
-                setNodeState(nodeId, { status: 'error', result: null, error: errorMessage });
-                throw new Error(errorMessage);
+              const parentState = getNodeState(edge.source);
+
+              // ** ADDED DETAILED LOGGING for input gathering **
+              console.log(`[InputGathering for ${nodeId} (${node?.type})] Checking parent ${edge.source}: Status=${parentState?.status}, Result=${JSON.stringify(parentState?.result)}`);
+
+              // ** ONLY COLLECT IF PARENT SUCCEEDED **
+              if (parentState?.status === 'success') {
+                 const parentResult = parentState.result;
+                 const inputKey = edge.targetHandle || 'default_input';
+                 if (!inputData[inputKey]) {
+                    inputData[inputKey] = [];
+                 }
+                 inputData[inputKey].push(parentResult);
+                 console.log(`Node ${nodeId}: Received input on handle '${inputKey}' from SUCCESSFUL parent ${edge.source}`, parentResult);
+              } else {
+                // Log skipped parents for debugging
+                console.log(`[InputGathering for ${nodeId} (${node?.type})] Skipping input from parent ${edge.source} (Status: ${parentState?.status || 'unknown'})`);
               }
             }
           }
           
-          // --- Execute Node Logic --- 
+          // --- Execute Node Logic ---
           let result: any = null;
           try {
             switch (node.type) {
@@ -607,173 +614,277 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
                 result = groupExecutionResults; // Final result for the group node
                 break;
 
+              case 'merger':
+                const mergerData = node.data as MergerNodeData;
+                // inputData is gathered from *all currently successful* parents by the logic above
+                const newInputsArray: any[] = [];
+                console.log(`[Merger Node ${nodeId}] EXECUTION START. Raw inputData gathered:`, JSON.stringify(inputData, null, 2));
+
+                for (const handleKey in inputData) {
+                    const resultsForHandle = inputData[handleKey]; // This is an array of results for this handle
+                    newInputsArray.push(...resultsForHandle); // Flatten into the final array
+                }
+
+                // Get previous results from state
+                const currentState = getNodeState(nodeId);
+                // Ensure prevResult is always an array, even if it was null/undefined before
+                const prevResult = Array.isArray(currentState?.result) ? currentState.result : [];
+
+                // Combine previous and new results
+                // Note: This simple append might add duplicates if the same parent triggers the merger multiple times
+                // without an intermediate reset. This matches the collector behavior described.
+                const nextResult = [...prevResult, ...newInputsArray];
+                console.log(`[Merger Node ${nodeId}] Appending ${newInputsArray.length} new items to previous ${prevResult.length} items. New total: ${nextResult.length}`);
+
+                // Update state with the appended results
+                setNodeState(nodeId, { status: 'success', result: nextResult, error: undefined });
+                console.log(`Node ${nodeId} (Merger): Append successful. Current Result (${nextResult.length} items):`, nextResult);
+                // The result returned by executeNode should be the *newly appended total array*
+                // so subsequent nodes connected to the merger get the full picture.
+                result = nextResult;
+                break;
+
               default:
                 console.warn(`Node ${nodeId}: Unknown node type "${node.type}"`);
                 result = inputData; // Pass input through for unknown types
             }
 
-            // --- Update State and Return --- 
-            setNodeState(nodeId, { status: 'success', result: result, error: undefined });
+            // --- Update State and Return ---
+            // Note: For merger, status was already set to success inside the case.
+            // For other nodes, we set it here.
+            if (node.type !== 'merger') {
+               setNodeState(nodeId, { status: 'success', result: result, error: undefined });
+            }
             console.log(`Node ${nodeId} (${node.type}): Execution successful, Result:`, result);
             return result;
 
           } catch (error: any) {
             console.error(`Node ${nodeId} (${node.type}): Execution failed:`, error);
             setNodeState(nodeId, { status: 'error', result: null, error: error.message || String(error) });
-            throw error; // Re-throw to allow upstream nodes/executeFlow to catch it
+            throw error; // Re-throw
           }
         },
 
         _executeSubgraph: async (startNodes: string[], nodesInSubgraph: Node<NodeData>[], edgesInSubgraph: Edge[]) => {
-            // Executes a defined subgraph sequentially/topologically
-            // Returns map of { nodeId: result }
-            console.log('Executing subgraph starting with nodes:', startNodes);
-            const executionQueue = [...startNodes];
-            const executedInSubgraph = new Set<string>();
+            console.log('[Subgraph] Starting execution from nodes:', startNodes);
             const results: Record<string, any> = {};
             const nodesMap = new Map(nodesInSubgraph.map(n => [n.id, n]));
+            const executedNodes = new Set<string>();
+            const activePromises = new Map<string, Promise<any>>();
 
-            while (executionQueue.length > 0) {
-                const currentNodeId = executionQueue.shift()!;
+            // Helper to get direct parent edges for a node
+            const getDirectParentEdges = (nodeId: string) => {
+                return edgesInSubgraph.filter(e => e.target === nodeId);
+            };
 
-                if (executedInSubgraph.has(currentNodeId)) continue;
+            // Helper to check if a node's direct parents are ready
+            const areDirectParentsReady = (nodeId: string, node: Node<NodeData>) => {
+                const parentEdges = getDirectParentEdges(nodeId);
+                if (parentEdges.length === 0) return true; // Root nodes are always ready
 
-                const node = nodesMap.get(currentNodeId);
-                if (!node) {
-                    console.error(`Subgraph execution: Node ${currentNodeId} not found in subgraph map.`);
-                    continue; 
+                // For merger nodes, ANY completed parent is enough
+                if (node.type === 'merger') {
+                    return parentEdges.some(edge => executedNodes.has(edge.source));
                 }
 
-                // Check if all direct parents *within the subgraph* have been executed
-                const parentEdges = edgesInSubgraph.filter(e => e.target === currentNodeId);
-                const parentIds = parentEdges.map(e => e.source);
-                const parentsReady = parentIds.every(parentId => executedInSubgraph.has(parentId));
+                // For other nodes, ALL direct parents must be complete
+                return parentEdges.every(edge => executedNodes.has(edge.source));
+            };
 
-                if (!parentsReady) {
-                    // Re-queue node and try later (simple approach, might need cycle detection)
-                    executionQueue.push(currentNodeId);
-                    // Add a safety break or better scheduling mechanism for complex graphs
-                    console.warn(`Node ${currentNodeId} parents not ready, re-queueing.`);
-                    await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
-                    continue; 
-                }
+            // Helper to get and queue direct downstream nodes
+            const queueDownstreamNodes = async (nodeId: string, result?: any) => {
+                const node = nodesMap.get(nodeId);
+                if (!node) return;
 
-                try {
-                    // Execute the node - crucially passing isSubExecution: true
-                    const nodeResult = await get().executeNode(currentNodeId, { isSubExecution: true });
-                    results[currentNodeId] = nodeResult;
-                    executedInSubgraph.add(currentNodeId);
-
-                    // --- REVISED QUEUEING LOGIC --- 
-                    if (node.type === 'conditional' && typeof nodeResult === 'boolean') {
-                      // Conditional Node: Queue ONLY the target of the correct branch handle
-                      const branchHandleId = nodeResult ? 'true' : 'false';
-                      console.log(`[Subgraph] Conditional Node ${currentNodeId} evaluated to ${nodeResult}. Looking for edges with handle: ${branchHandleId}`);
-                      const conditionalChildrenEdges = edgesInSubgraph.filter(e => e.source === currentNodeId && e.sourceHandle === branchHandleId);
-                      
-                       conditionalChildrenEdges.forEach(edge => {
-                           if (!executedInSubgraph.has(edge.target)) {
-                               console.log(`[Subgraph] Queuing target ${edge.target} from conditional ${currentNodeId} via handle ${branchHandleId}`);
-                               executionQueue.push(edge.target);
-                           } else {
-                               console.log(`[Subgraph] Target ${edge.target} from conditional ${currentNodeId} already executed.`);
-                           }
-                       });
-                       // Log if no edges were found for the taken branch
-                       if (conditionalChildrenEdges.length === 0) {
-                          console.log(`[Subgraph] No outgoing edges found for handle ${branchHandleId} from conditional node ${currentNodeId}`);
-                       }
-                    } else {
-                      // Non-Conditional Node: Queue targets of ALL outgoing edges within the subgraph
-                      const childrenEdges = edgesInSubgraph.filter(e => e.source === currentNodeId);
-                      console.log(`[Subgraph] Found ${childrenEdges.length} outgoing edges for non-conditional node ${currentNodeId}`);
-                       childrenEdges.forEach(edge => { 
-                           if (!executedInSubgraph.has(edge.target)) {
-                              console.log(`[Subgraph] Queuing target ${edge.target} from non-conditional ${currentNodeId} (Edge ID: ${edge.id})`);
-                              executionQueue.push(edge.target);
-                           } else {
-                              console.log(`[Subgraph] Target ${edge.target} from non-conditional ${currentNodeId} already executed.`);
-                           }
-                       });
-                    }
-                    // --- END REVISED QUEUEING LOGIC --- 
+                // For conditional nodes, only queue the matching branch
+                if (node.type === 'conditional' && typeof result === 'boolean') {
+                    const branchHandleId = result ? 'true' : 'false';
+                    console.log(`[Subgraph] Conditional ${nodeId} evaluated to ${result}, queueing ${branchHandleId} branch`);
                     
-                } catch (error: any) {
-                    console.error(`Subgraph execution failed at node ${currentNodeId}:`, error);
-                    // Propagate error, stopping this subgraph execution path
-                    throw new Error(`Subgraph node ${currentNodeId} failed: ${error.message}`);
+                    const branchEdges = edgesInSubgraph.filter(e => 
+                        e.source === nodeId && e.sourceHandle === branchHandleId
+                    );
+                    
+                    for (const edge of branchEdges) {
+                        await tryExecuteNode(edge.target);
+                    }
+                } else {
+                    // For all other nodes, queue all direct downstream nodes
+                    const downstreamEdges = edgesInSubgraph.filter(e => e.source === nodeId);
+                    for (const edge of downstreamEdges) {
+                        await tryExecuteNode(edge.target);
+                    }
                 }
+            };
+
+            // Helper to try executing a node if ready
+            const tryExecuteNode = async (nodeId: string) => {
+                // Skip if already executed or currently executing
+                if (executedNodes.has(nodeId) || activePromises.has(nodeId)) {
+                    return;
+                }
+
+                const node = nodesMap.get(nodeId);
+                if (!node) {
+                    console.error(`[Subgraph] Node ${nodeId} not found in map`);
+                    return;
+                }
+
+                // Check if node can execute based on its direct parents
+                if (!areDirectParentsReady(nodeId, node)) {
+                    console.log(`[Subgraph] Node ${nodeId} (${node.type}) waiting for direct parents`);
+                    return;
+                }
+
+                console.log(`[Subgraph] Executing node ${nodeId} (${node.type})`);
+                const executionPromise = get().executeNode(nodeId, { isSubExecution: true })
+                    .then(async nodeResult => {
+                        results[nodeId] = nodeResult;
+                        executedNodes.add(nodeId);
+                        activePromises.delete(nodeId);
+                        console.log(`[Subgraph] Node ${nodeId} completed successfully`);
+                        
+                        // Queue downstream nodes immediately after success
+                        await queueDownstreamNodes(nodeId, nodeResult);
+                    })
+                    .catch(async error => {
+                        console.error(`[Subgraph] Node ${nodeId} execution failed:`, error);
+                        executedNodes.add(nodeId); // Mark as executed even on failure
+                        activePromises.delete(nodeId);
+                        // Still try to queue downstream nodes on failure
+                        await queueDownstreamNodes(nodeId);
+                    });
+
+                activePromises.set(nodeId, executionPromise);
+            };
+
+            // Start execution from all start nodes
+            await Promise.all(startNodes.map(nodeId => tryExecuteNode(nodeId)));
+
+            // Wait for all active executions to complete
+            if (activePromises.size > 0) {
+                await Promise.all(activePromises.values());
             }
-            console.log('Subgraph execution finished. Results:', results);
+
+            console.log('[Subgraph] Execution complete. Results:', results);
             return results;
         },
 
         executeFlow: async (startNodeId: string) => {
-          const { nodes, edges, setNodeState, resetNodeStates, executeNode, _executeSubgraph } = get();
-          console.log(`--- Executing Flow starting from ${startNodeId} ---`);
-          set({ isExecuting: true });
-          resetNodeStates(); // Reset all states before a full flow execution
+          const { nodes, edges, setNodeState, resetNodeStates, executeNode, _executeSubgraph, getNodesInGroup } = get();
+          const startNode = nodes.find(n => n.id === startNodeId);
 
-          const executionQueue: string[] = [startNodeId];
-          const executed = new Set<string>();
-
-          try {
-            while (executionQueue.length > 0) {
-              const currentNodeId = executionQueue.shift()!;
-
-              if (executed.has(currentNodeId)) continue;
-
-              const node = nodes.find(n => n.id === currentNodeId);
-              if (!node) continue;
-
-              // Check if parents are done (only direct parents needed for basic flow)
-              const parentEdges = edges.filter(e => e.target === currentNodeId);
-              const parentIds = parentEdges.map(e => e.source);
-              const parentsReady = parentIds.every(parentId => executed.has(parentId));
-
-              if (!parentsReady) {
-                  // This shouldn't happen with the queue logic if starting from a root
-                  // But good for safety / potential parallel starts
-                  console.warn(`Node ${currentNodeId} parents not ready, skipping for now.`);
-                  // Re-queue? Depends on desired execution model.
-                  continue; 
-              }
-
-              // Execute the node (passing no special context for top-level execution)
-              const result = await executeNode(currentNodeId); 
-              executed.add(currentNodeId);
-
-              // Handle Conditional Branching
-              if (node.type === 'conditional') {
-                  const conditionResult = result; // result from executeNode is the boolean
-                  if (typeof conditionResult === 'boolean') {
-                      const handleId = conditionResult ? 'true' : 'false';
-                      const outgoingEdges = edges.filter(e => e.source === currentNodeId && e.sourceHandle === handleId);
-                      outgoingEdges.forEach(edge => {
-                          if (!executed.has(edge.target)) {
-                              executionQueue.push(edge.target);
-                          }
-                      });
-                  } else {
-                       console.error(`Conditional node ${currentNodeId} did not return a boolean result.`);
-                       // Stop this path or mark error?
-                  }
-              } else {
-                  // Add direct children to the queue for non-conditional nodes
-                  const outgoingEdges = edges.filter(e => e.source === currentNodeId);
-                  outgoingEdges.forEach(edge => {
-                      if (!executed.has(edge.target)) {
-                          executionQueue.push(edge.target);
-                      }
-                  });
-              }
-            }
-            console.log('--- Flow Execution Complete ---');
-          } catch (error) {
-            console.error('--- Flow Execution Failed ---', error);
-          } finally {
-            set({ isExecuting: false, currentIterationItem: undefined, currentIterationIndex: undefined, currentGroupTotalItems: undefined });
+          if (!startNode) {
+            console.error(`executeFlow: Start node ${startNodeId} not found.`);
+            return;
           }
+
+          console.log(`--- Executing Flow starting from ${startNodeId} (Type: ${startNode.type}, Parent: ${startNode.parentNode || 'None'}) ---`);
+          set({ isExecuting: true });
+
+          // *** MODIFIED LOGIC: Check if starting inside a group ***
+          if (startNode.parentNode) {
+            const groupId = startNode.parentNode;
+            console.log(`Start node ${startNodeId} is inside group ${groupId}. Executing group subgraph downstream.`);
+            const nodesInGroup = getNodesInGroup(groupId);
+            const nodeIdsInGroup = new Set(nodesInGroup.map(n => n.id));
+            const edgesInGroup = edges.filter(e => nodeIdsInGroup.has(e.source) && nodeIdsInGroup.has(e.target));
+
+            // Find all nodes downstream from startNodeId within the group
+            const downstreamNodes = new Set<string>();
+            const queue = [startNodeId];
+            downstreamNodes.add(startNodeId);
+
+            while (queue.length > 0) {
+              const currentId = queue.shift()!;
+              const childrenEdges = edgesInGroup.filter(e => e.source === currentId);
+              childrenEdges.forEach(edge => {
+                if (!downstreamNodes.has(edge.target)) {
+                  downstreamNodes.add(edge.target);
+                  queue.push(edge.target);
+                }
+              });
+            }
+            const downstreamNodeIds = Array.from(downstreamNodes);
+            console.log(`Resetting states for downstream nodes in group ${groupId}:`, downstreamNodeIds);
+            resetNodeStates(downstreamNodeIds); // Reset only downstream nodes
+
+            try {
+               // Execute subgraph starting ONLY from the clicked node
+               await _executeSubgraph([startNodeId], nodesInGroup, edgesInGroup);
+               console.log(`--- Group Subgraph execution (from ${startNodeId}) Complete ---`);
+            } catch (error) {
+               console.error(`--- Group Subgraph execution (from ${startNodeId}) Failed ---`, error);
+               // Update start node status to error maybe?
+               setNodeState(startNodeId, { status: 'error', error: String(error) });
+            }
+
+          } else {
+            // *** Original Logic: Starting from a top-level node ***
+            console.log(`Start node ${startNodeId} is top-level. Executing global flow.`);
+            resetNodeStates(); // Reset all states before a full global flow execution
+
+            const executionQueue: string[] = [startNodeId];
+            const executed = new Set<string>();
+
+            try {
+              while (executionQueue.length > 0) {
+                const currentNodeId = executionQueue.shift()!;
+
+                if (executed.has(currentNodeId)) continue;
+
+                const node = nodes.find(n => n.id === currentNodeId);
+                if (!node) continue;
+
+                // Check if parents are done (only direct parents needed for basic flow)
+                const parentEdges = edges.filter(e => e.target === currentNodeId);
+                const parentIds = parentEdges.map(e => e.source);
+                const parentsReady = parentIds.every(parentId => executed.has(parentId));
+
+                if (!parentsReady && parentIds.length > 0) { // Check length > 0 to allow root node
+                    console.warn(`Node ${currentNodeId} parents not ready, re-queueing.`);
+                    executionQueue.push(currentNodeId); // Re-queue
+                    await new Promise(resolve => setTimeout(resolve, 10)); // Prevent infinite loop potential
+                    continue;
+                }
+
+                // Execute the node (passing no special context for top-level execution)
+                const result = await executeNode(currentNodeId);
+                executed.add(currentNodeId);
+
+                // Handle Conditional Branching
+                if (node.type === 'conditional') {
+                    const conditionResult = result; // result from executeNode is the boolean
+                    if (typeof conditionResult === 'boolean') {
+                        const handleId = conditionResult ? 'true' : 'false';
+                        const outgoingEdges = edges.filter(e => e.source === currentNodeId && e.sourceHandle === handleId);
+                        outgoingEdges.forEach(edge => {
+                            if (!executed.has(edge.target)) {
+                                executionQueue.push(edge.target);
+                            }
+                        });
+                    } else {
+                         console.error(`Conditional node ${currentNodeId} did not return a boolean result.`);
+                         // Stop this path or mark error?
+                    }
+                } else {
+                    // Add direct children to the queue for non-conditional nodes
+                    const outgoingEdges = edges.filter(e => e.source === currentNodeId);
+                    outgoingEdges.forEach(edge => {
+                        if (!executed.has(edge.target)) {
+                            executionQueue.push(edge.target);
+                        }
+                    });
+                }
+              }
+              console.log('--- Global Flow Execution Complete ---');
+            } catch (error) {
+              console.error('--- Global Flow Execution Failed ---', error);
+            }
+          } // End of if/else for group vs global start
+
+          // --- Finalization ---
+          set({ isExecuting: false, currentIterationItem: undefined, currentIterationIndex: undefined, currentGroupTotalItems: undefined });
         },
 
         // --- New function for Group Execution ---
@@ -865,17 +976,7 @@ export const useNodeState = (nodeId: string): NodeState => {
 
 // Custom hook to check if a node is a root node
 export const useIsRootNode = (nodeId: string): boolean => {
-  const edges = useSelector((state: RootState) => state.flow.edges);
-  const setEdges = useFlowExecutionStore(state => state.setEdges);
-  const setNodes = useFlowExecutionStore(state => state.setNodes);
-  const nodes = useSelector((state: RootState) => state.flow.nodes);
-  
-  // Keep flow execution store in sync with Redux
-  React.useEffect(() => {
-    setEdges(edges);
-    setNodes(nodes);
-  }, [edges, nodes, setEdges, setNodes]);
-
+  // Just read the state from the execution store directly
   return useFlowExecutionStore(state => state.isNodeRoot(nodeId));
 };
 
@@ -892,4 +993,31 @@ export const useExecutionState = () => {
       currentIterationIndex: state.currentIterationIndex,
       currentGroupTotalItems: state.currentGroupTotalItems 
     }));
-}; 
+};
+
+// Function to initialize the store with nodes/edges from Redux (call this once)
+export const initializeExecutionStore = () => {
+  // Get initial state from Redux
+  const initialNodes = store.getState().flow.nodes;
+  const initialEdges = store.getState().flow.edges;
+  useFlowExecutionStore.setState({ nodes: initialNodes, edges: initialEdges });
+  console.log('Zustand store initialized with Redux data.'); // Added log
+
+  // Subscribe to Redux store changes
+  let previousNodes = initialNodes;
+  let previousEdges = initialEdges;
+  store.subscribe(() => {
+    const { nodes, edges } = store.getState().flow;
+    // Check if nodes or edges have actually changed to avoid unnecessary Zustand updates
+    if (nodes !== previousNodes || edges !== previousEdges) {
+        console.log('Redux store changed, updating Zustand store...'); // Added log
+        useFlowExecutionStore.setState({ nodes, edges });
+        previousNodes = nodes;
+        previousEdges = edges;
+    }
+  });
+  console.log('Subscribed to Redux store changes.'); // Added log
+};
+
+// Initialize on module load (consider moving to app setup)
+initializeExecutionStore(); // <-- Uncommented this line 
