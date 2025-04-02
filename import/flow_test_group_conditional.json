@@ -1,0 +1,140 @@
+{
+  "nodes": [
+    {
+      "id": "input-775d5edf",
+      "type": "input",
+      "position": {
+        "x": 0,
+        "y": 100
+      },
+      "data": {
+        "type": "input",
+        "label": "Test Input",
+        "inputType": "list",
+        "text": "",
+        "items": [
+          "dog",
+          "cat",
+          "fish"
+        ]
+      }
+    },
+    {
+      "id": "group-c1d40c81",
+      "type": "group",
+      "position": {
+        "x": 300,
+        "y": 50
+      },
+      "style": {
+        "width": 700,
+        "height": 400
+      },
+      "data": {
+        "type": "group",
+        "label": "Test Group",
+        "isCollapsed": false,
+        "iterationConfig": {
+          "sourceNodeId": "input-775d5edf"
+        }
+      }
+    },
+    {
+      "id": "llm-3ab9c856",
+      "type": "llm",
+      "position": {
+        "x": 350,
+        "y": 80
+      },
+      "parentNode": "group-c1d40c81",
+      "data": {
+        "type": "llm",
+        "label": "Check Mammal",
+        "provider": "ollama",
+        "model": "llama3.2",
+        "prompt": "Is {{item}} a mammal?",
+        "temperature": 0.7,
+        "ollamaUrl": "http://localhost:11434"
+      }
+    },
+    {
+      "id": "conditional-69e1513d",
+      "type": "conditional",
+      "position": {
+        "x": 550,
+        "y": 80
+      },
+      "parentNode": "group-c1d40c81",
+      "data": {
+        "type": "conditional",
+        "label": "Check Yes",
+        "conditionType": "contains",
+        "conditionValue": "Yes"
+      }
+    },
+    {
+      "id": "output-481a0c1f",
+      "type": "output",
+      "position": {
+        "x": 750,
+        "y": 50
+      },
+      "parentNode": "group-c1d40c81",
+      "data": {
+        "type": "output",
+        "label": "True Output",
+        "format": "text",
+        "content": ""
+      }
+    },
+    {
+      "id": "output-92e15ed4",
+      "type": "output",
+      "position": {
+        "x": 750,
+        "y": 150
+      },
+      "parentNode": "group-c1d40c81",
+      "data": {
+        "type": "output",
+        "label": "False Output",
+        "format": "text",
+        "content": ""
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1743562097-1",
+      "source": "input-775d5edf",
+      "target": "group-c1d40c81",
+      "sourceHandle": null,
+      "targetHandle": "input",
+      "type": "default"
+    },
+    {
+      "id": "edge-1743562097-2",
+      "source": "llm-3ab9c856",
+      "target": "conditional-69e1513d",
+      "sourceHandle": null,
+      "targetHandle": null,
+      "type": "default"
+    },
+    {
+      "id": "edge-1743562097-3",
+      "source": "conditional-69e1513d",
+      "target": "output-481a0c1f",
+      "sourceHandle": "true",
+      "targetHandle": null,
+      "type": "default"
+    },
+    {
+      "id": "edge-1743562097-4",
+      "source": "conditional-69e1513d",
+      "target": "output-92e15ed4",
+      "sourceHandle": "false",
+      "targetHandle": null,
+      "type": "default"
+    }
+  ]
+}

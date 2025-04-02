@@ -3,11 +3,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store/store';
 import { setNodes, setEdges } from '../store/flowSlice';
 import { Node, Edge } from 'reactflow';
+import { NodeData } from '../types/nodes';
 
 interface FlowData {
   name: string;
   createdAt: string;
-  nodes: Node[];
+  nodes: Node<NodeData>[];
   edges: Edge[];
   meta?: {
     llmDefaults?: {
@@ -19,8 +20,8 @@ interface FlowData {
 
 export const FlowManager: React.FC = () => {
   const dispatch = useDispatch();
-  const nodes = useSelector((state: RootState) => state.flow.nodes);
-  const edges = useSelector((state: RootState) => state.flow.edges);
+  const nodesFromState = useSelector((state: RootState) => state.flow.nodes);
+  const edgesFromState = useSelector((state: RootState) => state.flow.edges);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createNewFlow = () => {
@@ -34,8 +35,8 @@ export const FlowManager: React.FC = () => {
     const flowData: FlowData = {
       name: `Flow ${new Date().toLocaleString()}`,
       createdAt: new Date().toISOString(),
-      nodes,
-      edges,
+      nodes: nodesFromState,
+      edges: edgesFromState,
       meta: {
         llmDefaults: {
           provider: 'ollama',
@@ -63,52 +64,86 @@ export const FlowManager: React.FC = () => {
     reader.onload = (e) => {
       try {
         const flowData: FlowData = JSON.parse(e.target?.result as string);
-        dispatch(setNodes(flowData.nodes));
-        dispatch(setEdges(flowData.edges));
+
+        const importedNodes: Node<NodeData>[] = flowData.nodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          position: node.position,
+          data: node.data,
+          parentNode: node.parentNode,
+          extent: node.extent,
+          style: node.style,
+          className: node.className,
+          sourcePosition: node.sourcePosition,
+          targetPosition: node.targetPosition,
+          hidden: node.hidden,
+          selected: node.selected,
+          dragging: node.dragging,
+          draggable: node.draggable,
+          selectable: node.selectable,
+          connectable: node.connectable,
+          resizing: node.resizing,
+          dragHandle: node.dragHandle,
+          width: node.width,
+          height: node.height,
+          zIndex: node.zIndex,
+          ariaLabel: node.ariaLabel
+        }));
+
+        const importedEdges: Edge[] = flowData.edges.map(edge => ({
+          ...edge
+        }));
+
+        dispatch(setNodes(importedNodes));
+        dispatch(setEdges(importedEdges));
+        console.log('Imported nodes:', importedNodes);
+
       } catch (error) {
         console.error('Error importing flow:', error);
         alert('플로우 파일을 불러오는 중 오류가 발생했습니다.');
       }
     };
     reader.readAsText(file);
-    
-    // Reset file input
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   return (
-    <div className="absolute top-4 right-4 z-50">
-      <div className="bg-white rounded-lg shadow-lg p-2 space-y-2">
-        <button
-          onClick={createNewFlow}
-          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-        >
-          <span>➕</span>
-          <span>새 플로우</span>
-        </button>
-        
-        <button
-          onClick={exportFlow}
-          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-        >
-          <span>💾</span>
-          <span>플로우 저장</span>
-        </button>
-        
-        <label className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md cursor-pointer">
-          <span>📂</span>
-          <span>플로우 불러오기</span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            onChange={importFlow}
-            className="hidden"
-          />
-        </label>
-      </div>
+    <div className="absolute top-2 right-2 z-10 flex space-x-2">
+      <button 
+        onClick={createNewFlow}
+        className="px-3 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50"
+      >
+        + 새 플로우
+      </button>
+      <button 
+        onClick={exportFlow}
+        className="px-3 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        플로우 저장
+      </button>
+      <label 
+        htmlFor="import-flow-input"
+        className="cursor-pointer px-3 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+        플로우 불러오기
+      </label>
+      <input
+        id="import-flow-input"
+        type="file"
+        accept=".json,application/json"
+        onChange={importFlow}
+        ref={fileInputRef}
+        className="hidden"
+      />
     </div>
   );
 }; 

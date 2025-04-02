@@ -26,6 +26,7 @@ import ReactFlow, {
 } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import 'reactflow/dist/style.css';
+import { isEqual } from 'lodash';
 
 import LLMNode from './nodes/LLMNode';
 import APINode from './nodes/APINode';
@@ -213,7 +214,37 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     const currentNodes = getNodes();
     const currentEdges = getEdges();
     const nextNodes = applyNodeChanges(changes, currentNodes);
-    pushToHistory(currentNodes, currentEdges);
+
+    // Check if the changes are significant enough to warrant a history push
+    const significantChange = changes.some(change => 
+        change.type === 'add' || 
+        change.type === 'remove' || 
+        (change.type === 'position' && !change.dragging) || // Only push on drag stop
+        change.type === 'dimensions' || // Push on resize stop
+        (change.type === 'select' && change.selected === false && changes.some(c => c.type === 'remove')) // Allow history push if deselecting happens alongside a removal (e.g., deleting selected node)
+    );
+
+    // Filter out pure selection changes unless they accompany a removal.
+    const isPureSelectionChange = changes.every(c => c.type === 'select') && !changes.some(c => c.type === 'remove');
+
+    if (significantChange && !isPureSelectionChange) {
+        // Check if the change actually modified the node structure or position meaningfully
+        const nodesChanged = !isEqual(currentNodes, nextNodes); // Use lodash isEqual for deep comparison
+
+        if (nodesChanged) {
+          console.log("[History] Pushing significant node changes:", changes.map(c => c.type));
+          // Push history BEFORE applying the change for accurate undo state
+          pushToHistory(currentNodes, currentEdges); 
+        } else {
+           console.log("[History] Skipping push: No meaningful node change detected despite significant event type.");
+        }
+
+    } else if (!significantChange) {
+        console.log("[History] Skipping non-significant node changes:", changes.map(c => c.type));
+    } else if (isPureSelectionChange) {
+        console.log("[History] Skipping pure selection changes:", changes.map(c => c.type));
+    }
+
     dispatch(setNodes(nextNodes));
   }, [dispatch, getNodes, getEdges, pushToHistory]);
 
@@ -225,166 +256,192 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     const currentNodes = getNodes();
     const currentEdges = getEdges();
     const nextEdges = applyEdgeChanges(changes, currentEdges);
-    pushToHistory(currentNodes, currentEdges);
+
+    // Check for significant changes (add/remove)
+    const significantChange = changes.some(change => change.type === 'add' || change.type === 'remove');
+
+    if (significantChange) {
+      const edgesChanged = !isEqual(currentEdges, nextEdges);
+      if (edgesChanged) {
+        console.log("[History] Pushing significant edge changes:", changes.map(c => c.type));
+        // Push history BEFORE applying the change
+        pushToHistory(currentNodes, currentEdges); 
+      } else {
+        console.log("[History] Skipping push: No meaningful edge change detected despite significant event type.");
+      }
+    } else {
+       console.log("[History] Skipping non-significant edge changes:", changes.map(c => c.type));
+    }
+
     dispatch(setEdges(nextEdges));
   }, [dispatch, getNodes, getEdges, pushToHistory]);
 
-  const onConnect = useCallback(
-    (params: Edge | Connection) => {
-      const currentNodes = getNodes();
-      const currentEdges = getEdges();
-      const sourceNode = currentNodes.find((node) => node.id === params.source);
-      const targetNode = currentNodes.find((node) => node.id === params.target);
+  const onConnect = useCallback((connection: Connection) => {
+    console.log('[onConnect] Triggered');
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const newEdge = { ...connection, type: 'smoothstep', animated: true };
+    const nextEdges = addEdge(newEdge, currentEdges);
+    pushToHistory(currentNodes, currentEdges); // Push history before adding edge
+    dispatch(setEdges(nextEdges));
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
 
-      if (!sourceNode || !targetNode) return;
+  // --- Node Drag Handlers (Modified for reduced logging) ---
+  const onNodeDragStart: NodeDragHandler = useCallback((event, node, nodes) => {
+    // Minimal log on drag start
+    console.log(`[onNodeDragStart] Node ${node.id} (${node.type}) drag started.`);
+    // Original group node moving logic (if any) can remain if needed, but logging reduced.
+  }, []); // Empty dependencies unless specific state/props are needed
 
-      // Define allowed connections
-      const allowedConnections: Record<NodeType, NodeType[]> = {
-        input: ['llm', 'api', 'json-extractor', 'group'], 
-        llm: ['llm', 'output', 'json-extractor', 'conditional', 'merger'], // LLM can feed Merger
-        api: ['output', 'json-extractor', 'conditional', 'merger'], // API can feed Merger   
-        output: [], // Output cannot feed Merger directly (usually end of chain or input to Merger)                           
-        'json-extractor': ['llm', 'api', 'output', 'conditional', 'merger'], // Extractor can feed Merger
-        group: ['output', 'json-extractor', 'conditional', 'merger'], // Group standard output can feed Merger
-        conditional: ['llm', 'api', 'output', 'json-extractor', 'group', 'conditional', 'merger'], // Conditional branches can feed Merger
-        merger: ['llm', 'output', 'api', 'json-extractor'] // Merger output (array) can feed LLM, Output, API, Extractor
-      };
+  const onNodeDrag: NodeDragHandler = useCallback((event, node, nodes) => {
+    // No logging during intermediate drag for groups or other nodes
+    // React Flow handles position updates via onNodesChange
+  }, []);
 
-      // --- Connection Logic Update --- 
-      let isAllowed = false;
-      const sourceHandleId = params.sourceHandle;
-      const targetHandleId = params.targetHandle; // Also consider target handle if needed
+  const onNodeDragStop: NodeDragHandler = useCallback((event, node, nodes) => {
+    // Minimal log on drag stop
+    console.log(`[onNodeDragStop] Node ${node.id} (${node.type}) drag stopped.`);
+    // History push is handled by onNodesChange (position change with dragging=false)
+    // No need for explicit history push or "Skipping" logs here.
 
-      // Basic check based only on node types
-      const sourceAllowedTargets = allowedConnections[sourceNode.type as NodeType] || [];
-      const basicAllowed = sourceAllowedTargets.includes(targetNode.type as NodeType);
+    // Logic for adding node to group can remain if needed
+    if (node.type !== 'group') { // Don't check if the dragged node itself is a group
+        const targetGroup = getNodes().find(
+          (n) =>
+            n.type === 'group' &&
+            !node.parentNode && // Ensure node doesn't already have a parent
+            isPointInNode(node, n)
+        );
 
-      // Handle specific connections
-      if (sourceNode.type === 'group' && sourceHandleId === 'group-results') {
-        // Group results (array) can feed Merger or Output
-        isAllowed = ['output', 'merger'].includes(targetNode.type as NodeType);
-      } else if (sourceNode.type === 'conditional') {
-         // Conditional node output can go anywhere its type allows in the map
-         // (The map already lists Merger as a valid target)
-         isAllowed = basicAllowed;
-      } else if (targetNode.type === 'merger') {
-        // Any allowed source type can connect to Merger's default input
-        isAllowed = basicAllowed;
-      } else {
-        // Default case: Use the basic node type mapping
-        isAllowed = basicAllowed;
-      }
-
-      if (isAllowed) {
-        // Specific logic for Input -> Group connection
-        if (sourceNode.type === 'input' && targetNode.type === 'group') {
-          // Update the Group node's iteration source
-          const groupData = targetNode.data as GroupNodeData;
-          dispatch(updateNodeData({
-            nodeId: targetNode.id,
-            data: {
-              ...groupData,
-              iterationConfig: {
-                ...groupData.iterationConfig,
-                sourceNodeId: sourceNode.id
-              }
+        if (targetGroup) {
+          console.log(`Node ${node.id} dropped into group ${targetGroup.id}`);
+          const currentNodes = getNodes();
+          const currentEdges = getEdges();
+          const nextNodes = currentNodes.map(n => {
+            if (n.id === node.id) {
+              return { 
+                ...n, 
+                parentNode: targetGroup.id,
+                extent: 'parent' as const, // Important: Constrain node to parent bounds
+                position: {
+                    // Calculate position relative to the parent group
+                    x: node.positionAbsolute?.x ? node.positionAbsolute.x - (targetGroup.positionAbsolute?.x ?? 0) : n.position.x,
+                    y: node.positionAbsolute?.y ? node.positionAbsolute.y - (targetGroup.positionAbsolute?.y ?? 0) : n.position.y
+                }
+              };
             }
-          }));
-          console.log(`Set iteration source for Group ${targetNode.id} to Input ${sourceNode.id}`);
+            return n;
+          });
+          pushToHistory(currentNodes, currentEdges); // Push history before updating parent
+          dispatch(setNodes(nextNodes));
         }
-        
-        // Add the edge graphically
-        const newEdge = {
-          ...params,
-          sourceHandle: params.sourceHandle ?? 'true', // fallback to 'true' only if not provided
-          id: `edge-${Date.now()}`,
-          type: 'default'
-        };
-        const nextEdges = addEdge(newEdge, currentEdges);
-        dispatch(setEdges(nextEdges));
-        pushToHistory(currentNodes, nextEdges); 
+    }
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
 
-      } else {
-        console.warn('Connection not allowed:', sourceNode.type, '->', targetNode.type);
-      }
-    },
-    [dispatch, getNodes, getEdges, pushToHistory] // Removed setEdges, use dispatch
-  );
-
-  // --- Copy/Paste/Delete ---
-  const copySelected = useCallback(() => {
-    const selectedNodes = getNodes().filter(n => n.selected);
-    if (selectedNodes.length === 0) return;
-
-    const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
-    // Only copy edges that connect *between* selected nodes
-    const internalEdges = getEdges().filter(e => 
-      selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
-    );
-
-    clipboard.current = { nodes: selectedNodes, edges: internalEdges };
-    console.log('Copied nodes/edges to clipboard', clipboard.current);
-  }, [getNodes, getEdges]);
-
-  const deleteSelected = useCallback(() => {
-    const selectedNodes = getNodes().filter(n => n.selected);
-    const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
-    if (selectedNodeIds.size === 0) return;
-
-    const connectedEdges = getConnectedEdges(selectedNodes, getEdges());
-    const edgeIdsToRemove = new Set(connectedEdges.map(e => e.id));
-
-    const remainingNodes = getNodes().filter(n => !selectedNodeIds.has(n.id));
-    const remainingEdges = getEdges().filter(e => !edgeIdsToRemove.has(e.id));
-    
-    dispatch(setNodes(remainingNodes));
-    dispatch(setEdges(remainingEdges));
-    pushToHistory(remainingNodes, remainingEdges);
-    onNodeSelect(null); // Deselect after delete
-
-  }, [getNodes, getEdges, dispatch, pushToHistory, onNodeSelect]);
-
-  // --- Keyboard shortcuts (Now defined AFTER handlePaste, undo, redo, etc.) ---
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey) {
-        switch (event.key) {
-          case 'c':
-            copySelected();
-            break;
-          case 'v':
-            handlePaste();
-            break;
-          case 'z':
-            undo();
-            break;
-          case 'y':
-          case 'Z': // Shift+Cmd+Z for redo
-            redo();
-            break;
-        }
-      }
-       if (event.key === 'Backspace' || event.key === 'Delete') {
-        // Check if focus is on an input/textarea to prevent deleting nodes while typing
-        const activeElement = document.activeElement;
-        const isInputFocused = activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement;
-        if (!isInputFocused) {
-          deleteSelected();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [copySelected, handlePaste, deleteSelected, undo, redo]);
-
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+  // --- Node Selection Handler ---
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     onNodeSelect(node);
   }, [onNodeSelect]);
 
   const onPaneClick = useCallback(() => {
     onNodeSelect(null);
   }, [onNodeSelect]);
+
+  // --- Keyboard Shortcuts (Copy, Paste, Delete, Undo, Redo) ---
+  const handleCopy = useCallback(() => {
+    const selectedNodes = getNodes().filter(node => node.selected);
+    if (selectedNodes.length === 0) return;
+
+    const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+    // Include edges connected to selected nodes, even if the other end isn't selected
+    const relevantEdges = getEdges().filter(edge => 
+        selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
+    );
+
+    clipboard.current = { nodes: selectedNodes, edges: relevantEdges };
+    console.log('Copied nodes:', selectedNodes);
+    console.log('Copied edges:', relevantEdges);
+  }, [getNodes, getEdges]);
+
+  const handleDelete = useCallback(() => {
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    const selectedNodes = currentNodes.filter(node => node.selected);
+    const selectedEdges = currentEdges.filter(edge => edge.selected);
+
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+
+    pushToHistory(currentNodes, currentEdges); // Push history BEFORE deleting
+
+    const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+    const remainingNodes = currentNodes.filter(node => !node.selected);
+    // Remove edges connected to deleted nodes or edges that were selected
+    const remainingEdges = currentEdges.filter(edge => 
+        !edge.selected &&
+        !selectedNodeIds.has(edge.source) && 
+        !selectedNodeIds.has(edge.target)
+    );
+
+    dispatch(setNodes(remainingNodes));
+    dispatch(setEdges(remainingEdges));
+  }, [dispatch, getNodes, getEdges, pushToHistory]);
+
+  // Setup keydown listener
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore if typing in an input/textarea
+      const targetElement = event.target as HTMLElement;
+      if (targetElement.tagName === 'INPUT' || targetElement.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Meta key (Cmd on Mac, Ctrl on Windows/Linux)
+      const isMetaKey = event.metaKey || event.ctrlKey;
+
+      if (isMetaKey && event.key === 'c') {
+        handleCopy();
+      }
+      if (isMetaKey && event.key === 'v') {
+        handlePaste();
+      }
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        handleDelete();
+      }
+      if (isMetaKey && event.key === 'z') {
+        if (event.shiftKey) {
+            redo();
+        } else {
+            undo();
+        }
+      }
+      if (isMetaKey && event.key === 'y') {
+          redo(); // Standard redo key
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleCopy, handlePaste, handleDelete, undo, redo]); // Add undo/redo dependencies
+
+  // Helper function to check if a point is inside a node's bounds
+  const isPointInNode = (draggedNode: Node, targetNode: Node) => {
+    // Ensure both nodes have absolute positions and dimensions
+    if (!draggedNode.positionAbsolute || !targetNode.positionAbsolute || !targetNode.width || !targetNode.height) {
+      return false;
+    }
+
+    const nodeCenterX = draggedNode.positionAbsolute.x + (draggedNode.width ? draggedNode.width / 2 : 0);
+    const nodeCenterY = draggedNode.positionAbsolute.y + (draggedNode.height ? draggedNode.height / 2 : 0);
+
+    return (
+      nodeCenterX > targetNode.positionAbsolute.x &&
+      nodeCenterX < targetNode.positionAbsolute.x + targetNode.width &&
+      nodeCenterY > targetNode.positionAbsolute.y &&
+      nodeCenterY < targetNode.positionAbsolute.y + targetNode.height
+    );
+  };
 
   const resetView = useCallback(() => {
     project({ x: 0, y: 0 } as Viewport);
@@ -403,107 +460,6 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     }
   }, []);
 
-  // Update isPointInNode function
-  const isPointInNode = (draggedNode: Node, targetNode: Node) => {
-    // Use positionAbsolute for more accurate positioning
-    const draggedPos = draggedNode.positionAbsolute || draggedNode.position;
-    const targetPos = targetNode.positionAbsolute || targetNode.position;
-
-    // Check if the dragged node's center is inside the target node
-    const draggedCenterX = draggedPos.x + (draggedNode.width || 0) / 2;
-    const draggedCenterY = draggedPos.y + (draggedNode.height || 0) / 2;
-
-    return (
-      draggedCenterX > targetPos.x &&
-      draggedCenterX < targetPos.x + (targetNode.width || 0) &&
-      draggedCenterY > targetPos.y &&
-      draggedCenterY < targetPos.y + (targetNode.height || 0)
-    );
-  };
-
-  // Update onNodeDragStop handler to use getNodes()
-  const onNodeDragStop: NodeDragHandler = useCallback((event, draggedNode) => { // Remove allNodes from args
-    console.log('[onNodeDragStop] Triggered for node:', draggedNode.id, 'Type:', draggedNode.type);
-    const currentNodes = getNodes(); // Get current nodes using the hook
-
-    if (!draggedNode.positionAbsolute) {
-      console.log('[onNodeDragStop] Skipping: No absolute position.');
-      return;
-    }
-
-    if (draggedNode.type === 'group') {
-      console.log('[onNodeDragStop] Skipping: Dragged node is a group.');
-      return;
-    }
-
-    const groupNodes = currentNodes.filter( // Use currentNodes from getNodes()
-      (n) => n.type === 'group' && n.id !== draggedNode.id
-    );
-    console.log('[onNodeDragStop] Potential parent groups:', groupNodes.map(g => g.id));
-
-    const parentGroup = groupNodes.find((group) => isPointInNode(draggedNode, group));
-    console.log('[onNodeDragStop] Found parent group?: ', parentGroup ? parentGroup.id : 'None');
-
-    const originalParentId = draggedNode.parentNode;
-    let parentChanged = false;
-
-    const updatedNodes = currentNodes.map((n): Node<NodeData> | null => { // Use currentNodes
-      if (n.id === draggedNode.id) {
-        const nodeAbsPos = n.positionAbsolute!;
-        console.log(`[onNodeDragStop] Checking node ${n.id}: Original parent: ${originalParentId}`);
-
-        if (parentGroup) {
-          console.log(`[onNodeDragStop] Node ${n.id} is over group ${parentGroup.id}`);
-          if (n.parentNode !== parentGroup.id) {
-            const parentAbsPos = parentGroup.positionAbsolute || parentGroup.position;
-            const relativePos = {
-              x: nodeAbsPos.x - parentAbsPos.x,
-              y: nodeAbsPos.y - parentAbsPos.y,
-            };
-            console.log(`[onNodeDragStop] ADDING node ${n.id} to group ${parentGroup.id}. Relative pos:`, relativePos);
-            parentChanged = true;
-            return {
-              ...n,
-              position: relativePos,
-              parentNode: parentGroup.id,
-              extent: 'parent' as const,
-            };
-          } else {
-            console.log(`[onNodeDragStop] Node ${n.id} already in group ${parentGroup.id}. No parent change.`);
-            return n; 
-          }
-        } else if (n.parentNode) {
-          console.log(`[onNodeDragStop] Node ${n.id} is NOT over any group, but had parent ${n.parentNode}`);
-          const oldParent = currentNodes.find((p) => p.id === n.parentNode); // Use currentNodes
-          if (oldParent) {
-            console.log(`[onNodeDragStop] REMOVING node ${n.id} from group ${oldParent.id}. New absolute pos:`, nodeAbsPos);
-            parentChanged = true;
-            const { parentNode, extent, ...rest } = n;
-            return {
-              ...rest,
-              position: nodeAbsPos, 
-            };
-          } else {
-            console.warn(`[onNodeDragStop] Node ${n.id} had parentId ${n.parentNode}, but parent node not found!`);
-            return n;
-          }
-        } else {
-           console.log(`[onNodeDragStop] Node ${n.id} is not over a group and had no parent. No change.`);
-           return n;
-        }
-      }
-      return n; 
-    });
-
-    if (parentChanged) {
-      const finalNodes = updatedNodes.filter((n): n is Node<NodeData> => n !== null);
-      console.log('[onNodeDragStop] Parent changed, dispatching setNodes with updated nodes:', finalNodes);
-      dispatch(setNodes(finalNodes));
-    } else {
-      console.log('[onNodeDragStop] No parent change detected, not dispatching.');
-    }
-  }, [dispatch, getNodes]); // Add getNodes to dependency array
-
   return (
     <div ref={reactFlowWrapper} className="w-full h-full" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}>
       <ReactFlow
@@ -514,6 +470,9 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
         onConnect={onConnect}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
         defaultViewport={defaultViewport}
         fitView
@@ -522,7 +481,6 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
         deleteKeyCode={['Backspace', 'Delete']}
         multiSelectionKeyCode={'Shift'}
         selectNodesOnDrag={true}
-        onNodeDragStop={onNodeDragStop}
         snapToGrid={true}
         snapGrid={[16, 16]}
       >

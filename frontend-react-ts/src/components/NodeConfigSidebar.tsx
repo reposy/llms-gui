@@ -1,11 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Node } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, LLMResult, MergerNodeData } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, LLMResult, MergerNodeData, InputNodeData, JSONExtractorNodeData, ConditionalNodeData, GroupNodeData, NodeType } from '../types/nodes';
 import { updateNodeData } from '../store/flowSlice';
 import { RootState } from '../store/store';
-import { useFlowExecutionStore, defaultNodeState } from '../store/flowExecutionStore';
+import { useNodeState, useFlowExecutionStore } from '../store/flowExecutionStore';
+import { defaultNodeState } from '../types/execution';
 import { MergerNodeSidebar } from './sidebars/MergerNodeSidebar';
+import { LLMConfig } from './config/LLMConfig';
+import { APIConfig } from './config/APIConfig';
+import { OutputConfig } from './config/OutputConfig';
+import { InputConfig } from './config/InputConfig';
+import { JSONExtractorConfig } from './config/JSONExtractorConfig';
+import { ConditionalConfig } from './config/ConditionalConfig';
+import { MergerConfig } from './config/MergerConfig';
+import { GroupConfig } from './config/GroupConfig';
 
 // Constants
 const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
@@ -77,6 +86,13 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   const flowExecution = useFlowExecutionStore();
   const [isOpen, setIsOpen] = useState(false);
   
+  // Get the selected node from Redux state
+  const selectedNode = nodes.find(node => node.id === selectedNodeId);
+  
+  // Get the execution state for the selected node using the hook
+  // Initialize with defaultNodeState if selectedNodeId is null initially
+  const executionState = useNodeState(selectedNodeId ?? '');
+  
   // IME composition states
   const [isUrlComposing, setIsUrlComposing] = useState(false);
   const [isHeaderKeyComposing, setIsHeaderKeyComposing] = useState(false);
@@ -90,9 +106,6 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   
   const [urlDraft, setUrlDraft] = useState('');
   
-  const selectedNode = nodes.find(node => node.id === selectedNodeId);
-  const executionState = selectedNodeId ? useFlowExecutionStore.getState().getNodeState(selectedNodeId) : null;
-
   // API node state
   const [headers, setHeaders] = useState<KeyValuePair[]>([
     { key: 'Content-Type', value: 'application/json', enabled: true }

@@ -21,7 +21,8 @@ const MergerNode: React.FC<NodeProps<MergerNodeData>> = ({ id, data, selected })
   // Get the merged results array from the node state
   const mergedResults: any[] = Array.isArray(nodeState.result) ? nodeState.result : [];
   const totalResults = mergedResults.length;
-  const previewResults = mergedResults.slice(0, 3); // Show first 3 items
+  // Limit preview to avoid overwhelming the UI, but maybe show more than 3? Let's try 5.
+  const previewResults = mergedResults.slice(0, 5); 
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -55,14 +56,33 @@ const MergerNode: React.FC<NodeProps<MergerNodeData>> = ({ id, data, selected })
               Merged Results ({totalResults} items)
             </div>
             {totalResults > 0 ? (
-              <ul className="text-xs space-y-1 font-mono bg-gray-50 p-1 border rounded max-h-[60px] overflow-y-auto">
-                {previewResults.map((item, index) => (
-                  <li key={index} className="truncate" title={String(item)}>
-                    {String(item)}
-                  </li>
-                ))}
-                {totalResults > 3 && (
-                  <li className="text-gray-400">... more items</li>
+              <ul className="text-xs space-y-1 font-mono bg-gray-50 p-1 border rounded max-h-[100px] overflow-y-auto"> {/* Increased max height */}
+                {previewResults.map((item, index) => {
+                  // Determine how to display the item
+                  let displayString: string;
+                  if (typeof item === 'object' && item !== null) {
+                    try {
+                      displayString = JSON.stringify(item, null, 2); // Pretty print JSON
+                    } catch (e) {
+                      console.error("Error stringifying object in MergerNode:", e);
+                      displayString = '[Error displaying object]'; // Fallback for stringify error
+                    }
+                  } else {
+                    displayString = String(item); // Default string conversion
+                  }
+                  
+                  return (
+                    // Use pre-wrap to preserve JSON formatting, truncate for single lines
+                    <li key={index} 
+                        className={typeof item === 'object' && item !== null ? "whitespace-pre-wrap" : "truncate"} 
+                        title={displayString} // Tooltip shows full content
+                    >
+                      {displayString} 
+                    </li>
+                  );
+                })}
+                {totalResults > previewResults.length && ( // Show count if more items exist
+                  <li className="text-gray-400">... ({totalResults - previewResults.length} more items)</li>
                 )}
               </ul>
             ) : (

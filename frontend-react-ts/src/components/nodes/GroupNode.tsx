@@ -1,12 +1,39 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Handle, Position, NodeProps, NodeResizer } from 'reactflow';
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
+import { useSelector } from 'react-redux';
+import { RootState, store } from '../../store/store';
+import { executeFlowForGroup, useNodeState } from '../../store/flowExecutionStore';
+import { getRootNodesFromSubset } from '../../utils/executionUtils'; // Assuming this is exported
 
 // Remove CSS import temporarily
 // import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPos, yPos, isConnectable }) => {
+  const allNodes = useSelector((state: RootState) => state.flow.nodes);
+  const allEdges = useSelector((state: RootState) => state.flow.edges);
+  const nodeState = useNodeState(id); // Get execution state for the group node
+  const isRunning = nodeState?.status === 'running';
+
+  // Memoize the calculation of nodes within the group and root nodes
+  const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
+    const nodesInGroup = allNodes.filter(node => node.parentNode === id);
+    const nodeIdsInGroup = new Set(nodesInGroup.map(n => n.id));
+    const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
+    const internalRoots = getRootNodesFromSubset(nodesInGroup, edgesInGroup);
+    return {
+      nodesInGroup,
+      hasInternalRootNodes: internalRoots.length > 0,
+    };
+  }, [allNodes, allEdges, id]);
+
+  const handleRunGroup = () => {
+    if (!isRunning) {
+      executeFlowForGroup(id);
+    }
+  };
+
   return (
     // The outer div provided by React Flow handles position, we just need styling
     <>
@@ -30,9 +57,23 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           'flex flex-col' // Use flex column for layout
         )}
       >
-        {/* Group Label Header */}
-        <div className="p-1 text-xs text-orange-800 bg-orange-200/70 rounded-t-md flex-shrink-0">
-          {data.label || 'Group'}
+        {/* Group Label Header with Run Button */}
+        <div className="flex items-center justify-between p-1 text-xs text-orange-800 bg-orange-200/70 rounded-t-md flex-shrink-0">
+          <span>{data.label || 'Group'}</span>
+          {/* Conditionally render Run button */}
+          {hasInternalRootNodes && (
+             <button
+                onClick={handleRunGroup}
+                disabled={isRunning}
+                className={clsx(
+                  'ml-2 px-1.5 py-0.5 text-xs font-medium rounded transition-colors',
+                  'bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed'
+                )}
+                title="Execute group nodes"
+              >
+                {isRunning ? '⏳' : '▶'} Run
+              </button>
+          )}
         </div>
 
         {/* Child node area: This div is crucial for RF to render children */}
