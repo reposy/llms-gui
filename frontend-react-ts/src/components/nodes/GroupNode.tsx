@@ -1,83 +1,76 @@
-import React, { useCallback, useMemo } from 'react';
-import { Handle, Position, NodeProps, useReactFlow, useNodes } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
-import { updateNodeData, setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES } from '../../store/flowSlice';
-import { GroupNodeData, NodeData } from '../../types/nodes';
-import { RootState } from '../../store/store';
+import React from 'react';
+import { Handle, Position, NodeProps, NodeResizer } from 'reactflow';
 import clsx from 'clsx';
-import NodeErrorBoundary from './NodeErrorBoundary';
-import { NodeHeader } from './shared/NodeHeader'; // Use shared header
+import { GroupNodeData } from '../../types/nodes';
 
-// NodeProps provides id, data, selected etc.
-const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected }) => {
-  const dispatch = useDispatch();
-  // Get all nodes using useNodes hook
-  const allNodes = useNodes<NodeData>(); 
-  // Find the current node from the list to get its dimensions
-  const currentNode = useMemo(() => allNodes.find(n => n.id === id), [allNodes, id]);
-  const width = currentNode?.width;
-  const height = currentNode?.height;
-  
-  // Group nodes typically don't have their own execution state directly
-  // But we might need label editing etc. later
-  
-  // Placeholder handlers for shared header props
-  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
-  }, [dispatch, data]);
+// Remove CSS import temporarily
+// import './GroupNode.css';
 
-  const handleRun = useCallback(() => {
-    console.warn('Run action not implemented for GroupNode');
-    // Group execution is handled by the main flow logic based on iteration config
-  }, []);
-
-  const toggleNodeView = useCallback(() => {
-    console.warn('Collapse/Expand not implemented yet for GroupNode');
-    // TODO: Implement collapse/expand logic
-    // This would likely involve updating node dimensions and potentially a custom class
-    // dispatch(updateNodeData({ nodeId: id, data: { ...data, isCollapsed: !data.isCollapsed } }));
-  }, [dispatch, id, data]);
-
+const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPos, yPos, isConnectable }) => {
   return (
-    <NodeErrorBoundary nodeId={id}>
-      {/* Group Node Container */}
+    // The outer div provided by React Flow handles position, we just need styling
+    <>
+      <NodeResizer 
+        minWidth={150}
+        minHeight={100}
+        isVisible={selected}
+        lineClassName="border-blue-500"
+        handleClassName="h-2 w-2 bg-white border border-blue-500"
+      />
+      
+      {/* Main container for visual styling */}
       <div 
-        // Apply calculated width/height, provide fallbacks just in case
-        style={{ width: width ?? 500, height: height ?? 300 }} 
         className={clsx(
-            'react-flow__node-group',
-            'rounded-lg shadow-lg border-2 bg-white bg-opacity-70 backdrop-blur-sm',
-            selected ? 'border-orange-500' : 'border-orange-300' 
+          // 'react-flow__node-group', // Let React Flow handle this class internally
+          'bg-orange-100/50',
+          'border-2',
+          'w-full h-full', // Ensure it takes the size from React Flow
+          selected ? 'border-orange-600' : 'border-orange-400',
+          'rounded-md',
+          'flex flex-col' // Use flex column for layout
         )}
-       >
-         {/* Header Area */}
-         <div className="p-2 border-b border-orange-200">
-            <NodeHeader
-                nodeId={id}
-                label={data.label || 'Group'}
-                placeholderLabel="Group"
-                isRootNode={false} 
-                isRunning={false} 
-                viewMode={VIEW_MODES.EXPANDED} 
-                themeColor="orange" // This should be valid now
-                onRun={handleRun}
-                onLabelUpdate={handleLabelUpdate}
-                onToggleView={toggleNodeView}
-            />
-         </div>
-         
-         {/* Child nodes will be rendered inside this by React Flow */}
-         {/* We can add specific input/output handles later if needed for iteration */}
-         {/* Example handle placeholder 
-         <Handle 
-            type="target" 
-            position={Position.Left} 
-            id={`${id}-iteration-input`} 
-            style={{ top: '50px', background: '#ff9900' }} 
-         /> 
-         */}
-       </div>
-    </NodeErrorBoundary>
+      >
+        {/* Group Label Header */}
+        <div className="p-1 text-xs text-orange-800 bg-orange-200/70 rounded-t-md flex-shrink-0">
+          {data.label || 'Group'}
+        </div>
+
+        {/* Child node area: This div is crucial for RF to render children */}
+        {/* Added padding and temporary background for visibility */}
+        <div className="flex-grow p-2 bg-orange-50/30 relative">
+          {/* React Flow renders child nodes here */}
+          {/* Optional: Placeholder when empty */}
+          {/* <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs pointer-events-none">Child Area</div> */}
+        </div>
+
+        {/* Handles: Positioned relative to the main container */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="input"
+          className="!w-2.5 !h-2.5 !bg-orange-500 !border-2 !border-white !rounded-full !-ml-[5px]"
+          isConnectable={isConnectable}
+          style={{ top: '50%' }} // Ensure vertical centering
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="output"
+          className="!w-2.5 !h-2.5 !bg-orange-500 !border-2 !border-white !rounded-full !-mr-[5px]"
+          isConnectable={isConnectable}
+          style={{ top: '50%' }} // Ensure vertical centering
+        />
+        {/* Group Results Output Handle */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="group-results" // Specific ID for the results array
+          className="!w-3 !h-3 !bg-purple-500 !border-2 !border-white !rounded-full !-mr-[6px]"
+          isConnectable={isConnectable}
+          style={{ top: '75%' }} // Position lower than the standard output
+        />
+      </div>
+    </>
   );
 };
 

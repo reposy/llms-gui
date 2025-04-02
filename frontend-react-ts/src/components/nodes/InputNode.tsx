@@ -128,7 +128,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
             <textarea
               value={currentText} // Use local state for controlled component
               onChange={handleTextChange}
-              className="nodrag nowheel w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+              className="nodrag nowheel w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none bg-white text-black"
               placeholder="Enter text here..."
             />
           )}

@@ -3,6 +3,7 @@ import { ReactFlowProvider } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { FlowCanvas } from './FlowCanvas';
 import { NodeConfigSidebar } from './NodeConfigSidebar';
+import { GroupDetailSidebar } from './GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
 import { NodeData } from '../types/nodes';
 import type { Node } from 'reactflow';
@@ -59,6 +60,9 @@ export const FlowEditor = () => {
       setIsExecuting(false);
     }
   }, [nodes, edges]);
+
+  // Find the selected node object from the nodes array
+  const selectedNode = nodes.find(node => node.id === selectedNodeId);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
@@ -134,6 +138,17 @@ export const FlowEditor = () => {
               </svg>
               Group
             </button>
+            {/* Add Conditional Node Button */}
+            <button
+              className="w-full aspect-square rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
+              onClick={() => handleAddNode('conditional')}
+            >
+              {/* Simple Conditional Icon (SVG - Branch/Decision) */}
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2zM5 10h14M5 14h14" /> {/* Placeholder decision icon */} 
+              </svg>
+              Conditional
+            </button>
           </div>
         </div>
 
@@ -145,8 +160,12 @@ export const FlowEditor = () => {
           </ReactFlowProvider>
         </div>
 
-        {/* Right Sidebar */}
-        <NodeConfigSidebar selectedNodeId={selectedNodeId} />
+        {/* Right Sidebar - Conditional Rendering */}
+        {
+          selectedNode?.type === 'group' 
+            ? <GroupDetailSidebar selectedNodeId={selectedNodeId} />
+            : <NodeConfigSidebar selectedNodeId={selectedNodeId} />
+        }
       </div>
       <FlowToolbar />
     </div>

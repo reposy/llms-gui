@@ -17,6 +17,12 @@ import ReactFlow, {
   getConnectedEdges,
   getNodesBounds,
   GetViewport,
+  useNodesState,
+  useEdgesState,
+  XYPosition,
+  NodeDragHandler,
+  ReactFlowInstance,
+  isNode,
 } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import 'reactflow/dist/style.css';
@@ -27,12 +33,13 @@ import OutputNode from './nodes/OutputNode';
 import JSONExtractorNode from './nodes/JSONExtractorNode';
 import InputNode from './nodes/InputNode';
 import GroupNode from './nodes/GroupNode';
-import { NodeData, NodeType } from '../types/nodes';
+import ConditionalNode from './nodes/ConditionalNode';
+import { NodeData, NodeType, InputNodeData, GroupNodeData } from '../types/nodes';
 import { RootState } from '../store/store';
-import { setNodes, setEdges, addNode } from '../store/flowSlice';
+import { setNodes, setEdges, addNode, updateNodeData } from '../store/flowSlice';
 
 // Custom wrapper to remove default React Flow node styling
-const NodeWrapper = ({ children, ...props }: { children: React.ReactNode } & any) => (
+const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
   <div style={{ position: 'relative' }} className="react-flow__node">
     {children}
   </div>
@@ -41,32 +48,35 @@ const NodeWrapper = ({ children, ...props }: { children: React.ReactNode } & any
 // Override default node styles completely
 const nodeTypes = {
   llm: (props: any) => (
-    <NodeWrapper {...props}>
+    <NodeWrapper>
       <LLMNode {...props} />
     </NodeWrapper>
   ),
   api: (props: any) => (
-    <NodeWrapper {...props}>
+    <NodeWrapper>
       <APINode {...props} />
     </NodeWrapper>
   ),
   output: (props: any) => (
-    <NodeWrapper {...props}>
+    <NodeWrapper>
       <OutputNode {...props} />
     </NodeWrapper>
   ),
   'json-extractor': (props: any) => (
-    <NodeWrapper {...props}>
+    <NodeWrapper>
       <JSONExtractorNode {...props} />
     </NodeWrapper>
   ),
   input: (props: any) => (
-    <NodeWrapper {...props}>
+    <NodeWrapper>
       <InputNode {...props} />
     </NodeWrapper>
   ),
-  group: (props: any) => (
-    <GroupNode {...props} />
+  group: GroupNode, // Render GroupNode directly without wrapper
+  conditional: (props: any) => (
+    <NodeWrapper>
+      <ConditionalNode {...props} />
+    </NodeWrapper>
   ),
 };
 
@@ -93,7 +103,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nodes = useSelector((state: RootState) => state.flow.nodes);
   const edges = useSelector((state: RootState) => state.flow.edges);
-  const { project, getNodes, getEdges, setNodes: rfSetNodes, setEdges: rfSetEdges, getViewport: rfGetViewport } = useReactFlow();
+  const { project, getNodes, getEdges, setNodes: rfSetNodes, setEdges: rfSetEdges, getViewport: rfGetViewport, getNodes: rfGetNodes } = useReactFlow();
 
   // State for clipboard and history
   const clipboard = useRef<CopiedData | null>(null);
@@ -180,39 +190,75 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     dispatch(setEdges(nextEdges));
   }, [dispatch, getNodes, getEdges, pushToHistory]);
 
-  const onConnect = useCallback((params: Connection) => {
-    if (ignoreHistoryUpdate.current) {
-      ignoreHistoryUpdate.current = false;
-      return;
-    }
-    const currentNodes = getNodes();
-    const currentEdges = getEdges();
-    const sourceNode = currentNodes.find(n => n.id === params.source);
-    const targetNode = currentNodes.find(n => n.id === params.target);
+  const onConnect = useCallback(
+    (params: Edge | Connection) => {
+      const currentNodes = getNodes();
+      const currentEdges = getEdges();
+      const sourceNode = currentNodes.find((node) => node.id === params.source);
+      const targetNode = currentNodes.find((node) => node.id === params.target);
 
-    if (!sourceNode || !targetNode) return;
-    if (!params.sourceHandle?.endsWith('-source') || !params.targetHandle?.endsWith('-target')) return;
+      if (!sourceNode || !targetNode) return;
 
-    // Define allowed connections
-    const allowedConnections: Record<NodeType, NodeType[]> = {
-      input: ['llm', 'api', 'json-extractor'], 
-      llm: ['llm', 'output', 'json-extractor'], 
-      api: ['output', 'json-extractor'],      
-      output: [],                             
-      'json-extractor': ['llm', 'api', 'output'], 
-      group: [], // Group node itself cannot connect out directly
-    };
+      // Define allowed connections
+      const allowedConnections: Record<NodeType, NodeType[]> = {
+        input: ['llm', 'api', 'json-extractor', 'group'], 
+        llm: ['llm', 'output', 'json-extractor', 'conditional'], // Allow output to conditional 
+        api: ['output', 'json-extractor', 'conditional'], // Allow output to conditional     
+        output: [],                             
+        'json-extractor': ['llm', 'api', 'output', 'conditional'], // Allow output to conditional
+        group: ['output', 'json-extractor', 'conditional'],
+        conditional: ['llm', 'api', 'output', 'json-extractor', 'group', 'conditional'], // Conditional can output to almost anything
+      };
 
-    // Check if connection is allowed based on types
-    // Also prevent connecting *to* a group node directly for now
-    if (targetNode.type !== 'group' && 
-        allowedConnections[sourceNode.type as NodeType]?.includes(targetNode.type as NodeType)) {
-      const newEdge = { ...params, id: `edge-${Date.now()}` }; 
-      const nextEdges = addEdge(newEdge, currentEdges);
-      pushToHistory(currentNodes, currentEdges); 
-      dispatch(setEdges(nextEdges));
-    }
-  }, [dispatch, getNodes, getEdges, pushToHistory]);
+      // --- Connection Logic Update --- 
+      // Existing validation logic needs to be smarter to check handle IDs if present
+      let isAllowed = false;
+      const sourceHandleId = params.sourceHandle; // Can be null, 'output', 'group-results', etc.
+      
+      // Basic check based on node types (existing logic)
+      const basicAllowed = allowedConnections[sourceNode.type as NodeType]?.includes(targetNode.type as NodeType);
+
+      if (sourceNode.type === 'group' && sourceHandleId === 'group-results') {
+        // Specific rule for group results output
+        isAllowed = ['output'].includes(targetNode.type as NodeType); // Only allow connection to Output for now
+      } else if (sourceNode.type === 'conditional' && (sourceHandleId === 'true' || sourceHandleId === 'false')) {
+         // Conditional node output can go anywhere its type allows in the map
+         isAllowed = basicAllowed;
+      } else {
+        // Default case: Use the basic node type mapping
+        isAllowed = basicAllowed;
+      }
+
+      if (isAllowed) {
+        // Specific logic for Input -> Group connection
+        if (sourceNode.type === 'input' && targetNode.type === 'group') {
+          // Update the Group node's iteration source
+          const groupData = targetNode.data as GroupNodeData;
+          dispatch(updateNodeData({
+            nodeId: targetNode.id,
+            data: {
+              ...groupData,
+              iterationConfig: {
+                ...groupData.iterationConfig,
+                sourceNodeId: sourceNode.id
+              }
+            }
+          }));
+          console.log(`Set iteration source for Group ${targetNode.id} to Input ${sourceNode.id}`);
+        }
+        
+        // Add the edge graphically
+        const newEdge = { ...params, id: `edge-${Date.now()}`, type: 'default' }; // Ensure edge type is set
+        const nextEdges = addEdge(newEdge, currentEdges);
+        dispatch(setEdges(nextEdges));
+        pushToHistory(currentNodes, nextEdges); 
+
+      } else {
+        console.warn('Connection not allowed:', sourceNode.type, '->', targetNode.type);
+      }
+    },
+    [dispatch, getNodes, getEdges, pushToHistory] // Removed setEdges, use dispatch
+  );
 
   // --- Copy/Paste/Delete ---
   const copySelected = useCallback(() => {
@@ -400,6 +446,107 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
     }
   }, []);
 
+  // Update isPointInNode function
+  const isPointInNode = (draggedNode: Node, targetNode: Node) => {
+    // Use positionAbsolute for more accurate positioning
+    const draggedPos = draggedNode.positionAbsolute || draggedNode.position;
+    const targetPos = targetNode.positionAbsolute || targetNode.position;
+
+    // Check if the dragged node's center is inside the target node
+    const draggedCenterX = draggedPos.x + (draggedNode.width || 0) / 2;
+    const draggedCenterY = draggedPos.y + (draggedNode.height || 0) / 2;
+
+    return (
+      draggedCenterX > targetPos.x &&
+      draggedCenterX < targetPos.x + (targetNode.width || 0) &&
+      draggedCenterY > targetPos.y &&
+      draggedCenterY < targetPos.y + (targetNode.height || 0)
+    );
+  };
+
+  // Update onNodeDragStop handler to use getNodes()
+  const onNodeDragStop: NodeDragHandler = useCallback((event, draggedNode) => { // Remove allNodes from args
+    console.log('[onNodeDragStop] Triggered for node:', draggedNode.id, 'Type:', draggedNode.type);
+    const currentNodes = rfGetNodes(); // Get current nodes using the hook
+
+    if (!draggedNode.positionAbsolute) {
+      console.log('[onNodeDragStop] Skipping: No absolute position.');
+      return;
+    }
+
+    if (draggedNode.type === 'group') {
+      console.log('[onNodeDragStop] Skipping: Dragged node is a group.');
+      return;
+    }
+
+    const groupNodes = currentNodes.filter( // Use currentNodes from getNodes()
+      (n) => n.type === 'group' && n.id !== draggedNode.id
+    );
+    console.log('[onNodeDragStop] Potential parent groups:', groupNodes.map(g => g.id));
+
+    const parentGroup = groupNodes.find((group) => isPointInNode(draggedNode, group));
+    console.log('[onNodeDragStop] Found parent group?: ', parentGroup ? parentGroup.id : 'None');
+
+    const originalParentId = draggedNode.parentNode;
+    let parentChanged = false;
+
+    const updatedNodes = currentNodes.map((n): Node<NodeData> | null => { // Use currentNodes
+      if (n.id === draggedNode.id) {
+        const nodeAbsPos = n.positionAbsolute!;
+        console.log(`[onNodeDragStop] Checking node ${n.id}: Original parent: ${originalParentId}`);
+
+        if (parentGroup) {
+          console.log(`[onNodeDragStop] Node ${n.id} is over group ${parentGroup.id}`);
+          if (n.parentNode !== parentGroup.id) {
+            const parentAbsPos = parentGroup.positionAbsolute || parentGroup.position;
+            const relativePos = {
+              x: nodeAbsPos.x - parentAbsPos.x,
+              y: nodeAbsPos.y - parentAbsPos.y,
+            };
+            console.log(`[onNodeDragStop] ADDING node ${n.id} to group ${parentGroup.id}. Relative pos:`, relativePos);
+            parentChanged = true;
+            return {
+              ...n,
+              position: relativePos,
+              parentNode: parentGroup.id,
+              extent: 'parent' as const,
+            };
+          } else {
+            console.log(`[onNodeDragStop] Node ${n.id} already in group ${parentGroup.id}. No parent change.`);
+            return n; 
+          }
+        } else if (n.parentNode) {
+          console.log(`[onNodeDragStop] Node ${n.id} is NOT over any group, but had parent ${n.parentNode}`);
+          const oldParent = currentNodes.find((p) => p.id === n.parentNode); // Use currentNodes
+          if (oldParent) {
+            console.log(`[onNodeDragStop] REMOVING node ${n.id} from group ${oldParent.id}. New absolute pos:`, nodeAbsPos);
+            parentChanged = true;
+            const { parentNode, extent, ...rest } = n;
+            return {
+              ...rest,
+              position: nodeAbsPos, 
+            };
+          } else {
+            console.warn(`[onNodeDragStop] Node ${n.id} had parentId ${n.parentNode}, but parent node not found!`);
+            return n;
+          }
+        } else {
+           console.log(`[onNodeDragStop] Node ${n.id} is not over a group and had no parent. No change.`);
+           return n;
+        }
+      }
+      return n; 
+    });
+
+    if (parentChanged) {
+      const finalNodes = updatedNodes.filter((n): n is Node<NodeData> => n !== null);
+      console.log('[onNodeDragStop] Parent changed, dispatching setNodes with updated nodes:', finalNodes);
+      dispatch(setNodes(finalNodes));
+    } else {
+      console.log('[onNodeDragStop] No parent change detected, not dispatching.');
+    }
+  }, [dispatch, rfGetNodes]); // Add rfGetNodes to dependency array
+
   return (
     <div ref={reactFlowWrapper} className="w-full h-full" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}>
       <ReactFlow
@@ -418,6 +565,9 @@ export const FlowCanvas = React.memo(({ onNodeSelect }: FlowCanvasProps) => {
         deleteKeyCode={['Backspace', 'Delete']}
         multiSelectionKeyCode={'Shift'}
         selectNodesOnDrag={true}
+        onNodeDragStop={onNodeDragStop}
+        snapToGrid={true}
+        snapGrid={[16, 16]}
       >
         <Background gap={16} color="#94a3b8" />
         <Controls showInteractive={false} />

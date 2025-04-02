@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { NodeData, LLMNodeData, APINodeData, OutputNodeData, LLMResult } from '../types/nodes';
 import { updateNodeData } from '../store/flowSlice';
 import { RootState } from '../store/store';
-import { useFlowExecution } from '../store/flowExecutionStore';
+import { useFlowExecutionStore } from '../store/flowExecutionStore';
 
 // Constants
 const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
@@ -73,7 +73,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   const nodes = useSelector((state: RootState) => state.flow.nodes);
   const edges = useSelector((state: RootState) => state.flow.edges);
   const executionStates = useSelector((state: RootState) => state.flow.nodeExecutionStates);
-  const flowExecution = useFlowExecution();
+  const flowExecution = useFlowExecutionStore();
   const [isOpen, setIsOpen] = useState(false);
   
   // IME composition states
@@ -90,7 +90,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   const [urlDraft, setUrlDraft] = useState('');
   
   const selectedNode = nodes.find(node => node.id === selectedNodeId);
-  const executionState = selectedNodeId ? flowExecution.getNodeState(selectedNodeId) : null;
+  const executionState = selectedNodeId ? useFlowExecutionStore.getState().getNodeState(selectedNodeId) : null;
 
   // API node state
   const [headers, setHeaders] = useState<KeyValuePair[]>([
@@ -140,57 +140,62 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
 
   // Update node data when headers change
   const updateNodeHeaders = useCallback((newHeaders: KeyValuePair[]) => {
-    if (!selectedNode) return;
+    // Type Guard: Ensure selectedNode exists and is an API node
+    if (!selectedNode || selectedNode.type !== 'api') return;
+    
+    // selectedNode.data is now guaranteed to be APINodeData here
+    const apiData = selectedNode.data;
 
     const enabledHeaders = newHeaders
       .filter(h => h.enabled && h.key)
-      .reduce((acc, { key, value }) => ({
-        ...acc,
-        [key]: value
-      }), {});
+      .reduce((acc, { key, value }) => ({ ...acc, [key]: value }), {});
 
     dispatch(updateNodeData({
       nodeId: selectedNode.id,
-      data: { ...selectedNode.data, headers: enabledHeaders }
+      // Pass only relevant fields for APINodeData
+      data: { headers: enabledHeaders } 
     }));
   }, [dispatch, selectedNode]);
 
   // Update node data when query parameters change
   const updateNodeQueryParams = useCallback((newParams: KeyValuePair[]) => {
-    if (!selectedNode) return;
+    // Type Guard: Ensure selectedNode exists and is an API node
+    if (!selectedNode || selectedNode.type !== 'api') return;
+
+    // selectedNode.data is now guaranteed to be APINodeData here
+    const apiData = selectedNode.data;
 
     const enabledParams = newParams
       .filter(p => p.enabled && p.key)
-      .reduce((acc, { key, value }) => ({
-        ...acc,
-        [key]: value
-      }), {});
+      .reduce((acc, { key, value }) => ({ ...acc, [key]: value }), {});
 
     // Update URL with new query parameters
     try {
-      const data = selectedNode.data as APINodeData;
-      const url = new URL(data.url.startsWith('http') ? data.url : `https://${data.url}`);
-      url.search = '';
+      // Construct URL safely using apiData
+      const currentUrl = apiData.url || ''; // Use apiData here
+      const urlBase = currentUrl.startsWith('http') ? currentUrl : `https://${currentUrl}`;
+      // Add basic check for empty URL base before creating URL object
+      if (!urlBase || urlBase === 'https://') {
+         throw new Error("Invalid base URL for adding query parameters.");
+      }
+      const url = new URL(urlBase);
+      url.search = ''; // Clear existing params before setting new ones
       Object.entries(enabledParams).forEach(([key, value]) => {
         url.searchParams.set(key, encodeURIComponent(String(value)));
       });
+      const newUrl = url.toString();
 
       dispatch(updateNodeData({
         nodeId: selectedNode.id,
-        data: {
-          ...selectedNode.data,
-          url: url.toString(),
-          queryParams: enabledParams
-        }
+        data: { url: newUrl, queryParams: enabledParams } // Update both
       }));
-    } catch (error) {
-      // If URL parsing fails, just update the query parameters
+    } catch (error) { // Handle invalid URL or other errors
+      console.error("Error parsing or updating URL with query params:", error);
+      // If URL processing fails, just update the query parameters in data
+      // Add explicit type assertion here
       dispatch(updateNodeData({
         nodeId: selectedNode.id,
-        data: {
-          ...selectedNode.data,
-          queryParams: enabledParams
-        }
+        data: { queryParams: enabledParams } as Partial<APINodeData> // Assert type
       }));
     }
   }, [dispatch, selectedNode]);

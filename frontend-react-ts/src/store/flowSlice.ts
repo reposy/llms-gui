@@ -50,6 +50,10 @@ const flowSlice = createSlice({
         type,
         position,
         data: createDefaultNodeData(type),
+        ...(type === 'group' && {
+          style: { width: 800, height: 400 },
+          dragHandle: '.react-flow__node-group'
+        })
       };
       state.nodes.push(newNode);
     },

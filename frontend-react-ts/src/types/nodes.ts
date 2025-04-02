@@ -1,6 +1,6 @@
 import { Node, Edge } from 'reactflow';
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -105,6 +105,16 @@ export interface GroupNodeData extends BaseNodeData {
   };
 }
 
+// Add ConditionalNodeData
+export type ConditionType = 'contains' | 'greater_than' | 'less_than' | 'equal_to' | 'json_path';
+export interface ConditionalNodeData extends BaseNodeData {
+  type: 'conditional';
+  label?: string;
+  conditionType: ConditionType;
+  conditionValue: string; // Value to compare against or JSON path
+  lastEvaluationResult?: boolean | null; // Store the result of the last evaluation
+}
+
 // Update NodeData union type
 export type NodeData = 
   | LLMNodeData 
@@ -112,7 +122,8 @@ export type NodeData =
   | OutputNodeData
   | JSONExtractorNodeData
   | InputNodeData
-  | GroupNodeData; // Add GroupNodeData
+  | GroupNodeData
+  | ConditionalNodeData; // Add ConditionalNodeData
 
 export type ViewMode = 'compact' | 'expanded' | 'auto';
 

@@ -1,5 +1,5 @@
 import { Node } from 'reactflow';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData } from '../types/nodes';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -115,11 +115,36 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         isCollapsed: false // Default to expanded
         // iterationConfig is initially undefined
       } as GroupNodeData; // Cast to GroupNodeData
+    case 'conditional': // Add case for conditional node
+      return {
+        ...baseData,
+        type: 'conditional',
+        label: 'Condition',
+        conditionType: 'contains', // Default type
+        conditionValue: '' // Default empty value/path
+        // lastEvaluationResult is initially undefined
+      } as ConditionalNodeData; // Cast to ConditionalNodeData
     default:
       // If an unknown type is passed, it's an error.
       // This ensures the function always returns a valid NodeData type or throws.
       // Using exhaustive check pattern with `never` type.
       const exhaustiveCheck: never = type;
       throw new Error(`Unhandled node type in createDefaultNodeData: ${exhaustiveCheck}`);
+  }
+};
+
+// Utility to resolve simple {{item}} templates
+export const resolveTemplate = (template: string | undefined, context: { item: any }): string => {
+  if (template === undefined) return '';
+  // Basic replacement, can be extended for more complex templating
+  try {
+    // Convert item to string for simple replacement. Handle objects if needed.
+    const itemString = typeof context.item === 'object' 
+                      ? JSON.stringify(context.item) 
+                      : String(context.item);
+    return template.replace(/\{\{\s*item\s*\}\}/g, itemString);
+  } catch (e) {
+      console.error("Error resolving template:", e);
+      return template; // Return original template on error
   }
 }; 

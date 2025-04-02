@@ -232,13 +232,15 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
         <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
 
         {/* Result Preview */}
-        {nodeState?.result && (
+        {nodeState?.status === 'success' && nodeState?.result !== null && nodeState?.result !== undefined && (
           <div className="space-y-1">
             <div className="text-xs font-medium text-gray-600">Result</div>
             <div className="p-2 text-xs font-mono bg-gray-50 rounded border border-gray-200 max-h-[100px] overflow-auto">
               {typeof nodeState.result === 'string' 
-                ? nodeState.result 
-                : JSON.stringify(nodeState.result, null, 2)}
+                ? nodeState.result
+                : (
+                  <span className="text-red-500">(Error: Unexpected result format. Check console.)</span>
+                )}
             </div>
           </div>
         )}
