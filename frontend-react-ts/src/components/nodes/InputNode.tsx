@@ -85,7 +85,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <div className={clsx("flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-blue-500' : 'border-gray-300', 'w-[350px]')}> 
+      <div className={clsx("relative flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-blue-500' : 'border-gray-300', 'w-[350px]')}>
         <NodeHeader 
           nodeId={id} 
           label={data.label || 'Input'} 
@@ -97,6 +97,13 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           onRun={() => {}} // No run action for basic input
           onLabelUpdate={handleLabelUpdate}
           onToggleView={() => {}} // No view toggle for basic input
+        />
+        <Handle 
+          type="source" 
+          position={Position.Right} 
+          id="output"
+          className="w-3 h-3 !bg-gray-500"
+          style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '-6px', zIndex: 50 }}
         />
         <NodeBody>
           {/* Input Type Selection */}
@@ -151,13 +158,6 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           )}
         </NodeBody>
         <NodeFooter>
-          {/* Output Handle */} 
-          <Handle 
-            type="source" 
-            position={Position.Right} 
-            id="output"
-            className="w-3 h-3 !bg-gray-500"
-          />
           <p className="text-xs text-gray-500">Output (Text/List)</p>
         </NodeFooter>
       </div>

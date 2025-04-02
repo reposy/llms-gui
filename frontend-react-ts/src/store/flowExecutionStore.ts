@@ -58,6 +58,7 @@ interface FlowExecutionState {
   executeNode: (nodeId: string, executionContext?: { isSubExecution?: boolean }) => Promise<any>;
   executeFlow: (startNodeId: string) => Promise<void>;
   _executeSubgraph: (startNodes: string[], nodesInSubgraph: Node<NodeData>[], edgesInSubgraph: Edge[]) => Promise<Record<string, any>>;
+  executeFlowForGroup: (groupId: string) => Promise<void>;
 }
 
 const defaultNodeState: NodeState = {
@@ -308,13 +309,14 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
             for (const edge of parentEdges) {
               try {
                 const parentState = getNodeState(edge.source);
-                // If parent hasn't succeeded yet, execute it first
                 let parentResult = parentState?.result;
                 if (parentState?.status !== 'success') {
                     console.log(`Node ${nodeId}: Triggering parent ${edge.source}`);
-                    parentResult = await get().executeNode(edge.source); // Recursive call
+                    parentResult = await get().executeNode(edge.source);
                 }
-                 inputData[edge.targetHandle || edge.source] = parentResult;
+                const inputKey = edge.targetHandle || edge.source;
+                inputData[inputKey] = parentResult;
+                console.log(`Node ${nodeId}: Received input on handle '${inputKey}' from ${edge.source}`, parentResult);
               } catch (error: any) {
                 console.error(`Node ${nodeId}: Error executing parent ${edge.source}:`, error);
                 const errorMessage = `Parent ${edge.source} failed: ${error.message}`;
@@ -431,7 +433,7 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
               case 'api':
                 const apiData = node.data as APINodeData;
                 // TODO: Implement API node execution using inputData
-                console.log(`Node ${nodeId} (API): Executing ${apiData.method} ${apiData.url}`);
+                console.log(`Node ${nodeId} (API): Executing ${apiData.method} ${apiData.url} with inputs:`, inputData);
                 // Placeholder result
                 result = { message: "API Call Placeholder", input: inputData }; 
                 break;
@@ -662,24 +664,39 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
                     results[currentNodeId] = nodeResult;
                     executedInSubgraph.add(currentNodeId);
 
-                    // Find direct children *within the subgraph* and add to queue
-                    const childrenEdges = edgesInSubgraph.filter(e => e.source === currentNodeId);
-                    childrenEdges.forEach(edge => {
-                        if (!executedInSubgraph.has(edge.target)) {
-                            executionQueue.push(edge.target);
-                        }
-                    });
-                    
-                    // Handle conditional branching within subgraph
+                    // --- REVISED QUEUEING LOGIC --- 
                     if (node.type === 'conditional' && typeof nodeResult === 'boolean') {
+                      // Conditional Node: Queue ONLY the target of the correct branch handle
                       const branchHandleId = nodeResult ? 'true' : 'false';
+                      console.log(`[Subgraph] Conditional Node ${currentNodeId} evaluated to ${nodeResult}. Looking for edges with handle: ${branchHandleId}`);
                       const conditionalChildrenEdges = edgesInSubgraph.filter(e => e.source === currentNodeId && e.sourceHandle === branchHandleId);
+                      
                        conditionalChildrenEdges.forEach(edge => {
                            if (!executedInSubgraph.has(edge.target)) {
+                               console.log(`[Subgraph] Queuing target ${edge.target} from conditional ${currentNodeId} via handle ${branchHandleId}`);
                                executionQueue.push(edge.target);
+                           } else {
+                               console.log(`[Subgraph] Target ${edge.target} from conditional ${currentNodeId} already executed.`);
+                           }
+                       });
+                       // Log if no edges were found for the taken branch
+                       if (conditionalChildrenEdges.length === 0) {
+                          console.log(`[Subgraph] No outgoing edges found for handle ${branchHandleId} from conditional node ${currentNodeId}`);
+                       }
+                    } else {
+                      // Non-Conditional Node: Queue targets of ALL outgoing edges within the subgraph
+                      const childrenEdges = edgesInSubgraph.filter(e => e.source === currentNodeId);
+                      console.log(`[Subgraph] Found ${childrenEdges.length} outgoing edges for non-conditional node ${currentNodeId}`);
+                       childrenEdges.forEach(edge => { 
+                           if (!executedInSubgraph.has(edge.target)) {
+                              console.log(`[Subgraph] Queuing target ${edge.target} from non-conditional ${currentNodeId} (Edge ID: ${edge.id})`);
+                              executionQueue.push(edge.target);
+                           } else {
+                              console.log(`[Subgraph] Target ${edge.target} from non-conditional ${currentNodeId} already executed.`);
                            }
                        });
                     }
+                    // --- END REVISED QUEUEING LOGIC --- 
                     
                 } catch (error: any) {
                     console.error(`Subgraph execution failed at node ${currentNodeId}:`, error);
@@ -757,6 +774,55 @@ export const useFlowExecutionStore = create<FlowExecutionState>()(
           } finally {
             set({ isExecuting: false, currentIterationItem: undefined, currentIterationIndex: undefined, currentGroupTotalItems: undefined });
           }
+        },
+
+        // --- New function for Group Execution ---
+        executeFlowForGroup: async (groupId: string) => {
+          const { nodes, edges, setNodeState, resetNodeStates, executeNode, getNodesInGroup, _executeSubgraph } = get();
+          const groupNode = nodes.find(n => n.id === groupId && n.type === 'group');
+          if (!groupNode) {
+            console.error(`executeFlowForGroup: Group node ${groupId} not found.`);
+            return;
+          }
+
+          console.log(`--- Executing Flow for Group ${groupId} ---`);
+          set({ isExecuting: true });
+
+          const nodesInGroup = getNodesInGroup(groupId);
+          const nodeIdsInGroup = new Set(nodesInGroup.map(n => n.id));
+          const edgesInGroup = edges.filter(e => nodeIdsInGroup.has(e.source) && nodeIdsInGroup.has(e.target));
+
+          // 1. Reset states ONLY for nodes within the group
+          resetNodeStates(Array.from(nodeIdsInGroup));
+
+          // 2. Find root nodes WITHIN the group
+          const groupRootIds = nodesInGroup
+            .filter(n => !edgesInGroup.some(e => e.target === n.id))
+            .map(n => n.id);
+
+          if (groupRootIds.length === 0) {
+            console.warn(`Group ${groupId} has no root nodes inside.`);
+            set({ isExecuting: false });
+            return;
+          }
+
+          console.log(`Group ${groupId}: Found internal root nodes:`, groupRootIds);
+
+          // 3. Execute the entire group subgraph starting from ALL its roots
+          try {
+            // Call _executeSubgraph ONCE with all roots and the group's context
+            const groupInternalResults = await _executeSubgraph(groupRootIds, nodesInGroup, edgesInGroup);
+            console.log('--- Group Subgraph Execution Complete. Results:', groupInternalResults);
+            // Note: The overall group result (for iteration) is handled in the executeNode case 'group'. 
+            // This function just runs the internal flow.
+            // We might want to update the Group Node's state here *if* it's NOT an iterating group.
+            // For now, assume group execution is primarily for iteration.
+          } catch (error) {
+            console.error('--- Group Subgraph Execution Failed ---', error);
+            // Handle error state if needed (e.g., set group node status)
+          } finally {
+            set({ isExecuting: false }); // Ensure isExecuting is reset
+          }
         }
       }), 
       // Persist options
@@ -813,10 +879,9 @@ export const useIsRootNode = (nodeId: string): boolean => {
   return useFlowExecutionStore(state => state.isNodeRoot(nodeId));
 };
 
-// Non-hook version for direct execution
-export const executeFlow = (nodeId: string) => {
-  return useFlowExecutionStore.getState().executeFlow(nodeId);
-};
+// Expose execution triggers
+export const executeFlow = useFlowExecutionStore.getState().executeFlow;
+export const executeFlowForGroup = useFlowExecutionStore.getState().executeFlowForGroup; // Export the new function
 
 // Hook to get the full execution state for debugging or overview
 // Export the hook

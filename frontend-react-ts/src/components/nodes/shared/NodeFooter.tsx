@@ -6,7 +6,7 @@ interface Props {
 
 export const NodeFooter: React.FC<Props> = ({ children }) => {
   return (
-    <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 rounded-b-lg flex items-center justify-end space-x-2">
+  <div className="relative px-4 py-2 border-t border-gray-200 bg-gray-50 rounded-b-lg flex items-center justify-end space-x-2">
       {children}
     </div>
   );

@@ -30,7 +30,7 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <div className={clsx("flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-yellow-500' : 'border-gray-300', 'w-[300px]')}> 
+      <div className={clsx("relative flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-yellow-500' : 'border-gray-300', 'w-[300px]')}>
         {/* Input Handle */}
         <Handle 
           type="target" 
@@ -51,6 +51,20 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
           onRun={() => {}}
           onLabelUpdate={handleLabelUpdate}
           onToggleView={() => {}}
+        />
+        <Handle 
+          type="source" 
+          position={Position.Right} 
+          id="true"
+          className="w-3 h-3 !bg-green-500"
+          style={{ position: 'absolute', top: '40%', transform: 'translateY(-50%)', right: '-6px', zIndex: 50 }}
+        />
+        <Handle 
+          type="source" 
+          position={Position.Bottom} 
+          id="false"
+          className="w-3 h-3 !bg-red-500"
+          style={{ bottom: '-6px', left: '50%', transform: 'translateX(-50%)', zIndex: 50 }}
         />
         <NodeBody>
           <div className="space-y-2">
@@ -83,23 +97,6 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
           </div>
         </NodeBody>
         <NodeFooter>
-          {/* True Handle - Right Center */}
-          <Handle 
-            type="source" 
-            position={Position.Right} 
-            id="true"
-            className="w-3 h-3 !bg-green-500"
-          style={{ top: '50%', transform: 'translateY(-50%)', right: '-6px' }}
-          />
-
-          {/* False Handle - Bottom Center */}
-          <Handle 
-            type="source" 
-            position={Position.Bottom} 
-            id="false"
-            className="w-3 h-3 !bg-red-500"
-          style={{ left: '50%', transform: 'translateX(-50%)', bottom: '-6px' }}
-          />
         </NodeFooter>
       </div>
     </NodeErrorBoundary>

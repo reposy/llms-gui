@@ -1,16 +1,18 @@
 import React, { useCallback } from 'react';
+import { useFlowExecutionStore } from '../store/flowExecutionStore';
 import { useSelector } from 'react-redux';
+import { store } from '../store/store';
 import { RootState } from '../store/store';
 import type { Node } from 'reactflow';
 import { NodeData, GroupNodeData, InputNodeData } from '../types/nodes';
-import { useNodeState, useExecutionState, GroupExecutionItemResult, executeFlow } from '../store/flowExecutionStore';
+import { useNodeState, useExecutionState, GroupExecutionItemResult, executeFlowForGroup } from '../store/flowExecutionStore';
 
 interface GroupDetailSidebarProps {
   selectedNodeId: string | null;
 }
 
 export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selectedNodeId }) => {
-  const allNodes = useSelector((state: RootState) => state.flow.nodes);
+  const allNodes = store.getState().flow.nodes;
   const nodeState = useNodeState(selectedNodeId || '');
   const executionState = useExecutionState();
 
@@ -31,7 +33,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   const handleRunGroup = useCallback(() => {
     if (!selectedNodeId) return;
     console.log("Triggering execution for group:", selectedNodeId);
-    executeFlow(selectedNodeId);
+    executeFlowForGroup(selectedNodeId);
   }, [selectedNodeId]);
 
   const handleExportJson = useCallback(() => {
@@ -138,7 +140,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
         <button
           className="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleRunGroup}
-          disabled={nodeState.status === 'running' || !sourceNodeId}
+        disabled={nodeState.status === 'running'}
         >
            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
