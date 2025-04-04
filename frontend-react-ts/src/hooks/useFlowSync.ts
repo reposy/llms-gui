@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { useDispatch, useSelector } from 'react-redux';
@@ -28,6 +28,14 @@ export const isEditingNodeRef = {
   current: null as string | null // nodeId of the node that's being edited
 };
 
+/**
+ * Trigger for forcing a complete sync from Redux to local state
+ * Used after importing or other operations where full sync is required
+ */
+export const triggerForceSync = {
+  current: false
+};
+
 interface UseFlowSyncOptions {
   isRestoringHistory: React.MutableRefObject<boolean>;
 }
@@ -39,6 +47,7 @@ interface UseFlowSyncReturn {
   setLocalEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   onLocalNodesChange: (changes: any) => void;
   onLocalEdgesChange: (changes: any) => void;
+  forceSync: () => void; // New function to force sync
 }
 
 // Helper function to compare nodes by their essential properties
@@ -80,15 +89,38 @@ export const useFlowSync = ({
   
   // Add a ref to track the last sync time to prevent rapid re-renders
   const lastSyncTimeRef = useRef(Date.now());
+
+  // Track if this is initial load
+  const isInitialSyncRef = useRef(true);
   
-  // Sync Redux state -> local state (for initial load or external changes)
+  // Function to force a complete sync from Redux to local
+  const forceSync = useCallback(() => {
+    console.log("[Sync Effect] Force sync requested");
+    triggerForceSync.current = true;
+    // Immediate sync attempt
+    setLocalNodes(initialNodes);
+    setLocalEdges(initialEdges);
+    lastSyncTimeRef.current = Date.now();
+  }, [initialNodes, initialEdges, setLocalNodes, setLocalEdges]);
+
+  // Initial sync effect specifically for first load or data import
+  useEffect(() => {
+    if (isInitialSyncRef.current) {
+      console.log("[Sync Effect] Initial sync");
+      setLocalNodes(initialNodes);
+      setLocalEdges(initialEdges);
+      isInitialSyncRef.current = false;
+    }
+  }, [initialNodes, initialEdges, setLocalNodes, setLocalEdges]);
+  
+  // Sync Redux state -> local state (for external changes)
   useEffect(() => {
     // Skip if we're currently restoring history to avoid feedback loops
     if (isRestoringHistory.current) return;
     
-    // Throttle updates to prevent rapid re-renders (150ms minimum between syncs)
+    // Throttle updates more aggressively (300ms minimum between syncs) to reduce interaction issues
     const now = Date.now();
-    if (now - lastSyncTimeRef.current < 150) return;
+    if (now - lastSyncTimeRef.current < 300 && !triggerForceSync.current) return;
     
     // Check if we just added a new node locally (local has more nodes than Redux)
     const localAdded = localNodes.length > initialNodes.length;
@@ -96,6 +128,16 @@ export const useFlowSync = ({
     // Use the custom comparison function instead of deep equality
     const nodesEquivalent = areNodesEquivalent(localNodes, initialNodes);
     
+    // Handle force sync first
+    if (triggerForceSync.current) {
+      console.log("[Sync Effect] Processing force sync");
+      setLocalNodes(initialNodes);
+      setLocalEdges(initialEdges);
+      lastSyncTimeRef.current = now;
+      triggerForceSync.current = false;
+      return;
+    }
+
     // Only update from Redux if:
     // 1. Not just added nodes locally
     // 2. Nodes are not equivalent
@@ -144,14 +186,19 @@ export const useFlowSync = ({
     prevNodeCountRef.current = initialNodes.length;
   }, [initialNodes, setLocalNodes, localNodes, isRestoringHistory]);
 
+  // Handle edge syncing separately with similar logic
   useEffect(() => {
     // Skip if we're currently restoring history to avoid feedback loops
     if (isRestoringHistory.current) return;
     
-    // Throttle updates
-    const now = Date.now();
-    if (now - lastSyncTimeRef.current < 150) return;
+    // Skip if we just processed a force sync
+    if (triggerForceSync.current) return;
     
+    // Throttle updates more aggressively
+    const now = Date.now();
+    if (now - lastSyncTimeRef.current < 300) return;
+    
+    // Edges are less likely to cause editing conflicts, but still apply throttling
     if (!isEqual(localEdges, initialEdges)) {
       console.log("[Sync Effect] Updating local edges from Redux");
       setLocalEdges(initialEdges);
@@ -165,6 +212,7 @@ export const useFlowSync = ({
     setLocalNodes,
     setLocalEdges,
     onLocalNodesChange,
-    onLocalEdgesChange
+    onLocalEdgesChange,
+    forceSync
   };
 }; 

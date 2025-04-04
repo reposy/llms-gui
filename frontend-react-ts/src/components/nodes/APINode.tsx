@@ -87,7 +87,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   const handleUrlBlur = useCallback(() => {
     isEditingNodeRef.current = null; // Clear editing reference
-  }, []);
+    
+    // Always update Redux with the latest URL value
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, url: urlDraft }
+    }));
+  }, [dispatch, id, data, urlDraft]);
 
   const handleMethodChange = useCallback((method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
     dispatch(updateNodeData({

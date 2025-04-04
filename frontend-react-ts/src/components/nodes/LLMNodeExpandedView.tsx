@@ -120,15 +120,14 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
     setIsEditingPrompt(false);
     isEditingNodeRef.current = null; // Clear the editing node reference
     
-    // Only dispatch immediate update on blur if the value has changed
-    if (promptDraft !== lastPromptRef.current) {
-      debouncedUpdatePrompt.cancel(); // Cancel any pending updates
-      lastPromptRef.current = promptDraft;
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { ...data, prompt: promptDraft }
-      }));
-    }
+    // Always save draft to Redux on blur (even if not changed)
+    // This ensures the latest value is always in Redux
+    debouncedUpdatePrompt.cancel(); // Cancel any pending updates
+    lastPromptRef.current = promptDraft;
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, prompt: promptDraft }
+    }));
   }, [dispatch, id, data, promptDraft, debouncedUpdatePrompt]);
 
   const handlePromptKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -159,13 +158,13 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
   const handleModelBlur = useCallback(() => {
     setIsEditingModel(false);
     isEditingNodeRef.current = null; // Clear the editing node reference
-    // Only update Redux when focus is lost and if value changed
-    if (modelDraft !== data.model) {
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { ...data, model: modelDraft }
-      }));
-    }
+    
+    // Always update Redux when focus is lost (even if not changed)
+    // This ensures the latest value is always in Redux
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, model: modelDraft }
+    }));
   }, [dispatch, id, data, modelDraft]);
 
   const handleModelKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {

@@ -99,7 +99,10 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
 
   const handleUrlBlur = useCallback(() => {
     isEditingNodeRef.current = null;
-  }, []);
+    
+    // Always update Redux with latest URL value
+    handleConfigChange('url', urlDraft);
+  }, [handleConfigChange, urlDraft]);
 
   // Headers management
   const addHeader = useCallback(() => {

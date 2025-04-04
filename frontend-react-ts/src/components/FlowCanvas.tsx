@@ -79,9 +79,14 @@ const nodeTypes = {
   ),
 };
 
+export interface FlowCanvasApi {
+  addNodes: (nodes: Node<NodeData>[]) => void;
+  forceSync: () => void;
+}
+
 interface FlowCanvasProps {
   onNodeSelect: (node: Node | null) => void;
-  registerReactFlowApi?: (api: { addNodes: (nodes: Node<NodeData>[]) => void }) => void;
+  registerReactFlowApi?: (api: FlowCanvasApi) => void;
 }
 
 const defaultViewport = { x: 0, y: 0, zoom: 1 };
@@ -98,7 +103,8 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     localNodes, 
     localEdges, 
     setLocalNodes, 
-    setLocalEdges 
+    setLocalEdges,
+    forceSync
   } = useFlowSync({ isRestoringHistory });
   
   // Use the history hook for undo/redo functionality
@@ -139,9 +145,12 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   // Register the addNodes function with the parent component
   useEffect(() => {
     if (registerReactFlowApi) {
-      registerReactFlowApi({ addNodes });
+      registerReactFlowApi({ 
+        addNodes,
+        forceSync
+      });
     }
-  }, [registerReactFlowApi, addNodes]);
+  }, [registerReactFlowApi, addNodes, forceSync]);
 
   // Set up keyboard shortcuts
   useEffect(() => {

@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { ReactFlowProvider, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
-import { FlowCanvas } from './FlowCanvas';
+import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './NodeConfigSidebar';
 import { GroupDetailSidebar } from './GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
@@ -18,9 +18,9 @@ export const FlowEditor = () => {
   const nodes = useSelector((state: RootState) => state.flow.nodes);
   const edges = useSelector((state: RootState) => state.flow.edges);
 
-  const reactFlowApiRef = useRef<{ addNodes: (nodes: Node<NodeData>[]) => void } | null>(null);
+  const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
 
-  const handleRegisterApi = useCallback((api: { addNodes: (nodes: Node<NodeData>[]) => void }) => {
+  const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;
     console.log("[FlowEditor] React Flow API registered:", api);
   }, []);
@@ -184,7 +184,7 @@ export const FlowEditor = () => {
               onNodeSelect={handleNodeSelect}
               registerReactFlowApi={handleRegisterApi}
             />
-            <FlowManager />
+            <FlowManager flowApi={reactFlowApiRef} />
           </ReactFlowProvider>
         </div>
 

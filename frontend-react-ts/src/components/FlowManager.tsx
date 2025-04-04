@@ -1,10 +1,12 @@
-import React, { useRef } from 'react';
+import React, { useRef, useContext } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store/store';
 import { setNodes, setEdges } from '../store/flowSlice';
 import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { cloneDeep } from 'lodash';
+import { FlowCanvasApi } from './FlowCanvas';
+import { triggerForceSync } from '../hooks/useFlowSync';
 
 interface FlowData {
   name: string;
@@ -19,7 +21,11 @@ interface FlowData {
   };
 }
 
-export const FlowManager: React.FC = () => {
+interface FlowManagerProps {
+  flowApi: React.MutableRefObject<FlowCanvasApi | null>;
+}
+
+export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   const dispatch = useDispatch();
   const nodesFromState = useSelector((state: RootState) => state.flow.nodes);
   const edgesFromState = useSelector((state: RootState) => state.flow.edges);
@@ -85,6 +91,17 @@ export const FlowManager: React.FC = () => {
         dispatch(setEdges(importedEdges));
         console.log('Imported nodes:', importedNodes);
         console.log('Imported edges:', importedEdges);
+
+        // Force sync after import to ensure edges are rendered
+        setTimeout(() => {
+          console.log('[FlowManager] Forcing sync after import');
+          if (flowApi.current) {
+            flowApi.current.forceSync();
+          } else {
+            // Fallback if API is not available
+            triggerForceSync.current = true;
+          }
+        }, 100); // Small delay to ensure Redux state is updated
 
       } catch (error) {
         console.error('Error importing flow:', error);
