@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { updateNodeData } from '../../store/flowSlice';
 import { MergerNodeData } from '../../types/nodes';
-import { NodeState } from '../../store/flowExecutionStore'; // Import NodeState type
+import { NodeState } from '../../types/execution'; // Import NodeState type from the correct path
 import { TrashIcon, PlusIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'; // Or your icon library
 
 interface MergerNodeSidebarProps {
