@@ -31,7 +31,7 @@ async function executeSubgraph(
   const { getNodeState, setNodeState, getNodes, getEdges } = dependencies;
   const nodeResults: Record<string, any> = {};
   const nodeDependencies: Record<string, string[]> = {};
-  const nodeExecutionStatus: Record<string, 'pending' | 'running' | 'completed' | 'failed'> = {};
+  const nodeExecutionStatus: Record<string, 'pending' | 'running' | 'completed' | 'failed' | 'skipped'> = {};
   const queue: string[] = []; // Nodes ready to execute
 
   // Initialize status and dependencies for nodes within the subgraph
@@ -63,11 +63,68 @@ async function executeSubgraph(
   const executingPromises: Record<string, Promise<any>> = {};
 
   // Function to check if all dependencies of a node are met
+  // NOTE: This function uses type assertions (`as any`) for `activeOutputHandle`
+  // because the base `NodeState` type might not include it directly.
+  // Consider updating the `NodeState` type definition in `src/types/execution.ts`
+  // to include optional `activeOutputHandle?: string` and `conditionResult?: boolean`
+  // to resolve potential type errors.
   const areDependenciesMet = (nodeId: string): boolean => {
     const deps = nodeDependencies[nodeId];
     if (!deps || deps.length === 0) return true; // No dependencies
-    // All dependencies must exist and be completed
-    return deps.every(depId => nodesInSubgraph.some(n => n.id === depId) && nodeExecutionStatus[depId] === 'completed');
+
+    return deps.every(depId => {
+      // Check if dependency exists in subgraph and is completed
+      const depNodeExists = nodesInSubgraph.some(n => n.id === depId);
+      const depCompleted = nodeExecutionStatus[depId] === 'completed';
+
+      if (!depNodeExists || !depCompleted) {
+         // console.log(`[Subgraph ${executionContext.executionId}] Basic dependency ${depId} for ${nodeId} not met (Exists: ${depNodeExists}, Completed: ${depCompleted})`);
+        return false; // Basic dependency not met
+      }
+
+      // --- Conditional Check ---
+      const depNode = nodesInSubgraph.find(n => n.id === depId);
+      if (depNode?.type === 'conditional') {
+        const depState = getNodeState(depId); // Use getNodeState from outer scope
+
+        // Check if state exists and has the conditional properties (using 'in' for type safety)
+        const hasConditionalProps = depState && 'activeOutputHandle' in depState;
+
+        // Accessing potentially undefined property safely. It must exist AND be truthy (not null/undefined).
+        if (hasConditionalProps && (depState as any).activeOutputHandle) {
+           const edge = edgesInSubgraph.find(e => e.source === depId && e.target === nodeId);
+           if (!edge) {
+               console.warn(`[Subgraph ${executionContext.executionId}] Edge not found between conditional ${depId} and target ${nodeId}. Assuming dependency not met.`);
+               return false; // Edge must exist
+           }
+           // Crucially, check if the edge's sourceHandle matches the activeOutputHandle
+           const handlesMatch = edge.sourceHandle === (depState as any).activeOutputHandle;
+           if (!handlesMatch) { // Use type assertion temporarily
+               console.log(`[areDependenciesMet ${executionContext.executionId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Handle mismatch)`);
+               setNodeState(nodeId, { status: 'skipped', executionId: executionContext.executionId }); // Set node to skipped
+               return false; // This path is inactive
+           }
+           // If handles match, the conditional dependency is met for this path
+           console.log(`[Subgraph ${executionContext.executionId}] Dependency ${depId} (Conditional) met via active handle '${(depState as any).activeOutputHandle}' for ${nodeId}.`);
+
+        } else {
+           // Completed conditional node *must* have an activeOutputHandle set by the dispatcher
+           // Check if it *should* have had one (i.e. status is success)
+           if (depState?.status === 'success') {
+                console.warn(`[areDependenciesMet ${executionContext.executionId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Completed but missing activeOutputHandle). State:`, depState );
+           } else {
+                // If status is not success, missing handle is expected, but dependency is still not met in terms of data flow.
+                console.log(`[areDependenciesMet ${executionContext.executionId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Not completed successfully - Status: ${depState?.status})`);
+           }
+           setNodeState(nodeId, { status: 'skipped', executionId: executionContext.executionId }); // Set node to skipped
+           return false; // Treat as unmet if state is inconsistent or node didn't succeed
+        }
+      }
+      // --- End Conditional Check ---
+
+      // If it's not a conditional node OR the conditional check passed, the dependency is met
+      return true;
+    });
   };
 
   // Main execution loop
@@ -164,7 +221,7 @@ async function executeSubgraph(
 
   // Final check for any nodes that didn't complete
   const failedNodes = Object.entries(nodeExecutionStatus)
-    .filter(([_, status]) => status === 'failed' || status === 'pending' || status === 'running')
+    .filter(([_, status]) => status === 'pending' || status === 'running') // Ignore 'skipped' and 'failed' here
     .map(([nodeId, _]) => nodeId);
 
   if (failedNodes.length > 0) {

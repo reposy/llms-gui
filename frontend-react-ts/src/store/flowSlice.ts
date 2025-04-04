@@ -45,17 +45,31 @@ const flowSlice = createSlice({
       const { type, viewport } = action.payload;
       const position = calculateNodePosition(state.nodes, state.selectedNodeId, viewport);
       
+      const defaultData = createDefaultNodeData(type);
+      console.log(`[flowSlice] Calculated position:`, position, 'Default data:', defaultData); // Log helpers results
+
+      const newNodeId = `${type}-${crypto.randomUUID()}`; // Use crypto.randomUUID()
+      
+      // Initialize newNode without group-specific properties
       const newNode: Node<NodeData> = {
-        id: `${type}-${Date.now()}`,
+        id: newNodeId, // Use generated ID
         type,
         position,
-        data: createDefaultNodeData(type),
-        ...(type === 'group' && {
-          style: { width: 800, height: 400 },
-          dragHandle: '.react-flow__node-group'
-        })
+        data: defaultData, // Use calculated data
       };
+
+      // Explicitly add properties if it's a group node
+      if (type === 'group') {
+        newNode.style = { width: 800, height: 400 };
+        newNode.dragHandle = '.group-node-header'; // Explicitly set dragHandle
+      }
+
+      console.log("[addNode] Final newNode:", newNode); // Verification log
+
+      console.log('[flowSlice] Nodes state BEFORE push:', JSON.stringify(state.nodes)); // Log state before
       state.nodes.push(newNode);
+      console.log(`[flowSlice] Pushed new node with ID: ${newNodeId}`); // Log the new node ID
+      console.log('[flowSlice] Nodes state AFTER push:', JSON.stringify(state.nodes)); // Log state after
     },
     updateNodeData: (state, action: PayloadAction<{ nodeId: string; data: Partial<NodeData> }>) => {
       const node = state.nodes.find(node => node.id === action.payload.nodeId);

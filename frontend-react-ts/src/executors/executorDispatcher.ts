@@ -65,32 +65,11 @@ export async function dispatchNodeExecution(params: DispatchParams): Promise<any
   for (const incomer of incomers) {
     const incomerState = getNodeState(incomer.id);
     
-    // --- Handle Conditional Input --- 
-    // If the incomer is a conditional node, use its `value` field from the result object
-    let inputValue = incomerState?.result;
-    if (incomerState?.status === 'success' && incomerState?.activeOutputHandle) {
-        // Check if this edge is connected to the active handle of the conditional node
-        const edgeFromConditional = edges.find(e => 
-            e.source === incomer.id && 
-            e.target === nodeId && 
-            e.sourceHandle === incomerState.activeOutputHandle
-        );
-        if (edgeFromConditional) {
-            console.log(`[Dispatch ${nodeId}] Input from Conditional ${incomer.id} via handle ${incomerState.activeOutputHandle}:`, incomerState.result);
-            inputValue = incomerState.result; // Use the value passed through by conditional
-        } else {
-            // Edge exists but not from the active handle - skip this input
-            console.log(`[Dispatch ${nodeId}] Skipping input from Conditional ${incomer.id}: Edge not connected to active handle ${incomerState.activeOutputHandle}.`);
-            inputValue = undefined; // Ensure this path provides no input
-            continue; // Skip adding this input
-        }
-    }
-
-    // --- Standard Input Processing --- 
-    if (incomerState?.status === 'success' && incomerState.executionId === executionId && inputValue !== undefined) {
-      // Note: We check inputValue !== undefined here to handle the case where a conditional input was skipped
-      console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} (ExecID ${incomerState.executionId}):`, inputValue);
-      inputs.push(inputValue);
+    // --- Standard Input Processing (Simplified) ---
+    // Now relies on the Controller to only call dispatch for nodes on active paths
+    if (incomerState?.status === 'success' && incomerState.executionId === executionId) {
+      console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} (ExecID ${incomerState.executionId}):`, incomerState.result);
+      inputs.push(incomerState.result); // Push result directly
     } else if (incomerState?.status === 'error' && incomerState.executionId === executionId) {
       console.log(`[Dispatch ${nodeId}] Incomer ${incomer.id} had error in execution ${executionId}. Propagating error.`);
       // Set current node state to error due to dependency failure
@@ -101,10 +80,9 @@ export async function dispatchNodeExecution(params: DispatchParams): Promise<any
       console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (Stale ExecID: ${incomerState?.executionId} vs ${executionId})`);
     } else if (incomerState?.status !== 'success') {
       console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (Status: ${incomerState?.status})`);
-    } else if (inputValue === undefined && incomerState?.activeOutputHandle) {
-        // This case was handled above (conditional edge mismatch), log is redundant here
     } else {
-         console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped for unknown reason.`);
+         // Log any other cases where input might be skipped unexpectedly
+         console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (State: ${JSON.stringify(incomerState)})`);
     }
   }
   console.log(`[Dispatch ${nodeId}] (${node.type}) Resolved inputs for execution ${executionId}:`, inputs);
@@ -126,13 +104,7 @@ export async function dispatchNodeExecution(params: DispatchParams): Promise<any
           setNodeState, // Potentially needed for streaming/intermediate state
           resolveTemplate
         });
-        // Handle case where LLM was skipped conditionally
-        if (output === null && inputs.length > 1) {
-            console.log(`[Dispatch ${nodeId}] (LLM) Executor returned null, indicating conditional skip.`);
-            // Set state to success but with null result, indicating skip
-            setNodeState(nodeId, { status: 'success', result: null, executionId });
-            return null; // Return null to signal skip to downstream
-        }
+        // Conditional skip check removed, controller handles routing
         break;
       }
       case 'api': {

@@ -7,12 +7,14 @@ export interface ExecutionContext {
 
 // Represents the state of a single node during execution
 export interface NodeState {
-  status: 'idle' | 'running' | 'success' | 'error';
+  status: 'idle' | 'running' | 'success' | 'error' | 'skipped';
   result: any; // This will hold GroupExecutionItemResult[] for groups
-  error: string | undefined;
-  _lastUpdate: number;
-  executionId?: string; // Track which execution this state belongs to
-  lastTriggerNodeId?: string; // Track which node last triggered execution
+  error?: string;
+  _lastUpdate?: number;
+  executionId?: string;
+  lastTriggerNodeId?: string;
+  activeOutputHandle?: 'trueHandle' | 'falseHandle';
+  conditionResult?: boolean;
 }
 
 // Represents the results for a single item processed by a group
@@ -30,5 +32,9 @@ export const defaultNodeState: NodeState = {
   status: 'idle',
   result: null,
   error: undefined,
-  _lastUpdate: 0
+  _lastUpdate: 0,
+  executionId: undefined,
+  lastTriggerNodeId: undefined,
+  activeOutputHandle: undefined,
+  conditionResult: undefined,
 }; 

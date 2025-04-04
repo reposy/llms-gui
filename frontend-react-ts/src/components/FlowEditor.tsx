@@ -1,15 +1,14 @@
-import React, { useState, useCallback } from 'react';
-import { ReactFlowProvider } from 'reactflow';
+import React, { useState, useCallback, useRef } from 'react';
+import { ReactFlowProvider, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { FlowCanvas } from './FlowCanvas';
 import { NodeConfigSidebar } from './NodeConfigSidebar';
 import { GroupDetailSidebar } from './GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
-import { NodeData } from '../types/nodes';
+import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from 'reactflow';
 import { RootState } from '../store/store';
-import { addNode } from '../store/flowSlice';
-import { NodeType } from '../types/nodes';
+import { calculateNodePosition, createDefaultNodeData } from '../utils/flowUtils';
 import FlowToolbar from './FlowToolbar';
 
 export const FlowEditor = () => {
@@ -19,19 +18,35 @@ export const FlowEditor = () => {
   const nodes = useSelector((state: RootState) => state.flow.nodes);
   const edges = useSelector((state: RootState) => state.flow.edges);
 
-  const handleAddNode = (type: NodeType) => {
-    // Calculate position based on existing nodes
-    const nodes = document.querySelectorAll('.react-flow__node');
-    const lastNode = nodes[nodes.length - 1];
-    
-    let position = { x: 100, y: 100 };
-    if (lastNode) {
-      const rect = lastNode.getBoundingClientRect();
-      position = { x: rect.x + 250, y: rect.y };
+  const reactFlowApiRef = useRef<{ addNodes: (nodes: Node<NodeData>[]) => void } | null>(null);
+
+  const handleRegisterApi = useCallback((api: { addNodes: (nodes: Node<NodeData>[]) => void }) => {
+    reactFlowApiRef.current = api;
+    console.log("[FlowEditor] React Flow API registered:", api);
+  }, []);
+
+  const handleAddNode = useCallback((type: NodeType) => {
+    if (!reactFlowApiRef.current?.addNodes) {
+      console.error("React Flow addNodes API not available yet.");
+      return;
     }
 
-    dispatch(addNode({ type, position }));
-  };
+    const defaultData = createDefaultNodeData(type);
+    const newNodeId = `${type}-${crypto.randomUUID()}`;
+
+    const newNode: Node<NodeData> = {
+      id: newNodeId,
+      type,
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      data: defaultData,
+      ...(type === 'group' && {
+        style: { width: 800, height: 400 },
+      })
+    };
+
+    console.log(`[FlowEditor] Calling reactFlowApi.addNodes with:`, newNode);
+    reactFlowApiRef.current.addNodes([newNode]);
+  }, [nodes, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
     setSelectedNodeId(node?.id || null);
@@ -41,17 +56,14 @@ export const FlowEditor = () => {
     setIsExecuting(true);
 
     try {
-      // Find start nodes (nodes with no incoming edges)
       const startNodes = nodes.filter(node => 
         !edges.some(edge => edge.target === node.id)
       );
 
-      // Execute each start node
       for (const node of startNodes) {
         const executeButton = document.querySelector(`[data-node-id="${node.id}"] button`) as HTMLButtonElement;
         executeButton?.click();
 
-        // Wait for the node to finish executing
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (error) {
@@ -61,12 +73,10 @@ export const FlowEditor = () => {
     }
   }, [nodes, edges]);
 
-  // Find the selected node object from the nodes array
   const selectedNode = nodes.find(node => node.id === selectedNodeId);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
-      {/* Header */}
       <div className="flex-none h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-sm z-20">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-gray-900">Flow Editor</h1>
@@ -86,9 +96,7 @@ export const FlowEditor = () => {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
         <div className="flex-none w-20 bg-white border-r border-gray-200 p-4 shadow-lg z-10">
           <div className="space-y-4">
             <button
@@ -127,53 +135,48 @@ export const FlowEditor = () => {
               </svg>
               입력
             </button>
-            {/* Add Group Node Button */}
             <button
               className="w-full aspect-square rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
               onClick={() => handleAddNode('group')}
             >
-              {/* Simple Group Icon (SVG - Folder) */}
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
               Group
             </button>
-            {/* Add Conditional Node Button */}
             <button
               className="w-full aspect-square rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
               onClick={() => handleAddNode('conditional')}
             >
-              {/* Simple Conditional Icon (SVG - Branch/Decision) */}
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2zM5 10h14M5 14h14" /> {/* Placeholder decision icon */} 
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2zM5 10h14M5 14h14" />
               </svg>
               Conditional
             </button>
-            {/* Add Merger Node Button */}
             <button
               className="w-full aspect-square rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
               onClick={() => handleAddNode('merger')}
             >
-              {/* Simple Merger Icon (SVG - converging arrows) */}
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4" /> {/* Simple arrow towards center */}
-                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4" /> {/* Another arrow towards center */}
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4" />
               </svg>
               Merger
             </button>
           </div>
         </div>
 
-        {/* Flow Canvas */}
         <div className="flex-1 relative" style={{ minWidth: 0, minHeight: 0 }}>
           <ReactFlowProvider>
-            <FlowCanvas onNodeSelect={handleNodeSelect} />
+            <FlowCanvas
+              onNodeSelect={handleNodeSelect}
+              registerReactFlowApi={handleRegisterApi}
+            />
             <FlowManager />
           </ReactFlowProvider>
         </div>
 
-        {/* Right Sidebar - Conditional Rendering */}
         {
           selectedNode?.type === 'group' 
             ? <GroupDetailSidebar selectedNodeId={selectedNodeId} />

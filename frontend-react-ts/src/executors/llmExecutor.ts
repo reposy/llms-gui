@@ -17,25 +17,10 @@ export async function executeLlmNode(params: {
 
   console.log(`[ExecuteNode ${nodeId}] (LLM) Executing with context:`, context, `Inputs:`, inputs);
 
-  // --- Conditional Execution Check --- 
-  // Check if a second input exists (assumed to be the conditional signal)
-  if (inputs.length > 1) {
-    const conditionalSignal = inputs[1];
-    console.log(`[ExecuteNode ${nodeId}] (LLM) Received conditional signal:`, conditionalSignal);
-    // Check if the conditional signal is falsy
-    if (!conditionalSignal) { 
-      console.log(`[ExecuteNode ${nodeId}] (LLM) Skipping execution: Conditional input was falsy.`);
-      // Return null to indicate skipped execution. The dispatcher will handle the node state.
-      return null;
-    }
-    console.log(`[ExecuteNode ${nodeId}] (LLM) Proceeding: Conditional input was truthy.`);
-  } else {
-    console.log(`[ExecuteNode ${nodeId}] (LLM) Proceeding: No conditional input detected.`);
-  }
-
-  // --- Proceed with Execution if Condition Passed (or no condition) --- 
+  // --- Proceed with Execution --- 
 
   // Use inputs[0] as the primary data input for prompt templating
+  // If called, assume it's on an active path and should use the primary input.
   const promptInput = inputs.length > 0 ? inputs[0] : {};
   console.log(`[ExecuteNode ${nodeId}] (LLM) Using prompt input:`, promptInput);
   

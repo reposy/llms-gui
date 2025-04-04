@@ -112,8 +112,7 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         ...baseData,
         type: 'group',
         label: 'Group', // Specific default label
-        isCollapsed: false // Default to expanded
-        // iterationConfig is initially undefined
+        isCollapsed: false, // Default to expanded
       } as GroupNodeData; // Cast to GroupNodeData
     case 'conditional': // Add case for conditional node
       return {

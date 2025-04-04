@@ -28,7 +28,7 @@ async function executeSubgraphInternal(
 
   const nodeResults: Record<string, any> = {};
   const nodeDependencies: Record<string, string[]> = {};
-  const nodeExecutionStatus: Record<string, 'pending' | 'running' | 'completed' | 'failed'> = {};
+  const nodeExecutionStatus: Record<string, 'pending' | 'running' | 'completed' | 'failed' | 'skipped'> = {};
   const queue: string[] = [];
   const nodesInSubgraphIds = new Set(nodesInSubgraph.map(n => n.id));
 
@@ -88,10 +88,78 @@ async function executeSubgraphInternal(
   const executingPromises: Record<string, Promise<any>> = {};
 
   // Helper to check if all dependencies for a node are 'completed'
+  // NOTE: This function uses type assertions (`as any`) for `activeOutputHandle`
+  // because the base `NodeState` type might not include it directly.
+  // Consider updating the `NodeState` type definition in `src/types/execution.ts`
+  // to include optional `activeOutputHandle?: string` and `conditionResult?: boolean`
+  // to resolve potential type errors.
   const areDependenciesMet = (nodeId: string): boolean => {
     const deps = nodeDependencies[nodeId];
     if (!deps || deps.length === 0) return true; // No dependencies
-    return deps.every(depId => nodesInSubgraphIds.has(depId) && nodeExecutionStatus[depId] === 'completed');
+
+    return deps.every(depId => {
+      // Check if dependency exists in subgraph and is completed
+      const depNodeExists = nodesInSubgraphIds.has(depId); // Use nodesInSubgraphIds from this scope
+      const depCompleted = nodeExecutionStatus[depId] === 'completed';
+
+      if (!depNodeExists || !depCompleted) {
+         // console.log(`[SubG Internal ${execId}] Basic dependency ${depId} for ${nodeId} not met (Exists: ${depNodeExists}, Completed: ${depCompleted})`);
+        return false; // Basic dependency not met
+      }
+
+      // --- Conditional Check ---
+      const depNode = nodesInSubgraph.find(n => n.id === depId); // Use nodesInSubgraph from this scope
+      if (depNode?.type === 'conditional') {
+        console.log(`[areDependenciesMet ${execId}] Node: ${nodeId} checking conditional Dep: ${depId}`);
+        const depState = getNodeState(depId); // Use getNodeState from outer scope
+        console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Fetched State:`, depState ? JSON.stringify(depState) : 'State not found');
+
+        // Check if state exists and has the conditional properties (using 'in' for type safety)
+        const hasConditionalProps = depState && 'activeOutputHandle' in depState;
+        const activeHandle = hasConditionalProps ? (depState as any).activeOutputHandle : undefined;
+        console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), HasProps: ${hasConditionalProps}, ActiveHandleValue: ${activeHandle}`);
+
+        // Accessing potentially undefined property safely. It must exist AND be truthy (not null/undefined).
+        if (activeHandle) {
+           const edge = edgesInSubgraph.find(e => e.source === depId && e.target === nodeId); // Use edgesInSubgraph from this scope
+           console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Found Edge:`, edge ? `${edge.sourceHandle} -> ${edge.targetHandle}` : 'Edge not found');
+
+           if (!edge) {
+               console.warn(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Edge not found)`);
+               return false; // Edge must exist
+           }
+           
+           const handlesMatch = edge.sourceHandle === activeHandle;
+           console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), EdgeHandle: ${edge.sourceHandle}, ActiveHandle: ${activeHandle}, HandlesMatch: ${handlesMatch}`);
+           
+           // Crucially, check if the edge's sourceHandle matches the activeOutputHandle
+           if (!handlesMatch) { // Use type assertion temporarily
+               console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Handle mismatch)`);
+               setNodeState(nodeId, { status: 'skipped', executionId: execId }); // Set node to skipped
+               return false; // This path is inactive
+           }
+           // If handles match, the conditional dependency is met for this path
+           console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: TRUE (Handles match)`);
+
+        } else {
+           // Completed conditional node *must* have an activeOutputHandle set by the dispatcher
+           // Check if it *should* have had one (i.e. status is success)
+           if (depState?.status === 'success') {
+                console.warn(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Completed but missing activeOutputHandle). State:`, depState );
+           } else {
+                // If status is not success, missing handle is expected, but dependency is still not met in terms of data flow.
+                console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Not completed successfully - Status: ${depState?.status})`);
+           }
+           setNodeState(nodeId, { status: 'skipped', executionId: execId }); // Set node to skipped
+           return false; // Treat as unmet if state is inconsistent or node didn't succeed
+        }
+      }
+      // --- End Conditional Check ---
+
+      // If it's not a conditional node OR the conditional check passed, the dependency is met
+      // console.log(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Non-Conditional or Passed), Result: TRUE`);
+      return true;
+    });
   };
 
   let loopCounter = 0;
@@ -227,7 +295,7 @@ async function executeSubgraphInternal(
 
   // 5. Final Check and Return Results
   const failedNodes = Object.entries(nodeExecutionStatus)
-    .filter(([_, status]) => status !== 'completed')
+    .filter(([_, status]) => status === 'pending' || status === 'running') // Ignore 'skipped' and 'failed' here
     .map(([nodeId, status]) => `${nodeId} (${status})`);
 
   if (failedNodes.length > 0) {

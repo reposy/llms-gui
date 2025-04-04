@@ -4,6 +4,7 @@ import { RootState } from '../store/store';
 import { setNodes, setEdges } from '../store/flowSlice';
 import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
+import { cloneDeep } from 'lodash';
 
 interface FlowData {
   name: string;
@@ -65,38 +66,25 @@ export const FlowManager: React.FC = () => {
       try {
         const flowData: FlowData = JSON.parse(e.target?.result as string);
 
-        const importedNodes: Node<NodeData>[] = flowData.nodes.map(node => ({
-          id: node.id,
-          type: node.type,
-          position: node.position,
-          data: node.data,
-          parentNode: node.parentNode,
-          extent: node.extent,
-          style: node.style,
-          className: node.className,
-          sourcePosition: node.sourcePosition,
-          targetPosition: node.targetPosition,
-          hidden: node.hidden,
-          selected: node.selected,
-          dragging: node.dragging,
-          draggable: node.draggable,
-          selectable: node.selectable,
-          connectable: node.connectable,
-          resizing: node.resizing,
-          dragHandle: node.dragHandle,
-          width: node.width,
-          height: node.height,
-          zIndex: node.zIndex,
-          ariaLabel: node.ariaLabel
-        }));
+        const importedNodes: Node<NodeData>[] = flowData.nodes.map(node => {
+          const importedNode = cloneDeep(node);
+          
+          if (importedNode.type === 'group' && !importedNode.dragHandle) {
+              console.warn(`[Import] Adding missing dragHandle to group node ${importedNode.id}`);
+              importedNode.dragHandle = '.group-node-header';
+          }
+          
+          return importedNode; 
+        });
 
         const importedEdges: Edge[] = flowData.edges.map(edge => ({
-          ...edge
+          ...cloneDeep(edge)
         }));
 
         dispatch(setNodes(importedNodes));
         dispatch(setEdges(importedEdges));
         console.log('Imported nodes:', importedNodes);
+        console.log('Imported edges:', importedEdges);
 
       } catch (error) {
         console.error('Error importing flow:', error);
