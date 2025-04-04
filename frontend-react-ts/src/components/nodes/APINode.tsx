@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateNodeData } from '../../store/flowSlice';
@@ -11,7 +11,7 @@ import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
-import { isEditingNodeRef } from '../../hooks/useFlowSync';
+import { isEditingNodeRef, useFlowSync } from '../../hooks/useFlowSync';
 
 interface Props {
   id: string;
@@ -44,6 +44,11 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const [paramDrafts, setParamDrafts] = useState<QueryParamDrafts>({});
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testResponse, setTestResponse] = useState<any>(null);
+  
+  // Access the flow sync utilities
+  const { markNodeDirty, commitChanges } = useFlowSync({ 
+    isRestoringHistory: useRef(false)
+  });
 
   // Update drafts when data changes externally
   useEffect(() => {
@@ -61,26 +66,28 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     const newUrl = e.target.value;
     setUrlDraft(newUrl);
     
-    if (!isComposing) {
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { ...data, url: newUrl }
-      }));
-    }
-  }, [dispatch, id, data, isComposing]);
+    // Mark node as dirty on any changes
+    markNodeDirty(id);
+  }, [id, markNodeDirty]);
 
   const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
     setIsComposing(false);
     isEditingNodeRef.current = null; // Clear editing reference
     const newUrl = e.currentTarget.value;
     
+    // Mark node as dirty
+    markNodeDirty(id);
+    
+    // Update Redux directly
     dispatch(updateNodeData({
       nodeId: id,
       data: { ...data, url: newUrl }
     }));
-  }, [dispatch, id, data]);
+    
+    // Commit changes
+    commitChanges();
+  }, [dispatch, id, data, markNodeDirty, commitChanges]);
 
-  // Add handlers for URL input focus/blur
   const handleUrlFocus = useCallback(() => {
     isEditingNodeRef.current = id; // Set this node as being edited
   }, [id]);
@@ -93,14 +100,21 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       nodeId: id,
       data: { ...data, url: urlDraft }
     }));
-  }, [dispatch, id, data, urlDraft]);
+    
+    // Commit changes
+    commitChanges();
+  }, [dispatch, id, data, urlDraft, commitChanges]);
 
   const handleMethodChange = useCallback((method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
+    // Mark node as dirty
+    markNodeDirty(id);
+    
+    // Update Redux
     dispatch(updateNodeData({
       nodeId: id,
       data: { ...data, method }
     }));
-  }, [dispatch, id, data]);
+  }, [dispatch, id, data, markNodeDirty]);
 
   const handleAddParam = useCallback(() => {
     const params = data.queryParams || {};
@@ -179,8 +193,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   // Run full flow
   const handleRun = useCallback(() => {
+    // Commit any pending changes before executing the flow
+    console.log(`[APINode] Committing changes before executing flow from node ${id}`);
+    commitChanges();
+    
+    // Now execute the flow
     executeFlow(id);
-  }, [id]);
+  }, [id, commitChanges]);
 
   // Execute API request with input data
   const executeRequest = useCallback(async (input: any) => {

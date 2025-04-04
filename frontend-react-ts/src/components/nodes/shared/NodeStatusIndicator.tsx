@@ -6,6 +6,7 @@ interface Props {
   loadingText?: string;
   successText?: string;
   errorText?: string;
+  className?: string;
 }
 
 export const NodeStatusIndicator: React.FC<Props> = React.memo(({ 
@@ -13,14 +14,15 @@ export const NodeStatusIndicator: React.FC<Props> = React.memo(({
   error,
   loadingText = 'Running...',
   successText = 'Success',
-  errorText = 'Error'
+  errorText = 'Error',
+  className = ''
 }) => {
   if (status === 'idle') {
     return null; // Don't show anything when idle
   }
 
   return (
-    <div className="flex items-center gap-1 text-xs py-1">
+    <div className={`flex items-center gap-1 text-xs py-1 ${className}`}>
       {status === 'running' && (
         <span className="text-yellow-600">⏳ {loadingText}</span>
       )}

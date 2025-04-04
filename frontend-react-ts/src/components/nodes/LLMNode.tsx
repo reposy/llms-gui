@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { LLMNodeCompactView } from './LLMNodeCompactView';
 import { LLMNodeExpandedView } from './LLMNodeExpandedView';
 import { LLMNodeViewController } from './LLMNodeViewController';
+import { useNodeContent, loadFromReduxNodes } from '../../store/nodeContentStore';
 
 interface Props {
   id: string;
@@ -22,6 +23,17 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const dispatch = useDispatch();
   const nodeState = useNodeState(id);
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
+  
+  // Get node content from content store
+  const { content, isContentDirty } = useNodeContent(id);
+  
+  // Load data from Redux to content store on mount and when data changes
+  useEffect(() => {
+    // Only load if content is not dirty (to prevent overriding user edits)
+    if (!isContentDirty) {
+      loadFromReduxNodes([{ id, data }]);
+    }
+  }, [id]);
 
   const toggleNodeView = useCallback(() => {
     dispatch(setNodeViewMode({
@@ -74,7 +86,8 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
               'border',
               selected
                 ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
-                : 'border-blue-200 shadow-sm'
+                : 'border-blue-200 shadow-sm',
+              isContentDirty ? 'border-l-4 border-l-yellow-400' : '' // Show dirty state visual indicator
             )}
           >
             {viewMode === VIEW_MODES.COMPACT ? (
@@ -84,6 +97,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                 nodeState={nodeState}
                 viewMode={viewMode}
                 onToggleView={toggleNodeView}
+                nodeContent={content}
               />
             ) : (
               <LLMNodeExpandedView
@@ -92,6 +106,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                 nodeState={nodeState}
                 viewMode={viewMode}
                 onToggleView={toggleNodeView}
+                nodeContent={content}
               />
             )}
           </div>

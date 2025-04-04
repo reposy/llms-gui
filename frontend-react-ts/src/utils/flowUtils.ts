@@ -4,8 +4,8 @@ import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeDa
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
 const NODE_HEIGHT = 150; // Approximate height, adjust if needed
-const NODE_SPACING_X = 100;
-const NODE_SPACING_Y = 50;
+const NODE_SPACING_X = 300; // Increased from 200 to 300 for more horizontal space
+const NODE_SPACING_Y = 150; // Increased from 100 to 150 for more vertical space
 
 // Helper function to calculate position for a new node
 export const calculateNodePosition = (
@@ -177,7 +177,7 @@ export const createNewNode = (
 
   // Apply special properties for specific node types
   if (type === 'group') {
-    newNode.style = { width: 800, height: 400 };
+    newNode.style = { width: 1200, height: 700 }; // Increased from 1000x600 to 1200x700 for even more space
     newNode.dragHandle = '.group-node-container'; // Allow dragging from the entire group node
   }
 

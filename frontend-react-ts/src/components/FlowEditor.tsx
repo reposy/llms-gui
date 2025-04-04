@@ -64,6 +64,12 @@ export const FlowEditor = () => {
   }, []);
 
   const executeFlow = useCallback(async () => {
+    // First, commit any pending changes to Redux
+    if (reactFlowApiRef.current?.commitChanges) {
+      console.log("[FlowEditor] Committing all changes before executing flow");
+      reactFlowApiRef.current.commitChanges();
+    }
+    
     setIsExecuting(true);
 
     try {
@@ -82,7 +88,7 @@ export const FlowEditor = () => {
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, reactFlowApiRef]);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId);
 

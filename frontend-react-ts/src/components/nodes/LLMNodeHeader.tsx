@@ -1,10 +1,11 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { updateNodeData } from '../../store/flowSlice';
 import { NodeViewMode, VIEW_MODES } from '../../store/viewModeSlice';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
 import { NodeHeader } from './shared/NodeHeader';
 import { LLMNodeData } from '../../types/nodes';
+import { useFlowSync } from '../../hooks/useFlowSync';
 
 interface LLMNodeHeaderProps {
   id: string;
@@ -22,6 +23,11 @@ export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const dispatch = useDispatch();
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
+  
+  // Get flow sync utilities to commit changes
+  const { commitChanges } = useFlowSync({
+    isRestoringHistory: useRef(false)
+  });
 
   // Encapsulate label update logic for the shared component
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
@@ -31,9 +37,14 @@ export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const handleRun = useCallback(() => {
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
+      // Commit all pending changes before executing the flow
+      console.log(`[LLMNodeHeader] Committing changes before executing flow from node ${id}`);
+      commitChanges();
+      
+      // Now execute the flow
       executeFlow(id);
     }
-  }, [id, isRootNode]);
+  }, [id, isRootNode, commitChanges]);
 
   return (
     <NodeHeader

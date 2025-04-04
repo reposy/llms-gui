@@ -3,10 +3,10 @@ import { Node, Edge, useNodesState, useEdgesState } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store/store';
+import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
 import { isEqual } from 'lodash';
+import { getAllNodeContents, isNodeDirty, NodeContent } from '../store/nodeContentStore';
 
-// Global ref to track which node is currently being edited
-// This is needed to prevent Redux state from overriding local state during user input
 /**
  * A global reference to track which node is currently being edited.
  * 
@@ -47,7 +47,10 @@ interface UseFlowSyncReturn {
   setLocalEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   onLocalNodesChange: (changes: any) => void;
   onLocalEdgesChange: (changes: any) => void;
-  forceSync: () => void; // New function to force sync
+  forceSync: () => void; // Force sync from Redux to local
+  commitChanges: () => void; // Commit local changes to Redux
+  markNodeDirty: (nodeId: string) => void; // Mark a node as having unsaved changes
+  isDirty: (nodeId?: string) => boolean; // Check if a node (or any node) is dirty
 }
 
 // Helper function to compare nodes by their essential properties
@@ -84,127 +87,201 @@ export const useFlowSync = ({
   const [localNodes, setLocalNodes, onLocalNodesChange] = useNodesState(initialNodes);
   const [localEdges, setLocalEdges, onLocalEdgesChange] = useEdgesState(initialEdges);
   
-  // Track the previous count of nodes to detect additions
-  const prevNodeCountRef = useRef(initialNodes.length);
+  // Track nodes with unsaved changes (dirty nodes)
+  const dirtyNodesRef = useRef(new Set<string>());
   
-  // Add a ref to track the last sync time to prevent rapid re-renders
-  const lastSyncTimeRef = useRef(Date.now());
-
   // Track if this is initial load
   const isInitialSyncRef = useRef(true);
   
+  // Function to mark a node as dirty (has unsaved changes)
+  const markNodeDirty = useCallback((nodeId: string) => {
+    // Only log if the node isn't already marked as dirty
+    if (!dirtyNodesRef.current.has(nodeId)) {
+      console.log(`[FlowSync] Node ${nodeId} marked as dirty`);
+    }
+    dirtyNodesRef.current.add(nodeId);
+  }, []);
+  
+  // Function to check if a node is dirty
+  const isDirty = useCallback((nodeId?: string) => {
+    if (nodeId) {
+      return dirtyNodesRef.current.has(nodeId) || isNodeDirty(nodeId);
+    }
+    
+    // Check both flow sync dirty nodes and node content store dirty nodes
+    return dirtyNodesRef.current.size > 0 || Object.entries(getAllNodeContents())
+      .some(([_, content]) => content.isDirty);
+  }, []);
+  
+  // Helper to prepare nodes for Redux by merging nodeContentStore with structural data
+  const prepareNodesForRedux = useCallback((nodes: Node<NodeData>[]) => {
+    const nodeContents = getAllNodeContents();
+    
+    return nodes.map(node => {
+      const nodeContent = nodeContents[node.id];
+      
+      // If node has dirty content, merge it with the node data
+      if (nodeContent && nodeContent.isDirty) {
+        // Create a deep copy of node to avoid mutation
+        const updatedNode = { ...node, data: { ...node.data } };
+        
+        // Merge content back into node data based on node type
+        switch (node.data.type) {
+          case 'llm': {
+            const llmData = updatedNode.data as any;
+            if (nodeContent.prompt !== undefined) llmData.prompt = nodeContent.prompt;
+            if (nodeContent.model !== undefined) llmData.model = nodeContent.model;
+            if (nodeContent.temperature !== undefined) llmData.temperature = nodeContent.temperature;
+            if (nodeContent.provider !== undefined) llmData.provider = nodeContent.provider;
+            if (nodeContent.ollamaUrl !== undefined) llmData.ollamaUrl = nodeContent.ollamaUrl;
+            if (nodeContent.label !== undefined) llmData.label = nodeContent.label;
+            break;
+          }
+            
+          case 'api': {
+            const apiData = updatedNode.data as any;
+            if (nodeContent.url !== undefined) apiData.url = nodeContent.url;
+            if (nodeContent.method !== undefined) apiData.method = nodeContent.method;
+            if (nodeContent.headers !== undefined) apiData.headers = nodeContent.headers;
+            if (nodeContent.body !== undefined) apiData.body = nodeContent.body;
+            if (nodeContent.queryParams !== undefined) apiData.queryParams = nodeContent.queryParams;
+            if (nodeContent.useInputAsBody !== undefined) apiData.useInputAsBody = nodeContent.useInputAsBody;
+            if (nodeContent.contentType !== undefined) apiData.contentType = nodeContent.contentType;
+            if (nodeContent.bodyFormat !== undefined) apiData.bodyFormat = nodeContent.bodyFormat;
+            if (nodeContent.bodyParams !== undefined) apiData.bodyParams = nodeContent.bodyParams;
+            if (nodeContent.label !== undefined) apiData.label = nodeContent.label;
+            break;
+          }
+            
+          case 'output': {
+            const outputData = updatedNode.data as any;
+            if (nodeContent.format !== undefined) outputData.format = nodeContent.format;
+            if (nodeContent.content !== undefined) outputData.content = nodeContent.content;
+            if (nodeContent.label !== undefined) outputData.label = nodeContent.label;
+            break;
+          }
+            
+          case 'conditional': {
+            const conditionalData = updatedNode.data as any;
+            if (nodeContent.conditionType !== undefined) conditionalData.conditionType = nodeContent.conditionType;
+            if (nodeContent.conditionValue !== undefined) conditionalData.conditionValue = nodeContent.conditionValue;
+            if (nodeContent.label !== undefined) conditionalData.label = nodeContent.label;
+            break;
+          }
+            
+          default: {
+            // Handle any common fields for other node types
+            const basicData = updatedNode.data as any;
+            if (nodeContent.label !== undefined) basicData.label = nodeContent.label;
+            break;
+          }
+        }
+        
+        return updatedNode;
+      }
+      
+      return node;
+    });
+  }, []);
+  
+  // Function to commit local changes to Redux
+  const commitChanges = useCallback(() => {
+    if (dirtyNodesRef.current.size > 0) {
+      console.log(`[FlowSync] Committing changes for ${dirtyNodesRef.current.size} dirty nodes to Redux`);
+      
+      // Prepare nodes by merging with node content store
+      const nodesToCommit = prepareNodesForRedux(localNodes);
+      
+      // Update Redux with the merged nodes
+      dispatch(setReduxNodes(nodesToCommit));
+      
+      // Always commit edges too, in case they're related
+      if (localEdges.length > 0) {
+        dispatch(setReduxEdges(localEdges));
+      }
+      
+      // Clear dirty state after commit
+      dirtyNodesRef.current.clear();
+    }
+  }, [dispatch, localNodes, localEdges, prepareNodesForRedux]);
+  
   // Function to force a complete sync from Redux to local
   const forceSync = useCallback(() => {
-    console.log("[Sync Effect] Force sync requested");
-    triggerForceSync.current = true;
-    // Immediate sync attempt
+    console.log("[FlowSync] Force sync requested");
+    
+    // If we have dirty nodes, commit them first
+    if (dirtyNodesRef.current.size > 0) {
+      commitChanges();
+    }
+    
+    // Then update from Redux
     setLocalNodes(initialNodes);
     setLocalEdges(initialEdges);
-    lastSyncTimeRef.current = Date.now();
-  }, [initialNodes, initialEdges, setLocalNodes, setLocalEdges]);
-
+    console.log("[FlowSync] Completed force sync from Redux to local");
+  }, [initialNodes, initialEdges, setLocalNodes, setLocalEdges, commitChanges]);
+  
   // Initial sync effect specifically for first load or data import
   useEffect(() => {
     if (isInitialSyncRef.current) {
-      console.log("[Sync Effect] Initial sync");
+      console.log("[FlowSync] Initial sync");
       setLocalNodes(initialNodes);
       setLocalEdges(initialEdges);
       isInitialSyncRef.current = false;
     }
   }, [initialNodes, initialEdges, setLocalNodes, setLocalEdges]);
   
-  // Sync Redux state -> local state (for external changes)
+  // Handle external Redux updates (only for force sync or history actions)
   useEffect(() => {
-    // Skip if we're currently restoring history to avoid feedback loops
-    if (isRestoringHistory.current) return;
-    
-    // Throttle updates more aggressively (300ms minimum between syncs) to reduce interaction issues
-    const now = Date.now();
-    if (now - lastSyncTimeRef.current < 300 && !triggerForceSync.current) return;
-    
-    // Check if we just added a new node locally (local has more nodes than Redux)
-    const localAdded = localNodes.length > initialNodes.length;
-    
-    // Use the custom comparison function instead of deep equality
-    const nodesEquivalent = areNodesEquivalent(localNodes, initialNodes);
-    
-    // Handle force sync first
-    if (triggerForceSync.current) {
-      console.log("[Sync Effect] Processing force sync");
-      setLocalNodes(initialNodes);
-      setLocalEdges(initialEdges);
-      lastSyncTimeRef.current = now;
-      triggerForceSync.current = false;
+    // Skip if we're editing (normal case) - this is a big change from previous sync behavior
+    if (isEditingNodeRef.current && !isRestoringHistory.current && !triggerForceSync.current) {
       return;
     }
-
-    // Only update from Redux if:
-    // 1. Not just added nodes locally
-    // 2. Nodes are not equivalent
-    // 3. The currently edited node (if any) is preserved
-    if (!localAdded && !nodesEquivalent) {
-      console.log("[Sync Effect] Updating local nodes from Redux");
-      
-      // If a node is currently being edited, we need to preserve its state
-      if (isEditingNodeRef.current) {
-        const editingNodeId = isEditingNodeRef.current;
-        console.log(`[Sync Effect] Preserving state for currently editing node: ${editingNodeId}`);
-        
-        // Find the node being edited in local state
-        const localEditingNode = localNodes.find(node => node.id === editingNodeId);
-        
-        if (localEditingNode) {
-          console.log(`[Sync Effect] Found editing node in local state`, {
-            nodeId: localEditingNode.id,
-            type: localEditingNode.data.type,
-            nodeData: localEditingNode.data
-          });
-        } else {
-          console.warn(`[Sync Effect] Editing node ${editingNodeId} not found in local state`);
-        }
-        
-        // Update all nodes except the one being edited
-        const updatedNodes = initialNodes.map(reduxNode => {
-          if (reduxNode.id === editingNodeId && localEditingNode) {
-            // Keep the local state for the editing node
-            return localEditingNode;
-          }
-          return reduxNode;
-        });
-        
-        setLocalNodes(updatedNodes);
-      } else {
-        // No node is being edited, we can safely update all nodes
-        console.log("[Sync Effect] No node is being edited, updating all nodes");
-        setLocalNodes(initialNodes);
-      }
-      
-      lastSyncTimeRef.current = now;
-    }
     
-    // Update the previous node count reference
-    prevNodeCountRef.current = initialNodes.length;
-  }, [initialNodes, setLocalNodes, localNodes, isRestoringHistory]);
-
-  // Handle edge syncing separately with similar logic
-  useEffect(() => {
-    // Skip if we're currently restoring history to avoid feedback loops
-    if (isRestoringHistory.current) return;
+    // Only sync from Redux in specific scenarios:
     
-    // Skip if we just processed a force sync
-    if (triggerForceSync.current) return;
-    
-    // Throttle updates more aggressively
-    const now = Date.now();
-    if (now - lastSyncTimeRef.current < 300) return;
-    
-    // Edges are less likely to cause editing conflicts, but still apply throttling
-    if (!isEqual(localEdges, initialEdges)) {
-      console.log("[Sync Effect] Updating local edges from Redux");
+    // 1. When restoring history (undo/redo)
+    if (isRestoringHistory.current) {
+      console.log("[FlowSync] Syncing due to history restoration");
+      setLocalNodes(initialNodes);
       setLocalEdges(initialEdges);
-      lastSyncTimeRef.current = now;
+      // Clear any dirty state since we're restoring history
+      dirtyNodesRef.current.clear();
+      return;
     }
-  }, [initialEdges, setLocalEdges, localEdges, isRestoringHistory]);
+    
+    // 2. When force sync is triggered (import, etc.)
+    if (triggerForceSync.current) {
+      console.log("[FlowSync] Processing force sync");
+      setLocalNodes(initialNodes);
+      setLocalEdges(initialEdges);
+      triggerForceSync.current = false;
+      // Clear any dirty state since we're doing a force sync
+      dirtyNodesRef.current.clear();
+      return;
+    }
+    
+    // For all other scenarios, we don't auto-sync from Redux to local
+    // This is a key change from the previous behavior
+    
+  }, [initialNodes, initialEdges, setLocalNodes, setLocalEdges, isRestoringHistory]);
+  
+  // Clean up dirty nodes when nodes are deleted
+  useEffect(() => {
+    // Get the current node IDs
+    const currentNodeIds = new Set(localNodes.map(node => node.id));
+    
+    // Find dirty nodes that no longer exist
+    const deletedDirtyNodes = Array.from(dirtyNodesRef.current)
+      .filter(nodeId => !currentNodeIds.has(nodeId));
+    
+    // Remove them from dirty nodes set
+    if (deletedDirtyNodes.length > 0) {
+      console.log(`[FlowSync] Removing ${deletedDirtyNodes.length} deleted nodes from dirty nodes set`);
+      deletedDirtyNodes.forEach(nodeId => {
+        dirtyNodesRef.current.delete(nodeId);
+      });
+    }
+  }, [localNodes]);
   
   return {
     localNodes,
@@ -213,6 +290,9 @@ export const useFlowSync = ({
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSync
+    forceSync,
+    commitChanges,
+    markNodeDirty,
+    isDirty
   };
 }; 

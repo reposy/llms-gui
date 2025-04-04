@@ -18,6 +18,7 @@ import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { createNewNode } from '../utils/flowUtils';
+import { loadFromReduxNodes, cleanupDeletedNodes } from '../store/nodeContentStore';
 
 // Import node components
 import LLMNode from './nodes/LLMNode';
@@ -82,6 +83,7 @@ const nodeTypes = {
 export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
   forceSync: () => void;
+  commitChanges: () => void;
 }
 
 interface FlowCanvasProps {
@@ -89,7 +91,7 @@ interface FlowCanvasProps {
   registerReactFlowApi?: (api: FlowCanvasApi) => void;
 }
 
-const defaultViewport = { x: 0, y: 0, zoom: 1 };
+const defaultViewport = { x: 0, y: 0, zoom: 0.7 };
 
 export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: FlowCanvasProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -104,7 +106,8 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     localEdges, 
     setLocalNodes, 
     setLocalEdges,
-    forceSync
+    forceSync,
+    commitChanges
   } = useFlowSync({ isRestoringHistory });
   
   // Use the history hook for undo/redo functionality
@@ -142,15 +145,37 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     { onNodeSelect, pushToHistory, isRestoringHistory }
   );
   
-  // Register the addNodes function with the parent component
+  // Create an API reference for commitChanges access
+  const commitChangesRef = useRef(commitChanges);
+  
+  // Keep the ref updated when the function changes
+  useEffect(() => {
+    commitChangesRef.current = commitChanges;
+  }, [commitChanges]);
+  
+  // Register the API functions with the parent component
   useEffect(() => {
     if (registerReactFlowApi) {
       registerReactFlowApi({ 
         addNodes,
-        forceSync
+        forceSync,
+        commitChanges: () => commitChangesRef.current()
       });
     }
   }, [registerReactFlowApi, addNodes, forceSync]);
+
+  // Initialize or update node content store when nodes change
+  useEffect(() => {
+    // Load node content from Redux nodes - convert Node<NodeData> to NodeData
+    const nodeDataArray = localNodes.map(node => node.data);
+    loadFromReduxNodes(nodeDataArray);
+    
+    // Clean up deleted nodes from content store
+    const existingNodeIds = localNodes.map(node => node.id);
+    cleanupDeletedNodes(existingNodeIds);
+    
+    console.log('[FlowCanvas] Node content store initialized/updated from flow nodes');
+  }, [localNodes.length]);
 
   // Set up keyboard shortcuts
   useEffect(() => {
@@ -278,7 +303,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         connectionLineType={ConnectionLineType.Bezier}
         defaultViewport={defaultViewport}
         fitView
-        fitViewOptions={{ padding: 0.1 }}
+        fitViewOptions={{ padding: 0.5 }}
         onDrop={onDrop}
         onDragOver={onDragOver}
         deleteKeyCode={null}

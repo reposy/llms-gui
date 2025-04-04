@@ -11,6 +11,7 @@ import { store } from './store';
 // Import from our refactored modules
 import { getNodeState, setNodeState, resetNodeStates } from './useNodeStateStore';
 import { getDownstreamNodes, getNodesInGroup } from './useNodeGraphUtils';
+import { getNodeContent } from './nodeContentStore';
 
 // Define the state structure for execution controller
 export interface ExecutionControllerState {

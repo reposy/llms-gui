@@ -2,6 +2,7 @@ import { Node } from 'reactflow';
 import axios from 'axios';
 import { LLMNodeData, NodeType, LLMResult } from '../types/nodes'; // Adjusted import
 import { ExecutionContext, NodeState } from '../types/execution';
+import { getNodeContent } from '../store/nodeContentStore';
 
 export async function executeLlmNode(params: {
   node: Node<LLMNodeData>;
@@ -14,6 +15,9 @@ export async function executeLlmNode(params: {
   const nodeId = node.id;
   const nodeData = node.data;
   const { executionId } = context;
+  
+  // Get node content from content store
+  const nodeContent = getNodeContent(nodeId) || {};
 
   console.log(`[ExecuteNode ${nodeId}] (LLM) Executing with context:`, context, `Inputs:`, inputs);
 
@@ -24,7 +28,9 @@ export async function executeLlmNode(params: {
   const promptInput = inputs.length > 0 ? inputs[0] : {};
   console.log(`[ExecuteNode ${nodeId}] (LLM) Using prompt input:`, promptInput);
   
-  const resolvedPrompt = resolveTemplate(nodeData.prompt || '', promptInput);
+  // Use content from store if available, fallback to Redux data
+  const promptTemplate = nodeContent.prompt || nodeData.prompt || '';
+  const resolvedPrompt = resolveTemplate(promptTemplate, promptInput);
   console.log(`[ExecuteNode ${nodeId}] (LLM) Resolved prompt:`, resolvedPrompt);
 
   if (!resolvedPrompt) {
@@ -36,18 +42,24 @@ export async function executeLlmNode(params: {
   let apiUrl: string;
   let requestPayload: any;
   let isDirectOllamaCall = false;
+  
+  // Use content from store or fallback to Redux data
+  const provider = nodeContent.provider || nodeData.provider;
+  const model = nodeContent.model || nodeData.model;
+  const temperature = nodeContent.temperature ?? nodeData.temperature ?? 0.7;
+  const ollamaUrl = nodeContent.ollamaUrl || nodeData.ollamaUrl;
 
   // Determine API URL and Payload based on provider and ollamaUrl presence
-  if (nodeData.provider === 'ollama' && nodeData.ollamaUrl) {
+  if (provider === 'ollama' && ollamaUrl) {
     // Direct Ollama Call
     isDirectOllamaCall = true;
-    apiUrl = `${nodeData.ollamaUrl.replace(/\/$/, '')}/api/chat`; // Use chat endpoint
+    apiUrl = `${ollamaUrl.replace(/\/$/, '')}/api/chat`; // Use chat endpoint
     requestPayload = {
-      model: nodeData.model, // Use the selected model
+      model: model, // Use the selected model
       messages: [{ role: 'user', content: resolvedPrompt }],
       stream: false, // Assuming non-streaming for now
       options: {
-        temperature: nodeData.temperature ?? 0.7,
+        temperature: temperature,
       },
     };
     console.log(`[ExecuteNode ${nodeId}] (LLM) Using Direct Ollama URL: ${apiUrl}`);
@@ -55,12 +67,12 @@ export async function executeLlmNode(params: {
     // Call via Proxy (/api/llm)
     apiUrl = 'http://localhost:8000/api/llm'; // Fallback proxy URL
     requestPayload = {
-      provider: nodeData.provider || 'ollama',
-      model: nodeData.model || (nodeData.provider === 'openai' ? 'gpt-3.5-turbo' : 'llama2'),
+      provider: provider || 'ollama',
+      model: model || (provider === 'openai' ? 'gpt-3.5-turbo' : 'llama2'),
       prompt: resolvedPrompt,
-      temperature: nodeData.temperature ?? 0.7,
+      temperature: temperature,
       // Conditionally include ollama_url if calling proxy for ollama
-      ...(nodeData.provider === 'ollama' && nodeData.ollamaUrl && { ollama_url: nodeData.ollamaUrl }),
+      ...(provider === 'ollama' && ollamaUrl && { ollama_url: ollamaUrl }),
     };
     console.log(`[ExecuteNode ${nodeId}] (LLM) Using Proxy URL: ${apiUrl}`);
   }
