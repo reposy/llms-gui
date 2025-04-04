@@ -36,7 +36,7 @@ export interface ExecutionContext {
 }
 
 // Re-export the GroupExecutionItemResult
-export { GroupExecutionItemResult };
+export type { GroupExecutionItemResult };
 
 // Define the combined state interface for backwards compatibility
 export interface FlowExecutionState {

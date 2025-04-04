@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Handle, Position, NodeProps, NodeResizer } from 'reactflow';
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
@@ -7,8 +7,8 @@ import { RootState } from '../../store/store';
 import { executeFlowForGroup, useNodeState } from '../../store/flowExecutionStore';
 import { getRootNodesFromSubset } from '../../utils/executionUtils';
 
-// Remove CSS import temporarily
-// import './GroupNode.css';
+// Add CSS import back to handle z-index
+import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPos, yPos, isConnectable }) => {
   const allNodes = useSelector((state: RootState) => state.flow.nodes);
@@ -22,46 +22,47 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
     const nodeIdsInGroup = new Set(nodesInGroup.map(n => n.id));
     const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
     const internalRoots = getRootNodesFromSubset(nodesInGroup, edgesInGroup);
-    console.log(`[Group ${id}] Nodes in group: ${nodesInGroup.length}, Internal roots: ${internalRoots.length}`);
+    // Remove noisy logging
     return {
       nodesInGroup,
       hasInternalRootNodes: internalRoots.length > 0,
     };
   }, [allNodes, allEdges, id]);
 
-  const handleRunGroup = () => {
+  const handleRunGroup = useCallback(() => {
     if (!isRunning) {
       executeFlowForGroup(id);
     }
-  };
+  }, [id, isRunning]);
 
   return (
     <>
       <NodeResizer
         minWidth={150}
-        minHeight={100} // Reverted minHeight
+        minHeight={100}
         isVisible={selected}
         lineClassName="border-blue-500"
         handleClassName="h-2 w-2 bg-white border border-blue-500"
       />
       
-      {/* Main container with flex layout */}
+      {/* Main container with flex layout - make entire group draggable */}
       <div
         className={clsx(
           'w-full h-full',
           'border-2',
           selected ? 'border-orange-600' : 'border-orange-400',
           'rounded-md',
-          'flex flex-col', // Back to flex column
-          'bg-orange-100/50' // Apply base background here if needed, or rely on content div
+          'flex flex-col',
+          'bg-orange-100/50',
+          'group-node-container', // Add class for dragging the entire group
+          'cursor-move' // Indicate the entire group is draggable
         )}
       >
-        {/* Header: Interactive */}
+        {/* Header */}
         <div
           className={clsx(
             'flex items-center justify-between p-1 text-xs text-orange-800 bg-orange-200/70 rounded-t-md',
-            'group-node-header' // Drag handle class
-            // pointer-events-auto is default
+            'group-node-header' // Keep this class for compatibility
           )}
         >
           <span>{data.label || 'Group'}</span>
@@ -80,14 +81,14 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           )}
         </div>
 
-        {/* Content Area: Visual background, non-interactive */}
+        {/* Content Area */}
         <div
           className={clsx(
-            'flex-grow', // Takes remaining space
-            'bg-orange-50/30', // Background color for content area
+            'flex-grow',
+            'bg-orange-50/30',
             'rounded-b-md',
-            'relative', // For positioning the placeholder text
-            'pointer-events-none' // Crucial: Make this area ignore clicks
+            'relative',
+            'group-node-content' // Add class for potential CSS targeting
           )}
         >
           {nodesInGroup.length === 0 && (
@@ -95,7 +96,6 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
               Drag nodes here
             </div>
           )}
-          {/* Child nodes rendered by React Flow should receive clicks now */}
         </div>
       </div>
 

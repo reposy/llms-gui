@@ -17,6 +17,7 @@ import { useHistory } from '../hooks/useHistory';
 import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
+import { createNewNode } from '../utils/flowUtils';
 
 // Import node components
 import LLMNode from './nodes/LLMNode';
@@ -27,11 +28,11 @@ import InputNode from './nodes/InputNode';
 import GroupNode from './nodes/GroupNode';
 import ConditionalNode from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
-import { NodeData } from '../types/nodes';
+import { NodeData, NodeType } from '../types/nodes';
 
 // Custom wrapper to remove default React Flow node styling
 const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ position: 'relative' }} className="react-flow__node">
+  <div style={{ position: 'relative' }} className="react-flow__node pointer-events-auto">
     {children}
   </div>
 );
@@ -63,7 +64,9 @@ const nodeTypes = {
       <InputNode {...props} />
     </NodeWrapper>
   ),
-  group: GroupNode,
+  group: (props: any) => (
+    <GroupNode {...props} />
+  ),
   conditional: (props: any) => (
     <NodeWrapper>
       <ConditionalNode {...props} />
@@ -201,11 +204,11 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   }, []);
 
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
       const reactFlowBounds = reactFlowWrapper.current?.getBoundingClientRect();
-      const nodeType = event.dataTransfer.getData('application/reactflow');
+      const nodeType = event.dataTransfer.getData('application/reactflow') as NodeType;
 
       if (!nodeType || !reactFlowBounds) {
         return;
@@ -216,15 +219,37 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         y: event.clientY - reactFlowBounds.top,
       });
 
-      const newNode = {
-        id: crypto.randomUUID(),
-        type: nodeType,
-        position,
-        data: { label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1) },
-      };
+      // Check if we're dropping onto a group node - improved detection
+      const elementsAtPoint = document.elementsFromPoint(event.clientX, event.clientY);
+      const groupElement = elementsAtPoint.find(el => 
+        el.classList.contains('react-flow__node') && 
+        el.getAttribute('data-type') === 'group'
+      );
+      
+      // Get the first group node if any
+      const parentGroup = groupElement
+        ? localNodes.find(n => n.type === 'group' && n.id === groupElement.getAttribute('data-id'))
+        : null;
 
-      setLocalNodes((nds) => [...nds, newNode as Node<NodeData>]);
-      pushToHistory([...localNodes, newNode as Node<NodeData>], localEdges);
+      // Use the createNewNode helper function
+      const newNode = createNewNode(nodeType, position);
+      
+      // If dropping inside a group, set the parentNode property
+      if (parentGroup) {
+        newNode.parentNode = parentGroup.id;
+        // Adjust position to be relative to the parent
+        newNode.position = {
+          x: position.x - parentGroup.position.x,
+          y: position.y - parentGroup.position.y
+        };
+        
+        console.log(`[Drop] Adding node ${newNode.id} as child of group ${parentGroup.id}`);
+      } else {
+        console.log(`[Drop] Adding standalone node ${newNode.id}`);
+      }
+
+      setLocalNodes((nds) => [...nds, newNode]);
+      pushToHistory([...localNodes, newNode], localEdges);
     },
     [project, setLocalNodes, localNodes, localEdges, pushToHistory]
   );
@@ -248,6 +273,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         onDrop={onDrop}
         onDragOver={onDragOver}
         deleteKeyCode={null}
+        selectNodesOnDrag={false}
       >
         <Controls />
         <MiniMap />

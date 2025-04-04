@@ -1,13 +1,13 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store/store';
-import { ViewMode, setGlobalViewMode } from '../store/flowSlice';
+import { GlobalViewMode, setGlobalViewMode, VIEW_MODES } from '../store/viewModeSlice';
 
 const FlowToolbar: React.FC = () => {
   const dispatch = useDispatch();
-  const globalViewMode = useSelector((state: RootState) => state.flow.globalViewMode);
+  const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
 
-  const handleViewModeChange = (mode: ViewMode) => {
+  const handleViewModeChange = (mode: GlobalViewMode) => {
     dispatch(setGlobalViewMode(mode));
   };
 
@@ -16,9 +16,9 @@ const FlowToolbar: React.FC = () => {
       <div className="text-sm font-medium text-gray-600">View Mode:</div>
       <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
         <button
-          onClick={() => handleViewModeChange('expanded')}
+          onClick={() => handleViewModeChange(VIEW_MODES.EXPANDED)}
           className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-            globalViewMode === 'expanded' 
+            globalViewMode === VIEW_MODES.EXPANDED 
               ? 'bg-white text-blue-700 shadow-sm' 
               : 'text-gray-600 hover:text-gray-900'
           }`}
@@ -27,9 +27,9 @@ const FlowToolbar: React.FC = () => {
           Expanded
         </button>
         <button
-          onClick={() => handleViewModeChange('compact')}
+          onClick={() => handleViewModeChange(VIEW_MODES.COMPACT)}
           className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-            globalViewMode === 'compact' 
+            globalViewMode === VIEW_MODES.COMPACT 
               ? 'bg-white text-blue-700 shadow-sm' 
               : 'text-gray-600 hover:text-gray-900'
           }`}
@@ -38,9 +38,9 @@ const FlowToolbar: React.FC = () => {
           Compact
         </button>
         <button
-          onClick={() => handleViewModeChange('auto')}
+          onClick={() => handleViewModeChange(VIEW_MODES.AUTO)}
           className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-            globalViewMode === 'auto' 
+            globalViewMode === VIEW_MODES.AUTO 
               ? 'bg-white text-blue-700 shadow-sm' 
               : 'text-gray-600 hover:text-gray-900'
           }`}

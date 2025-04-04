@@ -1,4 +1,5 @@
 import { Node, Edge } from 'reactflow';
+import { NodeViewMode } from '../store/viewModeSlice';
 
 export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger';
 export type OutputFormat = 'json' | 'text';
@@ -11,25 +12,12 @@ export interface LLMResult {
   [key: string]: any;
 }
 
-// 노드 실행 상태 관리
-export interface NodeExecutionStateData {
-  status: 'idle' | 'running' | 'completed' | 'success' | 'error';
-  result?: LLMResult | string;
-  error?: string;
-  timestamp?: number;
-}
-
-export interface NodeExecutionState {
-  nodeId: string;
-  state: NodeExecutionStateData;
-}
-
 // 플로우 실행 상태 관리
 export interface FlowExecutionState {
   isExecuting: boolean;
   currentNodeId?: string;
   executionOrder: string[];
-  nodeStates: Record<string, NodeExecutionState>;
+  nodeStates: Record<string, any>;
 }
 
 // 공통 노드 데이터 타입
@@ -49,7 +37,7 @@ export interface LLMNodeData extends BaseNodeData {
   temperature: number;
   ollamaUrl?: string;
   label: string;
-  viewMode?: ViewMode;
+  viewMode?: NodeViewMode;
 }
 
 // API 노드 데이터
@@ -65,7 +53,7 @@ export interface APINodeData extends BaseNodeData {
   bodyFormat?: 'key-value' | 'raw';
   bodyParams?: Array<{ key: string; value: string; enabled: boolean }>;
   label?: string;
-  viewMode?: ViewMode;
+  viewMode?: NodeViewMode;
 }
 
 // Output 노드 데이터
@@ -74,14 +62,14 @@ export interface OutputNodeData extends BaseNodeData {
   format: 'json' | 'text';
   content?: string;
   label?: string;
-  viewMode?: ViewMode;
+  viewMode?: NodeViewMode;
 }
 
 // JSON Extractor node data
 export interface JSONExtractorNodeData extends BaseNodeData {
   label?: string;
   path: string;
-  viewMode?: ViewMode;
+  viewMode?: NodeViewMode;
 }
 
 // Add InputNodeData
@@ -135,16 +123,11 @@ export type NodeData =
   | ConditionalNodeData
   | MergerNodeData; // Add MergerNodeData
 
-export type ViewMode = 'compact' | 'expanded' | 'auto';
-
 export interface FlowState {
   nodes: Node<NodeData>[];
   edges: Edge[];
-  nodeExecutionStates: Record<string, NodeExecutionState>;
+  nodeStates: Record<string, any>; // Using any for backward compatibility
   selectedNodeId: string | null;
-  globalViewMode: ViewMode;
-  nodeViewModes: Record<string, ViewMode>;
-  lastManualViewMode: 'compact' | 'expanded';
 }
 
 export type FlowNode = Node<NodeData>;

@@ -1,4 +1,4 @@
-import { Node } from 'reactflow';
+import { Node, Edge } from 'reactflow';
 import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData } from '../types/nodes';
 
 // Constants for node positioning
@@ -154,4 +154,41 @@ export const resolveTemplate = (template: string | undefined, context: { item: a
       console.error("Error resolving template:", e);
       return template; // Return original template on error
   }
+};
+
+// Helper function to create a new node
+export const createNewNode = (
+  type: NodeType,
+  position: { x: number; y: number }
+): Node<NodeData> => {
+  // Generate a unique ID for the node
+  const newNodeId = `${type}-${crypto.randomUUID()}`;
+  
+  // Get the default data for the node type
+  const defaultData = createDefaultNodeData(type);
+  
+  // Create the base node
+  const newNode: Node<NodeData> = {
+    id: newNodeId,
+    type,
+    position,
+    data: defaultData,
+  };
+
+  // Apply special properties for specific node types
+  if (type === 'group') {
+    newNode.style = { width: 800, height: 400 };
+    newNode.dragHandle = '.group-node-container'; // Allow dragging from the entire group node
+  }
+
+  return newNode;
+};
+
+// Helper function to remove edges connected to deleted nodes
+export const removeConnectedEdges = (
+  nodesToDelete: Node<NodeData>[],
+  edges: Edge[]
+): Edge[] => {
+  const nodeIds = new Set(nodesToDelete.map(n => n.id));
+  return edges.filter(e => !nodeIds.has(e.source) && !nodeIds.has(e.target));
 }; 

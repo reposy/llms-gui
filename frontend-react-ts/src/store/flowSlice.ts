@@ -1,25 +1,14 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Node, Edge } from 'reactflow';
-import { FlowState, NodeExecutionState, NodeExecutionStateData, NodeData, LLMNodeData, APINodeData, OutputNodeData, NodeType } from '../types/nodes';
-import { calculateNodePosition, createDefaultNodeData } from '../utils/flowUtils';
-
-export const VIEW_MODES = {
-  COMPACT: 'compact',
-  EXPANDED: 'expanded',
-  AUTO: 'auto'
-} as const;
-
-export type NodeViewMode = typeof VIEW_MODES.COMPACT | typeof VIEW_MODES.EXPANDED;
-export type GlobalViewMode = NodeViewMode | typeof VIEW_MODES.AUTO;
+import { FlowState, NodeData, NodeType } from '../types/nodes';
+import { NodeState } from '../types/execution';
+import { calculateNodePosition, createNewNode } from '../utils/flowUtils';
 
 const initialState: FlowState = {
   nodes: [],
   edges: [],
-  nodeExecutionStates: {},
-  selectedNodeId: null,
-  globalViewMode: VIEW_MODES.EXPANDED,
-  nodeViewModes: {},
-  lastManualViewMode: VIEW_MODES.EXPANDED
+  nodeStates: {},
+  selectedNodeId: null
 };
 
 interface AddNodePayload {
@@ -42,34 +31,19 @@ const flowSlice = createSlice({
       state.selectedNodeId = action.payload;
     },
     addNode: (state, action: PayloadAction<AddNodePayload>) => {
-      const { type, viewport } = action.payload;
-      const position = calculateNodePosition(state.nodes, state.selectedNodeId, viewport);
+      const { type, position, viewport } = action.payload;
       
-      const defaultData = createDefaultNodeData(type);
-      console.log(`[flowSlice] Calculated position:`, position, 'Default data:', defaultData); // Log helpers results
-
-      const newNodeId = `${type}-${crypto.randomUUID()}`; // Use crypto.randomUUID()
+      // Calculate the position for the new node
+      const calculatedPosition = position || calculateNodePosition(state.nodes, state.selectedNodeId, viewport);
       
-      // Initialize newNode without group-specific properties
-      const newNode: Node<NodeData> = {
-        id: newNodeId, // Use generated ID
-        type,
-        position,
-        data: defaultData, // Use calculated data
-      };
-
-      // Explicitly add properties if it's a group node
-      if (type === 'group') {
-        newNode.style = { width: 800, height: 400 };
-        newNode.dragHandle = '.group-node-header'; // Explicitly set dragHandle
-      }
-
-      console.log("[addNode] Final newNode:", newNode); // Verification log
-
-      console.log('[flowSlice] Nodes state BEFORE push:', JSON.stringify(state.nodes)); // Log state before
+      // Create the new node using the helper function
+      const newNode = createNewNode(type, calculatedPosition);
+      
+      // Log for debugging
+      console.log(`[flowSlice] Adding new node of type ${type} with ID: ${newNode.id}`);
+      
+      // Add the node to the state
       state.nodes.push(newNode);
-      console.log(`[flowSlice] Pushed new node with ID: ${newNodeId}`); // Log the new node ID
-      console.log('[flowSlice] Nodes state AFTER push:', JSON.stringify(state.nodes)); // Log state after
     },
     updateNodeData: (state, action: PayloadAction<{ nodeId: string; data: Partial<NodeData> }>) => {
       const node = state.nodes.find(node => node.id === action.payload.nodeId);
@@ -79,39 +53,28 @@ const flowSlice = createSlice({
       // This assumes the incoming data matches the node type, which should be ensured by the calling component
       Object.assign(node.data, action.payload.data);
     },
-    setNodeExecutionState: (state, action: PayloadAction<{ nodeId: string; state: NodeExecutionStateData }>) => {
-      const { nodeId, state: executionState } = action.payload;
-      state.nodeExecutionStates[nodeId] = {
-        nodeId,
-        state: executionState,
+    setNodeState: (state, action: PayloadAction<{ nodeId: string; state: Partial<NodeState> }>) => {
+      const { nodeId, state: nodeState } = action.payload;
+      
+      // Get existing state or initialize empty
+      const existingState = state.nodeStates[nodeId] || {};
+      
+      // Update state with new values
+      state.nodeStates[nodeId] = {
+        ...existingState,
+        ...nodeState
       };
-    },
-    setGlobalViewMode: (state, action: PayloadAction<GlobalViewMode>) => {
-      state.globalViewMode = action.payload;
-      if (action.payload !== VIEW_MODES.AUTO) {
-        state.lastManualViewMode = action.payload;
-      }
-    },
-    setNodeViewMode: (state, action: PayloadAction<{ nodeId: string; mode: NodeViewMode }>) => {
-      state.nodeViewModes[action.payload.nodeId] = action.payload.mode;
-    },
-    resetNodeViewMode: (state, action: PayloadAction<string>) => {
-      delete state.nodeViewModes[action.payload];
     }
   },
 });
 
-export const { setNodes, setEdges, addNode, updateNodeData, setNodeExecutionState, setSelectedNodeId, setGlobalViewMode, setNodeViewMode, resetNodeViewMode } = flowSlice.actions;
-
-// Selector to get effective view mode for a node
-export const getNodeEffectiveViewMode = (state: { flow: FlowState }, nodeId: string): 'compact' | 'expanded' => {
-  const nodeMode = state.flow.nodeViewModes[nodeId];
-  if (nodeMode && nodeMode !== VIEW_MODES.AUTO) {
-    return nodeMode;
-  }
-  return state.flow.globalViewMode === VIEW_MODES.AUTO 
-    ? state.flow.lastManualViewMode 
-    : state.flow.globalViewMode;
-};
+export const { 
+  setNodes, 
+  setEdges, 
+  addNode, 
+  updateNodeData, 
+  setNodeState,
+  setSelectedNodeId 
+} = flowSlice.actions;
 
 export default flowSlice.reducer; 

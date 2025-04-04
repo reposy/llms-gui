@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
-import { updateNodeData, setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES } from '../../store/flowSlice';
+import { updateNodeData } from '../../store/flowSlice';
+import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES } from '../../store/viewModeSlice';
 import { APINodeData } from '../../types/nodes';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
 import { RootState } from '../../store/store';
@@ -10,6 +11,7 @@ import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
+import { isEditingNodeRef } from '../../hooks/useFlowSync';
 
 interface Props {
   id: string;
@@ -35,7 +37,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id));
-  const globalViewMode = useSelector((state: RootState) => state.flow.globalViewMode);
+  const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
   const isCompactMode = viewMode === VIEW_MODES.COMPACT;
   const [urlDraft, setUrlDraft] = useState(data.url || '');
   const [isComposing, setIsComposing] = useState(false);
@@ -69,6 +71,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
     setIsComposing(false);
+    isEditingNodeRef.current = null; // Clear editing reference
     const newUrl = e.currentTarget.value;
     
     dispatch(updateNodeData({
@@ -76,6 +79,15 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       data: { ...data, url: newUrl }
     }));
   }, [dispatch, id, data]);
+
+  // Add handlers for URL input focus/blur
+  const handleUrlFocus = useCallback(() => {
+    isEditingNodeRef.current = id; // Set this node as being edited
+  }, [id]);
+
+  const handleUrlBlur = useCallback(() => {
+    isEditingNodeRef.current = null; // Clear editing reference
+  }, []);
 
   const handleMethodChange = useCallback((method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
     dispatch(updateNodeData({
@@ -240,6 +252,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     }
   }, [globalViewMode, getZoom, id, dispatch]);
 
+  // Map any status to supported status types
+  const mapStatus = (status: string | undefined): 'idle' | 'running' | 'success' | 'error' => {
+    if (!status) return 'idle';
+    if (status === 'skipped') return 'idle';
+    return status as 'idle' | 'running' | 'success' | 'error';
+  };
+
   const renderCompactView = () => (
     <>
       <NodeHeader
@@ -259,7 +278,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
         {data.method} | {data.url || 'No URL set'}
       </div>
 
-      <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
+      <NodeStatusIndicator status={mapStatus(nodeState?.status)} error={nodeState?.error} />
     </>
   );
 
@@ -296,8 +315,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             type="text"
             value={urlDraft}
             onChange={handleUrlChange}
-            onCompositionStart={() => setIsComposing(true)}
+            onCompositionStart={() => {
+              setIsComposing(true);
+              isEditingNodeRef.current = id;
+            }}
             onCompositionEnd={handleUrlCompositionEnd}
+            onFocus={handleUrlFocus}
+            onBlur={handleUrlBlur}
             placeholder="Enter API URL"
             className="flex-1 px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
           />
@@ -378,7 +402,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
           </div>
         )}
 
-        <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
+        <NodeStatusIndicator status={mapStatus(nodeState?.status)} error={nodeState?.error} />
       </div>
     </>
   );

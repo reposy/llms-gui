@@ -8,8 +8,8 @@ import { FlowManager } from './FlowManager';
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from 'reactflow';
 import { RootState } from '../store/store';
-import { calculateNodePosition, createDefaultNodeData } from '../utils/flowUtils';
-import FlowToolbar from './FlowToolbar';
+import { createNewNode } from '../utils/flowUtils';
+import { setNodes } from '../store/flowSlice';
 
 export const FlowEditor = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -31,22 +31,33 @@ export const FlowEditor = () => {
       return;
     }
 
-    const defaultData = createDefaultNodeData(type);
-    const newNodeId = `${type}-${crypto.randomUUID()}`;
-
-    const newNode: Node<NodeData> = {
-      id: newNodeId,
-      type,
-      position: { x: Math.random() * 400, y: Math.random() * 400 },
-      data: defaultData,
-      ...(type === 'group' && {
-        style: { width: 800, height: 400 },
-      })
-    };
+    // Generate a random position for the new node
+    const position = { x: Math.random() * 400, y: Math.random() * 400 };
+    
+    // Create a new node using the helper function
+    const newNode = createNewNode(type, position);
+    
+    // Check if a group node is currently selected
+    const selectedGroup = selectedNodeId ? nodes.find(n => n.id === selectedNodeId && n.type === 'group') : null;
+    
+    // If a group is selected, make the new node a child of the group
+    if (selectedGroup) {
+      newNode.parentNode = selectedGroup.id;
+      // Use relative positioning within the group
+      newNode.position = {
+        x: 100 + Math.random() * 200, // Position relative to group
+        y: 100 + Math.random() * 100
+      };
+      console.log(`[FlowEditor] Adding node to group ${selectedGroup.id}`);
+    }
 
     console.log(`[FlowEditor] Calling reactFlowApi.addNodes with:`, newNode);
     reactFlowApiRef.current.addNodes([newNode]);
-  }, [nodes, selectedNodeId]);
+    
+    // Update Redux state with the exact same node that was added to React Flow
+    const updatedNodes = [...nodes, newNode];
+    dispatch(setNodes(updatedNodes));
+  }, [dispatch, nodes, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
     setSelectedNodeId(node?.id || null);
@@ -183,7 +194,6 @@ export const FlowEditor = () => {
             : <NodeConfigSidebar selectedNodeId={selectedNodeId} />
         }
       </div>
-      <FlowToolbar />
     </div>
   );
 }; 

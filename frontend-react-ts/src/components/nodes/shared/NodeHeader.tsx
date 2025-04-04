@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 import { EditableNodeLabel } from './EditableNodeLabel';
-import { VIEW_MODES } from '../../../store/flowSlice';
+import { VIEW_MODES } from '../../../store/viewModeSlice';
 
 interface Props {
   nodeId: string;

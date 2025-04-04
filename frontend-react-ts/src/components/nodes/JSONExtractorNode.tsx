@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
-import { updateNodeData, setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode, GlobalViewMode } from '../../store/flowSlice';
+import { updateNodeData } from '../../store/flowSlice';
+import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode, GlobalViewMode } from '../../store/viewModeSlice';
 import { JSONExtractorNodeData } from '../../types/nodes';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
 import { RootState } from '../../store/store';
@@ -23,7 +24,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id));
-  const globalViewMode = useSelector((state: RootState) => state.flow.globalViewMode);
+  const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
   const [pathDraft, setPathDraft] = useState(data.path || '');
   const [isComposing, setIsComposing] = useState(false);
 
@@ -64,7 +65,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
 
   // Auto-collapse based on zoom level if in auto mode
   useEffect(() => {
-    if (globalViewMode === 'auto') {
+    if (globalViewMode === VIEW_MODES.AUTO) {
       const zoom = getZoom();
       const shouldBeCompact = zoom < 0.7;
       dispatch(setNodeViewMode({ 

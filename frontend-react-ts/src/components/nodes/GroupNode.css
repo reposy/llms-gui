@@ -13,4 +13,24 @@
   padding: 0 !important;
   border-radius: 0 !important;
 }
-*/ 
+*/
+
+/* Ensure group nodes stay behind child nodes */
+.react-flow__node-group {
+  z-index: 0 !important;
+}
+
+/* Child nodes should appear above the group */
+.react-flow__node:not(.react-flow__node-group) {
+  z-index: 10 !important;
+}
+
+/* Ensure handles are always on top of nodes */
+.react-flow__handle {
+  z-index: 20 !important;
+}
+
+/* Style for group node placeholders */
+.group-node-content .placeholder {
+  pointer-events: none;
+} 

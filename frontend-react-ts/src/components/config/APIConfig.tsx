@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux';
 import { APINodeData } from '../../types/nodes';
 import { updateNodeData } from '../../store/flowSlice';
 import { useNodeState } from '../../store/flowExecutionStore';
+import { isEditingNodeRef } from '../../hooks/useFlowSync';
 
 interface APIConfigProps {
   nodeId: string;
@@ -86,10 +87,19 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
 
   const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
     setIsUrlComposing(false);
+    isEditingNodeRef.current = null;
     const newUrl = e.currentTarget.value;
     setUrlDraft(newUrl);
     handleConfigChange('url', newUrl);
   }, [handleConfigChange]);
+
+  const handleUrlFocus = useCallback(() => {
+    isEditingNodeRef.current = nodeId;
+  }, [nodeId]);
+
+  const handleUrlBlur = useCallback(() => {
+    isEditingNodeRef.current = null;
+  }, []);
 
   // Headers management
   const addHeader = useCallback(() => {
@@ -216,8 +226,13 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
           value={urlDraft}
           placeholder="Enter API URL"
           onChange={handleUrlChange}
-          onCompositionStart={() => setIsUrlComposing(true)}
+          onCompositionStart={() => {
+            setIsUrlComposing(true);
+            isEditingNodeRef.current = nodeId;
+          }}
           onCompositionEnd={handleUrlCompositionEnd}
+          onFocus={handleUrlFocus}
+          onBlur={handleUrlBlur}
         />
       </div>
 

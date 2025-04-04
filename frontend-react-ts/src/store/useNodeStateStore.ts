@@ -94,4 +94,4 @@ export const useNodeState = (nodeId: string): NodeState => {
 };
 
 // Export actions directly for use outside components
-export const { setNodeState, resetNodeStates } = useNodeStateStore.getState(); 
+export const { setNodeState, resetNodeStates, getNodeState } = useNodeStateStore.getState(); 

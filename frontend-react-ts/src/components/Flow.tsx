@@ -9,26 +9,33 @@ import ReactFlow, {
   Edge,
   applyNodeChanges,
   applyEdgeChanges,
+  useNodes,
+  useEdges,
+  useNodesState,
+  useEdgesState,
 } from 'reactflow';
 import { NodeData } from '../types/nodes';
+import { createNewNode } from '../utils/flowUtils';
 
 const Flow: React.FC = () => {
-  const { nodes, edges, setNodes, setEdges } = useReactFlow<NodeData>();
+  const reactFlowInstance = useReactFlow<NodeData>();
+  const [nodes, setNodes] = useNodesState<NodeData>([]);
+  const [edges, setEdges] = useEdgesState([]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((nds: Node<NodeData>[]) => applyNodeChanges(changes, nds));
+    setNodes((nds) => applyNodeChanges(changes, nds));
   }, [setNodes]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    setEdges((eds: Edge[]) => applyEdgeChanges(changes, eds));
+    setEdges((eds) => applyEdgeChanges(changes, eds));
   }, [setEdges]);
 
   const onConnect = useCallback((connection: Connection) => {
-    setEdges((eds: Edge[]) => addEdge(connection, eds));
+    setEdges((eds) => addEdge(connection, eds));
   }, [setEdges]);
 
   const handleNodeDataChange = useCallback((nodeId: string, newData: Partial<NodeData>) => {
-    setNodes((nds: Node<NodeData>[]) =>
+    setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
           return {
@@ -36,9 +43,8 @@ const Flow: React.FC = () => {
             data: {
               ...node.data,
               ...newData,
-              onDataChange: (data: Partial<NodeData>) => handleNodeDataChange(nodeId, data),
-            },
-          };
+            } as NodeData,
+          } as Node<NodeData>;
         }
         return node;
       })
@@ -46,19 +52,11 @@ const Flow: React.FC = () => {
   }, [setNodes]);
 
   const addNode = useCallback((type: string) => {
-    const newNode: Node<NodeData> = {
-      id: `${type}-${Date.now()}`,
-      type,
-      position: { x: 100, y: 100 },
-      data: {
-        type,
-        provider: 'ollama',
-        onDataChange: (data: Partial<NodeData>) => handleNodeDataChange(newNode.id, data),
-      },
-    };
-
-    setNodes((nds: Node<NodeData>[]) => [...nds, newNode]);
-  }, [handleNodeDataChange, setNodes]);
+    const position = { x: 100, y: 100 };
+    const newNode = createNewNode(type as any, position);
+    
+    setNodes((nds) => [...nds, newNode as Node<NodeData>]);
+  }, [setNodes]);
 
   return (
     <div className="w-full h-full">
