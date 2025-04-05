@@ -4,7 +4,6 @@ import { NodeData } from '../types/nodes';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store/store';
 import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
-import { isEqual } from 'lodash';
 
 interface UseFlowSyncOptions {
   isRestoringHistory: React.MutableRefObject<boolean>;
@@ -20,36 +19,6 @@ interface UseFlowSyncReturn {
   forceSyncFromRedux: () => void;
   commitStructureToRedux: () => void;
 }
-
-// Helper function to compare nodes (can be simplified if only structure matters)
-const areNodesStructureEqual = (localNodes: Node<NodeData>[], reduxNodes: Node<NodeData>[]) => {
-  if (localNodes.length !== reduxNodes.length) return false;
-  const reduxNodesMap = new Map(reduxNodes.map(node => [node.id, node]));
-  return localNodes.every(localNode => {
-    const reduxNode = reduxNodesMap.get(localNode.id);
-    if (!reduxNode) return false;
-    // Compare only structural properties relevant to React Flow rendering
-    // Omit data comparison here, as content is managed separately.
-    // Depending on needs, could compare node type if it changes.
-    return (
-      localNode.id === reduxNode.id &&
-      localNode.type === reduxNode.type && // Added type check
-      isEqual(localNode.position, reduxNode.position) &&
-      localNode.selected === reduxNode.selected && // Include selection if needed
-      localNode.dragging === reduxNode.dragging // Include dragging state if needed
-      // Dimensions might also be relevant if calculated
-      // isEqual(localNode.width, reduxNode.width) &&
-      // isEqual(localNode.height, reduxNode.height)
-    );
-  });
-};
-
-// Helper to compare edges
-const areEdgesStructureEqual = (localEdges: Edge[], reduxEdges: Edge[]) => {
-   if (localEdges.length !== reduxEdges.length) return false;
-   // Simple comparison, could be more sophisticated if edge data/styles change
-   return isEqual(localEdges, reduxEdges); 
-};
 
 /**
  * Hook responsible for synchronizing the *structure* (nodes, edges, positions) 
@@ -72,14 +41,98 @@ export const useFlowSync = ({
   
   // Track initial load
   const isInitialSyncRef = useRef(true);
+  
+  // Add a ref to track shift key state for multi-selection
+  const isShiftPressed = useRef(false);
+  
+  // Set up keyboard listeners to track shift key state
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isShiftPressed.current = true;
+      }
+    };
+    
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isShiftPressed.current = false;
+      }
+    };
+    
+    // Handle focus/blur events to reset shift state when window loses focus
+    const handleBlur = () => {
+      isShiftPressed.current = false;
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   // Apply incoming changes from React Flow interactions to local state
   // and mark that structural changes are pending.
   const onLocalNodesChange = useCallback((changes: NodeChange[]) => {
-    setLocalNodes((nds) => applyNodeChanges(changes, nds));
+    // Filter selection changes for special handling
+    const selectionChanges = changes.filter(change => 
+      change.type === 'select' && change.selected !== undefined
+    );
+    
+    // Get non-selection changes
+    const otherChanges = changes.filter(change => 
+      !(change.type === 'select' && change.selected !== undefined)
+    );
+    
+    // Check if these are position changes (dragging)
+    const hasPositionChanges = changes.some(change => 
+      change.type === 'position' && change.position
+    );
+    
+    // Apply special multi-select logic if shift is pressed and there are selection changes
+    if (isShiftPressed.current && selectionChanges.length > 0) {
+      setLocalNodes(nodes => {
+        let nextNodes = [...nodes];
+        
+        // Process each selection change
+        selectionChanges.forEach(change => {
+          const { id, selected } = change as { id: string; selected: boolean };
+          // Find the node index
+          const nodeIndex = nextNodes.findIndex(node => node.id === id);
+          
+          if (nodeIndex !== -1) {
+            // Update the node's selection state while preserving other selections
+            nextNodes[nodeIndex] = {
+              ...nextNodes[nodeIndex],
+              selected
+            };
+          }
+        });
+        
+        // Apply non-selection changes normally
+        return applyNodeChanges(otherChanges, nextNodes);
+      });
+    } else {
+      // Standard behavior without shift key
+      setLocalNodes(nodes => applyNodeChanges(changes, nodes));
+    }
+    
+    // For position changes, immediately sync to Redux to ensure 
+    // dragging multiple nodes works consistently
+    if (hasPositionChanges) {
+      // Delay this slightly to ensure the setLocalNodes has completed
+      setTimeout(() => {
+        dispatch(setReduxNodes([...localNodes]));
+      }, 0);
+    }
+    
     hasPendingStructuralChanges.current = true;
     console.log("[FlowSync Structure] Local nodes changed, pending commit.", changes);
-  }, [setLocalNodes]);
+  }, [setLocalNodes, localNodes, dispatch]);
 
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
     setLocalEdges((eds) => applyEdgeChanges(changes, eds));
@@ -94,8 +147,13 @@ export const useFlowSync = ({
       console.log(`[FlowSync Structure] Committing structural changes to Redux`);
       
       // Directly dispatch local state to Redux
-      // Consider deep cloning if mutations are a concern, though Redux handles shallow copies.
-      dispatch(setReduxNodes([...localNodes])); 
+      // Ensure we're preserving node selection state
+      const nodesWithSelection = localNodes.map(node => ({
+        ...node,
+        selected: node.selected || false // Ensure selection state is explicitly set
+      }));
+      
+      dispatch(setReduxNodes([...nodesWithSelection])); 
       dispatch(setReduxEdges([...localEdges]));
       
       // Reset the flag after commit
@@ -139,8 +197,12 @@ export const useFlowSync = ({
       setLocalNodes(reduxNodes);
       setLocalEdges(reduxEdges);
       hasPendingStructuralChanges.current = false;
-      return; // Don't proceed further in this case
+      return;
     }
+
+    // Removed comment referencing the old isEditingNodeRef
+    // const isEditingCurrentNode = isEditingNodeRef.current === node.id;
+    // if (isEditingCurrentNode) {
 
     // --- Handling non-history external Redux changes --- 
     // This part becomes simpler without isEditingNodeRef.

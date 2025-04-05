@@ -1,6 +1,6 @@
-import React from 'react';
 import { Node } from 'reactflow';
 import { NodeData } from '../../types/nodes';
+import { NodeState } from '../../types/execution';
 
 interface GroupNodesListProps {
   groupNodes: Node<NodeData>[];

@@ -1,6 +1,5 @@
-import React from 'react';
-import { NodeState } from '../../types/execution';
 import { LLMNodeData } from '../../types/nodes';
+import { NodeState } from '../../types/execution';
 import { NodeViewMode } from '../../store/viewModeSlice';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeContent } from '../../store/nodeContentStore';

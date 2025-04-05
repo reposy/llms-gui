@@ -132,23 +132,4 @@ export interface FlowState {
 export type FlowNode = Node<NodeData>;
 export type FlowEdge = Edge;
 
-export type NodeTypes = {
-  llm: {
-    provider: 'ollama' | 'openai';
-    model: string;
-    prompt: string;
-    temperature?: number;
-    ollamaUrl?: string;
-  };
-  api: {
-    url: string;
-    method: APIMethod;
-    headers?: Record<string, string>;
-    body?: string;
-  };
-  output: {
-    format: OutputFormat;
-  };
-};
-
 export type LLMProvider = 'ollama' | 'openai';

@@ -21,7 +21,7 @@ import { createNewNode } from '../utils/flowUtils';
 // Removed nodeContentStore imports related to hydration
 // import { loadFromReduxNodes, cleanupDeletedNodes } from '../store/nodeContentStore'; 
 
-// ... existing node type imports and NodeWrapper ...
+// Node type imports
 import LLMNode from './nodes/LLMNode';
 import APINode from './nodes/APINode';
 import OutputNode from './nodes/OutputNode';
@@ -87,6 +87,11 @@ export interface FlowCanvasApi {
   commitStructure: () => void; // Renamed from commitChanges
 }
 
+interface FlowCanvasProps {
+  onNodeSelect: (node: Node<NodeData> | null) => void;
+  registerReactFlowApi?: (api: FlowCanvasApi) => void;
+}
+
 // ... defaultViewport ...
 const defaultViewport = { x: 0, y: 0, zoom: 0.7 };
 
@@ -123,12 +128,10 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   const { 
     handleCopy, 
     handlePaste 
-  } = useClipboard(pushToHistory);
+  } = useClipboard();
   
   // Node handlers hook operates on local state
   const { 
-    handleNodesChange, // This might be redundant if useFlowSync provides its own handler
-    handleEdgesChange, // This might be redundant if useFlowSync provides its own handler
     handleConnect,
     handleSelectionChange,
     handleNodeDragStop,
@@ -176,18 +179,45 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   */
 
   // Set up keyboard shortcuts (Undo/Redo/Copy/Paste/Delete)
-  // This part remains largely the same as it operates on local state / history
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't handle events when an input/textarea is focused
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement instanceof HTMLInputElement || 
+                             activeElement instanceof HTMLTextAreaElement ||
+                             activeElement instanceof HTMLSelectElement ||
+                             activeElement?.getAttribute('contenteditable') === 'true';
+      
+      if (isInputFocused) {
+        return;
+      }
+      
       // Handle ctrl/cmd + z for undo
       if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
         undo();
       }
-      // ... other shortcuts (redo, copy, paste, delete) ...
-      // Make sure handleCopy/handlePaste/handle*Delete operate correctly 
-      // with the potentially refactored useClipboard/useNodeHandlers hooks
-            // Handle delete key
+      
+      // Handle ctrl/cmd + shift + z or ctrl/cmd + y for redo
+      if (((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) ||
+          ((event.ctrlKey || event.metaKey) && event.key === 'y')) {
+        event.preventDefault();
+        redo();
+      }
+      
+      // Handle ctrl/cmd + c for copy
+      if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+        event.preventDefault();
+        handleCopy();
+      }
+      
+      // Handle ctrl/cmd + v for paste
+      if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+        event.preventDefault();
+        handlePaste();
+      }
+      
+      // Handle delete key
       if (event.key === 'Delete' || event.key === 'Backspace') {
         const selectedNodes = localNodes.filter(node => node.selected);
         const selectedEdges = localEdges.filter(edge => edge.selected);
@@ -204,15 +234,14 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [
-    localNodes, // Need localNodes/Edges if delete handlers depend on them
+    localNodes,
     localEdges,
     undo, 
     redo, 
     handleCopy, 
     handlePaste, 
     handleEdgesDelete, 
-    handleNodesDelete 
-    // Add other dependencies from useNodeHandlers/useClipboard if needed
+    handleNodesDelete
   ]);
 
   // ... onDragOver, onDrop handlers ...
@@ -263,6 +292,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         nodeTypes={nodeTypes}
         connectionLineType={ConnectionLineType.SmoothStep}
         defaultViewport={defaultViewport}
+        multiSelectionKeyCode="Shift" // Enable built-in multi-selection support
         fitView
         fitViewOptions={{ padding: 0.2 }}
         onDragOver={onDragOver}

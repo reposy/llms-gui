@@ -67,7 +67,7 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         type: 'llm',
         label: 'LLM', // Specific default label
         provider: 'ollama',
-        model: 'llama2', // Or a more common default like 'llama3'?
+        model: 'llama3.1', // Updated from 'llama2' to 'llama3.1'
         prompt: '',
         temperature: 0.7,
         ollamaUrl: 'http://localhost:11434' // Default Ollama URL

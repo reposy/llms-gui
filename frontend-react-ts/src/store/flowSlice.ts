@@ -1,7 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Node, Edge } from 'reactflow';
 import { FlowState, NodeData, NodeType } from '../types/nodes';
-import { NodeState } from '../types/execution';
 import { calculateNodePosition, createNewNode } from '../utils/flowUtils';
 
 const initialState: FlowState = {
@@ -45,12 +44,24 @@ const flowSlice = createSlice({
       state.nodes.push(newNode);
     },
     updateNodeData: (state, action: PayloadAction<{ nodeId: string; data: Partial<NodeData> }>) => {
-      const node = state.nodes.find(node => node.id === action.payload.nodeId);
-      if (!node) return;
-
-      // Using Object.assign is fine, but ensure types are handled
-      // This assumes the incoming data matches the node type, which should be ensured by the calling component
-      Object.assign(node.data, action.payload.data);
+      const { nodeId, data: dataUpdate } = action.payload;
+      const node = state.nodes.find(node => node.id === nodeId);
+      if (node) {
+        console.log(`[flowSlice] updateNodeData START - Node: ${nodeId}`, { 
+          currentData: node.data, 
+          update: dataUpdate 
+        }); // Log start and update data
+        
+        const beforeAssign = { ...node.data }; // Copy data before update
+        Object.assign(node.data, dataUpdate); // Update data
+        
+        console.log(`[flowSlice] updateNodeData END - Node: ${nodeId}`, { 
+          before: beforeAssign, 
+          after: node.data 
+        }); // Log before and after data
+      } else {
+        console.warn(`[flowSlice] updateNodeData: Node ${nodeId} not found.`);
+      }
     },
   },
 });

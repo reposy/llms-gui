@@ -2,8 +2,6 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { APINodeData } from '../../types/nodes';
 import { updateNodeData } from '../../store/flowSlice';
-import { useNodeState } from '../../store/flowExecutionStore';
-import { isEditingNodeRef } from '../../hooks/useFlowSync';
 
 interface APIConfigProps {
   nodeId: string;
@@ -25,7 +23,6 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   const dispatch = useDispatch();
-  const executionState = useNodeState(nodeId);
   
   // IME composition states
   const [isUrlComposing, setIsUrlComposing] = useState(false);
@@ -33,10 +30,6 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   const [headerKeyDrafts, setHeaderKeyDrafts] = useState<Record<number, string>>({});
   const [isHeaderValueComposing, setIsHeaderValueComposing] = useState(false);
   const [headerValueDrafts, setHeaderValueDrafts] = useState<Record<number, string>>({});
-  const [isParamKeyComposing, setIsParamKeyComposing] = useState(false);
-  const [paramKeyDrafts, setParamKeyDrafts] = useState<Record<number, string>>({});
-  const [isParamValueComposing, setIsParamValueComposing] = useState(false);
-  const [paramValueDrafts, setParamValueDrafts] = useState<Record<number, string>>({});
   
   const [urlDraft, setUrlDraft] = useState(data.url || '');
   
@@ -51,16 +44,6 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     });
     setHeaderKeyDrafts(initialHeaderKeyDrafts);
     setHeaderValueDrafts(initialHeaderValueDrafts);
-
-    // Initialize param drafts
-    const initialParamKeyDrafts: Record<number, string> = {};
-    const initialParamValueDrafts: Record<number, string> = {};
-    Object.entries(data.queryParams || {}).forEach(([key, value], index) => {
-      initialParamKeyDrafts[index] = key;
-      initialParamValueDrafts[index] = value;
-    });
-    setParamKeyDrafts(initialParamKeyDrafts);
-    setParamValueDrafts(initialParamValueDrafts);
 
     if (!isUrlComposing) {
       setUrlDraft(data.url || '');
@@ -87,22 +70,20 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
 
   const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
     setIsUrlComposing(false);
-    isEditingNodeRef.current = null;
     const newUrl = e.currentTarget.value;
     setUrlDraft(newUrl);
     handleConfigChange('url', newUrl);
   }, [handleConfigChange]);
 
-  const handleUrlFocus = useCallback(() => {
-    isEditingNodeRef.current = nodeId;
-  }, [nodeId]);
-
   const handleUrlBlur = useCallback(() => {
-    isEditingNodeRef.current = null;
-    
     // Always update Redux with latest URL value
     handleConfigChange('url', urlDraft);
   }, [handleConfigChange, urlDraft]);
+
+  // Event handler to prevent backspace from deleting nodes
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    e.stopPropagation();
+  }, []);
 
   // Headers management
   const addHeader = useCallback(() => {
@@ -211,6 +192,7 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
           value={data.method}
           onChange={(e) => handleConfigChange('method', e.target.value)}
+          onKeyDown={handleKeyDown}
         >
           <option value="GET">GET</option>
           <option value="POST">POST</option>
@@ -231,11 +213,10 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
           onChange={handleUrlChange}
           onCompositionStart={() => {
             setIsUrlComposing(true);
-            isEditingNodeRef.current = nodeId;
           }}
           onCompositionEnd={handleUrlCompositionEnd}
-          onFocus={handleUrlFocus}
           onBlur={handleUrlBlur}
+          onKeyDown={handleKeyDown}
         />
       </div>
 
@@ -247,12 +228,14 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
             <button
               className="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded whitespace-nowrap"
               onClick={addBearerToken}
+              onKeyDown={handleKeyDown}
             >
               Add Bearer Token
             </button>
             <button
               className="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded whitespace-nowrap"
               onClick={addHeader}
+              onKeyDown={handleKeyDown}
             >
               Add Header
             </button>
@@ -273,6 +256,7 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
                   handleHeaderChange(index, 'key', headerKeyDrafts[index] ?? key);
                 }}
                 onBlur={() => handleHeaderBlur(index, 'key')}
+                onKeyDown={handleKeyDown}
               />
               <input
                 type="text"
@@ -286,10 +270,12 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
                   handleHeaderChange(index, 'value', headerValueDrafts[index] ?? value);
                 }}
                 onBlur={() => handleHeaderBlur(index, 'value')}
+                onKeyDown={handleKeyDown}
               />
               <button
                 className="p-2 text-red-500 hover:text-red-700"
                 onClick={() => removeHeader(index)}
+                onKeyDown={handleKeyDown}
               >
                 ×
               </button>
