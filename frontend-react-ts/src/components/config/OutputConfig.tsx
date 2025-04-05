@@ -44,6 +44,7 @@ const FormatButton: React.FC<FormatButtonProps> = ({ format, currentFormat, onCl
         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
     }`}
     onClick={onClick}
+    onKeyDown={(e) => e.stopPropagation()}
   >
     {format.toUpperCase()}
   </button>
@@ -59,6 +60,11 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
   const dispatch = useDispatch();
   const executionState = useNodeState(nodeId);
+  
+  // Event handler to prevent backspace from deleting nodes
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    e.stopPropagation();
+  }, []);
   
   const handleConfigChange = useCallback((key: keyof OutputNodeData, value: any) => {
     dispatch(updateNodeData({
@@ -104,6 +110,7 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
           className="w-full h-[300px] p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 font-mono text-sm"
           value={displayContent}
           readOnly
+          onKeyDown={handleKeyDown}
         />
       </div>
     </div>

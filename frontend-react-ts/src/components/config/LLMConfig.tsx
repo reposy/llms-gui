@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
-import { useDispatch } from 'react-redux';
 import { LLMNodeData } from '../../types/nodes';
-import { updateNodeData } from '../../store/flowSlice';
 import { useNodeState } from '../../store/flowExecutionStore';
+import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
+import { NodeContent } from '../../store/nodeContentStore';
 
 interface LLMConfigProps {
   nodeId: string;
@@ -17,17 +17,33 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
-  const dispatch = useDispatch();
   const executionState = useNodeState(nodeId);
   
-  // Handle config changes
-  const handleConfigChange = useCallback((key: keyof LLMNodeData, value: any) => {
-    dispatch(updateNodeData({
-      nodeId,
-      data: { ...data, [key]: value }
-    }));
-  }, [dispatch, nodeId, data]);
+  // Use the managed content hook
+  const { content, isDirty, updateContent, saveContent } = useManagedNodeContent(nodeId, data);
   
+  // Debug logs for render and content state
+  console.log(`%c[LLMConfig Render] Node: ${nodeId}`, 'color: green; font-weight: bold;', { 
+    content, 
+    isDirty,
+    dataFromProps: data 
+  });
+
+  // Simplified handler for immediate save fields (like Provider, Temperature)
+  const handleUpdateAndSave = useCallback((key: keyof NodeContent, value: any) => {
+    console.log(`%c[LLMConfig handleUpdateAndSave] Node: ${nodeId}, Key: ${String(key)}`, 'color: green;', { 
+      currentValue: content[key], 
+      newValue: value 
+    });
+    updateContent({ [key]: value });
+    saveContent();
+  }, [updateContent, saveContent, content, nodeId]);
+
+  // Event handler to stop propagation to prevent backspace from deleting nodes
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    e.stopPropagation();
+  }, []);
+
   return (
     <div className="space-y-4">
       {/* Provider Selection */}
@@ -36,21 +52,23 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
         <div className="flex gap-2">
           <button
             className={`flex-1 p-2 rounded-lg text-sm font-medium ${
-              data.provider === 'ollama'
+              content.provider === 'ollama'
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => handleConfigChange('provider', 'ollama')}
+            onClick={() => handleUpdateAndSave('provider', 'ollama')}
+            onKeyDown={handleKeyDown}
           >
             Ollama
           </button>
           <button
             className={`flex-1 p-2 rounded-lg text-sm font-medium ${
-              data.provider === 'openai'
+              content.provider === 'openai'
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => handleConfigChange('provider', 'openai')}
+            onClick={() => handleUpdateAndSave('provider', 'openai')}
+            onKeyDown={handleKeyDown}
           >
             OpenAI
           </button>
@@ -63,21 +81,25 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
         <input
           type="text"
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-          value={data.model}
-          onChange={(e) => handleConfigChange('model', e.target.value)}
-          placeholder={data.provider === 'ollama' ? 'llama2' : 'gpt-3.5-turbo'}
+          value={content.model || ''}
+          onChange={(e) => updateContent({ model: e.target.value })}
+          onBlur={saveContent}
+          onKeyDown={handleKeyDown}
+          placeholder={content.provider === 'ollama' ? 'llama2' : 'gpt-3.5-turbo'}
         />
       </div>
 
       {/* Ollama URL for Ollama provider */}
-      {data.provider === 'ollama' && (
+      {content.provider === 'ollama' && (
         <div>
           <ConfigLabel>Ollama URL</ConfigLabel>
           <input
             type="text"
             className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-            value={data.ollamaUrl || 'http://localhost:11434'}
-            onChange={(e) => handleConfigChange('ollamaUrl', e.target.value)}
+            value={content.ollamaUrl || 'http://localhost:11434'}
+            onChange={(e) => updateContent({ ollamaUrl: e.target.value })}
+            onBlur={saveContent}
+            onKeyDown={handleKeyDown}
             placeholder="http://localhost:11434"
           />
         </div>
@@ -87,7 +109,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
       <div>
         <div className="flex justify-between items-center">
           <ConfigLabel>Temperature</ConfigLabel>
-          <span className="text-sm text-gray-600">{data.temperature}</span>
+          <span className="text-sm text-gray-600">{(content.temperature ?? 0).toFixed(1)}</span>
         </div>
         <input
           type="range"
@@ -95,8 +117,9 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
           max="1"
           step="0.1"
           className="w-full"
-          value={data.temperature}
-          onChange={(e) => handleConfigChange('temperature', parseFloat(e.target.value))}
+          value={content.temperature ?? 0}
+          onChange={(e) => handleUpdateAndSave('temperature', parseFloat(e.target.value))}
+          onKeyDown={handleKeyDown}
         />
       </div>
 
@@ -105,8 +128,10 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
         <ConfigLabel>Prompt</ConfigLabel>
         <textarea
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-mono text-sm"
-          value={data.prompt || ''}
-          onChange={(e) => handleConfigChange('prompt', e.target.value)}
+          value={content.prompt || ''}
+          onChange={(e) => updateContent({ prompt: e.target.value })}
+          onBlur={saveContent}
+          onKeyDown={handleKeyDown}
           rows={8}
           placeholder="Enter your prompt here..."
         />

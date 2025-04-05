@@ -1,89 +1,151 @@
-import { useCallback, useRef } from 'react';
-import { Node, Edge, useReactFlow, getConnectedEdges } from 'reactflow';
+import { useCallback } from 'react';
+import { Node, Edge, useReactFlow, XYPosition, useStoreApi } from 'reactflow';
+import { v4 as uuidv4 } from 'uuid';
 import { NodeData } from '../types/nodes';
-import { cloneDeep } from 'lodash';
+import { getNodeContent, setNodeContent, NodeContent } from '../store/nodeContentStore';
+import { resetNodeStates } from '../store/useNodeStateStore';
+import { useDispatch } from 'react-redux';
+import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
 
-// Type for clipboard
 interface CopiedData {
   nodes: Node<NodeData>[];
   edges: Edge[];
+  nodeContents: Record<string, NodeContent>; // Add this field to store node contents
 }
 
-interface UseClipboardReturn {
-  clipboard: React.MutableRefObject<CopiedData | null>;
+export interface UseClipboardReturnType {
   handleCopy: () => void;
-  handlePaste: () => void;
-  cloneNodeWithNewId: (node: Node<NodeData>) => Node<NodeData>;
+  handlePaste: (position?: XYPosition) => void;
 }
 
-export const useClipboard = (
-  pushToHistory: (nodes: Node<NodeData>[], edges: Edge[]) => void
-): UseClipboardReturn => {
-  const clipboard = useRef<CopiedData | null>(null);
-  const { getNodes, getEdges, setNodes, setEdges } = useReactFlow();
-
-  // Helper function to clone a node with a new unique id and offset position
-  const cloneNodeWithNewId = useCallback((node: Node<NodeData>): Node<NodeData> => ({
-    ...node,
-    id: crypto.randomUUID(), // Use built-in crypto API
-    position: { x: node.position.x + 50, y: node.position.y + 50 }, // Offset position
-    data: cloneDeep(node.data), // Use deep copy instead of shallow copy
-    selected: true, // Select the newly created node for immediate editing
-  }), []);
+export const useClipboard = (): UseClipboardReturnType => {
+  const { getNodes, getEdges, setNodes, setEdges, getNode } = useReactFlow<NodeData>();
+  const store = useStoreApi();
+  const dispatch = useDispatch();
 
   const handleCopy = useCallback(() => {
     const selectedNodes = getNodes().filter(node => node.selected);
     if (selectedNodes.length === 0) return;
 
+    // Collect node IDs for filtering edges
     const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
-    // Only copy edges that connect selected nodes
-    const relevantEdges = getConnectedEdges(selectedNodes, getEdges()).filter(
-      edge => selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
+    
+    // Only copy edges where both source and target are selected nodes
+    const relevantEdges = getEdges().filter(edge => 
+      selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
     );
 
-    clipboard.current = {
-      nodes: cloneDeep(selectedNodes),
-      edges: cloneDeep(relevantEdges)
+    // Fetch and store the content for each selected node
+    const nodeContents: Record<string, NodeContent> = {};
+    selectedNodes.forEach(node => {
+      const content = getNodeContent(node.id);
+      if (content) {
+        nodeContents[node.id] = content;
+      }
+    });
+
+    const data: CopiedData = {
+      nodes: selectedNodes,
+      edges: relevantEdges,
+      nodeContents
     };
-    console.log('Copied to clipboard:', clipboard.current);
+
+    // Store in clipboard or localStorage
+    localStorage.setItem('reactflow-clipboard', JSON.stringify(data));
+    console.log('Copied to clipboard:', data);
   }, [getNodes, getEdges]);
 
-  const handlePaste = useCallback(() => {
-    if (!clipboard.current) return;
-    
-    // Get current flow state
-    const currentNodes = getNodes();
-    const currentEdges = getEdges();
-    
-    // Clone nodes with new IDs
-    const newNodes = clipboard.current.nodes.map(cloneNodeWithNewId);
-    
-    // Create a map of old node IDs to new node IDs
-    const idMap = clipboard.current.nodes.reduce((map, originalNode, index) => {
-      map[originalNode.id] = newNodes[index].id;
-      return map;
-    }, {} as Record<string, string>);
-    
-    // Clone edges and update source/target to use new node IDs
-    const newEdges = clipboard.current.edges.map(edge => ({
-      ...edge,
-      id: crypto.randomUUID(),
-      source: idMap[edge.source],
-      target: idMap[edge.target]
-    }));
-    
-    // Update flow state
-    const updatedNodes = [...currentNodes, ...newNodes];
-    const updatedEdges = [...currentEdges, ...newEdges];
-    
-    setNodes(updatedNodes);
-    setEdges(updatedEdges);
-    
-    // Add to history
-    pushToHistory(updatedNodes, updatedEdges);
-    
-    console.log('Pasted from clipboard:', { newNodes, newEdges });
-  }, [getNodes, getEdges, setNodes, setEdges, cloneNodeWithNewId, pushToHistory]);
+  const handlePaste = useCallback((mousePosition?: XYPosition) => {
+    const clipboardData = localStorage.getItem('reactflow-clipboard');
+    if (!clipboardData) return;
 
-  return { clipboard, handleCopy, handlePaste, cloneNodeWithNewId };
+    try {
+      const { nodes: copiedNodes, edges: copiedEdges, nodeContents } = JSON.parse(clipboardData) as CopiedData;
+      const reactFlowBounds = store.getState().domNode?.getBoundingClientRect();
+      
+      // Use mouse position if provided, otherwise calculate center position
+      const position = mousePosition || {
+        x: (reactFlowBounds?.width || 800) / 2,
+        y: (reactFlowBounds?.height || 600) / 2,
+      };
+
+      // Calculate the offset based on the first node's position
+      const firstNodePos = copiedNodes[0]?.position || { x: 0, y: 0 };
+      const offsetX = position.x - firstNodePos.x;
+      const offsetY = position.y - firstNodePos.y;
+
+      // Create new nodes with new IDs and adjusted positions
+      const oldToNewIdMap: Record<string, string> = {};
+      
+      const newNodes = copiedNodes.map(copiedNode => {
+        const id = uuidv4();
+        oldToNewIdMap[copiedNode.id] = id;
+        
+        // Create a deep copy of the node data to avoid reference issues
+        const newNodeData = JSON.parse(JSON.stringify(copiedNode.data));
+        
+        return {
+          ...copiedNode,
+          id,
+          data: newNodeData,
+          position: {
+            x: copiedNode.position.x + offsetX,
+            y: copiedNode.position.y + offsetY,
+          },
+          selected: false,
+          positionAbsolute: {
+            x: copiedNode.position.x + offsetX,
+            y: copiedNode.position.y + offsetY,
+          },
+        };
+      });
+
+      // Create new edges with updated source/target IDs
+      const newEdges = copiedEdges.map(copiedEdge => {
+        const newSource = oldToNewIdMap[copiedEdge.source];
+        const newTarget = oldToNewIdMap[copiedEdge.target];
+        
+        return {
+          ...copiedEdge,
+          id: uuidv4(),
+          source: newSource,
+          target: newTarget,
+          selected: false,
+        };
+      });
+
+      // Copy node contents to the new nodes and ensure all existing content properties are preserved
+      Object.entries(nodeContents).forEach(([oldNodeId, content]) => {
+        const newNodeId = oldToNewIdMap[oldNodeId];
+        if (newNodeId) {
+          setNodeContent(newNodeId, { ...content, isDirty: false });
+        }
+      });
+
+      // Add new nodes and edges to the flow
+      setNodes(nodes => [...nodes, ...newNodes]);
+      setEdges(edges => [...edges, ...newEdges]);
+      
+      // Update Redux state to make sure the execution engine has access to the new nodes and edges
+      dispatch(setReduxNodes(getNodes().concat(newNodes)));
+      dispatch(setReduxEdges(getEdges().concat(newEdges)));
+      
+      // Reset execution state for pasted nodes
+      const newNodeIds = newNodes.map(node => node.id);
+      console.log('[Clipboard] Resetting execution state for pasted nodes:', newNodeIds);
+      resetNodeStates(newNodeIds);
+      
+      console.log('[Clipboard] Paste operation completed successfully:', { 
+        newNodesCount: newNodes.length, 
+        newEdgesCount: newEdges.length 
+      });
+    } catch (error) {
+      console.error('Error pasting from clipboard:', error);
+    }
+  }, [setNodes, setEdges, store, dispatch, getNodes, getEdges]);
+
+  return {
+    handleCopy,
+    handlePaste,
+  };
 }; 

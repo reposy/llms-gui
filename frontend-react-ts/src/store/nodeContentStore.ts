@@ -74,14 +74,26 @@ export const useNodeContentStore = create<NodeContentStore>()(
       return get().nodeContents[nodeId];
     },
     
-    setNodeContent: (nodeId, content) => {
+    setNodeContent: (nodeId, contentUpdate) => {
       set((state) => {
+        const currentState = state.nodeContents[nodeId];
+        console.log(`[nodeContentStore] setNodeContent START - Node: ${nodeId}`, { 
+          currentState, 
+          update: contentUpdate 
+        });
+        
         if (!state.nodeContents[nodeId]) {
           state.nodeContents[nodeId] = { isDirty: true };
         }
         
-        Object.assign(state.nodeContents[nodeId], content);
+        const beforeAssign = { ...state.nodeContents[nodeId] };
+        Object.assign(state.nodeContents[nodeId], contentUpdate);
         state.nodeContents[nodeId].isDirty = true;
+        
+        console.log(`[nodeContentStore] setNodeContent END - Node: ${nodeId}`, { 
+          before: beforeAssign, 
+          after: state.nodeContents[nodeId] 
+        });
         
         return state;
       });

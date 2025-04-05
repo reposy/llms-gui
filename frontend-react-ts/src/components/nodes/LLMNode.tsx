@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
@@ -10,7 +10,7 @@ import clsx from 'clsx';
 import { LLMNodeCompactView } from './LLMNodeCompactView';
 import { LLMNodeExpandedView } from './LLMNodeExpandedView';
 import { LLMNodeViewController } from './LLMNodeViewController';
-import { useNodeContent, loadFromReduxNodes } from '../../store/nodeContentStore';
+import { useNodeContent } from '../../store/nodeContentStore';
 
 interface Props {
   id: string;
@@ -25,47 +25,22 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
   
   // Get node content from content store
-  const { content, isContentDirty, setContent } = useNodeContent(id);
+  const { content, isContentDirty } = useNodeContent(id);
   
-  // Use a ref to track our update status and prevent cascading updates
-  const updatePerformedRef = useRef(false);
+  /**
+   * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.
+   * This hook was causing synchronization issues between the node UI and sidebar:
+   * 
+   * 1. When a user updated the model in the UI, the Zustand store would update correctly
+   * 2. But then, this useEffect would detect a mismatch with Redux data and overwrite the Zustand store
+   * 3. This would result in user inputs being ignored or prompt values being reset
+   * 
+   * We've removed this hook because:
+   * - The loadFromReduxNodes function is called when the flow is initially loaded
+   * - The useManagedNodeContent hook now properly handles bidirectional sync between Zustand and Redux
+   * - State is managed consistently through that hook in both the node UI and sidebar components
+   */
   
-  // Load data from Redux to content store on mount and when data changes
-  useEffect(() => {
-    // Add debug logs
-    console.log(`[LLMNode ${id}] useEffect triggered with:`, {
-      id,
-      dataModel: data.model,
-      contentModel: content.model,
-      updatePerformed: updatePerformedRef.current
-    });
-    
-    // If we've already performed an update in this render cycle, skip to prevent loops
-    if (updatePerformedRef.current) {
-      updatePerformedRef.current = false;
-      return;
-    }
-    
-    // We need to prevent the infinite update loop
-    // Only perform updates when necessary
-    
-    // 1. Cache the current content model to compare
-    const currentContentModel = content.model;
-    
-    // 2. Only load from Redux if we need to (model mismatch)
-    if (data.model !== currentContentModel) {
-      console.log(`[LLMNode ${id}] Loading from Redux nodes`);
-      loadFromReduxNodes([{ id, data } as any]);
-      
-      // 3. If data.model exists and doesn't match content, update content
-      if (data.model && data.model !== currentContentModel) {
-        console.log(`[LLMNode ${id}] Setting content model to ${data.model}`);
-        updatePerformedRef.current = true;
-        setContent({ model: data.model });
-      }
-    }
-  }, [id, data, setContent]);
-
   const toggleNodeView = useCallback(() => {
     dispatch(setNodeViewMode({
       nodeId: id,
@@ -137,7 +112,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                 nodeState={nodeState}
                 viewMode={viewMode}
                 onToggleView={toggleNodeView}
-                nodeContent={content}
               />
             )}
           </div>

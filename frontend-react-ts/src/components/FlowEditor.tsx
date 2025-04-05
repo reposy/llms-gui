@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { ReactFlowProvider, useReactFlow } from 'reactflow';
+import { ReactFlowProvider } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
@@ -9,7 +9,9 @@ import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from 'reactflow';
 import { RootState } from '../store/store';
 import { createNewNode } from '../utils/flowUtils';
-import { setNodes } from '../store/flowSlice';
+import { setNodes, setEdges, setSelectedNodeId } from '../store/flowSlice';
+import { useHistory } from '../hooks/useHistory';
+import { setNodeContent } from '../store/nodeContentStore';
 
 export const FlowEditor = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -19,6 +21,15 @@ export const FlowEditor = () => {
   const edges = useSelector((state: RootState) => state.flow.edges);
 
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
+  
+  // Set up history and clipboard hooks
+  const { pushToHistory } = useHistory({ initialNodes: nodes, initialEdges: edges }, 
+    (nodes) => dispatch(setNodes(nodes)), 
+    (edges) => dispatch(setEdges(edges))
+  );
+  
+  // 복사/붙여넣기 기능은 FlowCanvas에서 처리하므로 여기서는 제거
+  // const { handleCopy, handlePaste } = useClipboard(pushToHistory);
 
   const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;
@@ -57,17 +68,23 @@ export const FlowEditor = () => {
     // Update Redux state with the exact same node that was added to React Flow
     const updatedNodes = [...nodes, newNode];
     dispatch(setNodes(updatedNodes));
+    
+    // Add node data to Zustand nodeContentStore for immediate availability
+    setNodeContent(newNode.id, newNode.data);
+    console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, newNode.data);
   }, [dispatch, nodes, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
     setSelectedNodeId(node?.id || null);
   }, []);
 
-  const executeFlow = useCallback(async () => {
-    // First, commit any pending changes to Redux
-    if (reactFlowApiRef.current?.commitChanges) {
-      console.log("[FlowEditor] Committing all changes before executing flow");
-      reactFlowApiRef.current.commitChanges();
+  const handleRunFlow = useCallback(async () => {
+    // Ensure the latest structure is committed before running
+    if (reactFlowApiRef.current?.commitStructure) {
+      console.log('[FlowEditor] Committing structure before running flow...');
+      reactFlowApiRef.current.commitStructure();
+    } else {
+      console.warn('[FlowEditor] ReactFlow API not available for committing structure.');
     }
     
     setIsExecuting(true);
@@ -101,7 +118,7 @@ export const FlowEditor = () => {
         <div className="flex items-center gap-4">
           <button
             className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 text-sm font-medium disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed"
-            onClick={executeFlow}
+            onClick={handleRunFlow}
             disabled={isExecuting || nodes.length === 0}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

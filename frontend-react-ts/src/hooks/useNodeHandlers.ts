@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { 
   Connection, 
   Edge, 
@@ -15,8 +15,7 @@ import {
 import { NodeData } from '../types/nodes';
 import { useDispatch } from 'react-redux';
 import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
-import { removeConnectedEdges } from '../utils/flowUtils';
-import { isEditingNodeRef } from './useFlowSync';
+
 
 interface UseNodeHandlersOptions {
   onNodeSelect: (node: Node | null) => void;
@@ -25,8 +24,8 @@ interface UseNodeHandlersOptions {
 }
 
 interface UseNodeHandlersReturn {
-  handleNodesChange: (changes: NodeChange[]) => void;
-  handleEdgesChange: (changes: EdgeChange[]) => void;
+  handleNodesChange?: (changes: NodeChange[]) => void;
+  handleEdgesChange?: (changes: EdgeChange[]) => void;
   handleConnect: (connection: Connection) => void;
   handleSelectionChange: (params: OnSelectionChangeParams) => void;
   handleNodeDragStop: (event: React.MouseEvent, node: Node<NodeData>) => void;
@@ -45,39 +44,130 @@ export const useNodeHandlers = (
   const { onNodeSelect, pushToHistory, isRestoringHistory } = options;
   const dispatch = useDispatch();
   const { getNodes, getEdges } = useReactFlow();
+  
+  // Add a ref to track shift key state
+  const isShiftPressed = useRef(false);
+  
+  // Set up keyboard listeners to track shift key state
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isShiftPressed.current = true;
+      }
+    };
+    
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isShiftPressed.current = false;
+      }
+    };
+    
+    // Handle focus/blur events to reset shift state when window loses focus
+    const handleBlur = () => {
+      isShiftPressed.current = false;
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   // Handle nodes change (selection, position, etc)
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     // Skip if we're currently restoring history to avoid feedback loops
     if (isRestoringHistory.current) return;
     
-    // Apply the changes to get the new state
-    const nextNodes = applyNodeChanges(changes, localNodes);
+    // Use the shift state from our ref instead of window.event
+    const isShiftKeyPressed = isShiftPressed.current;
     
-    // Update local state
-    setLocalNodes(nextNodes);
-    
-    // Determine if any position changed (dragging)
-    const hasPositionChange = changes.some(
-      change => change.type === 'position' && change.position
+    // Filter selection changes for special handling
+    const selectionChanges = changes.filter(change => 
+      change.type === 'select' && change.selected !== undefined
     );
     
-    // Update Redux if there was a position change (to avoid unnecessary updates)
-    if (hasPositionChange) {
-      dispatch(setReduxNodes(nextNodes));
-    }
-    
-    // Check for selection changes to update sidebar
-    const selectionChange = changes.find(change => 
-      change.type === 'select' && change.selected !== undefined
-    ) as { id: string; selected: boolean } | undefined;
-    
-    if (selectionChange) {
-      const selectedNode = nextNodes.find(node => node.id === selectionChange.id);
-      if (selectedNode && selectionChange.selected) {
-        onNodeSelect(selectedNode);
-      } else if (!nextNodes.some(node => node.selected)) {
+    // Apply special multi-select logic if shift is pressed and there are selection changes
+    if (isShiftKeyPressed && selectionChanges.length > 0) {
+      // Create a copy of current nodes to modify
+      let nextNodes = [...localNodes];
+      
+      // Process each selection change
+      selectionChanges.forEach(change => {
+        const { id, selected } = change as { id: string; selected: boolean };
+        // Find the node index
+        const nodeIndex = nextNodes.findIndex(node => node.id === id);
+        
+        if (nodeIndex !== -1) {
+          // Update the node's selection state while preserving other selections
+          nextNodes[nodeIndex] = {
+            ...nextNodes[nodeIndex],
+            selected
+          };
+        }
+      });
+      
+      // Apply non-selection changes normally
+      const otherChanges = changes.filter(change => change.type !== 'select');
+      nextNodes = applyNodeChanges(otherChanges, nextNodes);
+      
+      // Update local state
+      setLocalNodes(nextNodes);
+      
+      // Determine if any position changed (dragging)
+      const hasPositionChange = otherChanges.some(
+        change => change.type === 'position' && change.position
+      );
+      
+      // Update Redux if there was a position change
+      if (hasPositionChange) {
+        dispatch(setReduxNodes(nextNodes));
+      }
+      
+      // Update sidebar based on selection
+      const selectedNodes = nextNodes.filter(node => node.selected);
+      if (selectedNodes.length === 1) {
+        onNodeSelect(selectedNodes[0]);
+      } else if (selectedNodes.length === 0) {
         onNodeSelect(null);
+      } else {
+        // Multiple nodes selected
+        onNodeSelect(null);
+      }
+    } else {
+      // Standard behavior without shift key
+      // Apply the changes to get the new state
+      const nextNodes = applyNodeChanges(changes, localNodes);
+      
+      // Update local state
+      setLocalNodes(nextNodes);
+      
+      // Determine if any position changed (dragging)
+      const hasPositionChange = changes.some(
+        change => change.type === 'position' && change.position
+      );
+      
+      // Update Redux if there was a position change (to avoid unnecessary updates)
+      if (hasPositionChange) {
+        dispatch(setReduxNodes(nextNodes));
+      }
+      
+      // Check for selection changes to update sidebar
+      const selectionChange = changes.find(change => 
+        change.type === 'select' && change.selected !== undefined
+      ) as { id: string; selected: boolean } | undefined;
+      
+      if (selectionChange) {
+        const selectedNode = nextNodes.find(node => node.id === selectionChange.id);
+        if (selectedNode && selectionChange.selected) {
+          onNodeSelect(selectedNode);
+        } else if (!nextNodes.some(node => node.selected)) {
+          onNodeSelect(null);
+        }
       }
     }
   }, [localNodes, setLocalNodes, dispatch, onNodeSelect, isRestoringHistory]);
@@ -132,6 +222,9 @@ export const useNodeHandlers = (
     
     if (nodes.length === 1) {
       onNodeSelect(nodes[0]);
+    } else if (nodes.length > 1) {
+      // Multiple nodes selected - optionally, we could show multi-selection info
+      onNodeSelect(null);
     } else {
       onNodeSelect(null);
     }
@@ -314,12 +407,6 @@ export const useNodeHandlers = (
     
     if (nodes.length > 0) {
       const nodeIds = new Set(nodes.map(n => n.id));
-      
-      // Check if the node being deleted is currently being edited
-      if (isEditingNodeRef.current && nodeIds.has(isEditingNodeRef.current)) {
-        console.log(`[NodesDelete] Clearing editing reference for deleted node ${isEditingNodeRef.current}`);
-        isEditingNodeRef.current = null;
-      }
       
       // Find any group nodes being deleted
       const groupNodesToDelete = nodes.filter(node => node.type === 'group');

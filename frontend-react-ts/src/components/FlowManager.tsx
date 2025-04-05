@@ -1,4 +1,4 @@
-import React, { useRef, useContext } from 'react';
+import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store/store';
 import { setNodes, setEdges } from '../store/flowSlice';
@@ -6,13 +6,15 @@ import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { cloneDeep } from 'lodash';
 import { FlowCanvasApi } from './FlowCanvas';
-import { triggerForceSync } from '../hooks/useFlowSync';
+import { useHotkeys } from 'react-hotkeys-hook';
+import { loadFromReduxNodes, getAllNodeContents, NodeContent } from '../store/nodeContentStore';
 
 interface FlowData {
   name: string;
   createdAt: string;
   nodes: Node<NodeData>[];
   edges: Edge[];
+  contents?: Record<string, NodeContent>;
   meta?: {
     llmDefaults?: {
       provider: string;
@@ -44,6 +46,7 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
       createdAt: new Date().toISOString(),
       nodes: nodesFromState,
       edges: edgesFromState,
+      contents: getAllNodeContents(),
       meta: {
         llmDefaults: {
           provider: 'ollama',
@@ -92,16 +95,25 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
         console.log('Imported nodes:', importedNodes);
         console.log('Imported edges:', importedEdges);
 
-        // Force sync after import to ensure edges are rendered
+        if (flowData.contents) {
+          Object.entries(flowData.contents).forEach(([nodeId, content]) => {
+            const node = importedNodes.find(n => n.id === nodeId);
+            if (node) {
+              console.log(`[Import] Loading stored content for node ${nodeId}`);
+            }
+          });
+        }
+        
+        const nodeDataArray = importedNodes.map(node => node.data);
+        loadFromReduxNodes(nodeDataArray);
+        console.log('[Import] Synced node content with Zustand store');
+
         setTimeout(() => {
           console.log('[FlowManager] Forcing sync after import');
           if (flowApi.current) {
             flowApi.current.forceSync();
-          } else {
-            // Fallback if API is not available
-            triggerForceSync.current = true;
           }
-        }, 100); // Small delay to ensure Redux state is updated
+        }, 100);
 
       } catch (error) {
         console.error('Error importing flow:', error);
@@ -114,6 +126,12 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
       fileInputRef.current.value = '';
     }
   };
+
+  useHotkeys('ctrl+shift+s, cmd+shift+s', (event: KeyboardEvent) => {
+    event.preventDefault();
+    console.log("[FlowManager] Force Sync hotkey triggered");
+    flowApi.current?.forceSync(); 
+  }, { enableOnFormTags: false }, [flowApi]);
 
   return (
     <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2">

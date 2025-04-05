@@ -5,31 +5,26 @@ import { NodeViewMode, VIEW_MODES } from '../../store/viewModeSlice';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
 import { NodeHeader } from './shared/NodeHeader';
 import { LLMNodeData } from '../../types/nodes';
-import { useFlowSync } from '../../hooks/useFlowSync';
 
 interface LLMNodeHeaderProps {
   id: string;
   data: LLMNodeData;
   viewMode: NodeViewMode;
   onToggleView: () => void;
+  isContentDirty?: boolean;
 }
 
 export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({ 
   id, 
   data, 
   viewMode, 
-  onToggleView 
+  onToggleView,
+  isContentDirty
 }) => {
   const dispatch = useDispatch();
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   
-  // Get flow sync utilities to commit changes
-  const { commitChanges } = useFlowSync({
-    isRestoringHistory: useRef(false)
-  });
-
-  // Encapsulate label update logic for the shared component
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
   }, [dispatch, data]);
@@ -37,14 +32,9 @@ export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const handleRun = useCallback(() => {
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
-      // Commit all pending changes before executing the flow
-      console.log(`[LLMNodeHeader] Committing changes before executing flow from node ${id}`);
-      commitChanges();
-      
-      // Now execute the flow
       executeFlow(id);
     }
-  }, [id, isRootNode, commitChanges]);
+  }, [id, isRootNode]);
 
   return (
     <NodeHeader
@@ -55,6 +45,7 @@ export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
       isRunning={nodeState?.status === 'running'}
       viewMode={viewMode}
       themeColor="blue"
+      isContentDirty={isContentDirty}
       onRun={handleRun}
       onLabelUpdate={handleLabelUpdate}
       onToggleView={onToggleView}

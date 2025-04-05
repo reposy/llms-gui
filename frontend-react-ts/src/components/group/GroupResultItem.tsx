@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import { GroupExecutionItemResult } from '../../types/execution';
 
 interface GroupResultItemProps {

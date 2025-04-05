@@ -1,6 +1,7 @@
-import React from 'react';
-import { GroupExecutionItemResult } from '../../types/execution';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../store/store';
 import GroupResultItem from './GroupResultItem';
+import { GroupExecutionItemResult } from '../../types/execution';
 
 interface GroupResultListProps {
   status: 'idle' | 'running' | 'success' | 'error' | 'skipped';

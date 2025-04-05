@@ -11,7 +11,7 @@ import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
-import { isEditingNodeRef, useFlowSync } from '../../hooks/useFlowSync';
+import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
 
 interface Props {
   id: string;
@@ -39,196 +39,145 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id));
   const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
   const isCompactMode = viewMode === VIEW_MODES.COMPACT;
-  const [urlDraft, setUrlDraft] = useState(data.url || '');
-  const [isComposing, setIsComposing] = useState(false);
+  
+  const { 
+    content, 
+    isDirty, 
+    updateContent, 
+    saveContent 
+  } = useManagedNodeContent(id, data);
+
+  const [urlDraft, setUrlDraft] = useState(content.url || '');
   const [paramDrafts, setParamDrafts] = useState<QueryParamDrafts>({});
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testResponse, setTestResponse] = useState<any>(null);
-  
-  // Access the flow sync utilities
-  const { markNodeDirty, commitChanges } = useFlowSync({ 
-    isRestoringHistory: useRef(false)
-  });
+  const [isComposing, setIsComposing] = useState(false);
+  const [isEditingUrl, setIsEditingUrl] = useState(false);
+  const [isEditingParams, setIsEditingParams] = useState(false);
 
-  // Update drafts when data changes externally
   useEffect(() => {
-    if (!isComposing) {
-      setUrlDraft(data.url || '');
-      const newDrafts: QueryParamDrafts = {};
-      Object.entries(data.queryParams || {}).forEach(([key, value]) => {
-        newDrafts[key] = { key, value };
-      });
-      setParamDrafts(newDrafts);
+    console.log(`[APINode ${id}] Content changed, syncing drafts`, content);
+    if (!isEditingUrl && !isComposing) {
+      setUrlDraft(content.url || '');
     }
-  }, [data.url, data.queryParams, isComposing]);
+    const newDrafts: QueryParamDrafts = {};
+    Object.entries(content.queryParams || {}).forEach(([key, value], index) => {
+      const draftKey = `param-${index}-${key}`; 
+      newDrafts[draftKey] = { key, value };
+    });
+    if (!isEditingParams) { 
+        setParamDrafts(newDrafts);
+    }
+
+  }, [id, content, isEditingUrl, isEditingParams, isComposing]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
     setUrlDraft(newUrl);
-    
-    // Mark node as dirty on any changes
-    markNodeDirty(id);
-  }, [id, markNodeDirty]);
+    updateContent({ url: newUrl });
+  }, [updateContent]);
 
-  const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
+  const handleUrlSave = useCallback(() => {
+    setIsEditingUrl(false);
     setIsComposing(false);
-    isEditingNodeRef.current = null; // Clear editing reference
-    const newUrl = e.currentTarget.value;
-    
-    // Mark node as dirty
-    markNodeDirty(id);
-    
-    // Update Redux directly
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: { ...data, url: newUrl }
-    }));
-    
-    // Commit changes
-    commitChanges();
-  }, [dispatch, id, data, markNodeDirty, commitChanges]);
+    saveContent();
+  }, [saveContent]);
 
-  const handleUrlFocus = useCallback(() => {
-    isEditingNodeRef.current = id; // Set this node as being edited
-  }, [id]);
-
-  const handleUrlBlur = useCallback(() => {
-    isEditingNodeRef.current = null; // Clear editing reference
-    
-    // Always update Redux with the latest URL value
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: { ...data, url: urlDraft }
-    }));
-    
-    // Commit changes
-    commitChanges();
-  }, [dispatch, id, data, urlDraft, commitChanges]);
-
-  const handleMethodChange = useCallback((method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
-    // Mark node as dirty
-    markNodeDirty(id);
-    
-    // Update Redux
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: { ...data, method }
-    }));
-  }, [dispatch, id, data, markNodeDirty]);
+  const handleMethodChange = useCallback((method: APINodeData['method']) => {
+    updateContent({ method });
+    saveContent();
+  }, [updateContent, saveContent]);
 
   const handleAddParam = useCallback(() => {
-    const params = data.queryParams || {};
-    const newKey = `param${Object.keys(params).length + 1}`;
+    const currentParams = content.queryParams || {};
+    const newKey = `param${Object.keys(currentParams).length + 1}`;
+    const newParams = { ...currentParams, [newKey]: '' };
+    updateContent({ queryParams: newParams });
     
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: {
-        ...data,
-        queryParams: {
-          ...params,
-          [newKey]: ''
-        }
-      }
+    setParamDrafts(prev => ({
+        ...prev,
+        [`param-${Object.keys(prev).length}-${newKey}`]: { key: newKey, value: '' } 
     }));
+  }, [content.queryParams, updateContent]);
 
+  const handleParamDraftChange = useCallback((draftKey: string, field: 'key' | 'value', newValue: string) => {
+    setIsEditingParams(true);
     setParamDrafts(prev => ({
       ...prev,
-      [newKey]: { key: newKey, value: '' }
-    }));
-  }, [dispatch, id, data]);
-
-  const handleParamChange = useCallback((paramKey: string, field: 'key' | 'value', newValue: string) => {
-    setParamDrafts(prev => ({
-      ...prev,
-      [paramKey]: {
-        ...prev[paramKey],
-        [field]: newValue
+      [draftKey]: { 
+        ...(prev[draftKey] || {}),
+        [field]: newValue 
       }
     }));
-
-    if (!isComposing) {
-      const params = { ...data.queryParams };
-      if (field === 'key' && paramKey !== newValue) {
-        // If key changed, remove old key and add new one
-        delete params[paramKey];
-        params[newValue] = paramDrafts[paramKey]?.value || '';
-      } else if (field === 'value') {
-        // If value changed, update existing key
-        params[paramKey] = newValue;
+  }, []);
+  
+  const handleParamSave = useCallback(() => {
+    setIsEditingParams(false);
+    setIsComposing(false);
+    const newParams: Record<string, string> = {};
+    Object.values(paramDrafts).forEach(draft => {
+      if (draft.key) {
+        newParams[draft.key] = draft.value;
       }
-
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: {
-          ...data,
-          queryParams: params
-        }
-      }));
-    }
-  }, [dispatch, id, data, isComposing, paramDrafts]);
+    });
+    updateContent({ queryParams: newParams });
+    saveContent();
+    console.log(`[APINode ${id}] Saved params:`, newParams);
+  }, [paramDrafts, updateContent, saveContent]);
 
   const handleRemoveParam = useCallback((keyToRemove: string) => {
-    const newParams = { ...data.queryParams };
+    const currentParams = content.queryParams || {};
+    const newParams = { ...currentParams };
     delete newParams[keyToRemove];
-    
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: {
-        ...data,
-        queryParams: newParams
-      }
-    }));
+    updateContent({ queryParams: newParams });
+    saveContent();
 
     setParamDrafts(prev => {
-      const newDrafts = { ...prev };
-      delete newDrafts[keyToRemove];
-      return newDrafts;
+      const nextDrafts = { ...prev };
+      const draftKeyToRemove = Object.keys(nextDrafts).find(dk => nextDrafts[dk].key === keyToRemove);
+      if (draftKeyToRemove) {
+          delete nextDrafts[draftKeyToRemove];
+      }
+      return nextDrafts;
     });
-  }, [dispatch, id, data]);
 
-  // Encapsulate label update logic
+  }, [content.queryParams, updateContent, saveContent]);
+
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
   }, [dispatch, data]);
 
-  // Run full flow
   const handleRun = useCallback(() => {
-    // Commit any pending changes before executing the flow
-    console.log(`[APINode] Committing changes before executing flow from node ${id}`);
-    commitChanges();
-    
-    // Now execute the flow
     executeFlow(id);
-  }, [id, commitChanges]);
+  }, [id]);
 
-  // Execute API request with input data
   const executeRequest = useCallback(async (input: any) => {
+    const nodeContent = content;
+    if (!nodeContent?.url) {
+        throw new Error("API URL is not set");
+    }
     try {
-      const url = new URL(data.url);
-      // Add query parameters
-      if (data.queryParams) {
-        Object.entries(data.queryParams).forEach(([key, value]) => {
+      const url = new URL(nodeContent.url);
+      if (nodeContent.queryParams) {
+        Object.entries(nodeContent.queryParams).forEach(([key, value]) => {
           url.searchParams.append(key, value);
         });
       }
 
-      // Prepare request body based on input
-      let requestBody: RequestBody | string = data.body || {};
+      let requestBody: RequestBody | string = nodeContent.body || {};
       if (input && typeof input === 'object') {
-        // If input is an object, merge it with the body
-        requestBody = { ...(typeof data.body === 'object' ? data.body : {}), ...input };
+        requestBody = { ...(typeof nodeContent.body === 'object' ? nodeContent.body : {}), ...input };
       } else if (input && typeof input === 'string') {
-        // If input is a string, use it as the body
         requestBody = input;
       }
 
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(data.headers || {})
+        'Content-Type': nodeContent.contentType || 'application/json',
+        ...(nodeContent.headers || {})
       };
 
       const response = await axios({
-        method: data.method.toLowerCase(),
+        method: (nodeContent.method || 'get').toLowerCase(),
         url: url.toString(),
         headers,
         data: requestBody,
@@ -239,15 +188,12 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       console.error('API request failed:', error);
       throw error;
     }
-  }, [data]);
+  }, [content]);
 
-  // Test API endpoint
   const handleTest = useCallback(async () => {
     setTestStatus('testing');
     setTestResponse(null);
-
     try {
-      // For testing, use a sample input if this is not a root node
       const testInput = !isRootNode ? { text: "Test input" } : undefined;
       const result = await executeRequest(testInput);
       setTestStatus('success');
@@ -265,7 +211,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     }));
   };
 
-  // Auto-collapse based on zoom level if in auto mode
   useEffect(() => {
     if (globalViewMode === 'auto') {
       const zoom = getZoom();
@@ -277,7 +222,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     }
   }, [globalViewMode, getZoom, id, dispatch]);
 
-  // Map any status to supported status types
   const mapStatus = (status: string | undefined): 'idle' | 'running' | 'success' | 'error' => {
     if (!status) return 'idle';
     if (status === 'skipped') return 'idle';
@@ -288,19 +232,20 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     <>
       <NodeHeader
         nodeId={id}
-        label={data.label || 'API'}
+        label={content.label || 'API'}
         placeholderLabel="API"
         isRootNode={isRootNode}
         isRunning={nodeState?.status === 'running'}
         viewMode={viewMode}
         themeColor="green"
+        isContentDirty={isDirty}
         onRun={handleRun}
         onLabelUpdate={handleLabelUpdate}
         onToggleView={toggleNodeView}
       />
 
-      <div className="text-sm text-gray-600">
-        {data.method} | {data.url || 'No URL set'}
+      <div className="text-sm text-gray-600 truncate">
+        {content.method || 'GET'} | {content.url || 'No URL set'}
       </div>
 
       <NodeStatusIndicator status={mapStatus(nodeState?.status)} error={nodeState?.error} />
@@ -311,12 +256,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     <>
       <NodeHeader
         nodeId={id}
-        label={data.label || 'API'}
+        label={content.label || 'API'}
         placeholderLabel="API"
         isRootNode={isRootNode}
         isRunning={nodeState?.status === 'running'}
         viewMode={viewMode}
         themeColor="green"
+        isContentDirty={isDirty}
         onRun={handleRun}
         onLabelUpdate={handleLabelUpdate}
         onToggleView={toggleNodeView}
@@ -325,7 +271,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       <div className="space-y-2">
         <div className="flex gap-2">
           <select
-            value={data.method}
+            value={content.method || 'GET'}
             onChange={(e) => handleMethodChange(e.target.value as any)}
             className="shrink-0 px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
           >
@@ -340,13 +286,11 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             type="text"
             value={urlDraft}
             onChange={handleUrlChange}
-            onCompositionStart={() => {
-              setIsComposing(true);
-              isEditingNodeRef.current = id;
-            }}
-            onCompositionEnd={handleUrlCompositionEnd}
-            onFocus={handleUrlFocus}
-            onBlur={handleUrlBlur}
+            onFocus={() => setIsEditingUrl(true)}
+            onBlur={handleUrlSave}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={handleUrlSave}
+            onKeyDown={(e) => e.key === 'Enter' && handleUrlSave()}
             placeholder="Enter API URL"
             className="flex-1 px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
           />
@@ -363,37 +307,38 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             </button>
           </div>
           <div className="space-y-1">
-            {Object.entries(data.queryParams || {}).map(([key, value]) => {
-              const draft = paramDrafts[key] || { key, value };
-              return (
-                <div key={key} className="flex gap-1">
-                  <input
-                    type="text"
-                    value={draft.key}
-                    onChange={(e) => handleParamChange(key, 'key', e.target.value)}
-                    onCompositionStart={() => setIsComposing(true)}
-                    onCompositionEnd={() => setIsComposing(false)}
-                    placeholder="Key"
-                    className="flex-1 px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                  <input
-                    type="text"
-                    value={draft.value}
-                    onChange={(e) => handleParamChange(key, 'value', e.target.value)}
-                    onCompositionStart={() => setIsComposing(true)}
-                    onCompositionEnd={() => setIsComposing(false)}
-                    placeholder="Value"
-                    className="flex-1 px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                  <button
-                    onClick={() => handleRemoveParam(key)}
-                    className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
+            {Object.entries(paramDrafts).map(([draftKey, draft]) => (
+              <div key={draftKey} className="flex gap-1">
+                <input
+                  type="text"
+                  value={draft.key}
+                  onChange={(e) => handleParamDraftChange(draftKey, 'key', e.target.value)}
+                  onFocus={() => setIsEditingParams(true)}
+                  onBlur={handleParamSave}
+                  onCompositionStart={() => setIsComposing(true)}
+                  onCompositionEnd={() => setIsComposing(false)}
+                  placeholder="Key"
+                  className="flex-1 px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <input
+                  type="text"
+                  value={draft.value}
+                  onChange={(e) => handleParamDraftChange(draftKey, 'value', e.target.value)}
+                  onFocus={() => setIsEditingParams(true)}
+                  onBlur={handleParamSave}
+                  onCompositionStart={() => setIsComposing(true)}
+                  onCompositionEnd={() => setIsComposing(false)}
+                  placeholder="Value"
+                  className="flex-1 px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <button
+                  onClick={() => handleRemoveParam(draft.key)}
+                  className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         </div>
 
