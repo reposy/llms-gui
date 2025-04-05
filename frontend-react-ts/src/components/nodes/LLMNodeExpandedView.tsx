@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useDispatch } from 'react-redux';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { LLMNodeHeader } from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeSlice';
-import { updateNodeData } from '../../store/flowSlice';
 import { debounce } from 'lodash';
-import { isEditingNodeRef, useFlowSync } from '../../hooks/useFlowSync';
-import { NodeContent, useNodeContent } from '../../store/nodeContentStore';
+import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
 
 interface LLMNodeExpandedViewProps {
   id: string;
@@ -16,7 +13,6 @@ interface LLMNodeExpandedViewProps {
   nodeState: NodeState | null;
   viewMode: NodeViewMode;
   onToggleView: () => void;
-  nodeContent: NodeContent;
 }
 
 export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
@@ -25,42 +21,26 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
   nodeState,
   viewMode,
   onToggleView,
-  nodeContent
 }) => {
-  const dispatch = useDispatch();
-  const [promptDraft, setPromptDraft] = useState(nodeContent.prompt || '');
-  const [modelDraft, setModelDraft] = useState(nodeContent.model || '');
-  const [isComposing, setIsComposing] = useState(false);
+  const { 
+    content, 
+    isDirty, 
+    updateContent, 
+    saveContent 
+  } = useManagedNodeContent(id, data);
+
+  const [promptDraft, setPromptDraft] = useState(content.prompt || '');
+  const [modelDraft, setModelDraft] = useState(content.model || '');
+  const [tempDraft, setTempDraft] = useState(content.temperature ?? 0.7);
+  const [providerDraft, setProviderDraft] = useState(content.provider ?? 'ollama');
+  const [ollamaUrlDraft, setOllamaUrlDraft] = useState(content.ollamaUrl ?? '');
+
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingModel, setIsEditingModel] = useState(false);
-  const modelInputRef = useRef<HTMLInputElement>(null);
-  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const lastPromptRef = useRef(nodeContent.prompt || '');
-  
-  // Access the flow sync utilities for committing to Redux
-  const { markNodeDirty, commitChanges } = useFlowSync({ 
-    isRestoringHistory: useRef(false)
-  });
-  
-  // Access node content store utilities
-  const { setContent, markDirty } = useNodeContent(id);
+  const [isComposing, setIsComposing] = useState(false);
 
-  // Create debounced update function - but now update the content store instead of Redux
-  const debouncedUpdatePrompt = useRef(
-    debounce((value: string) => {
-      // Only update if not composing and the value has actually changed
-      if (!isComposing && value !== lastPromptRef.current) {
-        lastPromptRef.current = value;
-        setContent({ prompt: value });
-      }
-    }, 500)
-  ).current;
-
-  // Map the execution state to the status indicator format
   const nodeStatus = useMemo(() => {
     if (!nodeState) return 'idle';
-    
-    // Map 'skipped' to 'idle' for the NodeStatusIndicator
     return nodeState.status === 'skipped' 
       ? 'idle' 
       : nodeState.status === 'running' || nodeState.status === 'success' || nodeState.status === 'error'
@@ -68,266 +48,187 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
         : 'idle';
   }, [nodeState]);
 
-  // Initialize drafts on first render or when node content changes
   useEffect(() => {
+    console.log(`[LLMNodeExpandedView ${id}] Content changed, syncing drafts`, content);
     if (!isEditingPrompt && !isComposing) {
-      setPromptDraft(nodeContent.prompt || '');
-      lastPromptRef.current = nodeContent.prompt || '';
+      setPromptDraft(content.prompt || '');
     }
-    
     if (!isEditingModel) {
-      setModelDraft(nodeContent.model || '');
+      setModelDraft(content.model || '');
     }
-  }, [id, nodeContent.prompt, nodeContent.model, isEditingPrompt, isEditingModel, isComposing]);
-
-  // Clean up debounced function on unmount
-  useEffect(() => {
-    return () => {
-      debouncedUpdatePrompt.cancel();
-    };
-  }, [debouncedUpdatePrompt]);
-
-  // Function to sync content from content store to Redux
-  const syncToRedux = useCallback(() => {
-    // Always sync content, not just when dirty
-    // This ensures changes are persisted even for duplicated nodes
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: { 
-        ...data, 
-        prompt: nodeContent.prompt ?? data.prompt, 
-        model: nodeContent.model ?? data.model,
-        temperature: nodeContent.temperature ?? data.temperature,
-        provider: (nodeContent.provider ?? data.provider) as 'ollama' | 'openai',
-        ollamaUrl: nodeContent.ollamaUrl ?? data.ollamaUrl,
-        label: nodeContent.label ?? data.label
-      }
-    }));
-    
-    // Mark content as not dirty after syncing
-    markDirty(false);
-    
-    // Ensure changes are committed to Redux
-    commitChanges();
-  }, [dispatch, id, data, nodeContent, markDirty, commitChanges]);
+    setTempDraft(content.temperature ?? 0.7);
+    setProviderDraft(content.provider ?? 'ollama');
+    setOllamaUrlDraft(content.ollamaUrl ?? '');
+  }, [id, content, isEditingPrompt, isEditingModel, isComposing]);
 
   const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newPrompt = e.target.value;
     setPromptDraft(newPrompt);
-    
-    // Update the content store
-    setContent({ prompt: newPrompt });
-    
-    // Mark the node as dirty for React Flow sync
-    markNodeDirty(id);
-  }, [id, markNodeDirty, setContent]);
-
-  const handlePromptFocus = useCallback(() => {
-    setIsEditingPrompt(true);
-    isEditingNodeRef.current = id; // Mark this node as being edited
-  }, [id]);
-
-  const handlePromptBlur = useCallback(() => {
-    setIsEditingPrompt(false);
-    isEditingNodeRef.current = null; // Clear the editing node reference
-    
-    // Update node content store with final value
-    setContent({ prompt: promptDraft });
-    lastPromptRef.current = promptDraft;
-    
-    // Sync to Redux on blur
-    syncToRedux();
-  }, [id, promptDraft, setContent, syncToRedux]);
-
-  const handlePromptKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Prevent bubbling to ReactFlow
-    e.stopPropagation();
-    
-    // Save on Enter + Ctrl/Cmd
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      // Update the content store
-      setContent({ prompt: promptDraft });
-      lastPromptRef.current = promptDraft;
-      
-      // Sync to Redux
-      syncToRedux();
-    }
-  }, [promptDraft, setContent, syncToRedux]);
+    updateContent({ prompt: newPrompt });
+  }, [updateContent]);
 
   const handleModelChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newModel = e.target.value;
     setModelDraft(newModel);
-    
-    // Update the content store
-    setContent({ model: newModel });
-    
-    // Mark the node as dirty for React Flow
-    markNodeDirty(id);
-  }, [id, markNodeDirty, setContent]);
-
-  const handleModelFocus = useCallback(() => {
-    setIsEditingModel(true);
-    isEditingNodeRef.current = id; // Mark this node as being edited
-  }, [id]);
-
-  const handleModelBlur = useCallback(() => {
-    setIsEditingModel(false);
-    isEditingNodeRef.current = null; // Clear the editing node reference
-    
-    // Update content store
-    setContent({ model: modelDraft });
-    
-    // Sync to Redux immediately when model field is changed
-    // This ensures the model change is committed right away
-    syncToRedux();
-  }, [id, modelDraft, setContent, syncToRedux]);
-
-  const handleModelKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Stop propagation for all keyboard events when editing the model
-    e.stopPropagation();
-    
-    // Save on Enter
-    if (e.key === 'Enter') {
-      // Update content store
-      setContent({ model: modelDraft });
-      
-      // Sync to Redux
-      syncToRedux();
-      
-      // Blur the input to match expected behavior
-      e.currentTarget.blur();
-    }
-  }, [modelDraft, setContent, syncToRedux]);
-
-  const handlePromptCompositionStart = useCallback(() => {
-    setIsComposing(true);
-    isEditingNodeRef.current = id; // Ensure node is marked as editing during composition
-  }, [id]);
-
-  const handlePromptCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement>) => {
-    setIsComposing(false);
-    const newPrompt = e.currentTarget.value;
-    setPromptDraft(newPrompt);
-    
-    // Update content store
-    setContent({ prompt: newPrompt });
-    
-    // Mark the node as dirty
-    markNodeDirty(id);
-  }, [id, markNodeDirty, setContent]);
-
+    updateContent({ model: newModel });
+  }, [updateContent]);
+  
   const handleTemperatureChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
-    
-    // Update content store
-    setContent({ temperature: value });
-    
-    // Mark the node as dirty
-    markNodeDirty(id);
-    
-    // For UI responsiveness, we also update Redux immediately
-    syncToRedux();
-  }, [id, markNodeDirty, setContent, syncToRedux]);
+    setTempDraft(value);
+    updateContent({ temperature: isNaN(value) ? 0.7 : value });
+    saveContent();
+  }, [updateContent, saveContent]);
 
   const handleProviderChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    // Update content store
-    setContent({ provider: e.target.value as 'ollama' | 'openai' });
-    
-    // Mark the node as dirty
-    markNodeDirty(id);
-    
-    // For UI responsiveness, we also update Redux immediately
-    syncToRedux();
-  }, [id, markNodeDirty, setContent, syncToRedux]);
+    const value = e.target.value as 'ollama' | 'openai';
+    setProviderDraft(value);
+    updateContent({ provider: value });
+    saveContent();
+  }, [updateContent, saveContent]);
+  
+  const handleOllamaUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setOllamaUrlDraft(value);
+    updateContent({ ollamaUrl: value });
+  }, [updateContent]);
+
+  const handleFocus = useCallback((setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setter(true);
+  }, []);
+
+  const handleBlur = useCallback((setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setter(false);
+    saveContent();
+  }, [saveContent]);
+
+  const handleCompositionStart = useCallback(() => {
+    setIsComposing(true);
+  }, []);
+
+  const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    setIsComposing(false);
+    const target = e.target as HTMLTextAreaElement | HTMLInputElement;
+    if (target instanceof HTMLTextAreaElement) {
+        updateContent({ prompt: target.value });
+    } else if (target.name === 'model') {
+        updateContent({ model: target.value });
+    } else if (target.name === 'ollamaUrl') {
+        updateContent({ ollamaUrl: target.value });
+    }
+  }, [updateContent]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || e.currentTarget instanceof HTMLInputElement)) {
+      e.preventDefault();
+      saveContent();
+      e.currentTarget.blur();
+    }
+  }, [saveContent]);
 
   return (
     <>
       <LLMNodeHeader
         id={id}
-        data={data}
+        data={{ ...data, label: content.label ?? data.label }}
         viewMode={viewMode}
         onToggleView={onToggleView}
+        isContentDirty={isDirty}
       />
-
-      {/* Expanded content */}
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <select
-            className="flex-1 p-1 border border-gray-300 rounded bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            value={nodeContent.provider || data.provider}
-            onChange={handleProviderChange}
-          >
-            <option value="openai">OpenAI</option>
-            <option value="ollama">Ollama</option>
-          </select>
+      
+      <div className="absolute -top-2 -right-2">
+        <NodeStatusIndicator status={nodeStatus} />
+      </div>
+      
+      <div className="p-2 space-y-3">
+        <div className="flex flex-col space-y-1">
+          <label className="text-xs font-medium text-gray-600">Model:</label>
           <input
-            ref={modelInputRef}
             type="text"
-            className="flex-1 p-1 border border-gray-300 rounded bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            placeholder="Model (e.g., gpt-4-turbo)"
+            name="model"
             value={modelDraft}
             onChange={handleModelChange}
-            onFocus={handleModelFocus}
-            onBlur={handleModelBlur}
-            onKeyDown={handleModelKeyDown}
+            onFocus={() => handleFocus(setIsEditingModel)}
+            onBlur={() => handleBlur(setIsEditingModel)}
+            onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
+            className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="e.g., llama3:latest"
+          />
+        </div>
+        
+        <div className="flex flex-col space-y-1">
+          <label className="text-xs font-medium text-gray-600">Prompt:</label>
+          <textarea
+            value={promptDraft}
+            onChange={handlePromptChange}
+            onFocus={() => handleFocus(setIsEditingPrompt)}
+            onBlur={() => handleBlur(setIsEditingPrompt)}
+            onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
+            className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter your prompt here..."
           />
         </div>
 
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-xs text-gray-600">Temperature</label>
+        <div className="flex flex-col space-y-1">
+          <label className="text-xs font-medium text-gray-600 flex justify-between">
+            <span>Temperature:</span>
+            <span>{tempDraft.toFixed(1)}</span>
+          </label>
           <input
             type="range"
             min="0"
-            max="1"
-            step="0.05"
-            className="w-32"
-            value={nodeContent.temperature || data.temperature}
+            max="2"
+            step="0.1"
+            value={tempDraft}
             onChange={handleTemperatureChange}
+            className="nodrag nopan w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
           />
-          <span className="text-xs w-6 text-right">
-            {nodeContent.temperature !== undefined 
-              ? nodeContent.temperature.toFixed(2) 
-              : data.temperature.toFixed(2)}
-          </span>
         </div>
 
-        <div className="flex flex-col">
-          <label className="text-xs text-gray-600 mb-1">Prompt</label>
-          <div className="relative">
-            <NodeStatusIndicator 
-              status={nodeStatus} 
-              className="absolute -right-1 -top-1" 
+        <div className="flex flex-col space-y-1">
+          <label className="text-xs font-medium text-gray-600">Provider:</label>
+          <select
+            value={providerDraft}
+            onChange={handleProviderChange}
+            className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          >
+            <option value="ollama">Ollama</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        
+        {providerDraft === 'ollama' && (
+          <div className="flex flex-col space-y-1">
+            <label className="text-xs font-medium text-gray-600">Ollama URL (Optional):</label>
+            <input
+              type="text"
+              name="ollamaUrl"
+              value={ollamaUrlDraft}
+              onChange={handleOllamaUrlChange}
+              onBlur={() => saveContent()}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="http://localhost:11434"
             />
-            <textarea
-              ref={promptTextareaRef}
-              className="w-full h-[8em] p-2 border border-gray-300 rounded bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              placeholder="Enter your prompt here..."
-              value={promptDraft}
-              onChange={handlePromptChange}
-              onFocus={handlePromptFocus}
-              onBlur={handlePromptBlur}
-              onKeyDown={handlePromptKeyDown}
-              onCompositionStart={handlePromptCompositionStart}
-              onCompositionEnd={handlePromptCompositionEnd}
-            ></textarea>
-          </div>
-        </div>
-
-        {/* Display execution result when available */}
-        {nodeState?.status === 'success' && nodeState.result && (
-          <div className="text-xs text-gray-800 mt-1 mb-1 bg-gray-100 p-2 rounded border border-gray-300 max-h-16 overflow-y-auto">
-            <div className="font-semibold text-gray-600 mb-1">Result Preview:</div>
-            <div className="whitespace-pre-line line-clamp-2">
-              {typeof nodeState.result === 'string' 
-                ? nodeState.result 
-                : JSON.stringify(nodeState.result, null, 2)}
-            </div>
           </div>
         )}
 
+        {nodeState?.result && (
+          <div className="mt-2 p-2 border border-green-200 bg-green-50 rounded text-xs text-green-800">
+            <strong>Result:</strong>
+            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(nodeState.result, null, 2)}</pre>
+          </div>
+        )}
         {nodeState?.error && (
-          <div className="text-xs text-red-500 mt-1">
-            Error: {nodeState.error}
+          <div className="mt-2 p-2 border border-red-200 bg-red-50 rounded text-xs text-red-800">
+            <strong>Error:</strong> {nodeState.error}
           </div>
         )}
       </div>

@@ -7,7 +7,6 @@ import { calculateNodePosition, createNewNode } from '../utils/flowUtils';
 const initialState: FlowState = {
   nodes: [],
   edges: [],
-  nodeStates: {},
   selectedNodeId: null
 };
 
@@ -53,18 +52,6 @@ const flowSlice = createSlice({
       // This assumes the incoming data matches the node type, which should be ensured by the calling component
       Object.assign(node.data, action.payload.data);
     },
-    setNodeState: (state, action: PayloadAction<{ nodeId: string; state: Partial<NodeState> }>) => {
-      const { nodeId, state: nodeState } = action.payload;
-      
-      // Get existing state or initialize empty
-      const existingState = state.nodeStates[nodeId] || {};
-      
-      // Update state with new values
-      state.nodeStates[nodeId] = {
-        ...existingState,
-        ...nodeState
-      };
-    }
   },
 });
 
@@ -73,7 +60,6 @@ export const {
   setEdges, 
   addNode, 
   updateNodeData, 
-  setNodeState,
   setSelectedNodeId 
 } = flowSlice.actions;
 

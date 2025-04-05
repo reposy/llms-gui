@@ -126,7 +126,6 @@ export type NodeData =
 export interface FlowState {
   nodes: Node<NodeData>[];
   edges: Edge[];
-  nodeStates: Record<string, any>; // Using any for backward compatibility
   selectedNodeId: string | null;
 }
 

@@ -2,6 +2,7 @@ import React from 'react';
 import clsx from 'clsx';
 import { EditableNodeLabel } from './EditableNodeLabel';
 import { VIEW_MODES } from '../../../store/viewModeSlice';
+import { FaCircle } from 'react-icons/fa'; // Example icon for dirty state
 
 interface Props {
   nodeId: string;
@@ -9,6 +10,7 @@ interface Props {
   placeholderLabel: string;
   isRootNode: boolean;
   isRunning: boolean;
+  isContentDirty?: boolean; // Add optional prop
   viewMode: typeof VIEW_MODES.COMPACT | typeof VIEW_MODES.EXPANDED;
   themeColor: 'blue' | 'green' | 'purple' | 'gray' | 'orange'; // For theming buttons/labels
   onRun: () => void;
@@ -59,6 +61,7 @@ export const NodeHeader: React.FC<Props> = React.memo(({
   placeholderLabel,
   isRootNode,
   isRunning,
+  isContentDirty, // Destructure prop
   viewMode,
   themeColor,
   onRun,
@@ -75,11 +78,13 @@ export const NodeHeader: React.FC<Props> = React.memo(({
           <button
             onClick={onRun}
             className={clsx(
-              'shrink-0 px-2 py-1 text-xs font-medium rounded transition-colors',
+              'relative shrink-0 px-2 py-1 text-xs font-medium rounded transition-colors',
               theme.runButton
             )}
             title="Run full flow from this node"
           >
+            {/* Optional: Add indicator for dirty state ON the run button? */}
+            {/* {isContentDirty && <FaCircle className="absolute -top-1 -right-1 text-yellow-400 text-[8px]" />} */} 
             {isRunning ? '⏳' : '▶'} Run
           </button>
         ) : (
@@ -91,15 +96,23 @@ export const NodeHeader: React.FC<Props> = React.memo(({
           </div>
         )}
         
-        {/* Editable Label */}
-        <EditableNodeLabel
-          nodeId={nodeId}
-          initialLabel={label}
-          placeholderLabel={placeholderLabel}
-          onLabelUpdate={onLabelUpdate}
-          labelClassName={clsx('font-bold', theme.label)} // Pass themed class
-          inputClassName={clsx('px-1 py-0.5 text-sm font-bold border rounded focus:outline-none focus:ring-1', theme.input)} // Pass themed class
-        />
+        {/* Editable Label with Dirty Indicator */}
+        <div className="flex items-center gap-1">
+            <EditableNodeLabel
+              nodeId={nodeId}
+              initialLabel={label}
+              placeholderLabel={placeholderLabel}
+              onLabelUpdate={onLabelUpdate}
+              labelClassName={clsx('font-bold', theme.label)} 
+              inputClassName={clsx('px-1 py-0.5 text-sm font-bold border rounded focus:outline-none focus:ring-1', theme.input)}
+            />
+            {/* Display dirty indicator next to label */}
+            {isContentDirty && (
+                <span title="Unsaved changes">
+                  <FaCircle className="text-yellow-400 text-[8px]" />
+                </span>
+            )}
+        </div>
 
         {/* View Toggle Button */}
         <button
