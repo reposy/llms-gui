@@ -1,16 +1,16 @@
 import React, { useCallback } from 'react';
 import { useSelector } from 'react-redux';
-import { store } from '../store/store';
+import { store } from '../../store/store';
 import type { Node } from 'reactflow';
-import { NodeData, GroupNodeData, InputNodeData } from '../types/nodes';
-import { useNodeState, useExecutionState, executeFlowForGroup } from '../store/flowExecutionStore';
-import { GroupExecutionItemResult } from '../types/execution';
+import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
+import { useNodeState, useExecutionState, executeFlowForGroup } from '../../store/flowExecutionStore';
+import { GroupExecutionItemResult } from '../../types/execution';
 
 // Import new component modules
-import GroupInfoBox from './group/GroupInfoBox';
-import GroupNodesList from './group/GroupNodesList';
-import GroupResultList from './group/GroupResultList';
-import GroupExecutionToolbar from './group/GroupExecutionToolbar';
+import GroupInfoBox from '../group/GroupInfoBox';
+import GroupNodesList from '../group/GroupNodesList';
+import GroupResultList from '../group/GroupResultList';
+import GroupExecutionToolbar from '../group/GroupExecutionToolbar';
 
 interface GroupDetailSidebarProps {
   selectedNodeId: string | null;

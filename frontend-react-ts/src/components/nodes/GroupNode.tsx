@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { Handle, Position, NodeProps, NodeResizer } from 'reactflow';
+import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from 'reactflow';
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
 import { useSelector } from 'react-redux';
@@ -15,6 +15,7 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
   const allEdges = useSelector((state: RootState) => state.flow.edges);
   const nodeState = useNodeState(id); // Get execution state for the group node
   const isRunning = nodeState?.status === 'running';
+  const { setNodes } = useReactFlow();
 
   // Memoize the calculation of nodes within the group and root nodes
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
@@ -34,6 +35,25 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
       executeFlowForGroup(id);
     }
   }, [id, isRunning]);
+  
+  // Handle selecting the group node manually
+  const handleSelectGroup = useCallback((e: React.MouseEvent) => {
+    // Only handle events when they target exactly the current element
+    // This prevents capturing events from child nodes
+    if (e.target === e.currentTarget) {
+      e.stopPropagation();
+      
+      // Select this node in ReactFlow
+      setNodes(nodes => 
+        nodes.map(node => ({
+          ...node,
+          selected: node.id === id
+        }))
+      );
+      
+      console.log(`[GroupNode] Selected group ${id}`);
+    }
+  }, [id, setNodes]);
 
   return (
     <>
@@ -57,6 +77,8 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           'group-node-container', // Add class for dragging the entire group
           'cursor-move' // Indicate the entire group is draggable
         )}
+        onClick={handleSelectGroup}
+        data-testid={`group-node-${id}`}
       >
         {/* Header */}
         <div
@@ -68,7 +90,10 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           <span>{data.label || 'Group'}</span>
           {hasInternalRootNodes && (
             <button
-              onClick={handleRunGroup}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent parent node selection
+                handleRunGroup();
+              }}
               disabled={isRunning}
               className={clsx(
                 'ml-2 px-1.5 py-0.5 text-xs font-medium rounded transition-colors',
@@ -81,7 +106,7 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           )}
         </div>
 
-        {/* Content Area */}
+        {/* Content Area - use pointer-events-none to allow interaction with child elements */}
         <div
           className={clsx(
             'flex-grow',
@@ -90,9 +115,10 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
             'relative',
             'group-node-content' // Add class for potential CSS targeting
           )}
+          onClick={handleSelectGroup} // Also make content area selectable
         >
           {nodesInGroup.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs">
+            <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs placeholder">
               Drag nodes here
             </div>
           )}

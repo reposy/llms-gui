@@ -27,7 +27,8 @@ export const useClipboard = (
     ...node,
     id: crypto.randomUUID(), // Use built-in crypto API
     position: { x: node.position.x + 50, y: node.position.y + 50 }, // Offset position
-    data: { ...node.data } // Shallow copy of data
+    data: cloneDeep(node.data), // Use deep copy instead of shallow copy
+    selected: true, // Select the newly created node for immediate editing
   }), []);
 
   const handleCopy = useCallback(() => {

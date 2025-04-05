@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { useDispatch, useSelector } from 'react-redux';
 import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
@@ -25,15 +25,46 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
   
   // Get node content from content store
-  const { content, isContentDirty } = useNodeContent(id);
+  const { content, isContentDirty, setContent } = useNodeContent(id);
+  
+  // Use a ref to track our update status and prevent cascading updates
+  const updatePerformedRef = useRef(false);
   
   // Load data from Redux to content store on mount and when data changes
   useEffect(() => {
-    // Only load if content is not dirty (to prevent overriding user edits)
-    if (!isContentDirty) {
-      loadFromReduxNodes([{ id, data }]);
+    // Add debug logs
+    console.log(`[LLMNode ${id}] useEffect triggered with:`, {
+      id,
+      dataModel: data.model,
+      contentModel: content.model,
+      updatePerformed: updatePerformedRef.current
+    });
+    
+    // If we've already performed an update in this render cycle, skip to prevent loops
+    if (updatePerformedRef.current) {
+      updatePerformedRef.current = false;
+      return;
     }
-  }, [id]);
+    
+    // We need to prevent the infinite update loop
+    // Only perform updates when necessary
+    
+    // 1. Cache the current content model to compare
+    const currentContentModel = content.model;
+    
+    // 2. Only load from Redux if we need to (model mismatch)
+    if (data.model !== currentContentModel) {
+      console.log(`[LLMNode ${id}] Loading from Redux nodes`);
+      loadFromReduxNodes([{ id, data } as any]);
+      
+      // 3. If data.model exists and doesn't match content, update content
+      if (data.model && data.model !== currentContentModel) {
+        console.log(`[LLMNode ${id}] Setting content model to ${data.model}`);
+        updatePerformedRef.current = true;
+        setContent({ model: data.model });
+      }
+    }
+  }, [id, data, setContent]);
 
   const toggleNodeView = useCallback(() => {
     dispatch(setNodeViewMode({

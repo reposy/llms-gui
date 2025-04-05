@@ -62,20 +62,14 @@ export const MergerNodeSidebar: React.FC<MergerNodeSidebarProps> = ({ nodeId, no
         {nodeState.status === 'error' && <p className="text-sm text-red-600">Error: {nodeState.error}</p>}
         {(nodeState.status === 'success' || nodeState.status === 'idle') && (
            executionResults.length > 0 ? (
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-              {executionResults.map((item, index) => (
-                <div key={`result-${index}`} className="flex items-center space-x-2">
-                  <textarea
-                    value={String(item)} // Ensure value is string
-                    readOnly
-                    rows={1} 
-                    className="flex-grow p-1.5 border border-gray-200 rounded text-sm font-mono bg-gray-50 resize-none focus:outline-none"
-                  />
-                  <span className="text-xs text-gray-500 whitespace-nowrap">
-                    {String(item).length} chars
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-2">
+              <pre className="text-xs font-mono bg-white border border-gray-300 rounded-lg p-3 overflow-auto max-h-[300px] whitespace-pre-wrap">
+                {JSON.stringify(executionResults, null, 2)}
+              </pre>
+              <div className="flex justify-between items-center text-xs text-gray-500">
+                <span>{executionResults.length} items</span>
+                <span>{JSON.stringify(executionResults).length} chars</span>
+              </div>
             </div>
           ) : (
             <p className="text-sm text-gray-400 italic">No execution results available.</p>

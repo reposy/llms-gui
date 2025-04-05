@@ -321,7 +321,47 @@ export const useNodeHandlers = (
         isEditingNodeRef.current = null;
       }
       
-      const nextNodes = localNodes.filter(node => !nodeIds.has(node.id));
+      // Find any group nodes being deleted
+      const groupNodesToDelete = nodes.filter(node => node.type === 'group');
+      let updatedNodes = [...localNodes];
+      
+      // If we're deleting group nodes, we need to update their children
+      if (groupNodesToDelete.length > 0) {
+        console.log(`[NodesDelete] Processing ${groupNodesToDelete.length} group nodes`);
+        
+        // Process each group node
+        for (const groupNode of groupNodesToDelete) {
+          // Find all child nodes for this group
+          const childNodes = updatedNodes.filter(node => node.parentNode === groupNode.id);
+          
+          if (childNodes.length > 0) {
+            console.log(`[NodesDelete] Updating ${childNodes.length} child nodes for group ${groupNode.id}`);
+            
+            // Update child nodes to remove parent reference and update positions
+            updatedNodes = updatedNodes.map(node => {
+              if (node.parentNode === groupNode.id) {
+                // Calculate absolute position based on group's position
+                const absolutePosition = {
+                  x: (groupNode.position?.x || 0) + node.position.x,
+                  y: (groupNode.position?.y || 0) + node.position.y
+                };
+                
+                // Return updated node with absolute position and no parent
+                return {
+                  ...node,
+                  parentNode: undefined,
+                  position: absolutePosition,
+                  positionAbsolute: absolutePosition
+                };
+              }
+              return node;
+            });
+          }
+        }
+      }
+      
+      // Filter out nodes to delete
+      const nextNodes = updatedNodes.filter(node => !nodeIds.has(node.id));
       
       // Also remove connected edges
       const connectedEdges = getConnectedEdges(nodes, localEdges);

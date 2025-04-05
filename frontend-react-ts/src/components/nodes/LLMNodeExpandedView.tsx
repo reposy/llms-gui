@@ -89,27 +89,26 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
 
   // Function to sync content from content store to Redux
   const syncToRedux = useCallback(() => {
-    // Only sync if we have content
-    if (nodeContent) {
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { 
-          ...data, 
-          prompt: nodeContent.prompt, 
-          model: nodeContent.model,
-          temperature: nodeContent.temperature,
-          provider: nodeContent.provider as 'ollama' | 'openai',
-          ollamaUrl: nodeContent.ollamaUrl,
-          label: nodeContent.label
-        }
-      }));
-      
-      // Mark content as not dirty after syncing
-      markDirty(false);
-      
-      // Ensure changes are committed to Redux
-      commitChanges();
-    }
+    // Always sync content, not just when dirty
+    // This ensures changes are persisted even for duplicated nodes
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { 
+        ...data, 
+        prompt: nodeContent.prompt ?? data.prompt, 
+        model: nodeContent.model ?? data.model,
+        temperature: nodeContent.temperature ?? data.temperature,
+        provider: (nodeContent.provider ?? data.provider) as 'ollama' | 'openai',
+        ollamaUrl: nodeContent.ollamaUrl ?? data.ollamaUrl,
+        label: nodeContent.label ?? data.label
+      }
+    }));
+    
+    // Mark content as not dirty after syncing
+    markDirty(false);
+    
+    // Ensure changes are committed to Redux
+    commitChanges();
   }, [dispatch, id, data, nodeContent, markDirty, commitChanges]);
 
   const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -178,7 +177,8 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
     // Update content store
     setContent({ model: modelDraft });
     
-    // Sync to Redux
+    // Sync to Redux immediately when model field is changed
+    // This ensures the model change is committed right away
     syncToRedux();
   }, [id, modelDraft, setContent, syncToRedux]);
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { RootState } from '../store/store';
-import { ConfigFactory } from './config/ConfigFactory';
+import { RootState } from '../../store/store';
+import { ConfigFactory } from '../config/ConfigFactory';
 
 interface NodeConfigSidebarProps {
   selectedNodeId: string | null;
