@@ -200,6 +200,28 @@ export const useFlowSync = ({
       return;
     }
 
+    // Check if there's a meaningful difference before updating
+    const nodesChanged = reduxNodes.length !== localNodes.length;
+    const edgesChanged = reduxEdges.length !== localEdges.length;
+
+    // Special case: when Redux nodes and edges are empty (new flow creation)
+    // immediately sync this to local state
+    if (reduxNodes.length === 0 && reduxEdges.length === 0 && (localNodes.length > 0 || localEdges.length > 0)) {
+      console.log("[FlowSync Structure] Detected empty Redux state (new flow). Clearing local state.");
+      setLocalNodes([]);
+      setLocalEdges([]);
+      hasPendingStructuralChanges.current = false;
+      return;
+    }
+
+    // Only update if there's a meaningful change and we're not in the middle of editing
+    if ((nodesChanged || edgesChanged) && !hasPendingStructuralChanges.current) {
+      console.log("[FlowSync Structure] Detected Redux state change, updating local state");
+      setLocalNodes(reduxNodes);
+      setLocalEdges(reduxEdges);
+      hasPendingStructuralChanges.current = false;
+    }
+
     // Removed comment referencing the old isEditingNodeRef
     // const isEditingCurrentNode = isEditingNodeRef.current === node.id;
     // if (isEditingCurrentNode) {
