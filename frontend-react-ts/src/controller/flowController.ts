@@ -1,8 +1,8 @@
 import { Edge, Node } from 'reactflow';
-import { NodeData, GroupNodeData, InputNodeData } from '../types/nodes';
-import { ExecutionContext, NodeState, GroupExecutionItemResult } from '../types/execution';
+import { NodeData } from '../types/nodes';
+import { ExecutionContext, NodeState } from '../types/execution';
 import { getRootNodesFromSubset } from '../utils/executionUtils';
-import { dispatchNodeExecution } from '../executors/executorDispatcher';
+import { dispatchNodeExecution as dispatchToExecutor } from './executionDispatcher';
 
 export interface FlowControllerDependencies {
   getNodes: () => Node<NodeData>[];
@@ -21,14 +21,14 @@ export interface FlowControllerDependencies {
  * Executes a subgraph of nodes starting from specified root nodes.
  * Handles dependency management and parallel execution.
  */
-async function executeSubgraph(
+export async function executeSubgraph(
   startNodes: string[],
   nodesInSubgraph: Node<NodeData>[],
   edgesInSubgraph: Edge[],
   executionContext: ExecutionContext,
   dependencies: FlowControllerDependencies
 ): Promise<Record<string, any>> { // Returns map of { nodeId: result }
-  const { getNodeState, setNodeState, getNodes, getEdges } = dependencies;
+  const { getNodeState, setNodeState } = dependencies;
   const nodeResults: Record<string, any> = {};
   const nodeDependencies: Record<string, string[]> = {};
   const nodeExecutionStatus: Record<string, 'pending' | 'running' | 'completed' | 'failed' | 'skipped'> = {};
@@ -63,11 +63,6 @@ async function executeSubgraph(
   const executingPromises: Record<string, Promise<any>> = {};
 
   // Function to check if all dependencies of a node are met
-  // NOTE: This function uses type assertions (`as any`) for `activeOutputHandle`
-  // because the base `NodeState` type might not include it directly.
-  // Consider updating the `NodeState` type definition in `src/types/execution.ts`
-  // to include optional `activeOutputHandle?: string` and `conditionResult?: boolean`
-  // to resolve potential type errors.
   const areDependenciesMet = (nodeId: string): boolean => {
     const deps = nodeDependencies[nodeId];
     if (!deps || deps.length === 0) return true; // No dependencies
@@ -78,19 +73,17 @@ async function executeSubgraph(
       const depCompleted = nodeExecutionStatus[depId] === 'completed';
 
       if (!depNodeExists || !depCompleted) {
-         // console.log(`[Subgraph ${executionContext.executionId}] Basic dependency ${depId} for ${nodeId} not met (Exists: ${depNodeExists}, Completed: ${depCompleted})`);
         return false; // Basic dependency not met
       }
 
       // --- Conditional Check ---
       const depNode = nodesInSubgraph.find(n => n.id === depId);
       if (depNode?.type === 'conditional') {
-        const depState = getNodeState(depId); // Use getNodeState from outer scope
+        const depState = getNodeState(depId);
 
-        // Check if state exists and has the conditional properties (using 'in' for type safety)
+        // Check if state exists and has the conditional properties
         const hasConditionalProps = depState && 'activeOutputHandle' in depState;
 
-        // Accessing potentially undefined property safely. It must exist AND be truthy (not null/undefined).
         if (hasConditionalProps && (depState as any).activeOutputHandle) {
            const edge = edgesInSubgraph.find(e => e.source === depId && e.target === nodeId);
            if (!edge) {
@@ -99,21 +92,16 @@ async function executeSubgraph(
            }
            // Crucially, check if the edge's sourceHandle matches the activeOutputHandle
            const handlesMatch = edge.sourceHandle === (depState as any).activeOutputHandle;
-           if (!handlesMatch) { // Use type assertion temporarily
+           if (!handlesMatch) {
                console.log(`[areDependenciesMet ${executionContext.executionId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Handle mismatch)`);
                setNodeState(nodeId, { status: 'skipped', executionId: executionContext.executionId }); // Set node to skipped
                return false; // This path is inactive
            }
-           // If handles match, the conditional dependency is met for this path
            console.log(`[Subgraph ${executionContext.executionId}] Dependency ${depId} (Conditional) met via active handle '${(depState as any).activeOutputHandle}' for ${nodeId}.`);
-
         } else {
-           // Completed conditional node *must* have an activeOutputHandle set by the dispatcher
-           // Check if it *should* have had one (i.e. status is success)
            if (depState?.status === 'success') {
                 console.warn(`[areDependenciesMet ${executionContext.executionId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Completed but missing activeOutputHandle). State:`, depState );
            } else {
-                // If status is not success, missing handle is expected, but dependency is still not met in terms of data flow.
                 console.log(`[areDependenciesMet ${executionContext.executionId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Not completed successfully - Status: ${depState?.status})`);
            }
            setNodeState(nodeId, { status: 'skipped', executionId: executionContext.executionId }); // Set node to skipped
@@ -136,7 +124,7 @@ async function executeSubgraph(
     // Add newly ready nodes to the queue
     nodesReadyToRun.forEach(nodeId => {
         if (!queue.includes(nodeId)) {
-            queue.push(nodeId)
+            queue.push(nodeId);
             console.log(`[Subgraph ${executionContext.executionId}] Dependencies met for ${nodeId}, adding to queue.`);
         }
     });
@@ -163,22 +151,22 @@ async function executeSubgraph(
         nodeExecutionStatus[nodeId] = 'running';
         console.log(`[Subgraph ${executionContext.executionId}] Dispatching execution for node ${nodeId}...`);
 
-        const nodeToExecute = nodesInSubgraph.find(n => n.id === nodeId);
-        if (!nodeToExecute) {
-            console.error(`[Subgraph ${executionContext.executionId}] Node ${nodeId} not found in subgraph for execution.`);
-            nodeExecutionStatus[nodeId] = 'failed'; // Mark as failed
-            return; // Skip this node
-        }
+        // Collect inputs for this node from completed dependencies
+        const nodeInputs = edgesInSubgraph
+          .filter(edge => edge.target === nodeId)
+          .map(edge => {
+            const sourceId = edge.source;
+            return nodeResults[sourceId];
+          })
+          .filter(result => result !== undefined);
 
-        // Call the central dispatcher
-        executingPromises[nodeId] = dispatchNodeExecution({
-            node: nodeToExecute,
-            nodes: getNodes(), // Provide all nodes for context
-            edges: getEdges(), // Provide all edges for context
-            context: executionContext,
-            getNodeState,
-            setNodeState,
-        })
+        // Call the central dispatcher with the node ID and collected inputs
+        executingPromises[nodeId] = dispatchToExecutor(
+          nodeId,
+          nodeInputs,
+          executionContext,
+          dependencies
+        )
         .then(result => {
             console.log(`[Subgraph ${executionContext.executionId}] Node ${nodeId} completed successfully.`);
             nodeResults[nodeId] = result;
@@ -192,7 +180,6 @@ async function executeSubgraph(
 
             children.forEach(childId => {
                 if (nodesInSubgraph.some(n => n.id === childId) && nodeExecutionStatus[childId] === 'pending') {
-                    // No need to add to queue here, the main loop check will pick it up if dependencies are met
                     console.log(`[Subgraph ${executionContext.executionId}] Node ${nodeId} finished, child ${childId} is pending.`);
                 }
             });
@@ -239,9 +226,6 @@ async function executeSubgraph(
 export async function executeFlow(startNodeId: string, dependencies: FlowControllerDependencies): Promise<void> {
   const { getNodes, getEdges, getDownstreamNodes, resetNodeStates, setIsExecuting, setCurrentExecutionId } = dependencies;
 
-  // Check isExecuting state directly if possible, or rely on caller
-  // This function assumes it won't be called if already executing
-
   setIsExecuting(true);
   setCurrentExecutionId(undefined); // Clear previous execution ID display
   console.log(`[ExecuteFlow] Starting from node: ${startNodeId}`);
@@ -283,18 +267,14 @@ export async function executeFlow(startNodeId: string, dependencies: FlowControl
 
     if (uniqueStartNodes.length === 0 && nodesInSubGraph.length > 0) {
         console.warn(`[ExecuteFlow ${executionId}] No root nodes found in the subgraph, but nodes exist. Is start node ${startNodeId} reachable?`);
-        // Potentially throw error or just log?
     }
 
     await executeSubgraph(uniqueStartNodes, nodesInSubGraph, edgesInSubGraph, context, dependencies);
     console.log(`[ExecuteFlow ${executionId}] Execution finished successfully.`);
   } catch (error) {
     console.error(`[ExecuteFlow ${executionId}] Execution failed:`, error);
-    // Error state is set within dispatchNodeExecution/executeSubgraph, no need to set global error state here
   } finally {
     console.log(`[ExecuteFlow ${executionId}] Setting isExecuting to false.`);
     setIsExecuting(false); // Mark execution as finished
   }
-}
-
-// NOTE: executeFlowForGroup has been moved to src/executors/groupExecutor.ts 
+} 
