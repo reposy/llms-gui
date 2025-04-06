@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { shallow } from 'zustand/shallow';
-import { LLMNodeData, APINodeData, OutputNodeData, NodeData } from '../types/nodes';
+import { LLMNodeData, APINodeData, OutputNodeData, NodeData, ConditionalNodeData } from '../types/nodes';
 
 // Type for content that will be stored in this store instead of Redux
 export interface NodeContent {
@@ -55,6 +55,9 @@ interface NodeContentStore {
   
   // Load content from Redux nodes (initial load or after import)
   loadFromReduxNodes: (nodes: NodeData[]) => void;
+  
+  // Load content directly from imported contents (for flow import)
+  loadFromImportedContents: (contents: Record<string, NodeContent>) => void;
   
   // Clear content for nodes that no longer exist
   cleanupDeletedNodes: (existingNodeIds: string[]) => void;
@@ -117,15 +120,17 @@ export const useNodeContentStore = create<NodeContentStore>()(
       set((state) => {
         // Process node data and extract content based on node type
         nodes.forEach(node => {
-          if (!node.data) return;
+          // In ReactFlow, Node<NodeData> contains node.data of type NodeData 
+          // But when passed directly as NodeData, it is the data object itself
+          const nodeData = ('data' in node ? node.data : node) as NodeData;
+          if (!nodeData) return;
           
           const nodeContent: NodeContent = { isDirty: false };
-          const data = node.data;
           
           // Extract content based on node type
-          switch (data.type) {
+          switch (nodeData.type) {
             case 'llm':
-              const llmData = data as LLMNodeData;
+              const llmData = nodeData as LLMNodeData;
               nodeContent.prompt = llmData.prompt;
               nodeContent.model = llmData.model;
               nodeContent.temperature = llmData.temperature;
@@ -135,7 +140,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
               break;
               
             case 'api':
-              const apiData = data as APINodeData;
+              const apiData = nodeData as APINodeData;
               nodeContent.url = apiData.url;
               nodeContent.method = apiData.method;
               nodeContent.headers = apiData.headers;
@@ -149,27 +154,46 @@ export const useNodeContentStore = create<NodeContentStore>()(
               break;
               
             case 'output':
-              const outputData = data as OutputNodeData;
+              const outputData = nodeData as OutputNodeData;
               nodeContent.format = outputData.format;
               nodeContent.content = outputData.content;
               nodeContent.label = outputData.label;
               break;
               
             case 'conditional':
-              nodeContent.conditionType = data.conditionType;
-              nodeContent.conditionValue = data.conditionValue;
-              nodeContent.label = data.label;
+              const conditionalData = nodeData as ConditionalNodeData;
+              nodeContent.conditionType = conditionalData.conditionType;
+              nodeContent.conditionValue = conditionalData.conditionValue;
+              nodeContent.label = conditionalData.label;
               break;
               
             default:
               // For other node types, extract common fields
-              nodeContent.label = data.label;
+              nodeContent.label = nodeData.label;
               break;
           }
           
-          state.nodeContents[node.id] = nodeContent;
+          // Get the node ID either from node.id (if Node<NodeData>) or nodeData.id
+          const nodeId = 'id' in node ? node.id : (nodeData as any).id;
+          if (nodeId) {
+            state.nodeContents[nodeId] = nodeContent;
+          }
         });
         
+        return state;
+      });
+    },
+    
+    loadFromImportedContents: (contents) => {
+      set((state) => {
+        console.log('[nodeContentStore] Loading contents from imported flow', contents);
+        Object.entries(contents).forEach(([nodeId, content]) => {
+          console.log(`[nodeContentStore] Loading content for node ${nodeId}:`, content);
+          state.nodeContents[nodeId] = {
+            ...content,
+            isDirty: false
+          };
+        });
         return state;
       });
     },
@@ -219,6 +243,7 @@ export const {
   markNodeDirty,
   isNodeDirty,
   loadFromReduxNodes,
+  loadFromImportedContents,
   cleanupDeletedNodes,
   getAllNodeContents,
   reset: resetNodeContents

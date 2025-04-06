@@ -7,7 +7,7 @@ import { NodeData } from '../types/nodes';
 import { cloneDeep } from 'lodash';
 import { FlowCanvasApi } from './FlowCanvas';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { loadFromReduxNodes, getAllNodeContents, NodeContent } from '../store/nodeContentStore';
+import { loadFromReduxNodes, loadFromImportedContents, getAllNodeContents, NodeContent, resetNodeContents } from '../store/nodeContentStore';
 
 interface FlowData {
   name: string;
@@ -37,6 +37,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
     if (window.confirm('현재 플로우를 지우고 새로 시작하시겠습니까?')) {
       dispatch(setNodes([]));
       dispatch(setEdges([]));
+      resetNodeContents();
+      console.log('[FlowManager] Reset node content store for new flow');
     }
   };
 
@@ -102,6 +104,9 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
               console.log(`[Import] Loading stored content for node ${nodeId}`);
             }
           });
+          
+          loadFromImportedContents(flowData.contents);
+          console.log('[Import] Loaded node contents from imported flow data');
         }
         
         const nodeDataArray = importedNodes.map(node => node.data);
