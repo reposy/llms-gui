@@ -5,6 +5,13 @@ export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | '
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
+// Define a FileLikeObject type for file content
+export interface FileLikeObject {
+  file: string; // File name
+  type: string; // MIME type
+  content?: string | ArrayBuffer; // Optional file content
+}
+
 // LLM 응답 타입 정의
 export interface LLMResult {
   content?: string;
@@ -78,7 +85,8 @@ export interface InputNodeData extends BaseNodeData {
   label: string;
   inputType?: 'text' | 'file' | 'list'; // Type of input
   text?: string; // For single text input
-  items?: string[]; // For list/file input (e.g., lines from a file)
+  textBuffer?: string; // Buffer for in-progress text entry
+  items?: (string | FileLikeObject)[]; // For mixed array of text and file rows
   iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
   iterationStatus?: {
     currentIndex: number;
