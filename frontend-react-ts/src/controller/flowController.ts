@@ -151,6 +151,9 @@ export async function executeSubgraph(
         nodeExecutionStatus[nodeId] = 'running';
         console.log(`[Subgraph ${executionContext.executionId}] Dispatching execution for node ${nodeId}...`);
 
+        // Get the node's type for logging
+        const nodeType = nodesInSubgraph.find(n => n.id === nodeId)?.type || 'unknown';
+
         // Collect inputs for this node from completed dependencies
         const nodeInputs = edgesInSubgraph
           .filter(edge => edge.target === nodeId)
@@ -160,6 +163,8 @@ export async function executeSubgraph(
           })
           .filter(result => result !== undefined);
 
+        console.log(`[Subgraph ${executionContext.executionId}] Node ${nodeId} (${nodeType}) inputs:`, nodeInputs);
+
         // Call the central dispatcher with the node ID and collected inputs
         executingPromises[nodeId] = dispatchToExecutor(
           nodeId,
@@ -168,7 +173,7 @@ export async function executeSubgraph(
           dependencies
         )
         .then(result => {
-            console.log(`[Subgraph ${executionContext.executionId}] Node ${nodeId} completed successfully.`);
+            console.log(`[Subgraph ${executionContext.executionId}] Node ${nodeId} (${nodeType}) completed successfully. Result:`, result);
             nodeResults[nodeId] = result;
             nodeExecutionStatus[nodeId] = 'completed';
             delete executingPromises[nodeId]; // Remove completed promise

@@ -36,12 +36,22 @@ export async function dispatchNodeExecution(
   
   // Special handling for group nodes
   if (node.type === 'group') {
-    return await executeGroupNode(
+    const groupResults = await executeGroupNode(
       nodeId,
       inputs,
       context,
       dependencies
     );
+    
+    // Set the node state with the results to ensure they're available for chaining
+    dependencies.setNodeState(nodeId, {
+      status: 'success',
+      result: groupResults, // Store the array of results from the group's leaf nodes
+      executionId: context.executionId
+    });
+    
+    console.log(`[ExecutionDispatcher] Group node ${nodeId} execution complete. Result:`, groupResults);
+    return groupResults; // Return the results for chaining to downstream nodes
   }
   
   // For other node types, use the original dispatcher from executorDispatcher.ts

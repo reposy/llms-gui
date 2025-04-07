@@ -1,7 +1,50 @@
 import { Edge, Node } from 'reactflow';
 import { NodeData, GroupNodeData } from '../types/nodes';
-import { ExecutionContext, NodeState, GroupExecutionItemResult } from '../types/execution';
+import { ExecutionContext, NodeState } from '../types/execution';
 import { getRootNodesFromSubset } from '../utils/executionUtils';
+
+// Define missing interfaces
+export interface GroupExecutionItemResult {
+  item: any;
+  index: number;
+  itemIndex?: number; // Support both naming styles
+  results: any;
+  success: boolean;
+  error?: string;
+}
+
+// Extended type definition for GroupNodeData
+interface ExtendedGroupNodeData extends GroupNodeData {
+  iteratorConfig?: {
+    path?: string;
+    collectionMode?: 'all' | 'flatten' | 'first' | 'last';
+    stopOnError?: boolean;
+  };
+  iterationConfig?: {
+    path?: string;
+    collectionMode?: 'all' | 'flatten' | 'first' | 'last';
+    stopOnError?: boolean;
+  };
+}
+
+// Extended type definition for ExecutionContext
+interface ExtendedExecutionContext extends ExecutionContext {
+  parentNodeId?: string;
+  iterationData?: {
+    item: any;
+    index: number;
+    total: number;
+  };
+}
+
+// Extended type definition for NodeState
+interface ExtendedNodeState extends NodeState {
+  iterationStatus?: {
+    currentIndex: number;
+    totalItems: number;
+    completed: boolean;
+  };
+}
 
 // Re-use the FlowControllerDependencies interface from flowController.ts
 export interface GroupExecutorDependencies {
@@ -104,6 +147,7 @@ export async function executeGroupNode(
     
     // Create subgraph from the group
     const executableNodes = nodesInGroup.filter(n => allDownstreamNodeIds.has(n.id));
+    console.log(`[Group ${groupNodeId}] Executing subgraph with ${executableNodes.length} nodes`);
     
     // Execute the subgraph within the group
     const results = await executeSubgraph(
@@ -114,9 +158,12 @@ export async function executeGroupNode(
       dependencies
     );
     
-    // Return result collected from leaf nodes
+    // Get results from leaf nodes and ensure it's an array
     const leafResults = getLeafNodeResults(executableNodes, internalEdges, results);
-    return [leafResults]; // Wrap in array to maintain consistent return type with iterator mode
+    console.log(`[Group ${groupNodeId}] Execution complete. Leaf results:`, leafResults);
+    
+    // Explicitly ensure we return an array - either the array of leaf results or an array containing a single item
+    return Array.isArray(leafResults) ? leafResults : [leafResults];
   }
 }
 
@@ -333,32 +380,36 @@ function extractResultsFromIterations(
 
 /**
  * Helper function to get results from leaf nodes in a subgraph
+ * Returns an array of results from leaf nodes (nodes without outgoing edges)
  */
 function getLeafNodeResults(
   nodes: Node<NodeData>[], 
   edges: Edge[], 
   nodeResults: Record<string, any>
-): any {
+): any[] {
   // Find leaf nodes (no outgoing edges)
   const leafNodeIds = nodes
     .map(n => n.id)
     .filter(id => !edges.some(e => e.source === id));
   
+  console.log(`[GroupExecutor] Found ${leafNodeIds.length} leaf nodes:`, leafNodeIds);
+  
   if (leafNodeIds.length === 0) {
-    // If no leaf nodes, return all results
+    // If no leaf nodes, return all results as an array
+    console.log(`[GroupExecutor] No leaf nodes found, returning all results`);
     return Object.values(nodeResults);
   }
   
-  // Return results from leaf nodes
-  const leafResults = leafNodeIds.map(id => nodeResults[id]).filter(r => r !== undefined);
+  // Collect results from all leaf nodes
+  const leafResults = leafNodeIds
+    .map(id => {
+      console.log(`[GroupExecutor] Getting result from leaf node ${id}:`, nodeResults[id]);
+      return nodeResults[id];
+    })
+    .filter(r => r !== undefined);
   
-  if (leafResults.length === 1) {
-    // If only one leaf node, return its result directly
-    return leafResults[0];
-  } else {
-    // Multiple leaf nodes, return as array
-    return leafResults;
-  }
+  // Always return as an array for consistency
+  return leafResults.length === 0 ? [] : leafResults;
 }
 
 /**
