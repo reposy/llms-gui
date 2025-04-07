@@ -79,6 +79,12 @@ export interface InputNodeData extends BaseNodeData {
   inputType?: 'text' | 'file' | 'list'; // Type of input
   text?: string; // For single text input
   items?: string[]; // For list/file input (e.g., lines from a file)
+  iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
+  iterationStatus?: {
+    currentIndex: number;
+    totalItems: number;
+    completed: boolean;
+  };
 }
 
 // Add GroupNodeData

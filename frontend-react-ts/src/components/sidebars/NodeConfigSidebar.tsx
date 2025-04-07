@@ -17,11 +17,19 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   // Update sidebar open state based on selected node
   useEffect(() => {
     setIsOpen(!!selectedNode);
+    // Add logging for debugging
+    console.log('[NodeConfigSidebar] Selected node:', selectedNode);
+    if (selectedNode) {
+      console.log('[NodeConfigSidebar] Node type:', selectedNode.type);
+      console.log('[NodeConfigSidebar] Node data:', selectedNode.data);
+    }
   }, [selectedNode]);
 
   if (!isOpen) {
     return null;
   }
+
+  console.log('[NodeConfigSidebar] Rendering sidebar for node type:', selectedNode?.type);
 
   return (
     <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-4 border-l">

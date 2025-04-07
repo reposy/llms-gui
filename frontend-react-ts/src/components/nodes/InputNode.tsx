@@ -1,20 +1,24 @@
 import React, { useCallback, useState, ChangeEvent, useEffect } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import { updateNodeData } from '../../store/flowSlice';
 import { InputNodeData } from '../../types/nodes';
-import { RootState } from '../../store/store';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
+import { executeFlow, useNodeState } from '../../store/flowExecutionStore';
 
 const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
   const dispatch = useDispatch();
   // Use local state to manage textarea value derived from props initially
   const [currentText, setCurrentText] = useState(data.text || '');
   const [fileName, setFileName] = useState<string | null>(null);
+  
+  // Get node execution state
+  const nodeState = useNodeState(id);
+  const isRunning = nodeState.status === 'running';
 
   // Update local state if the node data changes externally
   useEffect(() => {
@@ -22,35 +26,51 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     // Potentially derive filename from items if needed, but might be complex
   }, [data.text]);
 
+  // Handle configuration changes
+  const handleConfigChange = useCallback((updates: Partial<InputNodeData>) => {
+    dispatch(updateNodeData({
+      nodeId: id,
+      data: { ...data, ...updates }
+    }));
+  }, [dispatch, id, data]);
+
   const handleLabelUpdate = useCallback((newLabel: string) => {
-    dispatch(updateNodeData({ nodeId: id, data: { label: newLabel } }));
-  }, [dispatch, id]);
+    handleConfigChange({ label: newLabel });
+  }, [handleConfigChange]);
 
   const handleTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
     const newText = event.target.value;
     setCurrentText(newText);
-    dispatch(updateNodeData({ 
-      nodeId: id, 
-      data: { 
-        text: newText, 
-        inputType: 'text', // Explicitly set type to text on manual edit
-        items: [] // Clear items if text is manually edited
-      } 
-    }));
-  }, [dispatch, id]);
+    handleConfigChange({ 
+      text: newText, 
+      inputType: 'text', // Explicitly set type to text on manual edit
+      items: [] // Clear items if text is manually edited
+    });
+  }, [handleConfigChange]);
 
   const handleTypeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const newType = event.target.value as 'text' | 'file';
-    dispatch(updateNodeData({ nodeId: id, data: { inputType: newType } }));
+    
     // Clear other input types when switching
     if (newType === 'text') {
-      dispatch(updateNodeData({ nodeId: id, data: { items: [] } }));
+      handleConfigChange({ 
+        inputType: newType,
+        items: [] 
+      });
       setFileName(null);
     } else {
-      dispatch(updateNodeData({ nodeId: id, data: { text: '' } }));
+      handleConfigChange({ 
+        inputType: newType,
+        text: '' 
+      });
       setCurrentText('');
     }
-  }, [dispatch, id]);
+  }, [handleConfigChange]);
+
+  const handleIterateEachRowChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const checked = event.target.checked;
+    handleConfigChange({ iterateEachRow: checked });
+  }, [handleConfigChange]);
 
   const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -61,27 +81,33 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
         const fileContent = e.target?.result as string;
         // Split by lines, trim whitespace, and filter out empty lines
         const lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
-        dispatch(updateNodeData({ 
-          nodeId: id, 
-          data: { 
-            items: lines, 
-            inputType: 'list', // Set type to list after processing file
-            text: '' // Clear text field
-          } 
-        }));
+        handleConfigChange({ 
+          items: lines, 
+          inputType: 'list', // Set type to list after processing file
+          text: '' // Clear text field
+        });
         setCurrentText(''); // Clear local text state
       };
       reader.onerror = (e) => {
         console.error("Error reading file:", e);
         setFileName('Error reading file');
-        dispatch(updateNodeData({ nodeId: id, data: { items: [], inputType: 'file' } })); // Reset items on error
+        handleConfigChange({ items: [], inputType: 'file' });
       };
       reader.readAsText(file);
     }
-  }, [dispatch, id]);
+  }, [handleConfigChange]);
+
+  // Add handler for running the input node
+  const handleRunNode = useCallback(() => {
+    console.log(`Running input node: ${id}`);
+    executeFlow(id);
+  }, [id]);
 
   // Derive current input type from data, default to text
   const currentInputType = data.inputType || 'text';
+  
+  // Always show iterateEachRow option for file/list inputs
+  const showIterateOption = currentInputType === 'file' || currentInputType === 'list';
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -91,10 +117,10 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           label={data.label || 'Input'} 
           placeholderLabel="Input Node"
           isRootNode={true} // Input nodes are often roots
-          isRunning={false} // Input nodes don't "run" in the same way
+          isRunning={isRunning} // Update to check actual running state
           viewMode="expanded" // Always expanded for input?
           themeColor="gray"
-          onRun={() => {}} // No run action for basic input
+          onRun={handleRunNode} // Add the run handler
           onLabelUpdate={handleLabelUpdate}
           onToggleView={() => {}} // No view toggle for basic input
         />
@@ -154,11 +180,37 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
                     : (fileName ? `Selected: ${fileName}` : 'Select a text file (.txt, .csv, etc.)')}
                 </p>
               )}
+              
+              {/* Show iteration option for file/list inputs */}
+              <div className="mt-3 flex items-center p-2 bg-gray-50 rounded">
+                <input
+                  type="checkbox"
+                  id={`iterate-rows-${id}`}
+                  checked={!!data.iterateEachRow}
+                  onChange={handleIterateEachRowChange}
+                  className="mr-2 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <label htmlFor={`iterate-rows-${id}`} className="text-sm text-gray-700">
+                  Process each row separately (Foreach mode)
+                </label>
+              </div>
             </div>
           )}
         </NodeBody>
         <NodeFooter>
-          <p className="text-xs text-gray-500">Output (Text/List)</p>
+          <p className="text-xs text-gray-500">
+            {data.iterateEachRow 
+              ? "Output (Foreach Row)" 
+              : "Output (Text/List)"}
+          </p>
+          {/* Show iteration progress badge if available */}
+          {data.iterateEachRow && data.iterationStatus && (
+            <div className="ml-2 px-2 py-0.5 bg-blue-100 rounded-full text-xs text-blue-800">
+              {data.iterationStatus.completed 
+                ? "Completed" 
+                : `${data.iterationStatus.currentIndex + 1}/${data.iterationStatus.totalItems}`}
+            </div>
+          )}
         </NodeFooter>
       </div>
     </NodeErrorBoundary>

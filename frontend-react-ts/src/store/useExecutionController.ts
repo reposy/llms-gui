@@ -74,6 +74,7 @@ export const useExecutionController = createWithEqualityFn<ExecutionControllerSt
           setIsExecuting: state._setIsExecuting, // Pass internal setter
           setCurrentExecutionId: state._setCurrentExecutionId,
           setIterationContext: state._setIterationContext,
+          getDispatch: () => store.dispatch, // Add access to the Redux dispatch function
         };
 
         const executionId = `flow-run-${crypto.randomUUID()}`; // Generate specific ID here
@@ -135,6 +136,7 @@ export const useExecutionController = createWithEqualityFn<ExecutionControllerSt
           // setIsExecuting removed
           setCurrentExecutionId: state._setCurrentExecutionId, 
           setIterationContext: state._setIterationContext,
+          getDispatch: () => store.dispatch, // Add access to the Redux dispatch function
         };
 
         try {
