@@ -1,7 +1,5 @@
 import React, { useCallback } from 'react';
-import { useDispatch } from 'react-redux';
 import { OutputNodeData } from '../../types/nodes';
-import { updateNodeData } from '../../store/flowSlice';
 import { useNodeState } from '../../store/flowExecutionStore';
 import { useOutputNodeData } from '../../hooks/useOutputNodeData';
 
@@ -59,7 +57,6 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
-  const dispatch = useDispatch();
   const executionState = useNodeState(nodeId);
   
   const { 
@@ -75,12 +72,7 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
   
   const handleFormatToggle = useCallback((newFormat: 'json' | 'text') => {
     handleFormatChange(newFormat);
-    
-    dispatch(updateNodeData({
-      nodeId,
-      data: { ...data, format: newFormat }
-    }));
-  }, [dispatch, nodeId, data, handleFormatChange]);
+  }, [handleFormatChange]);
   
   // Format the result for display
   let displayContent = 'Waiting for execution...';
@@ -90,7 +82,7 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
   } else if (executionState?.status === 'error') {
     displayContent = `Error: ${executionState.error}`;
   } else if (executionState?.result) {
-    displayContent = formatResultBasedOnFormat(executionState.result, data.format);
+    displayContent = formatResultBasedOnFormat(executionState.result, format);
   }
   
   return (
@@ -101,12 +93,12 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
         <div className="flex gap-2">
           <FormatButton
             format="json"
-            currentFormat={data.format}
+            currentFormat={format}
             onClick={() => handleFormatToggle('json')}
           />
           <FormatButton
             format="text"
-            currentFormat={data.format}
+            currentFormat={format}
             onClick={() => handleFormatToggle('text')}
           />
         </div>

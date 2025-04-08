@@ -1,14 +1,11 @@
 import { useCallback, useMemo, ChangeEvent } from 'react';
-import { useDispatch, useStore } from 'react-redux';
-import { updateNodeData } from '../store/flowSlice';
 import { InputNodeData, FileLikeObject } from '../types/nodes';
 import { cloneDeep } from 'lodash';
-import { RootState } from '../store/store';
 import { useSyncedNodeField } from './synced/useSyncedNodeField';
 import { useState, useRef } from 'react';
 
 /**
- * Custom hook to manage InputNode state and operations, reading directly from Redux store.
+ * Custom hook to manage InputNode state and operations using Zustand.
  * Centralizes logic for both InputNode and InputNodeConfig components
  * 
  * Refactored version using useSyncedNodeField hooks
@@ -18,9 +15,6 @@ export const useInputNodeDataRefactored = ({
 }: { 
   nodeId: string
 }) => {
-  const dispatch = useDispatch();
-  const store = useStore<RootState>();
-  
   // Use synced hooks for core node fields
   const [items, setItems, syncItemsToStore] = useSyncedNodeField<(string | FileLikeObject)[]>({
     nodeId,
@@ -67,33 +61,23 @@ export const useInputNodeDataRefactored = ({
   }, [items]);
 
   /**
-   * Update node data in Redux while ensuring state consistency
-   * Always maintains ALL state properties to prevent data loss
+   * Update node data using Zustand synced field
    */
   const handleConfigChange = useCallback((updates: Partial<InputNodeData>) => {
-    // 1. Get the absolute latest state from Redux store
-    const state = store.getState();
-    const latestNode = state.flow.nodes.find(n => n.id === nodeId);
-    const latestData = (latestNode?.data || {}) as InputNodeData; 
-
-    // 2. Create the complete update object based on the LATEST data
-    const completeUpdate: InputNodeData = {
-      ...latestData, 
-      ...updates,     
-      items: 'items' in updates ? updates.items : latestData.items,
-      textBuffer: 'textBuffer' in updates ? updates.textBuffer : latestData.textBuffer,
-      iterateEachRow: 'iterateEachRow' in updates ? updates.iterateEachRow : latestData.iterateEachRow,
-      type: latestData.type || 'input', 
-      label: ('label' in updates ? updates.label : latestData.label) ?? '',
-    };
+    // Update each field individually using their sync functions
+    if ('items' in updates && updates.items) {
+      syncItemsToStore(updates.items);
+    }
     
-    // 3. Dispatch the update with the correctly merged data
-    dispatch(updateNodeData({
-      nodeId,
-      data: completeUpdate
-    }));
+    if ('textBuffer' in updates && updates.textBuffer !== undefined) {
+      syncTextBufferToStore(updates.textBuffer);
+    }
     
-    // 4. Update local state immediately based on the intended updates
+    if ('iterateEachRow' in updates && updates.iterateEachRow !== undefined) {
+      syncIterateToStore(updates.iterateEachRow);
+    }
+    
+    // Update local state immediately based on the updates
     if ('items' in updates && updates.items) {
       setItems(updates.items);
     }
@@ -106,7 +90,7 @@ export const useInputNodeDataRefactored = ({
         setIterateEachRow(newIterateValue);
       }
     }
-  }, [dispatch, nodeId, store, textBuffer, iterateEachRow, setItems, setTextBuffer, setIterateEachRow]);
+  }, [nodeId, textBuffer, iterateEachRow, syncItemsToStore, syncTextBufferToStore, syncIterateToStore, setItems, setTextBuffer, setIterateEachRow]);
 
   /**
    * Handle text buffer changes - directly update both local and Redux state
@@ -115,12 +99,8 @@ export const useInputNodeDataRefactored = ({
   const handleTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
     const newText = event.target.value;
     setTextBuffer(newText);
-    handleConfigChange({ 
-      textBuffer: newText,
-      items: [...items],
-      iterateEachRow
-    });
-  }, [handleConfigChange, items, iterateEachRow, setTextBuffer]);
+    syncTextBufferToStore(newText);
+  }, [setTextBuffer, syncTextBufferToStore]);
 
   /**
    * Handle adding text from buffer to items - preserves entire text as one item
@@ -129,28 +109,21 @@ export const useInputNodeDataRefactored = ({
     const trimmedText = textBuffer.trim();
     if (!trimmedText) return;
     const updatedItems = [...items, trimmedText];
-    handleConfigChange({ 
-      items: updatedItems,
-      textBuffer: '',
-      iterateEachRow: iterateEachRow
-    });
-  }, [textBuffer, items, handleConfigChange, iterateEachRow]);
+    syncItemsToStore(updatedItems);
+    syncTextBufferToStore('');
+    setItems(updatedItems);
+    setTextBuffer('');
+  }, [textBuffer, items, setItems, setTextBuffer, syncItemsToStore, syncTextBufferToStore]);
 
   /**
-   * Toggle Batch/Foreach processing mode while preserving all items and text
-   * Uses lodash cloneDeep for proper deep copying of complex objects
+   * Toggle Batch/Foreach processing mode
    */
   const handleToggleProcessingMode = useCallback(() => {
-    const itemsCopy = cloneDeep(items);
     const newMode = !iterateEachRow;
     hasToggledRef.current = true;
     setIterateEachRow(newMode);
-    handleConfigChange({ 
-      iterateEachRow: newMode,
-      items: itemsCopy,
-      textBuffer: textBuffer
-    });
-  }, [handleConfigChange, items, textBuffer, iterateEachRow, setIterateEachRow]);
+    syncIterateToStore(newMode);
+  }, [iterateEachRow, setIterateEachRow, syncIterateToStore]);
 
   /**
    * Helper function to read file as text
@@ -206,12 +179,9 @@ export const useInputNodeDataRefactored = ({
         // Use current items to preserve all existing content
         const updatedItems = [...currentItems, ...newFiles];
         
-        // Update with new items while preserving ALL state
-        handleConfigChange({ 
-          items: updatedItems,
-          textBuffer: textBuffer,
-          iterateEachRow: iterateEachRow
-        });
+        // Update with new items
+        syncItemsToStore(updatedItems);
+        setItems(updatedItems);
       } catch (error) {
         console.error("Error reading files:", error);
         setFileName('Error reading files');
@@ -220,7 +190,7 @@ export const useInputNodeDataRefactored = ({
     };
     
     processFiles();
-  }, [handleConfigChange, items, textBuffer, iterateEachRow]);
+  }, [items, setItems, syncItemsToStore]);
 
   /**
    * Handle deletion of a specific item
@@ -245,23 +215,10 @@ export const useInputNodeDataRefactored = ({
         : `${fileItems.length} files selected`);
     }
     
-    // Update with new items while preserving ALL state
-    handleConfigChange({ 
-      items: updatedItems,
-      iterateEachRow: updatedItems.length <= 1 ? false : iterateEachRow,
-      textBuffer: textBuffer
-    });
-  }, [items, handleConfigChange, iterateEachRow, textBuffer]);
-
-  /**
-   * Handle clearing all items
-   */
-  const handleClearItems = useCallback(() => {
-    handleConfigChange({ items: [], iterateEachRow: false, textBuffer: textBuffer });
-    setFileName(null);
-    setFileList([]);
-    setItems([]);
-  }, [handleConfigChange, textBuffer, setItems]);
+    // Update with new items
+    syncItemsToStore(updatedItems);
+    setItems(updatedItems);
+  }, [items, setItems, syncItemsToStore]);
 
   /**
    * Format items for display
@@ -330,7 +287,6 @@ export const useInputNodeDataRefactored = ({
     handleAddText,
     handleFileChange,
     handleDeleteItem,
-    handleClearItems,
     handleToggleProcessingMode,
     handleConfigChange
   };

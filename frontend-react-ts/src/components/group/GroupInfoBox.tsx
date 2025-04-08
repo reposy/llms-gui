@@ -1,5 +1,3 @@
-import { useSelector } from 'react-redux';
-import { RootState } from '../../store/store';
 import { Node } from 'reactflow';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 

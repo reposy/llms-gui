@@ -1,7 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { useDispatch } from 'react-redux';
 import { APINodeData } from '../../types/nodes';
-import { updateNodeData } from '../../store/flowSlice';
 // Import our new hook
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 
@@ -24,9 +22,6 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
-  // Keep Redux dispatch for compatibility
-  const dispatch = useDispatch();
-  
   // Use our new Zustand hook
   const { 
     url,
@@ -66,14 +61,6 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     }
   }, [headers, url, isUrlComposing]);
 
-  // Handle config changes - for Redux compatibility
-  const handleConfigChange = useCallback((key: keyof APINodeData, value: any) => {
-    dispatch(updateNodeData({
-      nodeId,
-      data: { ...data, [key]: value }
-    }));
-  }, [dispatch, nodeId, data]);
-
   // Handle URL changes
   const handleUrlInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
@@ -82,11 +69,8 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     if (!isUrlComposing) {
       // Update Zustand
       handleUrlChange(newUrl);
-      
-      // Update Redux for compatibility
-      handleConfigChange('url', newUrl);
     }
-  }, [handleConfigChange, isUrlComposing, handleUrlChange]);
+  }, [isUrlComposing, handleUrlChange]);
 
   const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
     setIsUrlComposing(false);
@@ -95,16 +79,12 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     
     // Update Zustand
     handleUrlChange(newUrl);
-    
-    // Update Redux for compatibility
-    handleConfigChange('url', newUrl);
-  }, [handleConfigChange, handleUrlChange]);
+  }, [handleUrlChange]);
 
   const handleUrlBlur = useCallback(() => {
     // Always update with latest URL value
     handleUrlChange(urlDraft);
-    handleConfigChange('url', urlDraft);
-  }, [handleConfigChange, urlDraft, handleUrlChange]);
+  }, [urlDraft, handleUrlChange]);
 
   // Event handler to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -115,24 +95,7 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   const addHeader = useCallback(() => {
     // Update Zustand
     addNewHeader();
-    
-    // Update Redux for compatibility
-    const currentHeaders = headers || {};
-    const newKey = `header${Object.keys(currentHeaders).length + 1}`;
-
-    const updatedData: APINodeData = {
-      ...data,
-      headers: {
-        ...currentHeaders,
-        [newKey]: ''
-      }
-    };
-
-    dispatch(updateNodeData({
-      nodeId,
-      data: updatedData
-    }));
-  }, [nodeId, data, dispatch, headers, addNewHeader]);
+  }, [addNewHeader]);
 
   const handleHeaderInputChange = useCallback((index: number, field: 'key' | 'value', value: string) => {
     if ((field === 'key' && isHeaderKeyComposing) || (field === 'value' && isHeaderValueComposing)) {
@@ -155,29 +118,14 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
       
       // Update Zustand
       handleHeaderChange(value, oldValue, oldKey);
-      
-      // Update Redux for compatibility
-      const updatedHeaders = { ...currentHeaders };
-      if (oldKey) {
-        delete updatedHeaders[oldKey];
-      }
-      if (value) {
-        updatedHeaders[value] = oldValue || '';
-      }
-      handleConfigChange('headers', updatedHeaders);
     } else if (field === 'value') {
       const key = headerEntries[index]?.[0];
       if (key) {
         // Update Zustand
         handleHeaderChange(key, value);
-        
-        // Update Redux for compatibility
-        const updatedHeaders = { ...currentHeaders };
-        updatedHeaders[key] = value;
-        handleConfigChange('headers', updatedHeaders);
       }
     }
-  }, [headers, handleConfigChange, isHeaderKeyComposing, isHeaderValueComposing, handleHeaderChange]);
+  }, [headers, isHeaderKeyComposing, isHeaderValueComposing, handleHeaderChange]);
 
   const handleHeaderBlur = useCallback((index: number, field: 'key' | 'value') => {
     const isDrafting = field === 'key' ? isHeaderKeyComposing : isHeaderValueComposing;
@@ -202,43 +150,21 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     if (keyToRemove) {
       // Update Zustand
       removeHeader(keyToRemove);
-      
-      // Update Redux for compatibility
-      const updatedHeaders = { ...currentHeaders };
-      delete updatedHeaders[keyToRemove];
-      handleConfigChange('headers', updatedHeaders);
     }
-  }, [headers, handleConfigChange, removeHeader]);
+  }, [headers, removeHeader]);
 
   // Add bearer token shortcut
   const addBearerToken = useCallback(() => {
     // Update Zustand
     handleHeaderChange('Authorization', 'Bearer ');
-    
-    // Update Redux for compatibility
-    const currentHeaders = headers || {};
-    
-    dispatch(updateNodeData({
-      nodeId,
-      data: {
-        ...data,
-        headers: {
-          ...currentHeaders,
-          'Authorization': 'Bearer '
-        }
-      }
-    }));
-  }, [nodeId, data, dispatch, headers, handleHeaderChange]);
+  }, [handleHeaderChange]);
   
   const handleMethodSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const newMethod = e.target.value as APINodeData['method'];
     
     // Update Zustand
     handleMethodChange(newMethod);
-    
-    // Update Redux for compatibility
-    handleConfigChange('method', newMethod);
-  }, [handleConfigChange, handleMethodChange]);
+  }, [handleMethodChange]);
   
   return (
     <div className="space-y-4">

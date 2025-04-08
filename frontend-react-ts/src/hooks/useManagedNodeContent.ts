@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../store/store';
 
 import { 
   useNodeContentStore, 
@@ -11,31 +9,23 @@ import {
   isNodeDirty as isContentDirtyInStore,
   getNodeContent as getContentFromStore
 } from '../store/nodeContentStore';
-import { updateNodeData } from '../store/flowSlice';
 import { NodeData } from '../types/nodes'; // Assuming NodeData exists and is relevant
 
 interface UseManagedNodeContentResult {
   content: NodeContent; // The current content for the node
   isDirty: boolean; // Is the content different from the last saved state?
   updateContent: (updatedFields: Partial<NodeContent>) => void; // Update content in Zustand, mark as dirty
-  saveContent: () => void; // Persist content from Zustand to Redux
+  saveContent: () => void; // Mark content as clean in Zustand (no longer persists to Redux)
 }
 
 /**
- * Hook to manage the content of a specific node, abstracting interaction 
- * with the nodeContentStore and persistence to Redux.
- * Simplified version relying directly on Zustand store state.
+ * Hook to manage the content of a specific node, using only Zustand.
  * 
  * @param nodeId The ID of the node whose content is being managed.
- * @param initialNodeData The initial NodeData from Redux/props, used for persistence.
+ * @param initialNodeData The initial NodeData, maintained for API compatibility.
  * @returns An object with content state and functions to update/save it.
  */
-export const useManagedNodeContent = (nodeId: string, initialNodeData: NodeData): UseManagedNodeContentResult => {
-  const dispatch = useDispatch();
-
-  // Get current node data from Redux store
-  const currentNodeDataFromRedux = useSelector((state: RootState) => state.flow.nodes.find(n => n.id === nodeId)?.data);
-
+export const useManagedNodeContent = (nodeId: string, initialNodeData?: NodeData): UseManagedNodeContentResult => {
   // --- State directly from Zustand Store ---
   const { 
     content, 
@@ -61,41 +51,21 @@ export const useManagedNodeContent = (nodeId: string, initialNodeData: NodeData)
   }, [nodeId]);
 
   /**
-   * Persists the current content from the Zustand store to Redux if dirty.
-   * Resets the dirty flag in Zustand after successful persistence.
+   * Marks the content as clean in Zustand store.
    */
   const saveContent = useCallback(() => {
     // Check dirtiness directly from the Zustand store state/selector
     if (isContentDirtyInStore(nodeId)) { 
-      console.log(`[useManagedNodeContent ${nodeId}] Saving dirty content to Redux...`);
-      // Get the latest content directly from the store
-      const contentToSave = getContentFromStore(nodeId); 
+      console.log(`[useManagedNodeContent ${nodeId}] Marking content as clean...`);
       
-      // Ensure we have both the content to save and the current data from Redux
-      if (!contentToSave || !currentNodeDataFromRedux) {
-        console.warn(`[useManagedNodeContent ${nodeId}] Cannot save: Content from Zustand or current Redux data missing.`);
-        // Optionally, try falling back to initialNodeData or handle error
-        // For now, just return to prevent incorrect merge
-        return; 
-      }
-
-      // Prepare the data payload using CURRENT Redux data as base
-      const dataPayload: Partial<NodeData> = {
-        ...currentNodeDataFromRedux, // Use current Redux data as base
-        ...contentToSave,           // Merge latest content changes on top
-      };
-
-      // Dispatch the update action to Redux
-      dispatch(updateNodeData({ nodeId, data: dataPayload }));
-
-      // Mark content as clean in the Zustand store AFTER dispatching
+      // Mark content as clean in the Zustand store
       markContentDirtyInStore(nodeId, false);
 
-      console.log(`[useManagedNodeContent ${nodeId}] Content saved to Redux, marked clean.`);
+      console.log(`[useManagedNodeContent ${nodeId}] Content marked clean.`);
     } else {
       console.log(`[useManagedNodeContent ${nodeId}] No dirty content in store to save.`);
     }
-  }, [dispatch, nodeId, initialNodeData, currentNodeDataFromRedux]);
+  }, [nodeId]);
 
   // Return state directly from Zustand selector and the simplified callbacks
   return {

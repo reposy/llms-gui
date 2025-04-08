@@ -1,7 +1,5 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { useDispatch } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
 import { ConditionalNodeData, NodeData, ConditionType } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore'; // Make sure this path is correct
 import NodeErrorBoundary from './NodeErrorBoundary';
@@ -12,8 +10,6 @@ import clsx from 'clsx';
 import { useConditionalNodeData } from '../../hooks/useConditionalNodeData';
 
 const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, selected }) => {
-  // Keep Redux for backward compatibility
-  const dispatch = useDispatch();
   const nodeState = useNodeState(id);
 
   // Use the Zustand hook
@@ -23,26 +19,22 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
     label,
     handleConditionTypeChange,
     handleValueChange,
+    updateConditionalContent,
   } = useConditionalNodeData({ nodeId: id });
 
   const handleLabelUpdate = useCallback((newLabel: string) => {
-    // Update both Redux and Zustand
-    dispatch(updateNodeData({ nodeId: id, data: { ...data, label: newLabel } }));
-  }, [dispatch, id, data]);
+    updateConditionalContent({ label: newLabel });
+  }, [updateConditionalContent]);
 
   const handleConditionTypeChangeEvent = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = event.target.value as ConditionType;
-    // Update both Redux and Zustand
-    dispatch(updateNodeData({ nodeId: id, data: { ...data, conditionType: newType } }));
     handleConditionTypeChange(newType);
-  }, [dispatch, id, data, handleConditionTypeChange]);
+  }, [handleConditionTypeChange]);
 
   const handleConditionValueChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
-    // Update both Redux and Zustand
-    dispatch(updateNodeData({ nodeId: id, data: { ...data, conditionValue: newValue } }));
     handleValueChange(newValue);
-  }, [dispatch, id, data, handleValueChange]);
+  }, [handleValueChange]);
 
   return (
     <NodeErrorBoundary nodeId={id}>

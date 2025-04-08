@@ -1,9 +1,8 @@
 import React, { useCallback } from 'react';
-import { useSelector } from 'react-redux';
-import { store } from '../../store/store';
 import type { Node } from 'reactflow';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState, useExecutionState, executeFlowForGroup } from '../../store/flowExecutionStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { GroupExecutionItemResult } from '../../types/execution';
 
 // Import new component modules
@@ -17,7 +16,7 @@ interface GroupDetailSidebarProps {
 }
 
 export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selectedNodeId }) => {
-  const allNodes = store.getState().flow.nodes;
+  const { nodes: allNodes } = useFlowStructureStore();
   const nodeState = useNodeState(selectedNodeId || '');
   const executionState = useExecutionState();
 

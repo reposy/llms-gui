@@ -1,9 +1,8 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { useDispatch } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
 import { MergerNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution'; // Import NodeState type from the correct path
 import { TrashIcon, PlusIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'; // Or your icon library
+import { useNodeContent } from '../../store/useNodeContentStore';
 
 interface MergerNodeSidebarProps {
   nodeId: string;
@@ -12,7 +11,7 @@ interface MergerNodeSidebarProps {
 }
 
 export const MergerNodeSidebar: React.FC<MergerNodeSidebarProps> = ({ nodeId, nodeData, nodeState }) => {
-  const dispatch = useDispatch();
+  const { setContent } = useNodeContent(nodeId);
   
   // State for editable custom items
   const [customItems, setCustomItems] = useState<string[]>(nodeData.items || []);
@@ -30,28 +29,28 @@ export const MergerNodeSidebar: React.FC<MergerNodeSidebarProps> = ({ nodeId, no
     const newItems = [...customItems];
     newItems[index] = value;
     setCustomItems(newItems);
-    // Update nodeData in Redux store
-    dispatch(updateNodeData({ nodeId, data: { ...nodeData, items: newItems } }));
+    // Update nodeData in Zustand store
+    setContent({ items: newItems });
   };
 
   const handleAddCustomItem = () => {
     const newItems = [...customItems, '']; // Add an empty string
     setCustomItems(newItems);
-    dispatch(updateNodeData({ nodeId, data: { ...nodeData, items: newItems } }));
+    setContent({ items: newItems });
   };
 
   const handleRemoveCustomItem = (index: number) => {
     const newItems = customItems.filter((_, i) => i !== index);
     setCustomItems(newItems);
-    dispatch(updateNodeData({ nodeId, data: { ...nodeData, items: newItems } }));
+    setContent({ items: newItems });
   };
   
   // Optional: Copy execution results to custom items
   const copyResultsToCustom = useCallback(() => {
     const newCustomItems = executionResults.map(String); // Convert all results to string
     setCustomItems(newCustomItems);
-     dispatch(updateNodeData({ nodeId, data: { ...nodeData, items: newCustomItems } }));
-  }, [executionResults, dispatch, nodeId, nodeData]);
+    setContent({ items: newCustomItems });
+  }, [executionResults, setContent]);
 
   return (
     <div className="p-4 space-y-6">
