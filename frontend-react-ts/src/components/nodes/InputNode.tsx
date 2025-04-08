@@ -124,15 +124,13 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           </div>
         </NodeBody>
         <NodeFooter>
-          {footerSummary ? (
+          {footerSummary && (
             <div className="flex items-center justify-between w-full">
               <span className="text-xs text-gray-500">{footerSummary}</span>
               <span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
                 {iterateEachRow ? 'Foreach mode' : 'Batch mode'}
               </span>
             </div>
-          ) : (
-            <div></div>
           )}
         </NodeFooter>
       </div>

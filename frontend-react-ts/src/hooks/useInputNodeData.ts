@@ -1,4 +1,4 @@
-import { useCallback, useMemo, ChangeEvent } from 'react';
+import { useCallback, useMemo, ChangeEvent, useEffect } from 'react';
 import { FileLikeObject } from '../types/nodes';
 import { isEqual } from 'lodash';
 import { sanitizeInputItems } from '../utils/inputUtils';
@@ -24,8 +24,47 @@ export const useInputNodeData = ({
   // Cast the general content to InputNodeContent type
   const content = generalContent as InputNodeContent;
 
-  // Destructure content for easier access (ensure we have InputNodeContent fields)
-  const items = content.items || [];
+  // Destructure and sanitize content for easier access
+  const rawItems = content.items || [];
+  
+  // Debug raw items before sanitization
+  useEffect(() => {
+    if (rawItems.length > 0) {
+      console.log(`[useInputNodeData] Raw items for ${nodeId}:`, rawItems.map(item => ({
+        value: item,
+        type: typeof item,
+        isFileLike: typeof item === 'object' && 'file' in item,
+        stringValue: typeof item === 'object' ? JSON.stringify(item) : String(item)
+      })));
+    }
+  }, [rawItems, nodeId]);
+
+  const items = useMemo(() => {
+    const sanitized = sanitizeInputItems(rawItems);
+    console.log(`[useInputNodeData] Sanitized items for ${nodeId}:`, {
+      raw: rawItems.map(item => ({
+        value: item,
+        type: typeof item
+      })),
+      sanitized: sanitized.map(item => ({
+        value: item,
+        type: typeof item
+      }))
+    });
+    return sanitized;
+  }, [rawItems, nodeId]);
+
+  // Debug effect to monitor items changes
+  useEffect(() => {
+    console.log(`[useInputNodeData] Final items for ${nodeId}:`, {
+      items: items.map(item => ({
+        value: item,
+        type: typeof item
+      })),
+      count: items.length
+    });
+  }, [items, nodeId]);
+
   const textBuffer = content.textBuffer || '';
   const iterateEachRow = !!content.iterateEachRow;
 
@@ -45,8 +84,16 @@ export const useInputNodeData = ({
    * Update node content in Zustand store
    */
   const handleConfigChange = useCallback((updates: Partial<InputNodeContent>) => {
-    console.log(`[useInputNodeData] handleConfigChange for ${nodeId}:`, updates);
-    setContent(updates);
+    // If updating items, ensure they are sanitized
+    const sanitizedUpdates = { ...updates };
+    if ('items' in updates && Array.isArray(updates.items)) {
+      console.log(`[useInputNodeData] Pre-sanitization items in config update for ${nodeId}:`, updates.items);
+      sanitizedUpdates.items = sanitizeInputItems(updates.items);
+      console.log(`[useInputNodeData] Post-sanitization items in config update for ${nodeId}:`, sanitizedUpdates.items);
+    }
+    
+    console.log(`[useInputNodeData] handleConfigChange for ${nodeId}:`, sanitizedUpdates);
+    setContent(sanitizedUpdates);
   }, [nodeId, setContent]);
 
   /**
@@ -103,14 +150,14 @@ export const useInputNodeData = ({
         })
       );
       
-      // Update items with new files
-      const updatedItems = [...items, ...fileObjects];
+      // Update items with new files and ensure sanitization
+      const updatedItems = sanitizeInputItems([...items, ...fileObjects]);
       setContent({ items: updatedItems });
       
     } catch (error) {
       console.error('Error processing files:', error);
     }
-  }, [items, setContent, readFileAsText]);
+  }, [items, setContent]);
 
   /**
    * Handle item deletion
@@ -146,22 +193,23 @@ export const useInputNodeData = ({
    * Format items for display
    */
   const formattedItems = useMemo(() => {
-    const validItems = sanitizeInputItems(items);
-    return validItems.map((item: string | FileLikeObject) => {
+    const formatted = items.map((item: string | FileLikeObject) => {
       if (typeof item === 'string') {
         return item;
       } else {
         return `📄 ${(item as FileLikeObject).file}`;
       }
     });
-  }, [items]);
+    console.log(`[useInputNodeData] Formatted items for ${nodeId}:`, formatted);
+    return formatted;
+  }, [items, nodeId]);
 
   // Always show iterate option for now
   const showIterateOption = true;
 
   return {
     // Data
-    items,
+    items, // This is now always sanitized
     textBuffer,
     itemCounts,
     formattedItems,

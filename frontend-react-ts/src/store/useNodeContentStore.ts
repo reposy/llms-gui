@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import { shallow } from 'zustand/shallow';
+import { sanitizeInputItems } from '../utils/inputUtils';
 import { 
   NodeData, 
   FileLikeObject, 
@@ -114,6 +115,48 @@ interface NodeContentStore {
   reset: () => void;
 }
 
+/**
+ * Type guard to check if content is InputNodeContent
+ */
+const isInputNodeContent = (content: NodeContent): content is InputNodeContent => {
+  return content && typeof content === 'object' && 'items' in content;
+};
+
+/**
+ * Sanitizes input node content if applicable
+ */
+const sanitizeNodeContent = (content: NodeContent): NodeContent => {
+  if (isInputNodeContent(content)) {
+    // Log content state before sanitization
+    console.log('[NodeContentStore] Pre-sanitization content:', {
+      hasItems: 'items' in content,
+      itemCount: content.items?.length,
+      items: content.items?.map(item => ({
+        value: item,
+        type: typeof item
+      }))
+    });
+
+    const sanitizedItems = sanitizeInputItems(content.items || []);
+    
+    // Log sanitization results
+    if (!isEqual(sanitizedItems, content.items)) {
+      console.log('[NodeContentStore] Items changed after sanitization:', {
+        before: content.items?.map(item => ({
+          value: item,
+          type: typeof item
+        })),
+        after: sanitizedItems.map(item => ({
+          value: item,
+          type: typeof item
+        }))
+      });
+      return { ...content, items: sanitizedItems };
+    }
+  }
+  return content;
+};
+
 // Create default content for various node types
 const createDefaultContent = (nodeType?: string): NodeContent => {
   const baseContent: BaseNodeContent = {
@@ -198,47 +241,20 @@ export const useNodeContentStore = create<NodeContentStore>()(
         const state = get();
         const existingContent = state.nodeContents[nodeId];
         
-        console.log(`[NodeContentStore] getNodeContent for ${nodeId}:`, {
-          hasExistingContent: !!existingContent,
-          existingContent
-        });
-        
-        if (existingContent) {
-          return existingContent;
+        if (!existingContent) {
+          console.log(`[NodeContentStore] No content found for ${nodeId}`);
+          return {};
         }
-        
-        // If no content exists, create default content with proper node type
-        const nodes = useFlowStructureStore.getState().nodes;
-        const node = nodes.find(n => n.id === nodeId);
-        const nodeType = node?.type?.toLowerCase() || undefined;
-        
-        console.log(`[NodeContentStore] Creating new content for ${nodeId}:`, {
-          nodeType,
-          foundNode: !!node
-        });
-        
-        // Create new content with proper type
-        const newContent = createDefaultContent(nodeType);
-        
-        // Store the new content
-        set(state => {
-          state.nodeContents[nodeId] = newContent;
-        });
-        
-        return newContent;
+
+        // Always sanitize content before returning
+        return sanitizeNodeContent(existingContent);
       },
       
       // Set or update content for a node
       setNodeContent: (nodeId, updates) => {
-        set((state) => {
+        set(state => {
           // Get current node content
           const currentContent = state.nodeContents[nodeId];
-          
-          console.log(`[NodeContentStore] setNodeContent for ${nodeId}:`, {
-            hasExistingContent: !!currentContent,
-            currentContent,
-            updates
-          });
           
           if (!currentContent) {
             // Initialize with proper node type if content doesn't exist
@@ -253,23 +269,30 @@ export const useNodeContentStore = create<NodeContentStore>()(
             
             state.nodeContents[nodeId] = createDefaultContent(nodeType);
           }
-          
-          // Apply updates while preserving existing content
-          state.nodeContents[nodeId] = {
+
+          // Create new content by merging current and updates
+          const newContent = {
             ...state.nodeContents[nodeId],
             ...updates
           };
+
+          // Always sanitize the entire content if it's an input node
+          const sanitizedContent = sanitizeNodeContent(newContent);
+          
+          // Log if content was modified by sanitization
+          if (!isEqual(sanitizedContent, newContent)) {
+            console.log(`[NodeContentStore] Content sanitized for ${nodeId}:`, {
+              before: newContent,
+              after: sanitizedContent
+            });
+          }
+
+          state.nodeContents[nodeId] = sanitizedContent;
           
           // Mark as dirty unless explicitly set
           if (updates.isDirty === undefined) {
             state.nodeContents[nodeId].isDirty = true;
           }
-          
-          console.log(`[NodeContentStore] Content after update for ${nodeId}:`, {
-            result: state.nodeContents[nodeId]
-          });
-          
-          return state;
         });
       },
       
@@ -300,49 +323,49 @@ export const useNodeContentStore = create<NodeContentStore>()(
         return content ? !!content.isDirty : false;
       },
       
-      // Load content from nodes - ONLY called during initialization or import
+      // Load content from nodes (e.g., during initialization)
       loadFromNodes: (nodes) => {
-        console.log('[NodeContentStore] loadFromNodes called with:', {
-          nodeCount: nodes.length,
-          nodeIds: nodes.map(n => ('id' in n ? n.id : undefined)).filter(Boolean)
-        });
-        
-        set((state) => {
-          // Keep track of processed nodes to detect unwanted resets
-          const processedNodes = new Set();
-          
+        set(state => {
           nodes.forEach(node => {
             if (!node) return;
             
-            // Extract node ID, type, and data, handling both ReactFlowNode and NodeData
+            // Extract node ID and data based on type
             const nodeId = 'id' in node ? node.id : undefined;
             if (!nodeId) {
               console.warn('[NodeContentStore] Node without ID encountered:', node);
               return;
             }
             
-            processedNodes.add(nodeId);
-            
-            // IMPORTANT: Skip nodes that already have content to prevent unwanted resets
-            if (state.nodeContents[nodeId]) {
-              console.log(`[NodeContentStore] Node ${nodeId} already has content, preserving existing data`);
-              return;
-            }
-            
-            // Extract type and data based on whether it's a ReactFlow Node or NodeData
-            const nodeType = node.type;
             const nodeData = 'data' in node ? node.data : node;
-            
-            console.log(`[NodeContentStore] Creating content for ${nodeId}:`, {
-              nodeType,
-              hasExistingContent: !!state.nodeContents[nodeId]
-            });
-            
-            // Create content based on node type
-            let content: NodeContent = createDefaultContent(nodeType);
-            
-            // Extract specific data based on node type
-            switch (nodeType) {
+            let content: NodeContent = {};
+
+            switch (nodeData.type?.toLowerCase()) {
+              case 'input':
+                const inputData = nodeData as InputNodeData;
+                // Log input data before sanitization
+                console.log(`[NodeContentStore] Loading input node ${nodeId}:`, {
+                  rawItems: inputData.items?.map(item => ({
+                    value: item,
+                    type: typeof item
+                  }))
+                });
+                
+                content = {
+                  ...content,
+                  items: sanitizeInputItems(inputData.items || []), // Sanitize during load
+                  textBuffer: inputData.textBuffer || '',
+                  iterateEachRow: !!inputData.iterateEachRow,
+                  label: inputData.label
+                };
+                
+                // Log sanitized content
+                console.log(`[NodeContentStore] Sanitized input node ${nodeId}:`, {
+                  sanitizedItems: content.items?.map(item => ({
+                    value: item,
+                    type: typeof item
+                  }))
+                });
+                break;
               case 'llm':
                 const llmData = nodeData as LLMNodeData;
                 content = {
@@ -384,17 +407,6 @@ export const useNodeContentStore = create<NodeContentStore>()(
                 };
                 break;
                 
-              case 'input':
-                const inputData = nodeData as InputNodeData;
-                content = {
-                  ...content,
-                  items: inputData.items || [],
-                  textBuffer: inputData.textBuffer || '',
-                  iterateEachRow: !!inputData.iterateEachRow,
-                  label: inputData.label
-                };
-                break;
-                
               case 'json-extractor':
                 const extractorData = nodeData as JSONExtractorNodeData;
                 content = {
@@ -433,33 +445,26 @@ export const useNodeContentStore = create<NodeContentStore>()(
                 break;
             }
             
-            // Set dirty flag to false for imported content
-            content.isDirty = false;
-            
-            // Store the content
+            // Store the sanitized content
             state.nodeContents[nodeId] = content;
           });
-          
-          return state;
         });
       },
       
       // Load content from imported flow
       loadFromImportedContents: (contents) => {
-        set((state) => {
-          console.log('[NodeContentStore] Loading contents from imported flow', contents);
-          
+        console.log('[NodeContentStore] Loading imported contents:', contents);
+        
+        set(state => {
+          // Sanitize all content during import
           Object.entries(contents).forEach(([nodeId, content]) => {
-            console.log(`[NodeContentStore] Loading content for node ${nodeId}:`, content);
-            
-            state.nodeContents[nodeId] = {
-              ...content,
-              isDirty: false
-            };
+            state.nodeContents[nodeId] = sanitizeNodeContent(content);
           });
-          
-          return state;
         });
+        
+        // Log final state after import
+        const finalState = get().nodeContents;
+        console.log('[NodeContentStore] Final state after import:', finalState);
       },
       
       // Clean up content for deleted nodes
