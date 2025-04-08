@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { shallow } from 'zustand/shallow';
 import { useNodes, useEdges } from './useFlowStructureStore';
 import { useNodeContentStore } from './useNodeContentStore';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { isEqual } from 'lodash';
 
 interface DirtyTrackerState {
@@ -17,30 +17,21 @@ interface DirtyTrackerState {
   isDirty: boolean;
 
   // Actions
-  markClean: () => void;
+  setCleanState: (state: NonNullable<DirtyTrackerState['cleanState']>) => void;
   setDirty: (isDirty: boolean) => void;
   reset: () => void;
 }
 
 // Create Zustand store
-export const useDirtyTrackerStore = create<DirtyTrackerState>()((set, get) => ({
+export const useDirtyTrackerStore = create<DirtyTrackerState>()((set) => ({
   // Initial state
   cleanState: null,
   isDirty: false,
 
-  // Mark current state as clean
-  markClean: () => {
-    const nodes = useNodes();
-    const edges = useEdges();
-    const contents = useNodeContentStore.getState().getAllNodeContents();
-
-    // Create deep copies to avoid reference issues
+  // Set clean state with current values
+  setCleanState: (state) => {
     set({
-      cleanState: {
-        nodes: JSON.parse(JSON.stringify(nodes)),
-        edges: JSON.parse(JSON.stringify(edges)),
-        contents: JSON.parse(JSON.stringify(contents))
-      },
+      cleanState: JSON.parse(JSON.stringify(state)), // Deep copy to avoid reference issues
       isDirty: false
     });
   },
@@ -55,12 +46,23 @@ export const useDirtyTrackerStore = create<DirtyTrackerState>()((set, get) => ({
 // Export individual selectors
 export const useIsDirty = () => useDirtyTrackerStore(state => state.isDirty);
 
-// Export actions for use outside React components
-export const {
-  markClean,
-  setDirty,
-  reset: resetDirtyTracker
-} = useDirtyTrackerStore.getState();
+/**
+ * Custom hook to mark the current state as clean
+ */
+export const useMarkClean = () => {
+  const nodes = useNodes();
+  const edges = useEdges();
+  const contents = useNodeContentStore(state => state.getAllNodeContents());
+  const setCleanState = useDirtyTrackerStore(state => state.setCleanState);
+
+  return useCallback(() => {
+    setCleanState({
+      nodes,
+      edges,
+      contents
+    });
+  }, [nodes, edges, contents, setCleanState]);
+};
 
 /**
  * Hook to use dirty tracking in components
@@ -70,12 +72,12 @@ export const useDirtyTracker = () => {
   const nodes = useNodes();
   const edges = useEdges();
   const contents = useNodeContentStore(state => state.getAllNodeContents());
+  const markClean = useMarkClean();
   
-  const { cleanState, isDirty, markClean } = useDirtyTrackerStore(
+  const { cleanState, isDirty } = useDirtyTrackerStore(
     state => ({
       cleanState: state.cleanState,
-      isDirty: state.isDirty,
-      markClean: state.markClean
+      isDirty: state.isDirty
     }),
     shallow
   );
@@ -98,7 +100,7 @@ export const useDirtyTracker = () => {
     const newIsDirty = isNodesDirty || isEdgesDirty || isContentsDirty;
     
     if (newIsDirty !== isDirty) {
-      setDirty(newIsDirty);
+      useDirtyTrackerStore.getState().setDirty(newIsDirty);
       
       // For debug purposes
       if (newIsDirty) {

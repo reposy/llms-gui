@@ -1,16 +1,16 @@
 import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { getAllNodeContents, NodeContent } from '../store/useNodeContentStore';
-import { useNodes, useEdges } from '../store/useFlowStructureStore';
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { pushSnapshot, FlowSnapshot } from '../store/useHistoryStore';
 
 /**
  * Creates a snapshot of the current flow state
  */
 export function createFlowSnapshot(): FlowSnapshot {
-  const nodes = useNodes();
-  const edges = useEdges();
-  const contents = getAllNodeContents();
+  const nodes = useFlowStructureStore.getState().nodes;
+  const edges = useFlowStructureStore.getState().edges;
+  const contents = useNodeContentStore.getState().getAllNodeContents();
   
   return {
     nodes,
@@ -38,6 +38,6 @@ export function createSnapshotFromState(
   return {
     nodes,
     edges,
-    contents: contents || getAllNodeContents()
+    contents: contents || useNodeContentStore.getState().getAllNodeContents()
   };
 } 
