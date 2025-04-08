@@ -1,35 +1,33 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { ReactFlowProvider } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
 import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from 'reactflow';
-import { RootState } from '../store/store';
 import { createNewNode } from '../utils/flowUtils';
-import { setNodes, setEdges, setSelectedNodeId } from '../store/flowSlice';
 import { useHistory } from '../hooks/useHistory';
 import { setNodeContent } from '../store/nodeContentStore';
+// Import from Zustand store
+import { useNodes, useEdges, useSelectedNodeId, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
+// Import StoreInitializer
+import StoreInitializer from './StoreInitializer';
 
 export const FlowEditor = () => {
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Use Zustand hooks
+  const nodes = useNodes();
+  const edges = useEdges();
+  const selectedNodeId = useSelectedNodeId();
   const [isExecuting, setIsExecuting] = useState(false);
-  const dispatch = useDispatch();
-  const nodes = useSelector((state: RootState) => state.flow.nodes);
-  const edges = useSelector((state: RootState) => state.flow.edges);
 
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   
-  // Set up history and clipboard hooks
+  // Update History hook to use Zustand setters
   const { pushToHistory } = useHistory({ initialNodes: nodes, initialEdges: edges }, 
-    (nodes) => dispatch(setNodes(nodes)), 
-    (edges) => dispatch(setEdges(edges))
+    (nodes) => setNodes(nodes), 
+    (edges) => setEdges(edges)
   );
-  
-  // 복사/붙여넣기 기능은 FlowCanvas에서 처리하므로 여기서는 제거
-  // const { handleCopy, handlePaste } = useClipboard(pushToHistory);
 
   const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;
@@ -65,14 +63,14 @@ export const FlowEditor = () => {
     console.log(`[FlowEditor] Calling reactFlowApi.addNodes with:`, newNode);
     reactFlowApiRef.current.addNodes([newNode]);
     
-    // Update Redux state with the exact same node that was added to React Flow
+    // Update Zustand state with the exact same node that was added to React Flow
     const updatedNodes = [...nodes, newNode];
-    dispatch(setNodes(updatedNodes));
+    setNodes(updatedNodes);
     
     // Add node data to Zustand nodeContentStore for immediate availability
     setNodeContent(newNode.id, newNode.data);
     console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, newNode.data);
-  }, [dispatch, nodes, selectedNodeId]);
+  }, [nodes, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
     setSelectedNodeId(node?.id || null);
@@ -107,10 +105,13 @@ export const FlowEditor = () => {
     }
   }, [nodes, edges, reactFlowApiRef]);
 
+  // Use the selected node from Zustand nodes state
   const selectedNode = nodes.find(node => node.id === selectedNodeId);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
+      <StoreInitializer />
+      
       <div className="flex-none h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-sm z-20">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-gray-900">Flow Editor</h1>

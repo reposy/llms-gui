@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
-import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode, GlobalViewMode } from '../../store/viewModeSlice';
 import { JSONExtractorNodeData } from '../../types/nodes';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
-import { RootState } from '../../store/store';
+import { VIEW_MODES } from '../../store/viewModeSlice';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
+import { useStore as useViewModeStore, useNodeViewMode } from '../../store/viewModeStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 interface Props {
   id: string;
@@ -19,12 +18,20 @@ interface Props {
 }
 
 const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const dispatch = useDispatch();
+  // Use updateNode from Zustand store
+  const { updateNode } = useFlowStructureStore(state => ({
+    updateNode: state.updateNode
+  }));
+  
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
-  const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id));
-  const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
+  
+  // Get from Zustand store instead of Redux
+  const viewMode = useNodeViewMode(id);
+  const globalViewMode = useViewModeStore(state => state.globalViewMode);
+  const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
+  
   const [pathDraft, setPathDraft] = useState(data.path || '');
   const [isComposing, setIsComposing] = useState(false);
 
@@ -40,27 +47,32 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
     setPathDraft(newPath);
     
     if (!isComposing) {
-      dispatch(updateNodeData({
-        nodeId: id,
+      // Use updateNode from Zustand instead of dispatch
+      updateNode(id, (node) => ({
+        ...node,
         data: { ...data, path: newPath }
       }));
     }
-  }, [dispatch, id, data, isComposing]);
+  }, [id, data, isComposing, updateNode]);
 
   // Encapsulate label update logic
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
-  }, [dispatch, data]);
+    // Use updateNode from Zustand instead of dispatch
+    updateNode(nodeId, (node) => ({
+      ...node,
+      data: { ...data, label: newLabel }
+    }));
+  }, [data, updateNode]);
 
   const handleRun = useCallback(() => {
     executeFlow(id);
   }, [id]);
 
   const toggleNodeView = () => {
-    dispatch(setNodeViewMode({
+    setNodeViewMode({ 
       nodeId: id,
       mode: viewMode === VIEW_MODES.COMPACT ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
-    }));
+    });
   };
 
   // Auto-collapse based on zoom level if in auto mode
@@ -68,12 +80,17 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
     if (globalViewMode === VIEW_MODES.AUTO) {
       const zoom = getZoom();
       const shouldBeCompact = zoom < 0.7;
-      dispatch(setNodeViewMode({ 
+      setNodeViewMode({ 
         nodeId: id, 
         mode: shouldBeCompact ? VIEW_MODES.COMPACT : VIEW_MODES.EXPANDED 
-      }));
+      });
     }
-  }, [globalViewMode, getZoom, id, dispatch]);
+  }, [globalViewMode, getZoom, id, setNodeViewMode]);
+
+  // Safe access to node state status - converting to a type that NodeStatusIndicator accepts
+  const nodeStatus = nodeState?.status === 'skipped' 
+    ? 'idle' // Map 'skipped' to 'idle' as it's not in the accepted types
+    : (nodeState?.status || 'idle');
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -126,7 +143,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
             label={data.label || 'JSON Extractor'}
             placeholderLabel="JSON Extractor"
             isRootNode={isRootNode}
-            isRunning={nodeState?.status === 'running'}
+            isRunning={nodeStatus === 'running'}
             viewMode={viewMode}
             themeColor="purple"
             onRun={handleRun}
@@ -142,7 +159,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
                 <div className="text-sm text-gray-600">
                   Extract: {data.path || 'No path set'}
                 </div>
-                <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
+                <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
               </>
             ) : (
               <div className="space-y-2">
@@ -162,7 +179,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
                   </div>
                 </div>
 
-                <NodeStatusIndicator status={nodeState?.status ?? 'idle'} error={nodeState?.error} />
+                <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
 
                 {nodeState?.result && (
                   <div className="space-y-1">

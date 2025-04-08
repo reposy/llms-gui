@@ -1,8 +1,9 @@
 import { Node, Edge } from 'reactflow';
-import { NodeData, NodeType } from '../types/nodes';
+import { NodeData, NodeType, InputNodeData } from '../types/nodes';
 import { ExecutionContext, NodeState } from '../types/execution';
 import { executeGroupNode, GroupExecutorDependencies } from './groupExecutor';
 import { dispatchNodeExecution as originalDispatchNodeExecution } from '../executors/executorDispatcher';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Dependencies required by the execution dispatcher
@@ -12,6 +13,7 @@ export interface ExecutionDispatcherDependencies extends GroupExecutorDependenci
   getEdges: () => Edge[];
   getNodeState: (nodeId: string) => NodeState;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
+  getDispatch?: () => any;
 }
 
 /**
@@ -25,7 +27,7 @@ export async function dispatchNodeExecution(
   context: ExecutionContext,
   dependencies: ExecutionDispatcherDependencies
 ): Promise<any> {
-  const { getNodes, getNodeState } = dependencies;
+  const { getNodes, getNodeState, setNodeState, getEdges } = dependencies;
   const node = getNodes().find(n => n.id === nodeId);
   
   if (!node) {
@@ -54,6 +56,15 @@ export async function dispatchNodeExecution(
     return groupResults; // Return the results for chaining to downstream nodes
   }
   
+  // Special handling for Input nodes with iterateEachRow option
+  if (node.type === 'input' && (node.data as InputNodeData).iterateEachRow) {
+    return await handleInputNodeIteration(
+      node as Node<InputNodeData>,
+      context,
+      dependencies
+    );
+  }
+  
   // For other node types, use the original dispatcher from executorDispatcher.ts
   return await originalDispatchNodeExecution({
     node,
@@ -66,11 +77,199 @@ export async function dispatchNodeExecution(
 }
 
 /**
+ * Special handler for input nodes with iterateEachRow option.
+ * Executes downstream nodes once for each row in the input.
+ */
+async function handleInputNodeIteration(
+  inputNode: Node<InputNodeData>,
+  context: ExecutionContext,
+  dependencies: ExecutionDispatcherDependencies
+): Promise<any[]> {
+  const { getNodes, getEdges, getNodeState, setNodeState } = dependencies;
+  const inputNodeId = inputNode.id;
+  const inputData = inputNode.data;
+  const { executionId } = context;
+  
+  // Get the items to iterate over
+  const items = inputData.items || [];
+  if (items.length === 0) {
+    console.log(`[InputIteration ${inputNodeId}] No items to iterate over.`);
+    setNodeState(inputNodeId, { 
+      status: 'success', 
+      result: [], 
+      executionId 
+    });
+    return [];
+  }
+  
+  console.log(`[InputIteration ${inputNodeId}] Starting iteration over ${items.length} items.`);
+  
+  // Identify direct downstream nodes
+  const edges = getEdges();
+  const directDownstreamNodeIds = edges
+    .filter(edge => edge.source === inputNodeId)
+    .map(edge => edge.target);
+  
+  if (directDownstreamNodeIds.length === 0) {
+    console.log(`[InputIteration ${inputNodeId}] No downstream nodes to execute.`);
+    setNodeState(inputNodeId, { 
+      status: 'success', 
+      result: items, 
+      executionId 
+    });
+    return items;
+  }
+  
+  // Track this iteration in the input node state
+  setNodeState(inputNodeId, {
+    status: 'running',
+    executionId,
+    iterationStatus: {
+      currentIndex: 0,
+      totalItems: items.length,
+      completed: false
+    }
+  });
+  
+  // Also update the node data to reflect the iteration status for UI
+  const dispatch = dependencies.getDispatch?.();
+  if (dispatch) {
+    dispatch({
+      type: 'flow/updateNodeData',
+      payload: {
+        nodeId: inputNodeId,
+        data: {
+          iterationStatus: {
+            currentIndex: 0,
+            totalItems: items.length,
+            completed: false
+          }
+        }
+      }
+    });
+  }
+  
+  // Array to store all iteration results
+  const allResults: any[] = [];
+  
+  // Iterate over each item
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    
+    // Update iteration status in both state and node data
+    setNodeState(inputNodeId, {
+      iterationStatus: {
+        currentIndex: index,
+        totalItems: items.length,
+        completed: false
+      }
+    });
+    
+    // Update node data for UI
+    if (dispatch) {
+      dispatch({
+        type: 'flow/updateNodeData',
+        payload: {
+          nodeId: inputNodeId,
+          data: {
+            iterationStatus: {
+              currentIndex: index,
+              totalItems: items.length,
+              completed: false
+            }
+          }
+        }
+      });
+    }
+    
+    console.log(`[InputIteration ${inputNodeId}] Processing item ${index + 1}/${items.length}:`, item);
+    
+    // Create a sub-execution context for this iteration
+    const iterationContext: ExecutionContext = {
+      isSubExecution: true,
+      triggerNodeId: context.triggerNodeId,
+      executionId: `${executionId}-item-${index}`, // Create a new unique execution ID for each iteration
+      iterationItem: item,
+      iterationTracking: {
+        inputNodeId,
+        originalExecutionId: executionId,
+        currentIndex: index,
+        totalItems: items.length
+      }
+    };
+    
+    // Directly execute the input node with the iteration context to get a single item result
+    await originalDispatchNodeExecution({
+      node: inputNode,
+      nodes: getNodes(),
+      edges,
+      context: iterationContext,
+      getNodeState,
+      setNodeState
+    });
+    
+    // For each direct downstream node, execute it with the iteration context
+    for (const downstreamNodeId of directDownstreamNodeIds) {
+      try {
+        // Use the iteration context to pass the current item
+        const result = await dispatchNodeExecution(
+          downstreamNodeId,
+          [item], // Pass the current item as input
+          iterationContext,
+          dependencies
+        );
+        
+        // If this is the last downstream node in the chain, collect its result
+        // Logic to identify "leaf" nodes may need to be more sophisticated
+        if (result !== undefined) {
+          allResults.push(result);
+        }
+      } catch (error) {
+        console.error(`[InputIteration ${inputNodeId}] Error processing item ${index} for node ${downstreamNodeId}:`, error);
+        // Add error to results or handle as needed
+      }
+    }
+  }
+  
+  // Update input node state with the final results
+  setNodeState(inputNodeId, {
+    status: 'success',
+    result: allResults, // Store all collected results
+    executionId,
+    iterationStatus: {
+      currentIndex: items.length,
+      totalItems: items.length,
+      completed: true
+    }
+  });
+  
+  // Update node data for UI
+  if (dispatch) {
+    dispatch({
+      type: 'flow/updateNodeData',
+      payload: {
+        nodeId: inputNodeId,
+        data: {
+          iterationStatus: {
+            currentIndex: items.length,
+            totalItems: items.length,
+            completed: true
+          }
+        }
+      }
+    });
+  }
+  
+  console.log(`[InputIteration ${inputNodeId}] Completed all iterations. Results:`, allResults);
+  return allResults;
+}
+
+/**
  * Determines if a node type requires special execution handling
  */
 export function requiresSpecialExecution(nodeType: NodeType): boolean {
-  // Currently only group nodes require special handling
-  return nodeType === 'group';
+  // Group nodes and Input nodes with iterateEachRow may require special handling
+  return nodeType === 'group' || nodeType === 'input';
 }
 
 /**

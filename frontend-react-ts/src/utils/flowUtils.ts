@@ -105,7 +105,8 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         label: 'Input',
         inputType: 'text', // Default to text input
         text: '', 
-        items: [] // Default empty items array
+        items: [], // Default empty items array
+        iterateEachRow: false // Default to disabled
       } as InputNodeData;
     case 'group':
       return {

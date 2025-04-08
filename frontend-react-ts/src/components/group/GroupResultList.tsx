@@ -1,5 +1,3 @@
-import { useSelector } from 'react-redux';
-import { RootState } from '../../store/store';
 import GroupResultItem from './GroupResultItem';
 import { GroupExecutionItemResult } from '../../types/execution';
 

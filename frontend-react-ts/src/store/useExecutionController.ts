@@ -1,4 +1,4 @@
-import { createWithEqualityFn } from 'zustand/traditional';
+import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { Edge, Node } from 'reactflow';
 import { NodeData } from '../types/nodes';
@@ -6,12 +6,12 @@ import { NodeState } from '../types/execution';
 
 import { executeFlow as executeFlowController, FlowControllerDependencies } from '../controller/flowController';
 import { executeGroupNode } from '../controller/groupNodeController';
-import { store } from './store';
 
 // Import from our refactored modules
 import { getNodeState, setNodeState, resetNodeStates } from './useNodeStateStore';
 import { getDownstreamNodes, getNodesInGroup } from './useNodeGraphUtils';
 import { getNodeContent } from './nodeContentStore';
+import { useFlowStructureStore } from './useFlowStructureStore';
 
 // Define the state structure for execution controller
 export interface ExecutionControllerState {
@@ -33,7 +33,7 @@ export interface ExecutionControllerState {
 }
 
 // Create the Zustand store for execution controller
-export const useExecutionController = createWithEqualityFn<ExecutionControllerState>()(
+export const useExecutionController = create<ExecutionControllerState>()(
   devtools(
     (set, get) => ({
       isExecuting: false,
@@ -46,10 +46,10 @@ export const useExecutionController = createWithEqualityFn<ExecutionControllerSt
       // --- Internal State Setters --- 
       _setIsExecuting: (isExecuting) => set({ isExecuting }),
       _setCurrentExecutionId: (executionId) => set({ currentExecutionId: executionId }),
-      _setIterationContext: (context) => set({
-        currentIterationItem: context.item,
-        currentIterationIndex: context.index,
-        currentGroupTotalItems: context.total,
+      _setIterationContext: ({ item, index, total }) => set({
+        currentIterationItem: item,
+        currentIterationIndex: index,
+        currentGroupTotalItems: total
       }),
 
       // --- Flow Execution Actions ---
@@ -62,10 +62,13 @@ export const useExecutionController = createWithEqualityFn<ExecutionControllerSt
           return;
         }
 
+        // Get nodes and edges from Zustand stores
+        const { getState } = useFlowStructureStore;
+
         // Construct dependencies directly 
         const dependencies: FlowControllerDependencies = {
-          getNodes: () => store.getState().flow.nodes,
-          getEdges: () => store.getState().flow.edges,
+          getNodes: () => getState().nodes,
+          getEdges: () => getState().edges,
           getNodeState,
           setNodeState,
           resetNodeStates,
@@ -122,17 +125,18 @@ export const useExecutionController = createWithEqualityFn<ExecutionControllerSt
         set(prev => ({ executingGroupIds: new Set(prev.executingGroupIds).add(groupId) }));
         console.log(`[ExecuteFlowForGroup Action] Added ${groupId} to executing groups. Current: ${[...get().executingGroupIds]}`);
 
-        // Dependencies for the group controller (setIsExecuting is removed)
-        // Assuming FlowControllerDependencies has setIsExecuting as optional
+        // Get nodes and edges from Zustand stores
+        const { getState } = useFlowStructureStore;
+
+        // Dependencies for the group controller
         const dependencies = {
-          getNodes: () => store.getState().flow.nodes,
-          getEdges: () => store.getState().flow.edges,
+          getNodes: () => getState().nodes,
+          getEdges: () => getState().edges,
           getNodeState,
           setNodeState,
           resetNodeStates,
           getDownstreamNodes,
           getNodesInGroup,
-          // setIsExecuting removed
           setCurrentExecutionId: state._setCurrentExecutionId, 
           setIterationContext: state._setIterationContext,
         };

@@ -1,7 +1,5 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { useDispatch } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
 import { ConditionalNodeData, NodeData, ConditionType } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore'; // Make sure this path is correct
 import NodeErrorBoundary from './NodeErrorBoundary';
@@ -9,24 +7,34 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
+import { useConditionalNodeData } from '../../hooks/useConditionalNodeData';
 
 const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, selected }) => {
-  const dispatch = useDispatch();
   const nodeState = useNodeState(id);
 
-  const handleLabelUpdate = useCallback((newLabel: string) => {
-    dispatch(updateNodeData({ nodeId: id, data: { ...data, label: newLabel } }));
-  }, [dispatch, id, data]);
+  // Use the Zustand hook
+  const {
+    conditionType,
+    conditionValue,
+    label,
+    handleConditionTypeChange,
+    handleValueChange,
+    updateConditionalContent,
+  } = useConditionalNodeData({ nodeId: id });
 
-  const handleConditionTypeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleLabelUpdate = useCallback((newLabel: string) => {
+    updateConditionalContent({ label: newLabel });
+  }, [updateConditionalContent]);
+
+  const handleConditionTypeChangeEvent = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = event.target.value as ConditionType;
-    dispatch(updateNodeData({ nodeId: id, data: { ...data, conditionType: newType } }));
-  }, [dispatch, id, data]);
+    handleConditionTypeChange(newType);
+  }, [handleConditionTypeChange]);
 
   const handleConditionValueChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = event.target.value;
-    dispatch(updateNodeData({ nodeId: id, data: { ...data, conditionValue: newValue } }));
-  }, [dispatch, id, data]);
+    handleValueChange(newValue);
+  }, [handleValueChange]);
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -42,7 +50,7 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
 
         <NodeHeader
           nodeId={id}
-          label={data.label || 'Condition'}
+          label={label || data.label || 'Condition'}
           placeholderLabel="Conditional Node"
           isRootNode={false}
           isRunning={nodeState.status === 'running'}
@@ -79,8 +87,8 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
               <label htmlFor={`condition-type-${id}`} className="block text-xs font-medium text-gray-700 mb-1">Condition Type</label>
               <select
                 id={`condition-type-${id}`}
-                value={data.conditionType || 'contains'}
-                onChange={handleConditionTypeChange}
+                value={conditionType || data.conditionType || 'contains'}
+                onChange={handleConditionTypeChangeEvent}
                 className="nodrag block w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 bg-white text-black"
               >
                 <option value="contains">Contains Substring</option>
@@ -96,10 +104,10 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
               <input
                 id={`condition-value-${id}`}
                 type="text"
-                value={data.conditionValue || ''}
+                value={conditionValue || data.conditionValue || ''}
                 onChange={handleConditionValueChange}
                 className="nodrag block w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 bg-white text-black"
-                placeholder={data.conditionType === 'json_path' ? 'e.g., $.result.score' : 'Value to check'}
+                placeholder={conditionType === 'json_path' ? 'e.g., $.result.score' : 'Value to check'}
               />
             </div>
 

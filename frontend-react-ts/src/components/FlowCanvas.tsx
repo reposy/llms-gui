@@ -18,8 +18,8 @@ import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { createNewNode } from '../utils/flowUtils';
-// Removed nodeContentStore imports related to hydration
-// import { loadFromReduxNodes, cleanupDeletedNodes } from '../store/nodeContentStore'; 
+// Import Zustand store
+import { setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -83,8 +83,8 @@ const nodeTypes = {
 
 export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
-  forceSync: () => void; // Assuming this comes from useFlowSync as forceSyncFromRedux
-  commitStructure: () => void; // Renamed from commitChanges
+  forceSync: () => void; // Now fetches from Zustand
+  commitStructure: () => void; // Now commits to Zustand
 }
 
 interface FlowCanvasProps {
@@ -101,7 +101,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   
   const isRestoringHistory = useRef<boolean>(false);
 
-  // Use the refactored flow sync hook (now focuses on structure)
+  // Use the refactored flow sync hook (now using Zustand)
   const { 
     localNodes, 
     localEdges, 
@@ -109,28 +109,28 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromRedux, // Renamed function
-    commitStructureToRedux // Renamed function
+    forceSyncFromRedux: forceSyncFromZustand, // Renamed internally but kept same API
+    commitStructureToRedux: commitStructureToZustand // Renamed internally but kept same API
   } = useFlowSync({ isRestoringHistory });
   
-  // History hook likely needs local state now
+  // History hook now uses Zustand setters
   const { 
     pushToHistory, 
     undo, 
     redo 
   } = useHistory(
     { initialNodes: localNodes, initialEdges: localEdges }, // Pass local state
-    setLocalNodes, // Setter for local state
-    setLocalEdges // Setter for local state
+    setNodes, // Now uses Zustand setter
+    setEdges // Now uses Zustand setter
   );
   
-  // Clipboard hook likely interacts with history/local state
+  // Clipboard hook now interacts with Zustand
   const { 
     handleCopy, 
     handlePaste 
   } = useClipboard();
   
-  // Node handlers hook operates on local state
+  // Node handlers now operate on Zustand state
   const { 
     handleConnect,
     handleSelectionChange,
@@ -141,42 +141,28 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   } = useNodeHandlers(
     localNodes,
     setLocalNodes,
-    localEdges,
+    localEdges, 
     setLocalEdges,
-    { onNodeSelect, pushToHistory, isRestoringHistory }
+    { 
+      onNodeSelect: (node) => {
+        onNodeSelect(node);
+        setSelectedNodeId(node?.id || null); // Update Zustand selectedNodeId
+      }, 
+      pushToHistory, 
+      isRestoringHistory 
+    }
   );
-  
-  // Keep a ref to the commit function for the API
-  const commitStructureRef = useRef(commitStructureToRedux);
-  useEffect(() => {
-    commitStructureRef.current = commitStructureToRedux;
-  }, [commitStructureToRedux]);
   
   // Register the API functions with the parent component
   useEffect(() => {
     if (registerReactFlowApi) {
       registerReactFlowApi({ 
         addNodes,
-        forceSync: forceSyncFromRedux, // Pass the renamed function
-        commitStructure: () => commitStructureRef.current() // Pass the renamed function
+        forceSync: forceSyncFromZustand, // Now references Zustand
+        commitStructure: () => commitStructureToZustand() // Now commits to Zustand
       });
     }
-  }, [registerReactFlowApi, addNodes, forceSyncFromRedux]); // Update dependency
-
-  // REMOVED useEffect that called loadFromReduxNodes and cleanupDeletedNodes
-  /*
-  useEffect(() => {
-    // Load node content from Redux nodes - convert Node<NodeData> to NodeData
-    const nodeDataArray = localNodes.map(node => node.data);
-    loadFromReduxNodes(nodeDataArray);
-    
-    // Clean up deleted nodes from content store
-    const existingNodeIds = localNodes.map(node => node.id);
-    cleanupDeletedNodes(existingNodeIds);
-    
-    console.log('[FlowCanvas] Node content store initialized/updated from flow nodes');
-  }, [localNodes.length]);
-  */
+  }, [registerReactFlowApi, addNodes, forceSyncFromZustand]);
 
   // Set up keyboard shortcuts (Undo/Redo/Copy/Paste/Delete)
   useEffect(() => {
@@ -279,33 +265,58 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   );
 
   return (
-    <div className="w-full h-full" ref={reactFlowWrapper} style={{ background: '#f8f9fa' }}>
+    <div ref={reactFlowWrapper} className="w-full h-full relative">
       <ReactFlow
         nodes={localNodes}
         edges={localEdges}
-        onNodesChange={onLocalNodesChange} // Use handler from useFlowSync
-        onEdgesChange={onLocalEdgesChange} // Use handler from useFlowSync
-        onConnect={handleConnect} // Keep using handler from useNodeHandlers
-        onSelectionChange={handleSelectionChange} // Keep using handler from useNodeHandlers
-        onNodeDragStop={handleNodeDragStop} // Keep using handler from useNodeHandlers
-        onSelectionDragStop={handleSelectionDragStop} // Keep using handler from useNodeHandlers
+        onNodesChange={onLocalNodesChange}
+        onEdgesChange={onLocalEdgesChange}
+        onConnect={handleConnect}
+        onSelectionChange={handleSelectionChange}
+        onNodeDragStop={handleNodeDragStop}
+        onSelectionDragStop={handleSelectionDragStop}
         nodeTypes={nodeTypes}
-        connectionLineType={ConnectionLineType.SmoothStep}
-        defaultViewport={defaultViewport}
-        multiSelectionKeyCode="Shift" // Enable built-in multi-selection support
         fitView
-        fitViewOptions={{ padding: 0.2 }}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-        attributionPosition="bottom-left"
-        deleteKeyCode={null} // Disable default delete behaviour, handled by useEffect
+        defaultViewport={defaultViewport}
+        attributionPosition="bottom-right"
+        connectionLineType={ConnectionLineType.Bezier}
+        connectionRadius={30}
+        snapToGrid
+        snapGrid={[15, 15]}
+        className="w-full h-full bg-dot-pattern"
       >
-        <Controls />
-        <MiniMap />
-        <Background gap={16} color="#e9ecef" />
-        {/* <Panel position="top-right">
-          <button onClick={forceSyncFromRedux}>Force Sync</button>
-        </Panel> */}
+        <Controls position="bottom-right" />
+        <MiniMap position="bottom-left" zoomable pannable />
+        <Background gap={15} color="#d9e1ec" />
+        <Panel position="top-right" className="bg-white rounded-lg shadow-lg p-3 space-y-2 flex flex-col">
+          <button
+            onClick={undo}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip"
+            data-tooltip="Undo (Ctrl+Z)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <button
+            onClick={redo}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip"
+            data-tooltip="Redo (Ctrl+Shift+Z)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setNodes([])}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip"
+            data-tooltip="Clear All"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </Panel>
       </ReactFlow>
     </div>
   );

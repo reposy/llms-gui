@@ -1,87 +1,63 @@
-import React, { useCallback, useState, ChangeEvent, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
 import { InputNodeData } from '../../types/nodes';
-import { RootState } from '../../store/store';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
+import { executeFlow, useNodeState } from '../../store/flowExecutionStore';
+import { useInputNodeData } from '../../hooks/useInputNodeData';
+import { InputTextManager } from '../input/InputTextManager';
+import { InputFileUploader } from '../input/InputFileUploader';
+import { InputItemList } from '../input/InputItemList';
+import { InputSummaryBar } from '../input/InputSummaryBar';
+import { InputModeToggle } from '../input/InputModeToggle';
 
 const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
-  const dispatch = useDispatch();
-  // Use local state to manage textarea value derived from props initially
-  const [currentText, setCurrentText] = useState(data.text || '');
-  const [fileName, setFileName] = useState<string | null>(null);
+  // Get node execution state
+  const nodeState = useNodeState(id);
+  const isRunning = nodeState.status === 'running';
 
-  // Update local state if the node data changes externally
-  useEffect(() => {
-    setCurrentText(data.text || '');
-    // Potentially derive filename from items if needed, but might be complex
-  }, [data.text]);
+  // Use shared input node hook for state and handlers
+  const {
+    textBuffer,
+    itemCounts,
+    formattedItems,
+    showIterateOption,
+    iterateEachRow,
+    handleTextChange,
+    handleAddText,
+    handleFileChange,
+    handleDeleteItem,
+    handleClearItems,
+    handleToggleProcessingMode,
+    handleConfigChange
+  } = useInputNodeData({ nodeId: id });
 
   const handleLabelUpdate = useCallback((newLabel: string) => {
-    dispatch(updateNodeData({ nodeId: id, data: { label: newLabel } }));
-  }, [dispatch, id]);
+    handleConfigChange({ label: newLabel });
+  }, [handleConfigChange]);
 
-  const handleTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = event.target.value;
-    setCurrentText(newText);
-    dispatch(updateNodeData({ 
-      nodeId: id, 
-      data: { 
-        text: newText, 
-        inputType: 'text', // Explicitly set type to text on manual edit
-        items: [] // Clear items if text is manually edited
-      } 
-    }));
-  }, [dispatch, id]);
-
-  const handleTypeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newType = event.target.value as 'text' | 'file';
-    dispatch(updateNodeData({ nodeId: id, data: { inputType: newType } }));
-    // Clear other input types when switching
-    if (newType === 'text') {
-      dispatch(updateNodeData({ nodeId: id, data: { items: [] } }));
-      setFileName(null);
-    } else {
-      dispatch(updateNodeData({ nodeId: id, data: { text: '' } }));
-      setCurrentText('');
+  // Add handler for running the input node
+  const handleRunNode = useCallback(() => {
+    executeFlow(id);
+  }, [id]);
+  
+  // Create a footer summary for display
+  const footerSummary = React.useMemo(() => {
+    if (!itemCounts.total) return null;
+    
+    if (itemCounts.fileCount > 0 && itemCounts.textCount > 0) {
+      return `${itemCounts.fileCount} file${itemCounts.fileCount !== 1 ? 's' : ''} + ${itemCounts.textCount} text row${itemCounts.textCount !== 1 ? 's' : ''}`;
+    } else if (itemCounts.fileCount > 0) {
+      return `${itemCounts.fileCount} file${itemCounts.fileCount !== 1 ? 's' : ''}`;
+    } else if (itemCounts.textCount > 0) {
+      return `${itemCounts.textCount} text row${itemCounts.textCount !== 1 ? 's' : ''}`;
     }
-  }, [dispatch, id]);
-
-  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const fileContent = e.target?.result as string;
-        // Split by lines, trim whitespace, and filter out empty lines
-        const lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
-        dispatch(updateNodeData({ 
-          nodeId: id, 
-          data: { 
-            items: lines, 
-            inputType: 'list', // Set type to list after processing file
-            text: '' // Clear text field
-          } 
-        }));
-        setCurrentText(''); // Clear local text state
-      };
-      reader.onerror = (e) => {
-        console.error("Error reading file:", e);
-        setFileName('Error reading file');
-        dispatch(updateNodeData({ nodeId: id, data: { items: [], inputType: 'file' } })); // Reset items on error
-      };
-      reader.readAsText(file);
-    }
-  }, [dispatch, id]);
-
-  // Derive current input type from data, default to text
-  const currentInputType = data.inputType || 'text';
+    
+    return null;
+  }, [itemCounts]);
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -90,13 +66,13 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           nodeId={id} 
           label={data.label || 'Input'} 
           placeholderLabel="Input Node"
-          isRootNode={true} // Input nodes are often roots
-          isRunning={false} // Input nodes don't "run" in the same way
-          viewMode="expanded" // Always expanded for input?
+          isRootNode={true}
+          isRunning={isRunning}
+          viewMode="expanded"
           themeColor="gray"
-          onRun={() => {}} // No run action for basic input
+          onRun={handleRunNode}
           onLabelUpdate={handleLabelUpdate}
-          onToggleView={() => {}} // No view toggle for basic input
+          onToggleView={() => {}}
         />
         <Handle 
           type="source" 
@@ -106,59 +82,58 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '-6px', zIndex: 50 }}
         />
         <NodeBody>
-          {/* Input Type Selection */}
-          <div className="mb-2 flex space-x-4">
-            <label className="flex items-center">
-              <input 
-                type="radio" 
-                name={`inputType-${id}`}
-                value="text"
-                checked={currentInputType === 'text'}
-                onChange={handleTypeChange}
-                className="mr-1"
-              /> Text Input
-            </label>
-            <label className="flex items-center">
-              <input 
-                type="radio" 
-                name={`inputType-${id}`}
-                value="file"
-                checked={currentInputType === 'file' || currentInputType === 'list'} // Show file selected if file or list
-                onChange={handleTypeChange}
-                className="mr-1"
-              /> File Input
-            </label>
+          {/* Processing Mode toggle button */}
+          <div className="mb-3">
+            <InputModeToggle 
+              iterateEachRow={iterateEachRow}
+              onToggle={handleToggleProcessingMode}
+              layout="column"
+              showDescription={true}
+            />
           </div>
 
-          {/* Conditional Input Area */}
-          {currentInputType === 'text' && (
-            <textarea
-              value={currentText} // Use local state for controlled component
+          {/* Combined input section */}
+          <div className="flex-grow space-y-3">
+            {/* Text input */}
+            <InputTextManager
+              textBuffer={textBuffer}
               onChange={handleTextChange}
-              className="nodrag nowheel w-full h-32 p-2 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none bg-white text-black"
-              placeholder="Enter text here..."
+              onAdd={handleAddText}
             />
-          )}
-          {(currentInputType === 'file' || currentInputType === 'list') && (
-            <div className="nodrag">
-              <input 
-                type="file"
-                onChange={handleFileChange}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-              {/* Display file info or item count */} 
-              {(fileName || (data.items && data.items.length > 0)) && (
-                <p className="mt-2 text-xs text-gray-600">
-                  {currentInputType === 'list' 
-                    ? `${data.items?.length || 0} items loaded ${fileName ? `(from ${fileName})` : ''}` 
-                    : (fileName ? `Selected: ${fileName}` : 'Select a text file (.txt, .csv, etc.)')}
-                </p>
-              )}
-            </div>
-          )}
+            
+            {/* File input */}
+            <InputFileUploader
+              onUpload={handleFileChange}
+              nodeId={id}
+            />
+            
+            {/* Items Summary */}
+            <InputSummaryBar
+              itemCounts={itemCounts}
+              iterateEachRow={iterateEachRow}
+            />
+            
+            {/* Item List Display */}
+            <InputItemList
+              items={formattedItems}
+              onDelete={handleDeleteItem}
+              onClear={handleClearItems}
+              limit={3}
+              totalCount={data.items?.length || 0}
+            />
+          </div>
         </NodeBody>
         <NodeFooter>
-          <p className="text-xs text-gray-500">Output (Text/List)</p>
+          {footerSummary ? (
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-gray-500">{footerSummary}</span>
+              <span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
+                {iterateEachRow ? 'Foreach mode' : 'Batch mode'}
+              </span>
+            </div>
+          ) : (
+            <div></div>
+          )}
         </NodeFooter>
       </div>
     </NodeErrorBoundary>

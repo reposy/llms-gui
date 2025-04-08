@@ -4,7 +4,7 @@ import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { LLMNodeHeader } from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeSlice';
-import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
+import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface LLMNodeExpandedViewProps {
   id: string;
@@ -22,15 +22,26 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
   onToggleView,
 }) => {
   const { 
-    content, 
-    isDirty, 
-    updateContent, 
-    saveContent 
-  } = useManagedNodeContent(id, data);
+    prompt,
+    model,
+    temperature,
+    provider,
+    ollamaUrl,
+    label,
+    isDirty,
+    handlePromptChange,
+    handleModelChange,
+    handleTemperatureChange,
+    handleProviderChange,
+    handleOllamaUrlChange
+  } = useLlmNodeData({ nodeId: id });
   
   // Debug logs for render and content state
   console.log(`%c[LLMNodeExpandedView Render] Node: ${id}`, 'color: blue; font-weight: bold;', { 
-    content, 
+    prompt,
+    model,
+    temperature,
+    provider,
     isDirty,
     dataFromProps: data 
   });
@@ -44,30 +55,19 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
         : 'idle';
   }, [nodeState]);
 
-  // Handler for updating and immediately saving content
-  const handleUpdateAndSave = useCallback((key: string, value: any) => {
-    updateContent({ [key]: value });
-    saveContent();
-  }, [updateContent, saveContent]);
-
-  const handleBlur = useCallback(() => {
-    saveContent();
-  }, [saveContent]);
-
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     e.stopPropagation();
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || e.currentTarget instanceof HTMLInputElement)) {
       e.preventDefault();
-      saveContent();
       e.currentTarget.blur();
     }
-  }, [saveContent]);
+  }, []);
 
   return (
     <>
       <LLMNodeHeader
         id={id}
-        data={{ ...data, label: content.label ?? data.label }}
+        data={{ ...data, label: label ?? data.label }}
         viewMode={viewMode}
         onToggleView={onToggleView}
         isContentDirty={isDirty}
@@ -83,13 +83,8 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
           <input
             type="text"
             name="model"
-            value={content.model || ''}
-            onChange={(e) => {
-              const newModel = e.target.value;
-              console.log(`[LLMNodeExpandedView ${id}] Updating model to: ${newModel}`);
-              updateContent({ model: newModel });
-            }}
-            onBlur={handleBlur}
+            value={model}
+            onChange={handleModelChange}
             onKeyDown={handleKeyDown}
             className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
             placeholder="e.g., llama3:latest"
@@ -99,9 +94,8 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
         <div className="flex flex-col space-y-1">
           <label className="text-xs font-medium text-gray-600">Prompt:</label>
           <textarea
-            value={content.prompt || ''}
-            onChange={(e) => updateContent({ prompt: e.target.value })}
-            onBlur={handleBlur}
+            value={prompt}
+            onChange={handlePromptChange}
             onKeyDown={handleKeyDown}
             className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
             placeholder="Enter your prompt here..."
@@ -111,15 +105,15 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
         <div className="flex flex-col space-y-1">
           <label className="text-xs font-medium text-gray-600 flex justify-between">
             <span>Temperature:</span>
-            <span>{(content.temperature ?? 0.7).toFixed(1)}</span>
+            <span>{temperature.toFixed(1)}</span>
           </label>
           <input
             type="range"
             min="0"
             max="2"
             step="0.1"
-            value={content.temperature ?? 0.7}
-            onChange={(e) => handleUpdateAndSave('temperature', parseFloat(e.target.value))}
+            value={temperature}
+            onChange={handleTemperatureChange}
             className="nodrag nopan w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
           />
         </div>
@@ -127,8 +121,8 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
         <div className="flex flex-col space-y-1">
           <label className="text-xs font-medium text-gray-600">Provider:</label>
           <select
-            value={content.provider ?? 'ollama'}
-            onChange={(e) => handleUpdateAndSave('provider', e.target.value)}
+            value={provider}
+            onChange={handleProviderChange}
             className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
           >
             <option value="ollama">Ollama</option>
@@ -136,15 +130,14 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
           </select>
         </div>
         
-        {(content.provider ?? 'ollama') === 'ollama' && (
+        {provider === 'ollama' && (
           <div className="flex flex-col space-y-1">
             <label className="text-xs font-medium text-gray-600">Ollama URL (Optional):</label>
             <input
               type="text"
               name="ollamaUrl"
-              value={content.ollamaUrl ?? ''}
-              onChange={(e) => updateContent({ ollamaUrl: e.target.value })}
-              onBlur={handleBlur}
+              value={ollamaUrl}
+              onChange={handleOllamaUrlChange}
               onKeyDown={handleKeyDown}
               className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
               placeholder="http://localhost:11434"

@@ -4,8 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { NodeData } from '../types/nodes';
 import { getNodeContent, setNodeContent, NodeContent } from '../store/nodeContentStore';
 import { resetNodeStates } from '../store/useNodeStateStore';
-import { useDispatch } from 'react-redux';
-import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
+import { useFlowStructureStore } from '../store/useFlowStructureStore';
 
 interface CopiedData {
   nodes: Node<NodeData>[];
@@ -21,7 +20,7 @@ export interface UseClipboardReturnType {
 export const useClipboard = (): UseClipboardReturnType => {
   const { getNodes, getEdges, setNodes, setEdges, getNode } = useReactFlow<NodeData>();
   const store = useStoreApi();
-  const dispatch = useDispatch();
+  const { setNodes: setZustandNodes, setEdges: setZustandEdges } = useFlowStructureStore();
 
   const handleCopy = useCallback(() => {
     const selectedNodes = getNodes().filter(node => node.selected);
@@ -126,9 +125,11 @@ export const useClipboard = (): UseClipboardReturnType => {
       setNodes(nodes => [...nodes, ...newNodes]);
       setEdges(edges => [...edges, ...newEdges]);
       
-      // Update Redux state to make sure the execution engine has access to the new nodes and edges
-      dispatch(setReduxNodes(getNodes().concat(newNodes)));
-      dispatch(setReduxEdges(getEdges().concat(newEdges)));
+      // Update Zustand state to make sure the execution engine has access to the new nodes and edges
+      const updatedNodes = [...getNodes(), ...newNodes];
+      const updatedEdges = [...getEdges(), ...newEdges];
+      setZustandNodes(updatedNodes);
+      setZustandEdges(updatedEdges);
       
       // Reset execution state for pasted nodes
       const newNodeIds = newNodes.map(node => node.id);
@@ -142,7 +143,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     } catch (error) {
       console.error('Error pasting from clipboard:', error);
     }
-  }, [setNodes, setEdges, store, dispatch, getNodes, getEdges]);
+  }, [setNodes, setEdges, store, setZustandNodes, setZustandEdges, getNodes, getEdges]);
 
   return {
     handleCopy,

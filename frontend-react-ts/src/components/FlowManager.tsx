@@ -1,13 +1,11 @@
 import React, { useRef } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../store/store';
-import { setNodes, setEdges } from '../store/flowSlice';
 import { Node, Edge } from 'reactflow';
-import { NodeData } from '../types/nodes';
+import { useHotkeys } from 'react-hotkeys-hook';
 import { cloneDeep } from 'lodash';
 import { FlowCanvasApi } from './FlowCanvas';
-import { useHotkeys } from 'react-hotkeys-hook';
-import { loadFromReduxNodes, loadFromImportedContents, getAllNodeContents, NodeContent, resetNodeContents } from '../store/nodeContentStore';
+import { NodeData } from '../types/nodes';
+import { resetAllContent, getAllNodeContents, loadFromImportedContents, NodeContent } from '../store/useNodeContentStore';
+import { useNodes, useEdges, setNodes, setEdges } from '../store/useFlowStructureStore';
 
 interface FlowData {
   name: string;
@@ -28,16 +26,15 @@ interface FlowManagerProps {
 }
 
 export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
-  const dispatch = useDispatch();
-  const nodesFromState = useSelector((state: RootState) => state.flow.nodes);
-  const edgesFromState = useSelector((state: RootState) => state.flow.edges);
+  const nodesFromState = useNodes();
+  const edgesFromState = useEdges();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createNewFlow = () => {
     if (window.confirm('현재 플로우를 지우고 새로 시작하시겠습니까?')) {
-      dispatch(setNodes([]));
-      dispatch(setEdges([]));
-      resetNodeContents();
+      setNodes([]);
+      setEdges([]);
+      resetAllContent();
       console.log('[FlowManager] Reset node content store for new flow');
     }
   };
@@ -92,8 +89,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
           ...cloneDeep(edge)
         }));
 
-        dispatch(setNodes(importedNodes));
-        dispatch(setEdges(importedEdges));
+        setNodes(importedNodes);
+        setEdges(importedEdges);
         console.log('Imported nodes:', importedNodes);
         console.log('Imported edges:', importedEdges);
 
@@ -108,10 +105,6 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
           loadFromImportedContents(flowData.contents);
           console.log('[Import] Loaded node contents from imported flow data');
         }
-        
-        const nodeDataArray = importedNodes.map(node => node.data);
-        loadFromReduxNodes(nodeDataArray);
-        console.log('[Import] Synced node content with Zustand store');
 
         setTimeout(() => {
           console.log('[FlowManager] Forcing sync after import');

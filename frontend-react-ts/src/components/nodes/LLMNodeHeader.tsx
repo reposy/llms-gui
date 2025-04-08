@@ -1,10 +1,9 @@
 import React, { useCallback, useRef } from 'react';
-import { useDispatch } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
 import { NodeViewMode, VIEW_MODES } from '../../store/viewModeSlice';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
 import { NodeHeader } from './shared/NodeHeader';
 import { LLMNodeData } from '../../types/nodes';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 interface LLMNodeHeaderProps {
   id: string;
@@ -21,13 +20,16 @@ export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   onToggleView,
   isContentDirty
 }) => {
-  const dispatch = useDispatch();
+  const { updateNode } = useFlowStructureStore();
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
-  }, [dispatch, data]);
+    updateNode(nodeId, (node) => ({
+      ...node,
+      data: { ...data, label: newLabel }
+    }));
+  }, [updateNode, data]);
 
   const handleRun = useCallback(() => {
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');

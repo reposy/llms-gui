@@ -3,6 +3,13 @@ export interface ExecutionContext {
   triggerNodeId: string;
   executionId: string;
   iterationItem?: any;
+  // For foreach iteration tracking
+  iterationTracking?: {
+    inputNodeId: string;  // ID of the input node doing the iteration
+    originalExecutionId: string; // Original execution ID before iteration
+    currentIndex: number; // Current iteration index
+    totalItems: number;   // Total number of items to iterate over
+  };
 }
 
 // Represents the state of a single node during execution
@@ -15,6 +22,12 @@ export interface NodeState {
   lastTriggerNodeId?: string;
   activeOutputHandle?: 'trueHandle' | 'falseHandle';
   conditionResult?: boolean;
+  // Add iteration status for Input nodes using foreach
+  iterationStatus?: {
+    currentIndex: number;
+    totalItems: number;
+    completed: boolean;
+  };
 }
 
 // Represents the results for a single item processed by a group
@@ -25,6 +38,12 @@ export interface GroupExecutionItemResult {
   conditionalBranch?: 'true' | 'false'; // Branch taken if a conditional node was present
   status: 'success' | 'error';
   error?: string;
+}
+
+// Result type for conditional node execution
+export interface ConditionalExecutionResult {
+  outputHandle: 'trueHandle' | 'falseHandle';
+  value: any; // The value to pass through to downstream nodes
 }
 
 // Default state for a node before any execution

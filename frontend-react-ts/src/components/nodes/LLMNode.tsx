@@ -1,16 +1,15 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
-import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
+import { VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
 import { LLMNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore';
-import { RootState } from '../../store/store';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
 import { LLMNodeCompactView } from './LLMNodeCompactView';
 import { LLMNodeExpandedView } from './LLMNodeExpandedView';
 import { LLMNodeViewController } from './LLMNodeViewController';
-import { useNodeContent } from '../../store/nodeContentStore';
+import { useLlmNodeData } from '../../hooks/useLlmNodeData';
+import { useStore as useViewModeStore } from '../../store/viewModeStore';
 
 interface Props {
   id: string;
@@ -20,12 +19,15 @@ interface Props {
 }
 
 const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const dispatch = useDispatch();
   const nodeState = useNodeState(id);
-  const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
   
-  // Get node content from content store
-  const { content, isContentDirty } = useNodeContent(id);
+  // Get view mode from Zustand store
+  const viewMode = useViewModeStore(state => 
+    state.getNodeEffectiveViewMode(id)) as NodeViewMode;
+  const setViewMode = useViewModeStore(state => state.setNodeViewMode);
+  
+  // Get LLM data from Zustand store
+  const { isDirty } = useLlmNodeData({ nodeId: id });
   
   /**
    * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.
@@ -42,11 +44,11 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
    */
   
   const toggleNodeView = useCallback(() => {
-    dispatch(setNodeViewMode({
+    setViewMode({
       nodeId: id,
       mode: viewMode === VIEW_MODES.COMPACT ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
-    }));
-  }, [dispatch, id, viewMode]);
+    });
+  }, [id, viewMode, setViewMode]);
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -93,7 +95,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
               selected
                 ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
                 : 'border-blue-200 shadow-sm',
-              isContentDirty ? 'border-l-4 border-l-yellow-400' : '' // Show dirty state visual indicator
+              isDirty ? 'border-l-4 border-l-yellow-400' : '' // Show dirty state visual indicator
             )}
           >
             {viewMode === VIEW_MODES.COMPACT ? (
@@ -103,7 +105,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                 nodeState={nodeState}
                 viewMode={viewMode}
                 onToggleView={toggleNodeView}
-                nodeContent={content}
               />
             ) : (
               <LLMNodeExpandedView

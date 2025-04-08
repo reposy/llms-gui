@@ -2,8 +2,7 @@ import { useCallback, useRef } from 'react';
 import { Node, Edge } from 'reactflow';
 import { cloneDeep } from 'lodash';
 import { NodeData } from '../types/nodes';
-import { useDispatch } from 'react-redux';
-import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
+import { setNodes as setZustandNodes, setEdges as setZustandEdges } from '../store/useFlowStructureStore';
 
 // Type for history stack item
 interface HistoryItem {
@@ -31,8 +30,6 @@ export const useHistory = (
   setLocalNodes: (nodes: Node<NodeData>[]) => void,
   setLocalEdges: (edges: Edge[]) => void
 ): UseHistoryReturn => {
-  const dispatch = useDispatch();
-  
   // Initialize history stack with initial state
   const history = useRef<HistoryItem[]>([{ 
     nodes: cloneDeep(initialNodes), 
@@ -72,12 +69,12 @@ export const useHistory = (
     // Set local state
     setLocalNodes(prevState.nodes);
     setLocalEdges(prevState.edges);
-    // Also update Redux state
-    dispatch(setReduxNodes(prevState.nodes));
-    dispatch(setReduxEdges(prevState.edges));
+    // Also update Zustand state
+    setZustandNodes(prevState.nodes);
+    setZustandEdges(prevState.edges);
     // Reset the flag after the state updates have likely processed
     setTimeout(() => { isRestoringHistory.current = false; }, 0);
-  }, [dispatch, setLocalNodes, setLocalEdges]);
+  }, [setLocalNodes, setLocalEdges]);
 
   // Redo to next state
   const redo = useCallback(() => {
@@ -94,12 +91,12 @@ export const useHistory = (
     // Set local state
     setLocalNodes(nextState.nodes);
     setLocalEdges(nextState.edges);
-    // Also update Redux state
-    dispatch(setReduxNodes(nextState.nodes));
-    dispatch(setReduxEdges(nextState.edges));
+    // Also update Zustand state
+    setZustandNodes(nextState.nodes);
+    setZustandEdges(nextState.edges);
     // Reset the flag after the state updates have likely processed
     setTimeout(() => { isRestoringHistory.current = false; }, 0);
-  }, [dispatch, setLocalNodes, setLocalEdges]);
+  }, [setLocalNodes, setLocalEdges]);
 
   return { 
     pushToHistory, 

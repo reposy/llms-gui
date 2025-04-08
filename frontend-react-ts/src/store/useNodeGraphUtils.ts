@@ -2,7 +2,7 @@ import { Edge, Node } from 'reactflow';
 import { createWithEqualityFn } from 'zustand/traditional';
 import { devtools } from 'zustand/middleware';
 import { NodeData } from '../types/nodes';
-import { store } from './store';
+import { useFlowStructureStore } from './useFlowStructureStore';
 import { isNodeRoot as isNodeRootUtil } from '../utils/executionUtils';
 
 // Define the state structure for node graph utilities
@@ -19,15 +19,15 @@ export interface NodeGraphUtilsState {
 export const useNodeGraphUtils = createWithEqualityFn<NodeGraphUtilsState>()(
   devtools(
     (set, get) => ({
-      // --- Graph Structure Helpers --- (Using Redux state directly)
+      // --- Graph Structure Helpers --- (Using Zustand state directly)
       isNodeRoot: (nodeId) => {
-        const { nodes, edges } = store.getState().flow;
+        const { nodes, edges } = useFlowStructureStore.getState();
         // Use the imported utility function
         return isNodeRootUtil(nodeId, nodes, edges);
       },
 
       getRootNodes: (subsetNodeIds?: Set<string>) => {
-        const { nodes, edges } = store.getState().flow;
+        const { nodes, edges } = useFlowStructureStore.getState();
         const targetNodes = subsetNodeIds 
           ? nodes.filter(n => subsetNodeIds.has(n.id)) 
           : nodes;
@@ -44,7 +44,7 @@ export const useNodeGraphUtils = createWithEqualityFn<NodeGraphUtilsState>()(
       },
 
       getDownstreamNodes: (nodeId, includeStartNode = false, subsetNodeIds?: Set<string>) => {
-        const { nodes, edges } = store.getState().flow;
+        const { nodes, edges } = useFlowStructureStore.getState();
         const downstream = new Set<string>();
         const queue: string[] = [nodeId];
         const visited = new Set<string>();
@@ -81,7 +81,7 @@ export const useNodeGraphUtils = createWithEqualityFn<NodeGraphUtilsState>()(
       },
 
       getUpstreamNodes: (nodeId, subsetNodeIds?: Set<string>) => {
-        const { nodes, edges } = store.getState().flow;
+        const { nodes, edges } = useFlowStructureStore.getState();
         const upstream = new Set<string>();
         const queue: string[] = [nodeId];
         const visited = new Set<string>();
@@ -118,7 +118,7 @@ export const useNodeGraphUtils = createWithEqualityFn<NodeGraphUtilsState>()(
       },
 
       getNodesInGroup: (groupId) => {
-        const { nodes } = store.getState().flow;
+        const { nodes } = useFlowStructureStore.getState();
         return nodes.filter(node => node.parentNode === groupId);
       },
     })

@@ -1,16 +1,16 @@
 import { useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../store/store';
-import { GlobalViewMode, setGlobalViewMode, VIEW_MODES } from '../store/viewModeSlice';
+import { VIEW_MODES, GlobalViewMode } from '../store/viewModeSlice';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { FaUndo, FaRedo, FaCopy, FaPaste } from 'react-icons/fa';
+import { useStore as useViewModeStore, useGlobalViewMode } from '../store/viewModeStore';
 
 const FlowToolbar: React.FC = () => {
-  const dispatch = useDispatch();
-  const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
+  // Get globalViewMode and setGlobalViewMode from Zustand store
+  const globalViewMode = useGlobalViewMode();
+  const setGlobalViewMode = useViewModeStore(state => state.setGlobalViewMode);
 
   const handleViewModeChange = (mode: GlobalViewMode) => {
-    dispatch(setGlobalViewMode(mode));
+    setGlobalViewMode(mode);
   };
 
   return (

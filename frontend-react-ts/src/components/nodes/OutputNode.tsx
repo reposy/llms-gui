@@ -2,11 +2,10 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { Handle, Position } from 'reactflow';
 import { OutputNodeData, LLMResult } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore';
-import { useDispatch } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { downloadFile } from '../../utils/downloadUtils';
+import { useOutputNodeData } from '../../hooks/useOutputNodeData';
 
 interface Props {
   id: string;
@@ -16,65 +15,34 @@ interface Props {
 }
 
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
-  const dispatch = useDispatch();
   const nodeState = useNodeState(id);
   const contentRef = useRef<HTMLPreElement>(null);
   
+  const { 
+    format,
+    handleFormatChange,
+    formatResultBasedOnFormat,
+    handleContentChange
+  } = useOutputNodeData({ nodeId: id });
+
   // Function to handle the JSON/TEXT toggle effect on data.content
-  const handleFormatChange = useCallback((format: 'json' | 'text') => {
-    if (format === data.format) return;
-    dispatch(updateNodeData({
-      nodeId: id,
-      data: { 
-        ...data, 
-        format,
-        // Update data.content based on the *new* format toggle state
-        content: nodeState?.result ? formatResultBasedOnFormat(nodeState.result, format) : data.content
-      }
-    }));
-  }, [dispatch, id, data, nodeState?.result]);
-
-  // Combined function: Formats result based on the provided format toggle state
-  // This is used both for updating data.content and for rendering the display
-  const formatResultBasedOnFormat = (result: any, format: 'json' | 'text'): string => {
-    if (result === null || result === undefined) return '';
-
-    if (format === 'json') {
-      // JSON Mode: Stringify if object, otherwise convert to string
-      if (typeof result === 'object') {
-        try {
-          return JSON.stringify(result, null, 2);
-        } catch (e) {
-          console.error("Error stringifying result for JSON display:", e);
-          return String(result); // Fallback
-        }
-      }
-      // For non-objects in JSON mode, just convert to string (might be number, boolean, etc.)
-      return String(result); 
-    } else {
-      // TEXT Mode: Prioritize 'content' or 'text' properties, otherwise stringify basic object or convert primitive
-      if (typeof result === 'object') {
-        if ('content' in result && result.content !== null && result.content !== undefined) {
-          // If content itself is an object, stringify it for text view
-          return typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
-        } 
-        if ('text' in result && result.text !== null && result.text !== undefined) {
-          return String(result.text);
-        }
-        // Fallback for objects in text mode if no specific field found (simple stringify)
-        return JSON.stringify(result); 
-      }
-      // For primitives in text mode, just convert to string
-      return String(result); 
+  const handleFormatToggle = useCallback((newFormat: 'json' | 'text') => {
+    if (newFormat === format) return;
+    
+    handleFormatChange(newFormat);
+    
+    if (nodeState?.result) {
+      const newContent = formatResultBasedOnFormat(nodeState.result, newFormat);
+      handleContentChange(newContent);
     }
-  };
+  }, [format, nodeState?.result, handleFormatChange, handleContentChange, formatResultBasedOnFormat]);
 
   // Update data.content when node result or format changes
   useEffect(() => {
     let newContent: string | undefined;
 
     if (nodeState?.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
-      newContent = formatResultBasedOnFormat(nodeState.result, data.format);
+      newContent = formatResultBasedOnFormat(nodeState.result, format);
     } else if (nodeState?.status === 'running') {
       newContent = '처리 중...';
     } else if (nodeState?.status === 'error') {
@@ -85,15 +53,11 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
        newContent = '결과 없음';
     }
 
-    // Only dispatch if the content actually needs updating
+    // Only update if the content actually needs updating
     if (newContent !== undefined && newContent !== data.content) {
-      dispatch(updateNodeData({
-        nodeId: id,
-        data: { ...data, content: newContent }
-      }));
+      handleContentChange(newContent);
     }
-    // Dependencies updated
-  }, [nodeState?.status, nodeState?.result, nodeState?.error, data.format, data.content, dispatch, id]);
+  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, data.content, handleContentChange, formatResultBasedOnFormat]);
 
   // This function now determines the *displayed* content in the node using the formatter
   const renderContentForDisplay = () => {
@@ -102,7 +66,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     if (nodeState.status === 'error') return `오류: ${nodeState.error}`;
     if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       // Use the single formatter, respecting data.format for display
-      return formatResultBasedOnFormat(nodeState.result, data.format);
+      return formatResultBasedOnFormat(nodeState.result, format);
     }
     return '결과 없음';
   };
@@ -113,14 +77,14 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
       console.warn('No successful result to download.');
       return;
     }
-    const contentToDownload = formatResultBasedOnFormat(nodeState.result, data.format);
-    const fileExtension = data.format === 'json' ? 'json' : 'txt';
-    const mimeType = data.format === 'json' ? 'application/json' : 'text/plain';
+    const contentToDownload = formatResultBasedOnFormat(nodeState.result, format);
+    const fileExtension = format === 'json' ? 'json' : 'txt';
+    const mimeType = format === 'json' ? 'application/json' : 'text/plain';
     const filename = `output-${id}.${fileExtension}`;
 
     downloadFile(contentToDownload, filename, mimeType);
 
-  }, [nodeState?.status, nodeState?.result, data.format, id]);
+  }, [nodeState?.status, nodeState?.result, format, id, formatResultBasedOnFormat]);
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -175,9 +139,9 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => handleFormatChange('json')}
+                onClick={() => handleFormatToggle('json')}
                 className={`px-2 py-1 text-xs rounded transition-colors ${
-                  data.format === 'json' 
+                  format === 'json' 
                     ? 'bg-purple-500 text-white' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
@@ -186,9 +150,9 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
                 JSON
               </button>
               <button
-                onClick={() => handleFormatChange('text')}
+                onClick={() => handleFormatToggle('text')}
                 className={`px-2 py-1 text-xs rounded transition-colors ${
-                  data.format === 'text' 
+                  format === 'text' 
                     ? 'bg-purple-500 text-white' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}

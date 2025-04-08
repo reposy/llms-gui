@@ -2,20 +2,28 @@ import React, { useMemo, useCallback } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from 'reactflow';
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
-import { useSelector } from 'react-redux';
-import { RootState } from '../../store/store';
 import { executeFlowForGroup, useNodeState } from '../../store/flowExecutionStore';
 import { getRootNodesFromSubset } from '../../utils/executionUtils';
+import { useGroupNodeData } from '../../hooks/useGroupNodeData';
+import { useNodes, useEdges } from '../../store/useFlowStructureStore';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPos, yPos, isConnectable }) => {
-  const allNodes = useSelector((state: RootState) => state.flow.nodes);
-  const allEdges = useSelector((state: RootState) => state.flow.edges);
+  const allNodes = useNodes();
+  const allEdges = useEdges();
   const nodeState = useNodeState(id); // Get execution state for the group node
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
+  
+  // Use the Zustand state hook
+  const { 
+    label, 
+    isCollapsed, 
+    toggleCollapse,
+    handleLabelChange 
+  } = useGroupNodeData({ nodeId: id });
 
   // Memoize the calculation of nodes within the group and root nodes
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
@@ -87,7 +95,7 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
             'group-node-header' // Keep this class for compatibility
           )}
         >
-          <span>{data.label || 'Group'}</span>
+          <span>{label}</span>
           {hasInternalRootNodes && (
             <button
               onClick={(e) => {
@@ -113,7 +121,8 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
             'bg-orange-50/30',
             'rounded-b-md',
             'relative',
-            'group-node-content' // Add class for potential CSS targeting
+            'group-node-content', // Add class for potential CSS targeting
+            isCollapsed && 'collapsed' // Add class for collapsed state styling
           )}
           onClick={handleSelectGroup} // Also make content area selectable
         >
