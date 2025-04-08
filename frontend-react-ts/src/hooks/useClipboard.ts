@@ -47,6 +47,9 @@ export interface UseClipboardReturnType {
   pasteVersion: number;
 }
 
+// Global ref for tracking recently pasted node IDs
+export const recentlyPastedNodeIdsRef = { current: new Set<string>() };
+
 export const useClipboard = (): UseClipboardReturnType => {
   const reactFlowInstance = useReactFlow<NodeData>();
   const { getViewport, fitView, getNodes, getEdges, setViewport, screenToFlowPosition } = reactFlowInstance;
@@ -252,7 +255,7 @@ export const useClipboard = (): UseClipboardReturnType => {
       const missingFromDOM: string[] = [];
       
       // Check each node ID to see if it's in the DOM
-      nodeIds.forEach(id => {
+      nodeIds.forEach((id: string) => {
         const nodeElement = document.querySelector(`[data-id="${id}"]`);
         if (!nodeElement) {
           missingFromDOM.push(id);
@@ -577,17 +580,13 @@ export const useClipboard = (): UseClipboardReturnType => {
     
     console.log(`[Clipboard] Applying paste with ${newNodes.length} nodes and ${newEdges.length} edges`);
     
-    // Increment paste version to force ReactFlow remount if needed
-    pasteVersionRef.current += 1;
+    // Track recently pasted node IDs
+    newNodeIds.forEach(id => recentlyPastedNodeIdsRef.current.add(id));
     
-    // Set global paste flag for StoreInitializer coordination
-    window._devFlags.hasJustPasted = true;
-    window._devFlags.lastPasteTimestamp = Date.now();
-    window._devFlags.pasteVersion = pasteVersionRef.current;
-    
-    // Clean up any pending timeouts from previous paste operations
-    activeTimeoutRefs.current.forEach(timeoutId => window.clearTimeout(timeoutId));
-    activeTimeoutRefs.current = [];
+    // Clean up recently pasted node IDs after 1000ms
+    setTimeout(() => {
+      newNodeIds.forEach(id => recentlyPastedNodeIdsRef.current.delete(id));
+    }, 1000);
     
     // Get the highest current z-index for layering
     const highestZIndex = getHighestZIndex();
@@ -615,160 +614,55 @@ export const useClipboard = (): UseClipboardReturnType => {
       console.log(`[Clipboard] Pasting ${groupNodes.length} group nodes with children:`, childrenByParentId);
     }
     
-    try {
-      // Use flushSync to batch all state updates in a synchronous operation
-      flushSync(() => {
-        // 1. FIRST: Initialize node content BEFORE updating the flow structure
-        // This ensures the nodes have their content properly set before ReactFlow renders them
-        for (const [nodeId, contentData] of Object.entries(nodeContents)) {
-          const { content, nodeType } = contentData;
-          console.log(`[Clipboard] Setting content for node ${nodeId} with type: ${nodeType}`);
-          // Pass allowFallback=true to ensure content is always created even if type lookup fails
-          setNodeContent(nodeId, content, true);
-        }
-        
-        // Ensure nodes are marked as selected AND have elevated z-index before setting them in the store
-        const selectedHighZNewNodes = newNodes.map(node => ({
-          ...node,
-          selected: true,
-          zIndex: (node.zIndex || 0) + zIndexBoost // Ensure pasted nodes appear above others
-        }));
-        
-        // 2. SECOND: Update flow structure
-        const updatedNodes = [...nodes, ...selectedHighZNewNodes];
-        const updatedEdges = [...edges, ...newEdges];
-        
-        // Before updating the store, log current node state
-        console.log(`[Clipboard] Before setNodes: Zustand has ${nodes.length} nodes, updating to ${updatedNodes.length} nodes`);
-        console.log(`[Clipboard] Before setNodes: ReactFlow has ${getNodes().length} nodes`);
-        
-        // Update the Zustand store
-        setNodes(updatedNodes);
-        setEdges(updatedEdges);
-        
-        // Immediately sync ReactFlow's internal state
-        const store = reactFlowStore.getState();
-        if (store && typeof store.setNodes === 'function') {
-          store.setNodes(updatedNodes);
-          store.setEdges(updatedEdges);
-          
-          // For group nodes, ensure we explicitly update the DOM with expanded/collapsed states
-          groupNodes.forEach(groupNode => {
-            const groupId = groupNode.id;
-            if (childrenByParentId[groupId]) {
-              // Force ReactFlow to update the parent-child relationship
-              console.log(`[Clipboard] Forcing update of group ${groupId} with ${childrenByParentId[groupId].length} children`);
-            }
-          });
-        }
-        
-        // Apply selection immediately
-        if (newNodeIds.length > 0) {
-          const firstNodeId = newNodeIds[0];
-          applyNodeSelection(newNodeIds);
-          setSelectedNodeId(firstNodeId);
-        }
-      });
-    } catch (err) {
-      console.warn('[Clipboard] flushSync failed in handlePaste, falling back to regular updates:', err);
-      
-      // Fallback to non-batched updates
-      // 1. Initialize node content
-      for (const [nodeId, contentData] of Object.entries(nodeContents)) {
-        const { content, nodeType } = contentData;
-        setNodeContent(nodeId, content, true);
-      }
-      
-      // 2. Update flow structure with elevated z-index
-      const selectedHighZNewNodes = newNodes.map(node => ({
-        ...node,
-        selected: true,
-        zIndex: (node.zIndex || 0) + zIndexBoost // Ensure pasted nodes appear above others
-      }));
-      
-      const updatedNodes = [...nodes, ...selectedHighZNewNodes];
-      const updatedEdges = [...edges, ...newEdges];
-      
-      setNodes(updatedNodes);
-      setEdges(updatedEdges);
-      
-      // Apply selection
-      if (newNodeIds.length > 0) {
-        applyNodeSelection(newNodeIds);
-        setSelectedNodeId(newNodeIds[0]);
-      }
+    // Add nodes directly to ReactFlow
+    const selectedHighZNewNodes = newNodes.map(node => ({
+      ...node,
+      selected: true,
+      zIndex: (node.zIndex || 0) + zIndexBoost // Ensure pasted nodes appear above others
+    }));
+    
+    reactFlowInstance.addNodes(selectedHighZNewNodes);
+    reactFlowInstance.addEdges(newEdges);
+    
+    // Update Zustand after rendering
+    setNodes([...nodes, ...selectedHighZNewNodes]);
+    setEdges([...edges, ...newEdges]);
+    
+    // Initialize node content
+    for (const [nodeId, contentData] of Object.entries(nodeContents)) {
+      const { content, nodeType } = contentData;
+      setNodeContent(nodeId, content, true);
     }
     
-    // Log current state post-update
-    console.log(`[Clipboard] After setNodes: Zustand has ${useFlowStructureStore.getState().nodes.length} nodes`);
-    console.log(`[Clipboard] After setNodes: ReactFlow has ${getNodes().length} nodes`);
+    // Apply selection
+    if (newNodeIds.length > 0) {
+      applyNodeSelection(newNodeIds);
+      setSelectedNodeId(newNodeIds[0]);
+    }
     
-    // Force another ReactFlow sync to ensure internal state is updated
-    forceSyncReactFlow();
-    
-    // 3. Reset execution state for pasted nodes
+    // Reset execution state for pasted nodes
     resetNodeStates(newNodeIds);
     
     // Calculate the bounding box of pasted nodes for viewport focusing
     const boundingBox = calculateNodesBoundingBox(newNodeIds);
     
-    // 4. Push snapshot to history
-    // Deep clone the contents to ensure we're capturing a true snapshot
+    // Push snapshot to history
     const allNodeContents = getAllNodeContents();
-    console.log(`[Clipboard] Pushing snapshot with ${useFlowStructureStore.getState().nodes.length} nodes, ${useFlowStructureStore.getState().edges.length} edges, and ${Object.keys(allNodeContents).length} content entries`);
-    
     pushSnapshot({
       nodes: useFlowStructureStore.getState().nodes,
       edges: useFlowStructureStore.getState().edges,
       contents: cloneDeep(allNodeContents)
     });
     
-    // 5. Clear clipboard memory after successful paste
-    // This prevents accidental re-paste on page refresh
+    // Clear clipboard memory after successful paste
     clearClipboard();
     console.log('[Clipboard] Cleared clipboard memory after successful paste');
     
-    // Immediate focus on pasted nodes without animation (to make them visible right away)
+    // Immediate focus on pasted nodes without animation
     focusViewportOnNodes(newNodeIds, false);
     
-    // Store paste operation details for deferred processing
-    if (newNodeIds.length > 0) {
-      lastPasteOpRef.current = {
-        newNodeIds,
-        firstNodeId: newNodeIds[0],
-        updatedNodes: useFlowStructureStore.getState().nodes,
-        updatedEdges: useFlowStructureStore.getState().edges,
-        boundingBox: boundingBox || undefined
-      };
-      
-      // Use requestAnimationFrame to defer UI updates until after the next render
-      requestAnimationFrame(handleDeferredPasteUIUpdates);
-      
-      // Set up multiple delayed force sync calls to ensure nodes don't disappear
-      [50, 200, 500, 1000].forEach(delay => {
-        const timeoutId = window.setTimeout(() => {
-          // Verify that nodes still exist in both Zustand and ReactFlow
-          const zustandNodes = useFlowStructureStore.getState().nodes;
-          const reactFlowNodes = getNodes();
-          
-          console.log(`[Clipboard] Verification at t+${delay}ms: Zustand: ${zustandNodes.length} nodes, ReactFlow: ${reactFlowNodes.length} nodes`);
-          
-          // If we've lost nodes in ReactFlow but they're still in Zustand, force a sync
-          if (reactFlowNodes.length < zustandNodes.length) {
-            console.warn(`[Clipboard] Detected node loss in ReactFlow at t+${delay}ms, forcing sync`);
-            forceSyncReactFlow();
-          }
-          
-          // Remove this timeout from tracking
-          activeTimeoutRefs.current = activeTimeoutRefs.current.filter(id => id !== timeoutId);
-        }, delay);
-        
-        activeTimeoutRefs.current.push(timeoutId);
-      });
-    }
-    
     console.log(`[Clipboard] Successfully pasted ${newNodes.length} nodes and ${newEdges.length} edges`);
-  }, [getViewport, nodes, edges, setNodes, setEdges, handleDeferredPasteUIUpdates, forceSyncReactFlow, getNodes, verifyReactFlowSync, reactFlowStore, getHighestZIndex, calculateNodesBoundingBox, focusViewportOnNodes, lockSelection]);
+  }, [getViewport, nodes, edges, setNodes, setEdges, reactFlowInstance, getHighestZIndex, calculateNodesBoundingBox, focusViewportOnNodes, lockSelection]);
 
   // Set up keyboard shortcuts
   useEffect(() => {
