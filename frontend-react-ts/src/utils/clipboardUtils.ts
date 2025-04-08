@@ -142,13 +142,29 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): num
     };
   });
 
-  // Copy node contents to the new nodes
-  Object.entries(clipboardData.nodeContents).forEach(([oldNodeId, content]) => {
+  // IMPORTANT: Initialize node content BEFORE updating the flow store
+  // This ensures the nodes have their content properly set before ReactFlow renders them
+  for (const [oldNodeId, content] of Object.entries(clipboardData.nodeContents)) {
     const newNodeId = oldToNewIdMap[oldNodeId];
-    if (newNodeId) {
-      setNodeContent(newNodeId, { ...content, isDirty: false });
+    if (!newNodeId) continue;
+    
+    // Find the newly created node to get its type
+    const newNode = newNodes.find(node => node.id === newNodeId);
+    if (!newNode || !newNode.data?.type) {
+      console.warn(`[Clipboard] Skipping content initialization for node ${newNodeId}: No valid type`);
+      continue;
     }
-  });
+    
+    // Explicitly include node type in content updates to avoid type resolution issues
+    const contentWithType = {
+      ...content,
+      type: newNode.data.type.toLowerCase(),
+      isDirty: false
+    };
+    
+    console.log(`[Clipboard] Initializing content for node ${newNodeId} with type: ${newNode.data.type}`);
+    setNodeContent(newNodeId, contentWithType);
+  }
 
   // Add new nodes and edges to the flow
   const updatedNodes = [...state.nodes, ...newNodes];
@@ -158,6 +174,13 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): num
   state.setNodes(updatedNodes);
   state.setEdges(updatedEdges);
   
+  // Set the first pasted node as selected (improves UX and ensures it's visible)
+  if (newNodes.length > 0) {
+    const firstNewNodeId = newNodes[0].id;
+    state.setSelectedNodeId(firstNewNodeId);
+    console.log(`[Clipboard] Set selected node to first pasted node: ${firstNewNodeId}`);
+  }
+  
   // Reset execution state for pasted nodes
   const newNodeIds = newNodes.map(node => node.id);
   resetNodeStates(newNodeIds);
@@ -166,7 +189,7 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): num
   pushSnapshot({
     nodes: updatedNodes,
     edges: updatedEdges,
-    contents: { ...state.nodeContents, ...clipboardData.nodeContents }
+    selectedNodeId: newNodes.length > 0 ? newNodes[0].id : null
   });
   
   console.log(`[Clipboard] Pasted ${newNodes.length} nodes and ${newEdges.length} edges`);

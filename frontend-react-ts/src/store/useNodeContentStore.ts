@@ -13,7 +13,8 @@ import {
   JSONExtractorNodeData,
   GroupNodeData,
   ConditionalNodeData,
-  MergerNodeData
+  MergerNodeData,
+  BaseNodeData
 } from '../types/nodes';
 import { Node as ReactFlowNode } from 'reactflow';
 import { isEqual } from 'lodash';
@@ -119,13 +120,15 @@ interface NodeContentStore {
  * Type guard to check if content is InputNodeContent
  */
 const isInputNodeContent = (content: NodeContent): content is InputNodeContent => {
-  return content && typeof content === 'object' && 'items' in content;
+  return !!content && typeof content === 'object' && 'items' in content;
 };
 
 /**
  * Sanitizes input node content if applicable
  */
 const sanitizeNodeContent = (content: NodeContent): NodeContent => {
+  if (!content) return {};
+  
   if (isInputNodeContent(content)) {
     // Log content state before sanitization
     console.log('[NodeContentStore] Pre-sanitization content:', {
@@ -159,6 +162,11 @@ const sanitizeNodeContent = (content: NodeContent): NodeContent => {
 
 // Create default content for various node types
 const createDefaultContent = (nodeType?: string): NodeContent => {
+  if (!nodeType) {
+    console.warn('[NodeContentStore] Creating default content with undefined type');
+    return { isDirty: false, label: 'Unknown Node' };
+  }
+
   const baseContent: BaseNodeContent = {
     isDirty: false,
     label: nodeType ? `${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node` : 'Node'
@@ -229,6 +237,81 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
   }
 };
 
+/**
+ * Resolves the node type from various sources without fallbacks
+ */
+const resolveNodeType = (nodeId: string, updates?: Partial<NodeContent>): string | undefined => {
+  // First try to get the type from existing nodes in the store
+  const nodes = useFlowStructureStore.getState().nodes;
+  const node = nodes.find(n => n.id === nodeId);
+  const nodeType = (node?.data as BaseNodeData)?.type?.toLowerCase();
+  
+  // If not found in store nodes, try to get from updates if provided
+  const updatesType = (updates as BaseNodeData)?.type?.toLowerCase();
+  
+  // Check if the node exists but doesn't have a type
+  const hasNodeButNoType = !!node && !nodeType;
+  
+  // Log resolution attempt with detailed diagnostics
+  console.log(`[NodeContentStore] Resolving type for ${nodeId}:`, {
+    fromNode: nodeType,
+    fromUpdates: updatesType,
+    foundNode: !!node,
+    hasNodeButNoType,
+    nodeData: node?.data ? { ...node.data } : undefined,
+    updatesKeys: updates ? Object.keys(updates) : []
+  });
+  
+  // Return the first valid type found (no fallbacks)
+  return nodeType || updatesType;
+};
+
+/**
+ * Safely initializes node content with proper type validation
+ */
+const safelyInitializeContent = (
+  nodeId: string, 
+  updates?: Partial<NodeContent>, 
+  allowFallback = false
+): NodeContent | undefined => {
+  const nodeType = resolveNodeType(nodeId, updates);
+  
+  // If no valid type was found and fallbacks aren't allowed, return undefined
+  if (!nodeType && !allowFallback) {
+    console.warn(`[NodeContentStore] Cannot initialize content for ${nodeId}: No valid type found`);
+    return undefined;
+  }
+  
+  // Only use fallback if explicitly allowed
+  const finalType = nodeType || (allowFallback ? 'input' : undefined);
+  
+  if (!finalType) {
+    return undefined;
+  }
+  
+  // Create default content with the resolved type
+  const defaultContent = createDefaultContent(finalType);
+  
+  // Mark content if it was created with a fallback type (for debugging)
+  if (!nodeType && allowFallback) {
+    console.warn(`[NodeContentStore] Using fallback type '${finalType}' for ${nodeId}`);
+    
+    // Log instead of storing in the object to avoid type issues
+    console.log(`[NodeContentStore] Content initialization metadata:`, {
+      nodeId,
+      usedFallbackType: true,
+      initializationTimestamp: Date.now()
+    });
+  } else {
+    console.log(`[NodeContentStore] Content initialization metadata:`, {
+      nodeId,
+      initializationTimestamp: Date.now()
+    });
+  }
+  
+  return defaultContent;
+};
+
 // Create the Zustand store
 export const useNodeContentStore = create<NodeContentStore>()(
   persist(
@@ -257,41 +340,44 @@ export const useNodeContentStore = create<NodeContentStore>()(
           const currentContent = state.nodeContents[nodeId];
           
           if (!currentContent) {
-            // Initialize with proper node type if content doesn't exist
-            const nodes = useFlowStructureStore.getState().nodes;
-            const node = nodes.find(n => n.id === nodeId);
-            const nodeType = node?.type?.toLowerCase() || undefined;
+            // Initialize only if we can determine a valid type
+            const initialContent = safelyInitializeContent(nodeId, updates, false);
             
-            console.log(`[NodeContentStore] Initializing new content for ${nodeId}:`, {
-              nodeType,
-              foundNode: !!node
-            });
+            // If we couldn't resolve a valid node type, exit early to prevent infinite loops
+            if (!initialContent) {
+              console.warn(`[NodeContentStore] Skipping content initialization for ${nodeId}: No valid type available`);
+              return;
+            }
             
-            state.nodeContents[nodeId] = createDefaultContent(nodeType);
+            console.log(`[NodeContentStore] Initializing new content for ${nodeId} with type: ${(initialContent as any).type || 'unknown'}`);
+            state.nodeContents[nodeId] = initialContent;
           }
 
-          // Create new content by merging current and updates
-          const newContent = {
-            ...state.nodeContents[nodeId],
-            ...updates
-          };
+          // Only proceed with updates if content exists (either pre-existing or newly initialized)
+          if (state.nodeContents[nodeId]) {
+            // Create new content by merging current and updates
+            const newContent = {
+              ...state.nodeContents[nodeId],
+              ...updates
+            };
 
-          // Always sanitize the entire content if it's an input node
-          const sanitizedContent = sanitizeNodeContent(newContent);
-          
-          // Log if content was modified by sanitization
-          if (!isEqual(sanitizedContent, newContent)) {
-            console.log(`[NodeContentStore] Content sanitized for ${nodeId}:`, {
-              before: newContent,
-              after: sanitizedContent
-            });
-          }
+            // Always sanitize the entire content if it's an input node
+            const sanitizedContent = sanitizeNodeContent(newContent);
+            
+            // Log if content was modified by sanitization
+            if (!isEqual(sanitizedContent, newContent)) {
+              console.log(`[NodeContentStore] Content sanitized for ${nodeId}:`, {
+                before: newContent,
+                after: sanitizedContent
+              });
+            }
 
-          state.nodeContents[nodeId] = sanitizedContent;
-          
-          // Mark as dirty unless explicitly set
-          if (updates.isDirty === undefined) {
-            state.nodeContents[nodeId].isDirty = true;
+            state.nodeContents[nodeId] = sanitizedContent;
+            
+            // Mark as dirty unless explicitly set
+            if (updates.isDirty === undefined) {
+              state.nodeContents[nodeId].isDirty = true;
+            }
           }
         });
       },
@@ -299,9 +385,28 @@ export const useNodeContentStore = create<NodeContentStore>()(
       // Reset a node's content to default values
       resetNodeContent: (nodeId) => {
         set((state) => {
-          // Get the node type from existing content if available
-          const nodeContent = state.nodeContents[nodeId];
-          const nodeType = nodeContent ? (nodeContent as any).type : undefined;
+          // Get the current node content
+          const currentContent = state.nodeContents[nodeId];
+          
+          // If no content exists, try to initialize with proper type
+          if (!currentContent) {
+            const initialContent = safelyInitializeContent(nodeId, undefined, false);
+            if (!initialContent) {
+              console.warn(`[NodeContentStore] Cannot reset content for ${nodeId}: No valid type available`);
+              return state;
+            }
+            state.nodeContents[nodeId] = initialContent;
+            return state;
+          }
+          
+          // If content exists, try to get type from existing content
+          const nodeType = resolveNodeType(nodeId);
+          if (!nodeType) {
+            console.warn(`[NodeContentStore] Cannot reset content for ${nodeId}: Unable to determine type`);
+            return state;
+          }
+          
+          // Reset with the resolved type
           state.nodeContents[nodeId] = createDefaultContent(nodeType);
           return state;
         });
@@ -337,9 +442,17 @@ export const useNodeContentStore = create<NodeContentStore>()(
             }
             
             const nodeData = 'data' in node ? node.data : node;
+            const nodeType = nodeData.type?.toLowerCase();
+            
+            // Skip nodes without a valid type
+            if (!nodeType) {
+              console.warn(`[NodeContentStore] Skipping node ${nodeId} with no type:`, nodeData);
+              return;
+            }
+            
             let content: NodeContent = {};
 
-            switch (nodeData.type?.toLowerCase()) {
+            switch (nodeType) {
               case 'input':
                 const inputData = nodeData as InputNodeData;
                 // Log input data before sanitization
@@ -458,6 +571,24 @@ export const useNodeContentStore = create<NodeContentStore>()(
         set(state => {
           // Sanitize all content during import
           Object.entries(contents).forEach(([nodeId, content]) => {
+            // Skip entries with no valid content
+            if (!content || typeof content !== 'object') {
+              console.warn(`[NodeContentStore] Skipping invalid content for ${nodeId}:`, content);
+              return;
+            }
+            
+            // Validate node type consistency if possible
+            const existingType = resolveNodeType(nodeId);
+            const contentType = (content as any)?.type?.toLowerCase();
+            
+            if (existingType && contentType && existingType !== contentType) {
+              console.warn(`[NodeContentStore] Type mismatch for ${nodeId}:`, {
+                existingType,
+                importedType: contentType
+              });
+            }
+            
+            // Store the sanitized content
             state.nodeContents[nodeId] = sanitizeNodeContent(content);
           });
         });
