@@ -1,6 +1,7 @@
 import { useCallback, useMemo, ChangeEvent } from 'react';
 import { FileLikeObject } from '../types/nodes';
 import { isEqual } from 'lodash';
+import { sanitizeInputItems } from '../utils/inputUtils';
 
 // Import the general NodeContentStore and the InputNodeContent type
 import { useNodeContent, InputNodeContent } from '../store/useNodeContentStore';
@@ -63,7 +64,7 @@ export const useInputNodeData = ({
     const trimmedText = textBuffer.trim();
     if (!trimmedText) return;
     
-    const updatedItems = [...items, trimmedText];
+    const updatedItems = sanitizeInputItems([...items, trimmedText]);
     setContent({ 
       items: updatedItems,
       textBuffer: '' // Clear buffer after adding
@@ -145,7 +146,8 @@ export const useInputNodeData = ({
    * Format items for display
    */
   const formattedItems = useMemo(() => {
-    return items.map((item: string | FileLikeObject) => {
+    const validItems = sanitizeInputItems(items);
+    return validItems.map((item: string | FileLikeObject) => {
       if (typeof item === 'string') {
         return item;
       } else {

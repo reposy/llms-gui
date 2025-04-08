@@ -25,6 +25,7 @@ export const useOutputNodeData = ({
   const format = content.format || 'text';
   const outputContent = content.content || '';
   const label = content.label || 'Output Node';
+  const mode = content.mode || 'batch'; // Add mode tracking
 
   /**
    * Handle format change with deep equality check
@@ -37,15 +38,23 @@ export const useOutputNodeData = ({
   /**
    * Handle content change with deep equality check
    */
-  const handleContentChange = useCallback((newContent: string) => {
+  const handleContentChange = useCallback((newContent: string, isForeachUpdate?: boolean) => {
+    // In foreach mode, always overwrite content
+    if (isForeachUpdate || mode === 'foreach') {
+      console.log(`[OutputNode ${nodeId}] Foreach mode: Overwriting content with "${newContent}"`);
+      setContent({ content: newContent });
+      return;
+    }
+
     // Skip update if content hasn't changed (deep equality)
     if (isEqual(newContent, outputContent)) {
       console.log(`[OutputNode ${nodeId}] Skipping content update - no change (deep equal)`);
       return;
     }
+
     console.log(`[OutputNode ${nodeId}] Updating content from "${outputContent}" to "${newContent}"`);
     setContent({ content: newContent });
-  }, [nodeId, outputContent, setContent]);
+  }, [nodeId, outputContent, mode, setContent]);
 
   /**
    * Formats result based on the provided format
@@ -87,6 +96,11 @@ export const useOutputNodeData = ({
    * Update multiple properties at once with deep equality check
    */
   const updateOutputContent = useCallback((updates: Partial<OutputNodeContent>) => {
+    // If mode is changing, clear existing content
+    if ('mode' in updates && updates.mode !== mode) {
+      updates.content = '';
+    }
+
     // Skip update if no actual changes using deep equality
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof OutputNodeContent];
@@ -112,7 +126,7 @@ export const useOutputNodeData = ({
     
     console.log(`[OutputNode ${nodeId}] Updating content with:`, updates);
     setContent(updates);
-  }, [nodeId, content, setContent]);
+  }, [nodeId, content, mode, setContent]);
 
   return {
     // Data

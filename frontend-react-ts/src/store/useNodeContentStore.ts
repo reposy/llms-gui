@@ -50,6 +50,7 @@ export interface APINodeContent extends BaseNodeContent {
 export interface OutputNodeContent extends BaseNodeContent {
   format?: 'json' | 'text';
   content?: string;
+  mode?: 'batch' | 'foreach';
 }
 
 // JSON Extractor node content
@@ -143,7 +144,8 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
       return {
         ...baseContent,
         format: 'text',
-        content: ''
+        content: '',
+        mode: 'batch'
       };
     
     case 'input':
@@ -377,6 +379,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   ...content,
                   format: outputData.format,
                   content: outputData.content,
+                  mode: outputData.mode,
                   label: outputData.label
                 };
                 break;

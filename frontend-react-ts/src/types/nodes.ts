@@ -68,6 +68,7 @@ export interface OutputNodeData extends BaseNodeData {
   type: 'output';
   format: 'json' | 'text';
   content?: string;
+  mode?: 'batch' | 'foreach';
   label?: string;
   viewMode?: NodeViewMode;
 }
