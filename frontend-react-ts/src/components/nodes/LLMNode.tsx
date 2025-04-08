@@ -1,16 +1,15 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
-import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
+import { VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
 import { LLMNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore';
-import { RootState } from '../../store/store';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
 import { LLMNodeCompactView } from './LLMNodeCompactView';
 import { LLMNodeExpandedView } from './LLMNodeExpandedView';
 import { LLMNodeViewController } from './LLMNodeViewController';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
+import { useStore as useViewModeStore } from '../../store/viewModeStore';
 
 interface Props {
   id: string;
@@ -20,9 +19,12 @@ interface Props {
 }
 
 const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const dispatch = useDispatch();
   const nodeState = useNodeState(id);
-  const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
+  
+  // Get view mode from Zustand store
+  const viewMode = useViewModeStore(state => 
+    state.getNodeEffectiveViewMode(id)) as NodeViewMode;
+  const setViewMode = useViewModeStore(state => state.setNodeViewMode);
   
   // Get LLM data from Zustand store
   const { isDirty } = useLlmNodeData({ nodeId: id });
@@ -42,11 +44,11 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
    */
   
   const toggleNodeView = useCallback(() => {
-    dispatch(setNodeViewMode({
+    setViewMode({
       nodeId: id,
       mode: viewMode === VIEW_MODES.COMPACT ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
-    }));
-  }, [dispatch, id, viewMode]);
+    });
+  }, [id, viewMode, setViewMode]);
 
   return (
     <NodeErrorBoundary nodeId={id}>

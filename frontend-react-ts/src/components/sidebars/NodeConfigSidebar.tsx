@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
-import { RootState } from '../../store/store';
 import { ConfigFactory } from '../config/ConfigFactory';
+import { useNodes } from '../../store/useFlowStructureStore';
 
 interface NodeConfigSidebarProps {
   selectedNodeId: string | null;
 }
 
 export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNodeId }) => {
-  const nodes = useSelector((state: RootState) => state.flow.nodes);
+  const nodes = useNodes();
   const [isOpen, setIsOpen] = useState(false);
   
-  // Get the selected node from Redux state
+  // Get the selected node from Zustand state
   const selectedNode = nodes.find(node => node.id === selectedNodeId);
   
   // Update sidebar open state based on selected node

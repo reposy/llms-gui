@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
-import { useDispatch, useSelector } from 'react-redux';
-import { updateNodeData } from '../../store/flowSlice';
-import { setNodeViewMode, getNodeEffectiveViewMode, VIEW_MODES } from '../../store/viewModeSlice';
+import { VIEW_MODES } from '../../store/viewModeSlice';
 import { APINodeData } from '../../types/nodes';
-import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
-import { RootState } from '../../store/store';
+import { useNodeState, executeFlow, useIsRootNode } from '../../store/flowExecutionStore';
 import axios from 'axios';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
@@ -13,6 +10,8 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
 import { useApiNodeData } from '../../hooks/useApiNodeData';
+import { useStore as useViewModeStore } from '../../store/viewModeStore';
+import { EditableNodeLabel } from './shared/EditableNodeLabel';
 
 interface Props {
   id: string;
@@ -33,12 +32,12 @@ interface RequestBody {
 }
 
 const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const dispatch = useDispatch();
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
-  const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id));
-  const globalViewMode = useSelector((state: RootState) => state.viewMode.globalViewMode);
+  const viewMode = useViewModeStore(state => state.getNodeEffectiveViewMode(id));
+  const globalViewMode = useViewModeStore(state => state.globalViewMode);
+  const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
   const isCompactMode = viewMode === VIEW_MODES.COMPACT;
   
   const { 
@@ -55,6 +54,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     handleUrlChange: setUrl,
     handleMethodChange: setMethod,
     handleQueryParamsChange: setQueryParams,
+    updateApiContent,
     isDirty
   } = useApiNodeData({ nodeId: id });
 
@@ -167,8 +167,11 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   }, [queryParams, updateReduxContent, saveReduxContent, setQueryParams]);
 
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    dispatch(updateNodeData({ nodeId, data: { ...data, label: newLabel } }));
-  }, [dispatch, data]);
+    updateApiContent({ label: newLabel });
+    
+    updateReduxContent({ label: newLabel });
+    saveReduxContent();
+  }, [updateApiContent, updateReduxContent, saveReduxContent]);
 
   const handleRun = useCallback(() => {
     executeFlow(id);
@@ -226,23 +229,23 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     }
   }, [executeRequest, isRootNode]);
 
-  const toggleNodeView = () => {
-    dispatch(setNodeViewMode({
+  const toggleNodeView = useCallback(() => {
+    setNodeViewMode({
       nodeId: id,
-      mode: isCompactMode ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
-    }));
-  };
+      mode: viewMode === VIEW_MODES.COMPACT ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
+    });
+  }, [id, viewMode, setNodeViewMode]);
 
   useEffect(() => {
     if (globalViewMode === 'auto') {
       const zoom = getZoom();
       const shouldBeCompact = zoom < 0.7;
-      dispatch(setNodeViewMode({ 
+      setNodeViewMode({ 
         nodeId: id, 
         mode: shouldBeCompact ? VIEW_MODES.COMPACT : VIEW_MODES.EXPANDED 
-      }));
+      });
     }
-  }, [globalViewMode, getZoom, id, dispatch]);
+  }, [globalViewMode, getZoom, id, setNodeViewMode]);
 
   const mapStatus = (status: string | undefined): 'idle' | 'running' | 'success' | 'error' => {
     if (!status) return 'idle';

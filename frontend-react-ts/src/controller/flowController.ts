@@ -15,7 +15,6 @@ export interface FlowControllerDependencies {
   setIsExecuting: (isExecuting: boolean) => void;
   setCurrentExecutionId: (executionId?: string) => void;
   setIterationContext: (context: { item?: any; index?: number; total?: number }) => void;
-  getDispatch?: () => any; // For dispatching Redux actions
 }
 
 /**

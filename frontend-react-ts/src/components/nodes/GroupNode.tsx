@@ -2,18 +2,17 @@ import React, { useMemo, useCallback } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from 'reactflow';
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
-import { useSelector } from 'react-redux';
-import { RootState } from '../../store/store';
 import { executeFlowForGroup, useNodeState } from '../../store/flowExecutionStore';
 import { getRootNodesFromSubset } from '../../utils/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
+import { useNodes, useEdges } from '../../store/useFlowStructureStore';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPos, yPos, isConnectable }) => {
-  const allNodes = useSelector((state: RootState) => state.flow.nodes);
-  const allEdges = useSelector((state: RootState) => state.flow.edges);
+  const allNodes = useNodes();
+  const allEdges = useEdges();
   const nodeState = useNodeState(id); // Get execution state for the group node
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();

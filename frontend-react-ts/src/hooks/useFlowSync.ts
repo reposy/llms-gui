@@ -14,8 +14,8 @@ interface UseFlowSyncReturn {
   setLocalEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   onLocalNodesChange: (changes: NodeChange[]) => void;
   onLocalEdgesChange: (changes: EdgeChange[]) => void;
-  forceSyncFromRedux: () => void;
-  commitStructureToRedux: () => void;
+  forceSyncFromStore: () => void;
+  commitStructureToStore: () => void;
 }
 
 /**
@@ -26,7 +26,7 @@ interface UseFlowSyncReturn {
 export const useFlowSync = ({ 
   isRestoringHistory 
 }: UseFlowSyncOptions): UseFlowSyncReturn => {
-  // Get nodes and edges from Zustand instead of Redux
+  // Get nodes and edges from Zustand
   const zustandNodes = useNodes();
   const zustandEdges = useEdges();
   
@@ -138,7 +138,7 @@ export const useFlowSync = ({
   }, [setLocalEdges]);
 
   // Function to commit local structural changes to Zustand store
-  const commitStructureToZustand = useCallback(() => {
+  const commitStructureToStore = useCallback(() => {
     // Check the flag instead of comparing potentially large arrays every time
     if (hasPendingStructuralChanges.current) {
       console.log(`[FlowSync Structure] Committing structural changes to Zustand store`);
@@ -162,7 +162,7 @@ export const useFlowSync = ({
   
   // Function to force a sync from Zustand store to local state
   // Overwrites any uncommitted local structural changes.
-  const forceSyncFromZustand = useCallback(() => {
+  const forceSyncFromStore = useCallback(() => {
     console.log("[FlowSync Structure] Force sync from Zustand store requested. Overwriting local state.");
     setLocalNodes(zustandNodes);
     setLocalEdges(zustandEdges);
@@ -227,7 +227,7 @@ export const useFlowSync = ({
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromRedux: forceSyncFromZustand,
-    commitStructureToRedux: commitStructureToZustand
+    forceSyncFromStore,
+    commitStructureToStore
   };
 }; 

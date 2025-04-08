@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { ReactFlowProvider } from 'reactflow';
-import { useDispatch } from 'react-redux';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
 import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
@@ -16,11 +15,10 @@ import { useNodes, useEdges, useSelectedNodeId, setNodes, setEdges, setSelectedN
 import StoreInitializer from './StoreInitializer';
 
 export const FlowEditor = () => {
-  // Replace Redux state with Zustand hooks
+  // Use Zustand hooks
   const nodes = useNodes();
   const edges = useEdges();
   const selectedNodeId = useSelectedNodeId();
-  const dispatch = useDispatch();
   const [isExecuting, setIsExecuting] = useState(false);
 
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
@@ -30,9 +28,6 @@ export const FlowEditor = () => {
     (nodes) => setNodes(nodes), 
     (edges) => setEdges(edges)
   );
-  
-  // 복사/붙여넣기 기능은 FlowCanvas에서 처리하므로 여기서는 제거
-  // const { handleCopy, handlePaste } = useClipboard(pushToHistory);
 
   const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;

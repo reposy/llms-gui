@@ -4,8 +4,6 @@ import { ExecutionContext, NodeState, GroupExecutionItemResult } from '../types/
 import { getRootNodesFromSubset } from '../utils/executionUtils';
 import { dispatchNodeExecution } from '../executors/executorDispatcher';
 import { FlowControllerDependencies } from './flowController'; // Import shared dependencies interface
-import { store } from '../store/store'; // Import Redux store for dispatching
-import { updateNodeData } from '../store/flowSlice'; // Import the action
 
 /**
  * Internal helper to execute a subgraph with dependency management.
@@ -342,17 +340,6 @@ export async function executeGroupNode(groupId: string, dependencies: FlowContro
       if (internalInputNode) {
           effectiveSourceNodeId = internalInputNode.id;
           console.warn(`[ExecuteGroup ${groupId}] No source node configured. Using internal Input node ${effectiveSourceNodeId} as fallback.`);
-          // ✅ Persist the fallback choice to node data
-          store.dispatch(updateNodeData({
-              nodeId: groupId,
-              data: {
-                  ...groupNode.data, // Preserve existing data
-                  iterationConfig: {
-                      ...groupNode.data.iterationConfig,
-                      sourceNodeId: effectiveSourceNodeId
-                  }
-              }
-          }));
       } else {
           const internalRoots = getRootNodesFromSubset(groupNodes, internalEdges);
           if (internalRoots.length === 0) {

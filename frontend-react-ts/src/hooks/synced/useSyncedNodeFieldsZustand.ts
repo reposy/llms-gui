@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSelector, useDispatch, useStore } from 'react-redux';
-import { RootState } from '../../store/store';
 import { isEqual } from 'lodash';
-import { updateNodeData } from '../../store/flowSlice';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 /**
- * Hook that synchronizes multiple node fields between Redux store and local state
+ * Hook that synchronizes multiple node fields between Zustand store and local state
  * Handles lazy initialization and prevents unnecessary re-renders
- * Supports two-way sync with Redux store
+ * Supports two-way sync with Zustand store
  * 
  * @template T Type map of field names to their value types
  * @param options Configuration options
@@ -30,13 +28,19 @@ export function useSyncedNodeFields<T extends Record<string, any>>(options: {
     dispatchOnChange = false 
   } = options;
   
-  const dispatch = useDispatch();
-  const store = useStore<RootState>();
+  // Get flow structure store functions
+  const { updateNode } = useFlowStructureStore(state => ({
+    updateNode: state.updateNode
+  }));
   
-  // Get node data from Redux store
-  const nodeDataFromStore = useSelector((state: RootState) => 
-    state.flow.nodes.find(n => n.id === nodeId)?.data
+  // Get current node from Zustand store
+  const node = useFlowStructureStore(
+    state => state.nodes.find(n => n.id === nodeId),
+    isEqual
   );
+  
+  // Get node data from Zustand store
+  const nodeDataFromStore = node?.data;
   
   // Track initialization status
   const isInitializedRef = useRef(false);
@@ -160,29 +164,28 @@ export function useSyncedNodeFields<T extends Record<string, any>>(options: {
     });
   }, [nodeDataFromStore, fields, nodeId, compareMap]);
   
-  // Function to manually sync multiple values to Redux store
+  // Function to manually sync multiple values to Zustand store
   const syncToStore = useCallback((updates?: Partial<T>) => {
-    // Get the latest node data from the store
-    const state = store.getState();
-    const node = state.flow.nodes.find(n => n.id === nodeId);
-    
     if (node) {
       // Values to sync (either provided updates or current values)
       const valuesToSync = updates || fieldStatesRef.current;
       
-      // Prepare the update by combining the latest store data with our updates
-      const updateData = {
-        ...node.data,
-        ...valuesToSync
-      };
-      
-      console.log(`[useSyncedNodeFields] Dispatching ${nodeId} fields to store: ${Object.keys(valuesToSync).join(', ')}`);
-      dispatch(updateNodeData({
-        nodeId,
-        data: updateData
-      }));
+      // Update node data in Zustand store
+      updateNode(nodeId, (currentNode) => {
+        // Create an update with the current field values
+        const updatedData = {
+          ...currentNode.data,
+          ...valuesToSync
+        };
+        
+        console.log(`[useSyncedNodeFields] Updating ${nodeId} fields in store: ${Object.keys(valuesToSync).join(', ')}`);
+        return {
+          ...currentNode,
+          data: updatedData
+        };
+      });
     }
-  }, [dispatch, nodeId, store]);
+  }, [node, nodeId, updateNode]);
   
   // Function to update multiple field values at once
   const setValues = useCallback((updates: Partial<T>) => {
