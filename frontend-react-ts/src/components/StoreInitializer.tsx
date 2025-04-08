@@ -7,6 +7,7 @@ import { throttle } from '../utils/throttleUtils';
 // Constants
 const BULK_OPERATION_THRESHOLD = 5; // Consider 5+ new nodes a bulk operation
 const THROTTLE_DELAY = 100; // 100ms throttle for bulk operations
+const PASTE_PROTECTION_WINDOW = 3000; // 3000ms protection window after paste (extended)
 
 /**
  * StoreInitializer component initializes Zustand stores when the app loads
@@ -22,7 +23,11 @@ const StoreInitializer: React.FC = () => {
   // Track the last node count to detect bulk operations like paste
   const lastNodeCountRef = useRef<number>(0);
   const processingBulkOperationRef = useRef<boolean>(false);
-
+  
+  // Add a recently pasted timestamp to track paste operations
+  const lastPasteOperationTimestampRef = useRef<number>(0);
+  const nodesOnLastRenderRef = useRef<string[]>([]);
+  
   // Create a throttled loadFromNodes function for bulk operations
   const throttledLoadFromNodes = useMemo(() => 
     throttle((nodesToLoad) => {
@@ -71,9 +76,89 @@ const StoreInitializer: React.FC = () => {
     console.log(`[StoreInitializer] Node ${nodeId} (${nodeType}) needs initialization`);
     return true;
   }, [getNodeContents]);
+
+  // Helper to detect if nodes were just pasted
+  const detectPasteOperation = useCallback((currentNodes: Array<{id: string, selected?: boolean}>) => {
+    // Get current node IDs
+    const currentNodeIds = currentNodes.map(node => node.id);
+    const previousNodeIds = nodesOnLastRenderRef.current;
+    
+    // Find new nodes in this render
+    const newNodeIds = currentNodeIds.filter(id => !previousNodeIds.includes(id));
+    
+    // First check global paste flag if available
+    if (window._devFlags?.hasJustPasted) {
+      console.log(`[StoreInitializer] Global paste flag is set, timestamp: ${window._devFlags.lastPasteTimestamp}`);
+      lastPasteOperationTimestampRef.current = window._devFlags.lastPasteTimestamp || Date.now();
+      
+      // Add all new nodes to our tracking sets to prevent initialization
+      newNodeIds.forEach(id => {
+        initializedNodesRef.current.add(id);
+        explicitlyInitializedNodeIds.add(id);
+      });
+      
+      // Update tracking of nodes
+      nodesOnLastRenderRef.current = currentNodeIds;
+      return true;
+    }
+    
+    // Fallback detection: If we have at least 2 new nodes that are all selected, it's likely a paste operation
+    const isPasteOperation = newNodeIds.length >= 2 && 
+      newNodeIds.every(id => {
+        const node = currentNodes.find(n => n.id === id);
+        return node?.selected === true;
+      });
+    
+    if (isPasteOperation) {
+      console.log(`[StoreInitializer] Detected paste operation with ${newNodeIds.length} new nodes`);
+      lastPasteOperationTimestampRef.current = Date.now();
+      
+      // Add all these nodes to our tracking sets to prevent initialization issues
+      newNodeIds.forEach(id => {
+        initializedNodesRef.current.add(id);
+        explicitlyInitializedNodeIds.add(id);
+      });
+    }
+    
+    // Update our tracking of nodes
+    nodesOnLastRenderRef.current = currentNodeIds;
+    
+    return isPasteOperation;
+  }, []);
   
   // Initialize the Zustand stores when the component mounts or nodes change
   useEffect(() => {
+    // Check global paste flag first (most reliable indicator)
+    if (window._devFlags?.hasJustPasted) {
+      console.log(`[StoreInitializer] Global paste flag is set, SKIPPING ALL INITIALIZATION`);
+      
+      // Track the nodes for future renders
+      const currentNodeIds = nodes.map(node => node.id);
+      nodesOnLastRenderRef.current = currentNodeIds;
+      
+      // Still detect paste for our internal tracking
+      detectPasteOperation(nodes);
+      
+      // Update node count for next render
+      lastNodeCountRef.current = nodes.length;
+      
+      return;
+    }
+    
+    // Otherwise use our normal detection
+    const isPasteOperation = detectPasteOperation(nodes);
+    
+    // If we're within the paste protection window, skip StoreInitializer work
+    const timeSinceLastPaste = Date.now() - lastPasteOperationTimestampRef.current;
+    if (timeSinceLastPaste < PASTE_PROTECTION_WINDOW) {
+      console.log(`[StoreInitializer] Skipping initialization during paste protection window (${timeSinceLastPaste}ms since paste)`);
+      
+      // Update node count for next render
+      lastNodeCountRef.current = nodes.length;
+      
+      return;
+    }
+    
     if (processingBulkOperationRef.current) {
       console.log('[StoreInitializer] Skipping while bulk operation is in progress');
       return;
@@ -96,6 +181,13 @@ const StoreInitializer: React.FC = () => {
     
     // Get existing content to check what already exists
     const existingContents = getNodeContents();
+    
+    // First, let's do a debug check to see which nodes are in the React Flow vs Zustand state
+    // Helpful for tracking desync when issues occur
+    if (newNodeCount !== 0) {
+      console.log(`[StoreInitializer] Current node IDs: [${nodes.map(n => n.id).join(', ')}]`);
+      console.log(`[StoreInitializer] Current content keys: [${Object.keys(existingContents).join(', ')}]`);
+    }
     
     // Find nodes that haven't been initialized yet and don't have existing content
     const newNodes = nodes.filter(node => {
@@ -128,7 +220,7 @@ const StoreInitializer: React.FC = () => {
       console.log(`[StoreInitializer] Loading ${newNodes.length} new nodes normally`);
       loadFromNodes(newNodes);
     }
-  }, [nodes, loadFromNodes, getNodeContents, throttledLoadFromNodes, shouldInitializeNode]);
+  }, [nodes, loadFromNodes, getNodeContents, throttledLoadFromNodes, shouldInitializeNode, detectPasteOperation]);
   
   // Log when component unmounts to track lifecycle
   useEffect(() => {

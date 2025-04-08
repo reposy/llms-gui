@@ -3,6 +3,7 @@ import { devtools, persist } from 'zustand/middleware';
 import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { isEqual } from 'lodash';
+import { useCallback } from 'react';
 
 // Define the store state structure
 export interface FlowStructureState {
@@ -10,6 +11,7 @@ export interface FlowStructureState {
   nodes: Node<NodeData>[];
   edges: Edge[];
   selectedNodeId: string | null;
+  selectionLock: SelectionLock;
 
   // Actions
   setNodes: (nodes: Node<NodeData>[]) => void;
@@ -19,77 +21,87 @@ export interface FlowStructureState {
   applyNodeSelection: (nodeIds: string[]) => void;
 }
 
+// Add selection locking mechanism to prevent immediate selection override
+interface SelectionLock {
+  locked: boolean;
+  lockExpiry: number | null;
+}
+
+// Forward declaration for circular dependency
+let setSelectedNodeIdWithLock: (nodeId: string | null) => void;
+let applyNodeSelectionWithLock: (nodeIds: string[]) => void;
+
 // Create the Zustand store
 export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
   devtools(
     persist(
-      (set, get) => ({
-        // Initial state
-        nodes: [],
-        edges: [],
-        selectedNodeId: null,
+      (set) => {
+        // Define the store actions
+        const storeActions = {
+          // Initial state
+          nodes: [],
+          edges: [],
+          selectedNodeId: null,
+          selectionLock: {
+            locked: false,
+            lockExpiry: null
+          },
 
-        // Action implementations
-        setNodes: (nodes) => set({ nodes }),
-        
-        setEdges: (edges) => set({ edges }),
-        
-        setSelectedNodeId: (id) => set({ selectedNodeId: id }),
-        
-        updateNode: (id, updater) => set((state) => {
-          const nodeIndex = state.nodes.findIndex(node => node.id === id);
-          if (nodeIndex === -1) {
-            console.warn(`[FlowStructureStore] updateNode: Node ${id} not found.`);
-            return state;
-          }
+          // Action implementations
+          setNodes: (nodes: Node<NodeData>[]) => set({ nodes }),
           
-          const updatedNode = updater(state.nodes[nodeIndex]);
-          const newNodes = [...state.nodes];
-          newNodes[nodeIndex] = updatedNode;
+          setEdges: (edges: Edge[]) => set({ edges }),
           
-          return { nodes: newNodes };
-        }),
-        
-        // New action to apply selection to specific nodes
-        applyNodeSelection: (nodeIds) => set((state) => {
-          // Create a set for O(1) lookup
-          const selectedNodeIdSet = new Set(nodeIds);
+          // Use the lock-aware functions that are defined later
+          setSelectedNodeId: (id: string | null) => {
+            if (setSelectedNodeIdWithLock) {
+              setSelectedNodeIdWithLock(id);
+            } else {
+              // Fallback if not yet defined (should not happen in practice)
+              set({ selectedNodeId: id });
+            }
+          },
           
-          // Count current selection state for logging
-          const previouslySelectedCount = state.nodes.filter(n => n.selected).length;
-          
-          // Update all nodes' selected state
-          const updatedNodes = state.nodes.map(node => {
-            // If the node ID is in the set, mark as selected, otherwise unselected
-            const isSelected = selectedNodeIdSet.has(node.id);
-            
-            // Only create a new node object if the selection state changed
-            if (node.selected !== isSelected) {
-              return {
-                ...node,
-                selected: isSelected
-              };
+          updateNode: (id: string, updater: (node: Node<NodeData>) => Node<NodeData>) => set((state) => {
+            const nodeIndex = state.nodes.findIndex(node => node.id === id);
+            if (nodeIndex === -1) {
+              console.warn(`[FlowStructureStore] updateNode: Node ${id} not found.`);
+              return state;
             }
             
-            // Return the original node if selection state didn't change
-            return node;
-          });
+            const updatedNode = updater(state.nodes[nodeIndex]);
+            const newNodes = [...state.nodes];
+            newNodes[nodeIndex] = updatedNode;
+            
+            return { nodes: newNodes };
+          }),
           
-          // Count new selection state for debugging
-          const nowSelectedCount = updatedNodes.filter(n => n.selected).length;
-          
-          console.log(`[FlowStructureStore] Applied selection to ${nodeIds.length} nodes: ${nodeIds.slice(0, 3).join(', ')}${nodeIds.length > 3 ? '...' : ''}`);
-          console.log(`[FlowStructureStore] Selection state: ${previouslySelectedCount} → ${nowSelectedCount} nodes selected`);
-          
-          return { nodes: updatedNodes };
-        }),
-      }),
+          // Delegate to the lock-aware function
+          applyNodeSelection: (nodeIds: string[]) => {
+            if (applyNodeSelectionWithLock) {
+              applyNodeSelectionWithLock(nodeIds);
+            } else {
+              // Fallback implementation
+              set((state) => {
+                const updatedNodes = state.nodes.map(node => ({
+                  ...node,
+                  selected: nodeIds.includes(node.id)
+                }));
+                return { nodes: updatedNodes };
+              });
+            }
+          },
+        };
+
+        return storeActions;
+      },
       {
         name: 'flow-structure-storage',
         partialize: (state) => ({
           nodes: state.nodes,
           edges: state.edges,
           selectedNodeId: state.selectedNodeId,
+          selectionLock: state.selectionLock,
         }),
       }
     )
@@ -106,7 +118,65 @@ export const useSelectedNodeId = () => useFlowStructureStore(state => state.sele
 export const {
   setNodes,
   setEdges,
-  setSelectedNodeId,
   updateNode,
-  applyNodeSelection,
-} = useFlowStructureStore.getState(); 
+} = useFlowStructureStore.getState();
+
+// Add selection lock functions
+export const useSelectionLock = () => {
+  const lockSelection = useCallback(() => {
+    useFlowStructureStore.setState(() => ({
+      selectionLock: {
+        locked: true,
+        lockExpiry: Date.now() + 3000 // Lock for 3 seconds by default
+      }
+    }));
+    console.log('[Selection] Locked selection state');
+  }, []);
+
+  const unlockSelection = useCallback(() => {
+    useFlowStructureStore.setState(() => ({
+      selectionLock: {
+        locked: false,
+        lockExpiry: null
+      }
+    }));
+    console.log('[Selection] Unlocked selection state');
+  }, []);
+
+  const isSelectionLocked = useCallback(() => {
+    const { locked, lockExpiry } = useFlowStructureStore.getState().selectionLock;
+    
+    // If not locked or expiry time has passed, it's not locked
+    if (!locked || !lockExpiry || Date.now() > lockExpiry) {
+      return false;
+    }
+    
+    return true;
+  }, []);
+
+  return { lockSelection, unlockSelection, isSelectionLocked };
+};
+
+// Selection functions with lock support
+export const setSelectedNodeId = setSelectedNodeIdWithLock = (nodeId: string | null) => {
+  const { locked } = useFlowStructureStore.getState().selectionLock;
+  
+  if (locked) {
+    console.log('[Selection] Ignoring selection change attempt while locked');
+    return;
+  }
+  
+  useFlowStructureStore.setState({ selectedNodeId: nodeId });
+};
+
+export const applyNodeSelection = applyNodeSelectionWithLock = (nodeIds: string[]) => {
+  // We allow this function to work even when locked since it's used as part of the paste process
+  useFlowStructureStore.setState(state => {
+    const updatedNodes = state.nodes.map(node => ({
+      ...node,
+      selected: nodeIds.includes(node.id)
+    }));
+    
+    return { nodes: updatedNodes };
+  });
+}; 

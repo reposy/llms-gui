@@ -127,7 +127,8 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   // Clipboard hook now interacts with Zustand
   const { 
     handleCopy, 
-    handlePaste 
+    handlePaste,
+    pasteVersion
   } = useClipboard();
   
   // Node handlers now operate on Zustand state
@@ -264,9 +265,26 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     [project, setLocalNodes] // Ensure dependencies are correct
   );
 
+  // Detect if we're in a paste operation using global flags
+  const isJustAfterPaste = window._devFlags?.hasJustPasted;
+
+  // Debug paste activity in ReactFlow state
+  useEffect(() => {
+    if (isJustAfterPaste) {
+      console.log(`[FlowCanvas] Detected paste operation, using pasteVersion=${pasteVersion}`);
+    }
+  }, [isJustAfterPaste, pasteVersion]);
+
   return (
-    <div ref={reactFlowWrapper} className="w-full h-full relative">
+    <div 
+      ref={reactFlowWrapper} 
+      className="w-full h-full relative"
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <ReactFlow
+        // Use pasteVersion as part of the key to force remount after paste
+        key={`flow-${pasteVersion}`}
         nodes={localNodes}
         edges={localEdges}
         onNodesChange={onLocalNodesChange}

@@ -5,6 +5,8 @@ import { getAllNodeContents, NodeContent } from '../store/useNodeContentStore';
 import { undo, redo } from '../store/useHistoryStore';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getNodeState } from '../store/useNodeStateStore';
+import { Node } from 'reactflow';
+import { NodeData } from '../types/nodes';
 
 /**
  * Tests the undo/redo functionality with clipboard operations
@@ -216,4 +218,100 @@ const inferContentType = (content: NodeContent): string => {
   if ('format' in content || 'mode' in content) return 'output';
   if ('items' in content && Array.isArray(content.items)) return 'merger';
   return 'unknown';
+};
+
+/**
+ * Verify synchronization between ReactFlow and Zustand stores
+ * This helps diagnose issues where pasted nodes disappear
+ * 
+ * @param reactFlowNodes - The nodes from ReactFlow instance (getNodes() result)
+ * @returns Object with synchronization verification results
+ */
+export const verifyStoreSync = (reactFlowNodes: any[]) => {
+  // Get nodes from Zustand
+  const zustandNodes = useFlowStructureStore.getState().nodes;
+  const nodeContents = getAllNodeContents();
+  
+  // Compare node counts
+  const rfNodeCount = reactFlowNodes.length;
+  const zustandNodeCount = zustandNodes.length;
+  const contentCount = Object.keys(nodeContents).length;
+  
+  const isSyncedWithZustand = rfNodeCount === zustandNodeCount;
+  const allNodesHaveContent = zustandNodes.every(node => !!nodeContents[node.id]);
+  
+  console.log('\n▶️ ReactFlow <-> Zustand Synchronization Report:');
+  console.log(`   ReactFlow node count: ${rfNodeCount}`);
+  console.log(`   Zustand node count: ${zustandNodeCount}`);
+  console.log(`   Node content entries: ${contentCount}`);
+  console.log(`   Status: ${isSyncedWithZustand ? '✅ SYNCED' : '❌ DESYNCED'}`);
+  
+  let missingInReactFlow: Node<NodeData>[] = [];
+  let missingInZustand: any[] = [];
+  let missingContent: Node<NodeData>[] = [];
+  
+  // Find nodes only in Zustand but not in ReactFlow
+  if (!isSyncedWithZustand) {
+    const rfNodeIds = new Set(reactFlowNodes.map(n => n.id));
+    const zustandNodeIds = new Set(zustandNodes.map(n => n.id));
+    
+    missingInReactFlow = zustandNodes.filter(n => !rfNodeIds.has(n.id));
+    missingInZustand = reactFlowNodes.filter(n => !zustandNodeIds.has(n.id));
+    
+    if (missingInReactFlow.length > 0) {
+      console.log('\n❌ Nodes missing from ReactFlow but present in Zustand:');
+      missingInReactFlow.forEach(node => {
+        console.log(`   - Node ${node.id} (${node.type || node.data?.type}): x=${node.position.x}, y=${node.position.y}`);
+      });
+    }
+    
+    if (missingInZustand.length > 0) {
+      console.log('\n⚠️ Nodes in ReactFlow but missing from Zustand:');
+      missingInZustand.forEach(node => {
+        console.log(`   - Node ${node.id} (${node.type || node.data?.type})`);
+      });
+    }
+  }
+  
+  // Check for nodes without content
+  if (!allNodesHaveContent) {
+    missingContent = zustandNodes.filter(node => !nodeContents[node.id]);
+    console.log('\n🔍 Nodes missing content:');
+    missingContent.forEach(node => {
+      console.log(`   - Node ${node.id} (${node.type || node.data?.type})`);
+    });
+  }
+  
+  // Check for parent-child relationship integrity
+  const groupNodes = zustandNodes.filter(node => node.type === 'group');
+  const childNodes = zustandNodes.filter(node => node.parentNode);
+  
+  console.log(`\n🔄 Group node relationships:`);
+  console.log(`   - Found ${groupNodes.length} group nodes`);
+  console.log(`   - Found ${childNodes.length} child nodes with parentNode set`);
+  
+  // Verify all parentNode references point to existing nodes
+  const invalidParentRefs = childNodes.filter(
+    node => !zustandNodes.some(n => n.id === node.parentNode)
+  );
+  
+  if (invalidParentRefs.length > 0) {
+    console.log('\n⚠️ Nodes with invalid parentNode references:');
+    invalidParentRefs.forEach(node => {
+      console.log(`   - Node ${node.id} references non-existent parent "${node.parentNode}"`);
+    });
+  }
+  
+  console.log('\n');
+  
+  return {
+    isSynced: isSyncedWithZustand && allNodesHaveContent,
+    rfNodeCount,
+    zustandNodeCount,
+    contentCount,
+    missingInReactFlow: missingInReactFlow.map(n => ({ id: n.id, type: n.type || n.data?.type })),
+    missingInZustand: missingInZustand.map(n => ({ id: n.id, type: n.type || n.data?.type })),
+    missingContent: missingContent.map(n => ({ id: n.id, type: n.type || n.data?.type })),
+    invalidParentRefs: invalidParentRefs.map(n => ({ id: n.id, parentRef: n.parentNode }))
+  };
 };
