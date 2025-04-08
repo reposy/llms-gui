@@ -2,11 +2,8 @@ import { useCallback, useMemo, ChangeEvent } from 'react';
 import { FileLikeObject } from '../types/nodes';
 import { isEqual } from 'lodash';
 
-// Import the Zustand store instead of Redux
-import { 
-  useInputNodeContent, 
-  setNodeContent as setStoreNodeContent 
-} from '../store/useInputNodeContentStore';
+// Import the general NodeContentStore and the InputNodeContent type
+import { useNodeContent, InputNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Custom hook to manage InputNode state and operations using Zustand store.
@@ -17,13 +14,16 @@ export const useInputNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the Zustand store instead of local state and Redux
+  // Use the general NodeContentStore instead of input-specific store
   const { 
-    content, 
+    content: generalContent, 
     setContent 
-  } = useInputNodeContent(nodeId);
+  } = useNodeContent(nodeId);
 
-  // Destructure content for easier access
+  // Cast the general content to InputNodeContent type
+  const content = generalContent as InputNodeContent;
+
+  // Destructure content for easier access (ensure we have InputNodeContent fields)
   const items = content.items || [];
   const textBuffer = content.textBuffer || '';
   const iterateEachRow = !!content.iterateEachRow;
@@ -43,7 +43,7 @@ export const useInputNodeData = ({
   /**
    * Update node content in Zustand store
    */
-  const handleConfigChange = useCallback((updates: Partial<typeof content>) => {
+  const handleConfigChange = useCallback((updates: Partial<InputNodeContent>) => {
     console.log(`[useInputNodeData] handleConfigChange for ${nodeId}:`, updates);
     setContent(updates);
   }, [nodeId, setContent]);
@@ -145,7 +145,7 @@ export const useInputNodeData = ({
    * Format items for display
    */
   const formattedItems = useMemo(() => {
-    return items.map(item => {
+    return items.map((item: string | FileLikeObject) => {
       if (typeof item === 'string') {
         return item;
       } else {

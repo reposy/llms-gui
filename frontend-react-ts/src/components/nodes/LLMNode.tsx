@@ -10,7 +10,7 @@ import clsx from 'clsx';
 import { LLMNodeCompactView } from './LLMNodeCompactView';
 import { LLMNodeExpandedView } from './LLMNodeExpandedView';
 import { LLMNodeViewController } from './LLMNodeViewController';
-import { useNodeContent } from '../../store/nodeContentStore';
+import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface Props {
   id: string;
@@ -24,8 +24,8 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const nodeState = useNodeState(id);
   const viewMode = useSelector((state: RootState) => getNodeEffectiveViewMode(state, id)) as NodeViewMode;
   
-  // Get node content from content store
-  const { content, isContentDirty } = useNodeContent(id);
+  // Get LLM data from Zustand store
+  const { isDirty } = useLlmNodeData({ nodeId: id });
   
   /**
    * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.
@@ -93,7 +93,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
               selected
                 ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
                 : 'border-blue-200 shadow-sm',
-              isContentDirty ? 'border-l-4 border-l-yellow-400' : '' // Show dirty state visual indicator
+              isDirty ? 'border-l-4 border-l-yellow-400' : '' // Show dirty state visual indicator
             )}
           >
             {viewMode === VIEW_MODES.COMPACT ? (
@@ -103,7 +103,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                 nodeState={nodeState}
                 viewMode={viewMode}
                 onToggleView={toggleNodeView}
-                nodeContent={content}
               />
             ) : (
               <LLMNodeExpandedView

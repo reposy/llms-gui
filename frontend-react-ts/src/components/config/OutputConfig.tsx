@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux';
 import { OutputNodeData } from '../../types/nodes';
 import { updateNodeData } from '../../store/flowSlice';
 import { useNodeState } from '../../store/flowExecutionStore';
+import { useOutputNodeData } from '../../hooks/useOutputNodeData';
 
 interface OutputConfigProps {
   nodeId: string;
@@ -61,17 +62,25 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
   const dispatch = useDispatch();
   const executionState = useNodeState(nodeId);
   
+  const { 
+    format, 
+    handleFormatChange, 
+    formatResultBasedOnFormat 
+  } = useOutputNodeData({ nodeId });
+  
   // Event handler to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     e.stopPropagation();
   }, []);
   
-  const handleConfigChange = useCallback((key: keyof OutputNodeData, value: any) => {
+  const handleFormatToggle = useCallback((newFormat: 'json' | 'text') => {
+    handleFormatChange(newFormat);
+    
     dispatch(updateNodeData({
       nodeId,
-      data: { ...data, [key]: value }
+      data: { ...data, format: newFormat }
     }));
-  }, [dispatch, nodeId, data]);
+  }, [dispatch, nodeId, data, handleFormatChange]);
   
   // Format the result for display
   let displayContent = 'Waiting for execution...';
@@ -81,7 +90,7 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
   } else if (executionState?.status === 'error') {
     displayContent = `Error: ${executionState.error}`;
   } else if (executionState?.result) {
-    displayContent = formatExecutionResult(executionState.result, data.format);
+    displayContent = formatResultBasedOnFormat(executionState.result, data.format);
   }
   
   return (
@@ -93,12 +102,12 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
           <FormatButton
             format="json"
             currentFormat={data.format}
-            onClick={() => handleConfigChange('format', 'json')}
+            onClick={() => handleFormatToggle('json')}
           />
           <FormatButton
             format="text"
             currentFormat={data.format}
-            onClick={() => handleConfigChange('format', 'text')}
+            onClick={() => handleFormatToggle('text')}
           />
         </div>
       </div>

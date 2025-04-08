@@ -1,8 +1,7 @@
 import React, { useCallback } from 'react';
 import { LLMNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore';
-import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
-import { NodeContent } from '../../store/nodeContentStore';
+import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface LLMConfigProps {
   nodeId: string;
@@ -19,25 +18,31 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
   const executionState = useNodeState(nodeId);
   
-  // Use the managed content hook
-  const { content, isDirty, updateContent, saveContent } = useManagedNodeContent(nodeId, data);
+  // Use the LLM data hook instead of managed content
+  const {
+    prompt,
+    model,
+    temperature,
+    provider,
+    ollamaUrl,
+    isDirty,
+    handlePromptChange,
+    handleModelChange,
+    handleTemperatureChange,
+    setProvider,
+    handleOllamaUrlChange,
+    setTemperature
+  } = useLlmNodeData({ nodeId });
   
   // Debug logs for render and content state
   console.log(`%c[LLMConfig Render] Node: ${nodeId}`, 'color: green; font-weight: bold;', { 
-    content, 
+    prompt,
+    model,
+    temperature,
+    provider,
     isDirty,
     dataFromProps: data 
   });
-
-  // Simplified handler for immediate save fields (like Provider, Temperature)
-  const handleUpdateAndSave = useCallback((key: keyof NodeContent, value: any) => {
-    console.log(`%c[LLMConfig handleUpdateAndSave] Node: ${nodeId}, Key: ${String(key)}`, 'color: green;', { 
-      currentValue: content[key], 
-      newValue: value 
-    });
-    updateContent({ [key]: value });
-    saveContent();
-  }, [updateContent, saveContent, content, nodeId]);
 
   // Event handler to stop propagation to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -52,22 +57,22 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
         <div className="flex gap-2">
           <button
             className={`flex-1 p-2 rounded-lg text-sm font-medium ${
-              content.provider === 'ollama'
+              provider === 'ollama'
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => handleUpdateAndSave('provider', 'ollama')}
+            onClick={() => setProvider('ollama')}
             onKeyDown={handleKeyDown}
           >
             Ollama
           </button>
           <button
             className={`flex-1 p-2 rounded-lg text-sm font-medium ${
-              content.provider === 'openai'
+              provider === 'openai'
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => handleUpdateAndSave('provider', 'openai')}
+            onClick={() => setProvider('openai')}
             onKeyDown={handleKeyDown}
           >
             OpenAI
@@ -81,24 +86,22 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
         <input
           type="text"
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-          value={content.model || ''}
-          onChange={(e) => updateContent({ model: e.target.value })}
-          onBlur={saveContent}
+          value={model}
+          onChange={handleModelChange}
           onKeyDown={handleKeyDown}
-          placeholder={content.provider === 'ollama' ? 'llama2' : 'gpt-3.5-turbo'}
+          placeholder={provider === 'ollama' ? 'llama2' : 'gpt-3.5-turbo'}
         />
       </div>
 
       {/* Ollama URL for Ollama provider */}
-      {content.provider === 'ollama' && (
+      {provider === 'ollama' && (
         <div>
           <ConfigLabel>Ollama URL</ConfigLabel>
           <input
             type="text"
             className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-            value={content.ollamaUrl || 'http://localhost:11434'}
-            onChange={(e) => updateContent({ ollamaUrl: e.target.value })}
-            onBlur={saveContent}
+            value={ollamaUrl}
+            onChange={handleOllamaUrlChange}
             onKeyDown={handleKeyDown}
             placeholder="http://localhost:11434"
           />
@@ -109,7 +112,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
       <div>
         <div className="flex justify-between items-center">
           <ConfigLabel>Temperature</ConfigLabel>
-          <span className="text-sm text-gray-600">{(content.temperature ?? 0).toFixed(1)}</span>
+          <span className="text-sm text-gray-600">{temperature.toFixed(1)}</span>
         </div>
         <input
           type="range"
@@ -117,8 +120,8 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
           max="1"
           step="0.1"
           className="w-full"
-          value={content.temperature ?? 0}
-          onChange={(e) => handleUpdateAndSave('temperature', parseFloat(e.target.value))}
+          value={temperature}
+          onChange={handleTemperatureChange}
           onKeyDown={handleKeyDown}
         />
       </div>
@@ -128,9 +131,8 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
         <ConfigLabel>Prompt</ConfigLabel>
         <textarea
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-mono text-sm"
-          value={content.prompt || ''}
-          onChange={(e) => updateContent({ prompt: e.target.value })}
-          onBlur={saveContent}
+          value={prompt}
+          onChange={handlePromptChange}
           onKeyDown={handleKeyDown}
           rows={8}
           placeholder="Enter your prompt here..."
