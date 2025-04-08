@@ -4,7 +4,9 @@ import {
   LLMNodeData, 
   APINodeData, 
   OutputNodeData, 
-  InputNodeData
+  InputNodeData,
+  ConditionalNodeData,
+  GroupNodeData
 } from '../../types/nodes';
 
 // Import components directly with relative path
@@ -12,6 +14,8 @@ import { LLMConfig } from './LLMConfig';
 import { APIConfig } from './APIConfig';
 import { OutputConfig } from './OutputConfig';
 import { InputNodeConfig } from './InputNodeConfig';
+import { ConditionalNodeConfig } from './ConditionalNodeConfig';
+import { GroupNodeConfig } from './GroupNodeConfig';
 
 interface ConfigFactoryProps {
   selectedNode: Node<NodeData> | null;
@@ -59,6 +63,14 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
           </div>
         );
       }
+    
+    case 'conditional':
+      console.log('[ConfigFactory] Rendering ConditionalNodeConfig');
+      return <ConditionalNodeConfig nodeId={id} data={data as ConditionalNodeData} />;
+    
+    case 'group':
+      console.log('[ConfigFactory] Rendering GroupNodeConfig');
+      return <GroupNodeConfig nodeId={id} data={data as GroupNodeData} />;
     
     default:
       console.log(`[ConfigFactory] No config for node type: ${type}`);
