@@ -2,6 +2,8 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { APINodeData } from '../../types/nodes';
 import { updateNodeData } from '../../store/flowSlice';
+// Import our new hook
+import { useApiNodeData } from '../../hooks/useApiNodeData';
 
 interface APIConfigProps {
   nodeId: string;
@@ -22,7 +24,21 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
+  // Keep Redux dispatch for compatibility
   const dispatch = useDispatch();
+  
+  // Use our new Zustand hook
+  const { 
+    url,
+    method,
+    headers,
+    handleUrlChange,
+    handleMethodChange,
+    handleHeadersChange,
+    handleHeaderChange,
+    removeHeader,
+    addHeader: addNewHeader
+  } = useApiNodeData({ nodeId });
   
   // IME composition states
   const [isUrlComposing, setIsUrlComposing] = useState(false);
@@ -31,14 +47,14 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   const [isHeaderValueComposing, setIsHeaderValueComposing] = useState(false);
   const [headerValueDrafts, setHeaderValueDrafts] = useState<Record<number, string>>({});
   
-  const [urlDraft, setUrlDraft] = useState(data.url || '');
+  const [urlDraft, setUrlDraft] = useState(url || '');
   
   // Sync drafts with node data
   useEffect(() => {
     // Initialize header drafts
     const initialHeaderKeyDrafts: Record<number, string> = {};
     const initialHeaderValueDrafts: Record<number, string> = {};
-    Object.entries(data.headers || {}).forEach(([key, value], index) => {
+    Object.entries(headers || {}).forEach(([key, value], index) => {
       initialHeaderKeyDrafts[index] = key;
       initialHeaderValueDrafts[index] = value;
     });
@@ -46,11 +62,11 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     setHeaderValueDrafts(initialHeaderValueDrafts);
 
     if (!isUrlComposing) {
-      setUrlDraft(data.url || '');
+      setUrlDraft(url || '');
     }
-  }, [data, isUrlComposing]);
+  }, [headers, url, isUrlComposing]);
 
-  // Handle config changes
+  // Handle config changes - for Redux compatibility
   const handleConfigChange = useCallback((key: keyof APINodeData, value: any) => {
     dispatch(updateNodeData({
       nodeId,
@@ -59,26 +75,36 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   }, [dispatch, nodeId, data]);
 
   // Handle URL changes
-  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUrlInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
     setUrlDraft(newUrl);
     
     if (!isUrlComposing) {
+      // Update Zustand
+      handleUrlChange(newUrl);
+      
+      // Update Redux for compatibility
       handleConfigChange('url', newUrl);
     }
-  }, [handleConfigChange, isUrlComposing]);
+  }, [handleConfigChange, isUrlComposing, handleUrlChange]);
 
   const handleUrlCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
     setIsUrlComposing(false);
     const newUrl = e.currentTarget.value;
     setUrlDraft(newUrl);
+    
+    // Update Zustand
+    handleUrlChange(newUrl);
+    
+    // Update Redux for compatibility
     handleConfigChange('url', newUrl);
-  }, [handleConfigChange]);
+  }, [handleConfigChange, handleUrlChange]);
 
   const handleUrlBlur = useCallback(() => {
-    // Always update Redux with latest URL value
+    // Always update with latest URL value
+    handleUrlChange(urlDraft);
     handleConfigChange('url', urlDraft);
-  }, [handleConfigChange, urlDraft]);
+  }, [handleConfigChange, urlDraft, handleUrlChange]);
 
   // Event handler to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -87,7 +113,11 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
 
   // Headers management
   const addHeader = useCallback(() => {
-    const currentHeaders = data.headers || {};
+    // Update Zustand
+    addNewHeader();
+    
+    // Update Redux for compatibility
+    const currentHeaders = headers || {};
     const newKey = `header${Object.keys(currentHeaders).length + 1}`;
 
     const updatedData: APINodeData = {
@@ -102,9 +132,9 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
       nodeId,
       data: updatedData
     }));
-  }, [nodeId, data, dispatch]);
+  }, [nodeId, data, dispatch, headers, addNewHeader]);
 
-  const handleHeaderChange = useCallback((index: number, field: 'key' | 'value', value: string) => {
+  const handleHeaderInputChange = useCallback((index: number, field: 'key' | 'value', value: string) => {
     if ((field === 'key' && isHeaderKeyComposing) || (field === 'value' && isHeaderValueComposing)) {
       // Update drafts during composition
       if (field === 'key') {
@@ -115,29 +145,39 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
       return;
     }
     
-    const currentHeaders = data.headers || {};
+    const currentHeaders = headers || {};
     const headerEntries = Object.entries(currentHeaders);
     
     // Update or add the header
-    const updatedHeaders = { ...currentHeaders };
     if (field === 'key') {
       const oldKey = headerEntries[index]?.[0];
       const oldValue = headerEntries[index]?.[1];
+      
+      // Update Zustand
+      handleHeaderChange(value, oldValue, oldKey);
+      
+      // Update Redux for compatibility
+      const updatedHeaders = { ...currentHeaders };
       if (oldKey) {
         delete updatedHeaders[oldKey];
       }
       if (value) {
         updatedHeaders[value] = oldValue || '';
       }
+      handleConfigChange('headers', updatedHeaders);
     } else if (field === 'value') {
       const key = headerEntries[index]?.[0];
       if (key) {
+        // Update Zustand
+        handleHeaderChange(key, value);
+        
+        // Update Redux for compatibility
+        const updatedHeaders = { ...currentHeaders };
         updatedHeaders[key] = value;
+        handleConfigChange('headers', updatedHeaders);
       }
     }
-
-    handleConfigChange('headers', updatedHeaders);
-  }, [data, handleConfigChange, isHeaderKeyComposing, isHeaderValueComposing]);
+  }, [headers, handleConfigChange, isHeaderKeyComposing, isHeaderValueComposing, handleHeaderChange]);
 
   const handleHeaderBlur = useCallback((index: number, field: 'key' | 'value') => {
     const isDrafting = field === 'key' ? isHeaderKeyComposing : isHeaderValueComposing;
@@ -149,27 +189,34 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
         : headerValueDrafts[index];
       
       if (draftValue !== undefined) {
-        handleHeaderChange(index, field, draftValue);
+        handleHeaderInputChange(index, field, draftValue);
       }
     }
-  }, [handleHeaderChange, isHeaderKeyComposing, isHeaderValueComposing, headerKeyDrafts, headerValueDrafts]);
+  }, [handleHeaderInputChange, isHeaderKeyComposing, isHeaderValueComposing, headerKeyDrafts, headerValueDrafts]);
 
-  const removeHeader = useCallback((index: number) => {
-    const currentHeaders = data.headers || {};
+  const removeHeaderHandler = useCallback((index: number) => {
+    const currentHeaders = headers || {};
     const headerEntries = Object.entries(currentHeaders);
     const keyToRemove = headerEntries[index]?.[0];
     
     if (keyToRemove) {
+      // Update Zustand
+      removeHeader(keyToRemove);
+      
+      // Update Redux for compatibility
       const updatedHeaders = { ...currentHeaders };
       delete updatedHeaders[keyToRemove];
-
       handleConfigChange('headers', updatedHeaders);
     }
-  }, [data, handleConfigChange]);
+  }, [headers, handleConfigChange, removeHeader]);
 
   // Add bearer token shortcut
   const addBearerToken = useCallback(() => {
-    const currentHeaders = data.headers || {};
+    // Update Zustand
+    handleHeaderChange('Authorization', 'Bearer ');
+    
+    // Update Redux for compatibility
+    const currentHeaders = headers || {};
     
     dispatch(updateNodeData({
       nodeId,
@@ -181,7 +228,17 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
         }
       }
     }));
-  }, [nodeId, data, dispatch]);
+  }, [nodeId, data, dispatch, headers, handleHeaderChange]);
+  
+  const handleMethodSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newMethod = e.target.value as APINodeData['method'];
+    
+    // Update Zustand
+    handleMethodChange(newMethod);
+    
+    // Update Redux for compatibility
+    handleConfigChange('method', newMethod);
+  }, [handleConfigChange, handleMethodChange]);
   
   return (
     <div className="space-y-4">
@@ -190,8 +247,8 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
         <ConfigLabel>Method</ConfigLabel>
         <select
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-          value={data.method}
-          onChange={(e) => handleConfigChange('method', e.target.value)}
+          value={method}
+          onChange={handleMethodSelectChange}
           onKeyDown={handleKeyDown}
         >
           <option value="GET">GET</option>
@@ -210,7 +267,7 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
           value={urlDraft}
           placeholder="Enter API URL"
-          onChange={handleUrlChange}
+          onChange={handleUrlInputChange}
           onCompositionStart={() => {
             setIsUrlComposing(true);
           }}
@@ -242,18 +299,23 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
           </div>
         </div>
         <div className="space-y-2">
-          {Object.entries(data.headers || {}).map(([key, value], index) => (
+          {Object.entries(headers || {}).map(([key, value], index) => (
             <div key={index} className="grid grid-cols-[1fr,1fr,auto] gap-2">
               <input
                 type="text"
                 className="w-full p-2 bg-white border border-gray-300 rounded"
                 value={headerKeyDrafts[index] ?? key}
-                placeholder="Key"
-                onChange={(e) => handleHeaderChange(index, 'key', e.target.value)}
+                placeholder="Header Name"
+                onChange={(e) => {
+                  if (!isHeaderKeyComposing) {
+                    handleHeaderInputChange(index, 'key', e.target.value);
+                  }
+                  setHeaderKeyDrafts(prev => ({ ...prev, [index]: e.target.value }));
+                }}
                 onCompositionStart={() => setIsHeaderKeyComposing(true)}
                 onCompositionEnd={() => {
                   setIsHeaderKeyComposing(false);
-                  handleHeaderChange(index, 'key', headerKeyDrafts[index] ?? key);
+                  handleHeaderInputChange(index, 'key', headerKeyDrafts[index] || '');
                 }}
                 onBlur={() => handleHeaderBlur(index, 'key')}
                 onKeyDown={handleKeyDown}
@@ -263,21 +325,28 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
                 className="w-full p-2 bg-white border border-gray-300 rounded"
                 value={headerValueDrafts[index] ?? value}
                 placeholder="Value"
-                onChange={(e) => handleHeaderChange(index, 'value', e.target.value)}
+                onChange={(e) => {
+                  if (!isHeaderValueComposing) {
+                    handleHeaderInputChange(index, 'value', e.target.value);
+                  }
+                  setHeaderValueDrafts(prev => ({ ...prev, [index]: e.target.value }));
+                }}
                 onCompositionStart={() => setIsHeaderValueComposing(true)}
                 onCompositionEnd={() => {
                   setIsHeaderValueComposing(false);
-                  handleHeaderChange(index, 'value', headerValueDrafts[index] ?? value);
+                  handleHeaderInputChange(index, 'value', headerValueDrafts[index] || '');
                 }}
                 onBlur={() => handleHeaderBlur(index, 'value')}
                 onKeyDown={handleKeyDown}
               />
               <button
-                className="p-2 text-red-500 hover:text-red-700"
-                onClick={() => removeHeader(index)}
+                className="p-2 text-gray-600 hover:text-red-500"
+                onClick={() => removeHeaderHandler(index)}
                 onKeyDown={handleKeyDown}
               >
-                ×
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
           ))}
