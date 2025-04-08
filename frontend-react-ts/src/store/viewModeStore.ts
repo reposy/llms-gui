@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import { VIEW_MODES, NodeViewMode, GlobalViewMode } from './viewModeSlice';
+
+// Define the view mode types directly in this file (moved from viewModeSlice.ts)
+export type NodeViewMode = 'expanded' | 'compact' | 'auto';
+export type GlobalViewMode = 'expanded' | 'compact' | 'auto';
+
+// Define VIEW_MODES constants
+export const VIEW_MODES = {
+  EXPANDED: 'expanded' as GlobalViewMode,
+  COMPACT: 'compact' as GlobalViewMode,
+  AUTO: 'auto' as GlobalViewMode,
+};
 
 // Define the state structure for the view mode store
 interface ViewModeState {
@@ -14,7 +24,7 @@ interface ViewModeState {
   resetNodeViewMode: (nodeId: string) => void;
   
   // Selectors
-  getNodeEffectiveViewMode: (nodeId: string) => 'compact' | 'expanded';
+  getNodeEffectiveViewMode: (nodeId: string) => NodeViewMode;
 }
 
 // Create the store

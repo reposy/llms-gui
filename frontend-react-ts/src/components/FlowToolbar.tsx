@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { VIEW_MODES, GlobalViewMode } from '../store/viewModeSlice';
+import { VIEW_MODES, GlobalViewMode } from '../store/viewModeStore';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { FaUndo, FaRedo, FaCopy, FaPaste } from 'react-icons/fa';
 import { useStore as useViewModeStore, useGlobalViewMode } from '../store/viewModeStore';

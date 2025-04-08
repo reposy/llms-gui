@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { NodeViewMode, VIEW_MODES } from '../../store/viewModeSlice';
+import { NodeViewMode, VIEW_MODES } from '../../store/viewModeStore';
 import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
 import { NodeHeader } from './shared/NodeHeader';
 import { LLMNodeData } from '../../types/nodes';

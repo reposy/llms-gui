@@ -1,5 +1,5 @@
 import { Node, Edge } from 'reactflow';
-import { NodeViewMode } from '../store/viewModeSlice';
+import { NodeViewMode } from '../store/viewModeStore';
 
 export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger';
 export type OutputFormat = 'json' | 'text';

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useReactFlow } from 'reactflow';
-import { VIEW_MODES, GlobalViewMode } from '../../store/viewModeSlice';
+import { VIEW_MODES, GlobalViewMode } from '../../store/viewModeStore';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 
 interface LLMNodeViewControllerProps {
