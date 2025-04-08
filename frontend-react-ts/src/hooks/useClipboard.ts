@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { Node, Edge, useReactFlow, XYPosition, useStoreApi } from 'reactflow';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeData } from '../types/nodes';
-import { getNodeContent, setNodeContent, NodeContent } from '../store/nodeContentStore';
+import { getNodeContent, setNodeContent, NodeContent } from '../store/useNodeContentStore';
 import { resetNodeStates } from '../store/useNodeStateStore';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 

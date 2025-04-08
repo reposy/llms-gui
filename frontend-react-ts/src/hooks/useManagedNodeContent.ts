@@ -1,14 +1,15 @@
 import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow';
 
-import { 
-  useNodeContentStore, 
-  NodeContent, 
-  setNodeContent as setContentInStore,
-  markNodeDirty as markContentDirtyInStore,
-  isNodeDirty as isContentDirtyInStore,
-  getNodeContent as getContentFromStore
-} from '../store/nodeContentStore';
+import {
+  NodeContent,
+  useNodeContent,
+  useNodeContentStore,
+  getNodeContent,
+  setNodeContent,
+  markNodeDirty,
+  isNodeDirty
+} from '../store/useNodeContentStore';
 import { NodeData } from '../types/nodes'; // Assuming NodeData exists and is relevant
 
 interface UseManagedNodeContentResult {
@@ -46,7 +47,7 @@ export const useManagedNodeContent = (nodeId: string, initialNodeData?: NodeData
    */
   const updateContent = useCallback((updatedFields: Partial<NodeContent>) => {
     // Directly call the Zustand action to update content and handle dirtiness
-    setContentInStore(nodeId, updatedFields); 
+    setNodeContent(nodeId, updatedFields); 
     console.log(`[useManagedNodeContent ${nodeId}] Updated store content.`, updatedFields);
   }, [nodeId]);
 
@@ -55,11 +56,11 @@ export const useManagedNodeContent = (nodeId: string, initialNodeData?: NodeData
    */
   const saveContent = useCallback(() => {
     // Check dirtiness directly from the Zustand store state/selector
-    if (isContentDirtyInStore(nodeId)) { 
+    if (isNodeDirty(nodeId)) { 
       console.log(`[useManagedNodeContent ${nodeId}] Marking content as clean...`);
       
       // Mark content as clean in the Zustand store
-      markContentDirtyInStore(nodeId, false);
+      markNodeDirty(nodeId, false);
 
       console.log(`[useManagedNodeContent ${nodeId}] Content marked clean.`);
     } else {

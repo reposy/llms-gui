@@ -10,7 +10,7 @@ import { executeGroupNode } from '../controller/groupNodeController';
 // Import from our refactored modules
 import { getNodeState, setNodeState, resetNodeStates } from './useNodeStateStore';
 import { getDownstreamNodes, getNodesInGroup } from './useNodeGraphUtils';
-import { getNodeContent } from './nodeContentStore';
+import { getNodeContent } from './useNodeContentStore';
 import { useFlowStructureStore } from './useFlowStructureStore';
 
 // Define the state structure for execution controller
@@ -62,13 +62,14 @@ export const useExecutionController = create<ExecutionControllerState>()(
           return;
         }
 
-        // Get nodes and edges from Zustand stores
-        const { getState } = useFlowStructureStore;
+        // Get nodes and edges from Zustand stores directly
+        const getNodes = () => useFlowStructureStore.getState().nodes;
+        const getEdges = () => useFlowStructureStore.getState().edges;
 
         // Construct dependencies directly 
         const dependencies: FlowControllerDependencies = {
-          getNodes: () => getState().nodes,
-          getEdges: () => getState().edges,
+          getNodes,
+          getEdges,
           getNodeState,
           setNodeState,
           resetNodeStates,
@@ -125,13 +126,14 @@ export const useExecutionController = create<ExecutionControllerState>()(
         set(prev => ({ executingGroupIds: new Set(prev.executingGroupIds).add(groupId) }));
         console.log(`[ExecuteFlowForGroup Action] Added ${groupId} to executing groups. Current: ${[...get().executingGroupIds]}`);
 
-        // Get nodes and edges from Zustand stores
-        const { getState } = useFlowStructureStore;
+        // Get nodes and edges directly from Zustand store
+        const getNodes = () => useFlowStructureStore.getState().nodes;
+        const getEdges = () => useFlowStructureStore.getState().edges;
 
         // Dependencies for the group controller
         const dependencies = {
-          getNodes: () => getState().nodes,
-          getEdges: () => getState().edges,
+          getNodes,
+          getEdges,
           getNodeState,
           setNodeState,
           resetNodeStates,

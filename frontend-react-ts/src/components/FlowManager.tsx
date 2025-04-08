@@ -5,7 +5,36 @@ import { cloneDeep } from 'lodash';
 import { FlowCanvasApi } from './FlowCanvas';
 import { NodeData } from '../types/nodes';
 import { resetAllContent, getAllNodeContents, loadFromImportedContents, NodeContent } from '../store/useNodeContentStore';
-import { useNodes, useEdges, setNodes, setEdges } from '../store/useFlowStructureStore';
+import { useNodes, useEdges, setNodes, setEdges, useFlowStructureStore } from '../store/useFlowStructureStore';
+
+/**
+ * Utility function to export flow as JSON by combining node structure and content from Zustand stores
+ */
+export const exportFlowAsJson = () => {
+  // Get the nodes and edges from the Zustand store
+  const nodes = useFlowStructureStore.getState().nodes;
+  const edges = useFlowStructureStore.getState().edges;
+  
+  // Get the node contents from the Zustand store
+  const nodeContents = getAllNodeContents();
+
+  // Combine everything into a single flow object
+  const flowData = {
+    name: `Flow ${new Date().toLocaleString()}`,
+    createdAt: new Date().toISOString(),
+    nodes,
+    edges,
+    contents: nodeContents,
+    meta: {
+      llmDefaults: {
+        provider: 'ollama',
+        url: 'http://localhost:11434'
+      }
+    }
+  };
+
+  return flowData;
+};
 
 interface FlowData {
   name: string;
@@ -40,19 +69,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   };
 
   const exportFlow = () => {
-    const flowData: FlowData = {
-      name: `Flow ${new Date().toLocaleString()}`,
-      createdAt: new Date().toISOString(),
-      nodes: nodesFromState,
-      edges: edgesFromState,
-      contents: getAllNodeContents(),
-      meta: {
-        llmDefaults: {
-          provider: 'ollama',
-          url: 'http://localhost:11434'
-        }
-      }
-    };
+    // Use the utility function to get the flow data
+    const flowData = exportFlowAsJson();
 
     const blob = new Blob([JSON.stringify(flowData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

@@ -4,6 +4,7 @@ import { ExecutionContext, NodeState } from '../types/execution';
 import { executeGroupNode, GroupExecutorDependencies } from './groupExecutor';
 import { dispatchNodeExecution as originalDispatchNodeExecution } from '../executors/executorDispatcher';
 import { v4 as uuidv4 } from 'uuid';
+import { updateNode } from '../store/useFlowStructureStore';
 
 /**
  * Dependencies required by the execution dispatcher
@@ -13,7 +14,6 @@ export interface ExecutionDispatcherDependencies extends GroupExecutorDependenci
   getEdges: () => Edge[];
   getNodeState: (nodeId: string) => NodeState;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
-  getDispatch?: () => any;
 }
 
 /**
@@ -131,23 +131,18 @@ async function handleInputNodeIteration(
     }
   });
   
-  // Also update the node data to reflect the iteration status for UI
-  const dispatch = dependencies.getDispatch?.();
-  if (dispatch) {
-    dispatch({
-      type: 'flow/updateNodeData',
-      payload: {
-        nodeId: inputNodeId,
-        data: {
-          iterationStatus: {
-            currentIndex: 0,
-            totalItems: items.length,
-            completed: false
-          }
-        }
+  // Update the node data to reflect the iteration status for UI using Zustand
+  updateNode(inputNodeId, (node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      iterationStatus: {
+        currentIndex: 0,
+        totalItems: items.length,
+        completed: false
       }
-    });
-  }
+    }
+  }));
   
   // Array to store all iteration results
   const allResults: any[] = [];
@@ -165,22 +160,18 @@ async function handleInputNodeIteration(
       }
     });
     
-    // Update node data for UI
-    if (dispatch) {
-      dispatch({
-        type: 'flow/updateNodeData',
-        payload: {
-          nodeId: inputNodeId,
-          data: {
-            iterationStatus: {
-              currentIndex: index,
-              totalItems: items.length,
-              completed: false
-            }
-          }
+    // Update node data for UI using Zustand
+    updateNode(inputNodeId, (node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        iterationStatus: {
+          currentIndex: index,
+          totalItems: items.length,
+          completed: false
         }
-      });
-    }
+      }
+    }));
     
     console.log(`[InputIteration ${inputNodeId}] Processing item ${index + 1}/${items.length}:`, item);
     
@@ -243,24 +234,20 @@ async function handleInputNodeIteration(
     }
   });
   
-  // Update node data for UI
-  if (dispatch) {
-    dispatch({
-      type: 'flow/updateNodeData',
-      payload: {
-        nodeId: inputNodeId,
-        data: {
-          iterationStatus: {
-            currentIndex: items.length,
-            totalItems: items.length,
-            completed: true
-          }
-        }
+  // Update node data for UI using Zustand
+  updateNode(inputNodeId, (node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      iterationStatus: {
+        currentIndex: items.length,
+        totalItems: items.length,
+        completed: true
       }
-    });
-  }
+    }
+  }));
   
-  console.log(`[InputIteration ${inputNodeId}] Completed all iterations. Results:`, allResults);
+  console.log(`[InputIteration ${inputNodeId}] Iteration complete. Collected ${allResults.length} results.`);
   return allResults;
 }
 
