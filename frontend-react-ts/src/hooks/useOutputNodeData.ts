@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useNodeContent, OutputNodeContent } from '../store/useNodeContentStore';
+import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage Output node state and operations using Zustand store.
@@ -26,19 +27,25 @@ export const useOutputNodeData = ({
   const label = content.label || 'Output Node';
 
   /**
-   * Handle format change
+   * Handle format change with deep equality check
    */
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
-    if (newFormat === format) return;
+    if (isEqual(newFormat, format)) return;
     setContent({ format: newFormat });
   }, [format, setContent]);
 
   /**
-   * Handle content change
+   * Handle content change with deep equality check
    */
   const handleContentChange = useCallback((newContent: string) => {
+    // Skip update if content hasn't changed (deep equality)
+    if (isEqual(newContent, outputContent)) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - no change (deep equal)`);
+      return;
+    }
+    console.log(`[OutputNode ${nodeId}] Updating content from "${outputContent}" to "${newContent}"`);
     setContent({ content: newContent });
-  }, [setContent]);
+  }, [nodeId, outputContent, setContent]);
 
   /**
    * Formats result based on the provided format
@@ -77,11 +84,35 @@ export const useOutputNodeData = ({
   }, []);
 
   /**
-   * Update multiple properties at once
+   * Update multiple properties at once with deep equality check
    */
   const updateOutputContent = useCallback((updates: Partial<OutputNodeContent>) => {
+    // Skip update if no actual changes using deep equality
+    const hasChanges = Object.entries(updates).some(([key, value]) => {
+      const currentValue = content[key as keyof OutputNodeContent];
+      return !isEqual(currentValue, value);
+    });
+    
+    if (!hasChanges) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
+      return;
+    }
+    
+    // Create new content object with updates
+    const newContent = {
+      ...content,
+      ...updates
+    };
+
+    // Final deep equality check against current content
+    if (isEqual(newContent, content)) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      return;
+    }
+    
+    console.log(`[OutputNode ${nodeId}] Updating content with:`, updates);
     setContent(updates);
-  }, [setContent]);
+  }, [nodeId, content, setContent]);
 
   return {
     // Data

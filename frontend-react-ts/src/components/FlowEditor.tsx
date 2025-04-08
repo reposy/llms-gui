@@ -67,7 +67,7 @@ export const FlowEditor = () => {
       newNode.parentNode = selectedGroup.id;
       // Use relative positioning within the group
       newNode.position = {
-        x: 100 + Math.random() * 200, // Position relative to group
+        x: 100 + Math.random() * 200,
         y: 100 + Math.random() * 100
       };
       console.log(`[FlowEditor] Adding node to group ${selectedGroup.id}`);
@@ -80,13 +80,12 @@ export const FlowEditor = () => {
     const updatedNodes = [...nodes, newNode];
     setNodes(updatedNodes);
     
-    // Add node data to Zustand nodeContentStore for immediate availability
-    setNodeContent(newNode.id, newNode.data);
+    // Add node data to Zustand nodeContentStore without triggering a snapshot
+    setNodeContent(newNode.id, { ...newNode.data, isDirty: false });
     console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, newNode.data);
     
-    // Capture the new state in history
-    const contents = getAllNodeContents();
-    pushSnapshot(createSnapshotFromState(updatedNodes, edges, contents));
+    // Create a single snapshot after all state updates
+    pushCurrentSnapshot();
   }, [nodes, edges, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {

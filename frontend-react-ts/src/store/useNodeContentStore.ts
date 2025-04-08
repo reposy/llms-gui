@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { persist } from 'zustand/middleware';
 import { shallow } from 'zustand/shallow';
 import { 
   NodeData, 
@@ -15,6 +16,7 @@ import {
 } from '../types/nodes';
 import { Node as ReactFlowNode } from 'reactflow';
 import { isEqual } from 'lodash';
+import { useFlowStructureStore } from './useFlowStructureStore';
 
 // Base content type for all nodes
 export interface BaseNodeContent {
@@ -184,248 +186,313 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
 
 // Create the Zustand store
 export const useNodeContentStore = create<NodeContentStore>()(
-  immer((set, get) => ({
-    // Initial state - empty record
-    nodeContents: {},
-    
-    // Get content for a node, with default values if not found
-    getNodeContent: (nodeId) => {
-      return get().nodeContents[nodeId] || createDefaultContent();
-    },
-    
-    // Set or update content for a node
-    setNodeContent: (nodeId, updates) => {
-      set((state) => {
-        // Get current node content or initialize with default
-        const currentContent = state.nodeContents[nodeId] || createDefaultContent();
+  persist(
+    immer((set, get) => ({
+      // Initial state - empty record
+      nodeContents: {},
+      
+      // Get content for a node, with default values if not found
+      getNodeContent: (nodeId) => {
+        const state = get();
+        const existingContent = state.nodeContents[nodeId];
         
-        console.log(`[NodeContentStore] setNodeContent START - Node: ${nodeId}`, { 
-          currentContent, 
-          updates 
+        console.log(`[NodeContentStore] getNodeContent for ${nodeId}:`, {
+          hasExistingContent: !!existingContent,
+          existingContent
         });
         
-        // Ensure the node content exists
-        if (!state.nodeContents[nodeId]) {
-          state.nodeContents[nodeId] = currentContent;
+        if (existingContent) {
+          return existingContent;
         }
         
-        // Apply updates
-        Object.assign(state.nodeContents[nodeId], updates);
+        // If no content exists, create default content with proper node type
+        const nodes = useFlowStructureStore.getState().nodes;
+        const node = nodes.find(n => n.id === nodeId);
+        const nodeType = node?.type?.toLowerCase() || undefined;
         
-        // Mark as dirty unless explicitly set
-        if (updates.isDirty === undefined) {
-          state.nodeContents[nodeId].isDirty = true;
-        }
-        
-        console.log(`[NodeContentStore] setNodeContent END - Node: ${nodeId}`, { 
-          result: state.nodeContents[nodeId] 
+        console.log(`[NodeContentStore] Creating new content for ${nodeId}:`, {
+          nodeType,
+          foundNode: !!node
         });
         
-        // Trigger history snapshot on significant content changes
-        // This will be executed after the state update is applied
-        setTimeout(() => {
-          try {
-            const { pushCurrentSnapshot } = require('../utils/historyUtils');
-            pushCurrentSnapshot();
-          } catch (error) {
-            console.warn('[NodeContentStore] Failed to push snapshot:', error);
-          }
-        }, 0);
+        // Create new content with proper type
+        const newContent = createDefaultContent(nodeType);
         
-        return state;
-      });
-    },
-    
-    // Reset a node's content to default values
-    resetNodeContent: (nodeId) => {
-      set((state) => {
-        // Get the node type from existing content if available
-        const nodeContent = state.nodeContents[nodeId];
-        const nodeType = nodeContent ? (nodeContent as any).type : undefined;
-        state.nodeContents[nodeId] = createDefaultContent(nodeType);
-        return state;
-      });
-    },
-    
-    // Mark a node as dirty or clean
-    markNodeDirty: (nodeId, isDirty = true) => {
-      set((state) => {
-        if (state.nodeContents[nodeId]) {
-          state.nodeContents[nodeId].isDirty = isDirty;
-        }
-        return state;
-      });
-    },
-    
-    // Check if a node is dirty
-    isNodeDirty: (nodeId) => {
-      const content = get().nodeContents[nodeId];
-      return content ? !!content.isDirty : false;
-    },
-    
-    // Load content from nodes
-    loadFromNodes: (nodes) => {
-      set((state) => {
-        nodes.forEach(node => {
-          if (!node) return;
+        // Store the new content
+        set(state => {
+          state.nodeContents[nodeId] = newContent;
+        });
+        
+        return newContent;
+      },
+      
+      // Set or update content for a node
+      setNodeContent: (nodeId, updates) => {
+        set((state) => {
+          // Get current node content
+          const currentContent = state.nodeContents[nodeId];
           
-          // Extract node ID, type, and data, handling both ReactFlowNode and NodeData
-          const nodeId = 'id' in node ? node.id : (node as any).id;
-          if (!nodeId) return;
+          console.log(`[NodeContentStore] setNodeContent for ${nodeId}:`, {
+            hasExistingContent: !!currentContent,
+            currentContent,
+            updates
+          });
           
-          // Extract type and data based on whether it's a ReactFlow Node or NodeData
-          const nodeType = node.type;
-          const nodeData = 'data' in node ? node.data : node;
-          
-          // Create content based on node type
-          let content: NodeContent = createDefaultContent(nodeType);
-          
-          // Extract specific data based on node type
-          switch (nodeType) {
-            case 'llm':
-              const llmData = nodeData as LLMNodeData;
-              content = {
-                ...content,
-                prompt: llmData.prompt,
-                model: llmData.model,
-                temperature: llmData.temperature,
-                provider: llmData.provider,
-                ollamaUrl: llmData.ollamaUrl,
-                label: llmData.label
-              };
-              break;
-              
-            case 'api':
-              const apiData = nodeData as APINodeData;
-              content = {
-                ...content,
-                url: apiData.url,
-                method: apiData.method,
-                headers: apiData.headers,
-                queryParams: apiData.queryParams,
-                body: apiData.body,
-                useInputAsBody: apiData.useInputAsBody,
-                contentType: apiData.contentType,
-                bodyFormat: apiData.bodyFormat,
-                bodyParams: apiData.bodyParams,
-                label: apiData.label
-              };
-              break;
-              
-            case 'output':
-              const outputData = nodeData as OutputNodeData;
-              content = {
-                ...content,
-                format: outputData.format,
-                content: outputData.content,
-                label: outputData.label
-              };
-              break;
-              
-            case 'input':
-              const inputData = nodeData as InputNodeData;
-              content = {
-                ...content,
-                items: inputData.items || [],
-                textBuffer: inputData.textBuffer || '',
-                iterateEachRow: !!inputData.iterateEachRow,
-                label: inputData.label
-              };
-              break;
-              
-            case 'json-extractor':
-              const extractorData = nodeData as JSONExtractorNodeData;
-              content = {
-                ...content,
-                path: extractorData.path,
-                label: extractorData.label
-              };
-              break;
-              
-            case 'group':
-              const groupData = nodeData as GroupNodeData;
-              content = {
-                ...content,
-                isCollapsed: groupData.isCollapsed,
-                label: groupData.label
-              };
-              break;
-              
-            case 'conditional':
-              const conditionalData = nodeData as ConditionalNodeData;
-              content = {
-                ...content,
-                conditionType: conditionalData.conditionType,
-                conditionValue: conditionalData.conditionValue,
-                label: conditionalData.label
-              };
-              break;
-              
-            case 'merger':
-              const mergerData = nodeData as MergerNodeData;
-              content = {
-                ...content,
-                items: mergerData.items,
-                label: mergerData.label
-              };
-              break;
+          if (!currentContent) {
+            // Initialize with proper node type if content doesn't exist
+            const nodes = useFlowStructureStore.getState().nodes;
+            const node = nodes.find(n => n.id === nodeId);
+            const nodeType = node?.type?.toLowerCase() || undefined;
+            
+            console.log(`[NodeContentStore] Initializing new content for ${nodeId}:`, {
+              nodeType,
+              foundNode: !!node
+            });
+            
+            state.nodeContents[nodeId] = createDefaultContent(nodeType);
           }
           
-          // Set dirty flag to false for imported content
-          content.isDirty = false;
-          
-          // Store the content
-          state.nodeContents[nodeId] = content;
-        });
-        
-        return state;
-      });
-    },
-    
-    // Load content from imported flow
-    loadFromImportedContents: (contents) => {
-      set((state) => {
-        console.log('[NodeContentStore] Loading contents from imported flow', contents);
-        
-        Object.entries(contents).forEach(([nodeId, content]) => {
-          console.log(`[NodeContentStore] Loading content for node ${nodeId}:`, content);
-          
+          // Apply updates while preserving existing content
           state.nodeContents[nodeId] = {
-            ...content,
-            isDirty: false
+            ...state.nodeContents[nodeId],
+            ...updates
           };
+          
+          // Mark as dirty unless explicitly set
+          if (updates.isDirty === undefined) {
+            state.nodeContents[nodeId].isDirty = true;
+          }
+          
+          console.log(`[NodeContentStore] Content after update for ${nodeId}:`, {
+            result: state.nodeContents[nodeId]
+          });
+          
+          return state;
+        });
+      },
+      
+      // Reset a node's content to default values
+      resetNodeContent: (nodeId) => {
+        set((state) => {
+          // Get the node type from existing content if available
+          const nodeContent = state.nodeContents[nodeId];
+          const nodeType = nodeContent ? (nodeContent as any).type : undefined;
+          state.nodeContents[nodeId] = createDefaultContent(nodeType);
+          return state;
+        });
+      },
+      
+      // Mark a node as dirty or clean
+      markNodeDirty: (nodeId, isDirty = true) => {
+        set((state) => {
+          if (state.nodeContents[nodeId]) {
+            state.nodeContents[nodeId].isDirty = isDirty;
+          }
+          return state;
+        });
+      },
+      
+      // Check if a node is dirty
+      isNodeDirty: (nodeId) => {
+        const content = get().nodeContents[nodeId];
+        return content ? !!content.isDirty : false;
+      },
+      
+      // Load content from nodes - ONLY called during initialization or import
+      loadFromNodes: (nodes) => {
+        console.log('[NodeContentStore] loadFromNodes called with:', {
+          nodeCount: nodes.length,
+          nodeIds: nodes.map(n => ('id' in n ? n.id : undefined)).filter(Boolean)
         });
         
-        return state;
-      });
-    },
-    
-    // Clean up content for deleted nodes
-    cleanupDeletedNodes: (existingNodeIds) => {
-      set((state) => {
-        const existingNodeIdSet = new Set(existingNodeIds);
-        const nodeIdsToRemove = Object.keys(state.nodeContents).filter(
-          nodeId => !existingNodeIdSet.has(nodeId)
-        );
-        
-        nodeIdsToRemove.forEach(nodeId => {
-          delete state.nodeContents[nodeId];
+        set((state) => {
+          // Keep track of processed nodes to detect unwanted resets
+          const processedNodes = new Set();
+          
+          nodes.forEach(node => {
+            if (!node) return;
+            
+            // Extract node ID, type, and data, handling both ReactFlowNode and NodeData
+            const nodeId = 'id' in node ? node.id : undefined;
+            if (!nodeId) {
+              console.warn('[NodeContentStore] Node without ID encountered:', node);
+              return;
+            }
+            
+            processedNodes.add(nodeId);
+            
+            // IMPORTANT: Skip nodes that already have content to prevent unwanted resets
+            if (state.nodeContents[nodeId]) {
+              console.log(`[NodeContentStore] Node ${nodeId} already has content, preserving existing data`);
+              return;
+            }
+            
+            // Extract type and data based on whether it's a ReactFlow Node or NodeData
+            const nodeType = node.type;
+            const nodeData = 'data' in node ? node.data : node;
+            
+            console.log(`[NodeContentStore] Creating content for ${nodeId}:`, {
+              nodeType,
+              hasExistingContent: !!state.nodeContents[nodeId]
+            });
+            
+            // Create content based on node type
+            let content: NodeContent = createDefaultContent(nodeType);
+            
+            // Extract specific data based on node type
+            switch (nodeType) {
+              case 'llm':
+                const llmData = nodeData as LLMNodeData;
+                content = {
+                  ...content,
+                  prompt: llmData.prompt,
+                  model: llmData.model,
+                  temperature: llmData.temperature,
+                  provider: llmData.provider,
+                  ollamaUrl: llmData.ollamaUrl,
+                  label: llmData.label
+                };
+                break;
+                
+              case 'api':
+                const apiData = nodeData as APINodeData;
+                content = {
+                  ...content,
+                  url: apiData.url,
+                  method: apiData.method,
+                  headers: apiData.headers,
+                  queryParams: apiData.queryParams,
+                  body: apiData.body,
+                  useInputAsBody: apiData.useInputAsBody,
+                  contentType: apiData.contentType,
+                  bodyFormat: apiData.bodyFormat,
+                  bodyParams: apiData.bodyParams,
+                  label: apiData.label
+                };
+                break;
+                
+              case 'output':
+                const outputData = nodeData as OutputNodeData;
+                content = {
+                  ...content,
+                  format: outputData.format,
+                  content: outputData.content,
+                  label: outputData.label
+                };
+                break;
+                
+              case 'input':
+                const inputData = nodeData as InputNodeData;
+                content = {
+                  ...content,
+                  items: inputData.items || [],
+                  textBuffer: inputData.textBuffer || '',
+                  iterateEachRow: !!inputData.iterateEachRow,
+                  label: inputData.label
+                };
+                break;
+                
+              case 'json-extractor':
+                const extractorData = nodeData as JSONExtractorNodeData;
+                content = {
+                  ...content,
+                  path: extractorData.path,
+                  label: extractorData.label
+                };
+                break;
+                
+              case 'group':
+                const groupData = nodeData as GroupNodeData;
+                content = {
+                  ...content,
+                  isCollapsed: groupData.isCollapsed,
+                  label: groupData.label
+                };
+                break;
+                
+              case 'conditional':
+                const conditionalData = nodeData as ConditionalNodeData;
+                content = {
+                  ...content,
+                  conditionType: conditionalData.conditionType,
+                  conditionValue: conditionalData.conditionValue,
+                  label: conditionalData.label
+                };
+                break;
+                
+              case 'merger':
+                const mergerData = nodeData as MergerNodeData;
+                content = {
+                  ...content,
+                  items: mergerData.items,
+                  label: mergerData.label
+                };
+                break;
+            }
+            
+            // Set dirty flag to false for imported content
+            content.isDirty = false;
+            
+            // Store the content
+            state.nodeContents[nodeId] = content;
+          });
+          
+          return state;
         });
-        
-        return state;
-      });
-    },
-    
-    // Get all node contents
-    getAllNodeContents: () => {
-      return get().nodeContents;
-    },
-    
-    // Reset the store
-    reset: () => {
-      set({ nodeContents: {} });
+      },
+      
+      // Load content from imported flow
+      loadFromImportedContents: (contents) => {
+        set((state) => {
+          console.log('[NodeContentStore] Loading contents from imported flow', contents);
+          
+          Object.entries(contents).forEach(([nodeId, content]) => {
+            console.log(`[NodeContentStore] Loading content for node ${nodeId}:`, content);
+            
+            state.nodeContents[nodeId] = {
+              ...content,
+              isDirty: false
+            };
+          });
+          
+          return state;
+        });
+      },
+      
+      // Clean up content for deleted nodes
+      cleanupDeletedNodes: (existingNodeIds) => {
+        set((state) => {
+          const existingNodeIdSet = new Set(existingNodeIds);
+          const nodeIdsToRemove = Object.keys(state.nodeContents).filter(
+            nodeId => !existingNodeIdSet.has(nodeId)
+          );
+          
+          nodeIdsToRemove.forEach(nodeId => {
+            delete state.nodeContents[nodeId];
+          });
+          
+          return state;
+        });
+      },
+      
+      // Get all node contents
+      getAllNodeContents: () => {
+        return get().nodeContents;
+      },
+      
+      // Reset the store
+      reset: () => {
+        set({ nodeContents: {} });
+      }
+    })),
+    {
+      name: 'node-content-storage',
+      partialize: (state) => ({
+        nodeContents: state.nodeContents
+      }),
+      version: 1
     }
-  }))
+  )
 );
 
 // Create a hook to use content for a specific node
