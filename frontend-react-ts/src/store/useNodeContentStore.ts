@@ -221,6 +221,17 @@ export const useNodeContentStore = create<NodeContentStore>()(
           result: state.nodeContents[nodeId] 
         });
         
+        // Trigger history snapshot on significant content changes
+        // This will be executed after the state update is applied
+        setTimeout(() => {
+          try {
+            const { pushCurrentSnapshot } = require('../utils/historyUtils');
+            pushCurrentSnapshot();
+          } catch (error) {
+            console.warn('[NodeContentStore] Failed to push snapshot:', error);
+          }
+        }, 0);
+        
         return state;
       });
     },
@@ -229,7 +240,8 @@ export const useNodeContentStore = create<NodeContentStore>()(
     resetNodeContent: (nodeId) => {
       set((state) => {
         // Get the node type from existing content if available
-        const nodeType = state.nodeContents[nodeId]?.['type'];
+        const nodeContent = state.nodeContents[nodeId];
+        const nodeType = nodeContent ? (nodeContent as any).type : undefined;
         state.nodeContents[nodeId] = createDefaultContent(nodeType);
         return state;
       });

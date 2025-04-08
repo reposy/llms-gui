@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ReactFlowProvider } from 'reactflow';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
@@ -7,12 +7,16 @@ import { FlowManager } from './FlowManager';
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from 'reactflow';
 import { createNewNode } from '../utils/flowUtils';
-import { useHistory } from '../hooks/useHistory';
-import { setNodeContent } from '../store/useNodeContentStore';
+import { setNodeContent, getAllNodeContents } from '../store/useNodeContentStore';
 // Import from Zustand store
 import { useNodes, useEdges, useSelectedNodeId, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
 // Import StoreInitializer
 import StoreInitializer from './StoreInitializer';
+// Import history and dirty tracking
+import { pushSnapshot } from '../store/useHistoryStore';
+import { useDirtyTracker } from '../store/useDirtyTracker';
+import { pushCurrentSnapshot, createSnapshotFromState } from '../utils/historyUtils';
+import { StatusBar } from './StatusBar';
 
 export const FlowEditor = () => {
   // Use Zustand hooks
@@ -21,13 +25,22 @@ export const FlowEditor = () => {
   const selectedNodeId = useSelectedNodeId();
   const [isExecuting, setIsExecuting] = useState(false);
 
+  // Use dirty tracker
+  const { isDirty } = useDirtyTracker();
+
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   
-  // Update History hook to use Zustand setters
-  const { pushToHistory } = useHistory({ initialNodes: nodes, initialEdges: edges }, 
-    (nodes) => setNodes(nodes), 
-    (edges) => setEdges(edges)
-  );
+  // Create initial snapshot when component mounts
+  useEffect(() => {
+    if (nodes.length > 0 || edges.length > 0) {
+      // Create a snapshot for the history on initial load
+      pushCurrentSnapshot();
+      
+      if (isDirty) {
+        console.log('[FlowEditor] Flow has been modified since last save');
+      }
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;
@@ -70,7 +83,11 @@ export const FlowEditor = () => {
     // Add node data to Zustand nodeContentStore for immediate availability
     setNodeContent(newNode.id, newNode.data);
     console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, newNode.data);
-  }, [nodes, selectedNodeId]);
+    
+    // Capture the new state in history
+    const contents = getAllNodeContents();
+    pushSnapshot(createSnapshotFromState(updatedNodes, edges, contents));
+  }, [nodes, edges, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
     setSelectedNodeId(node?.id || null);
@@ -115,6 +132,7 @@ export const FlowEditor = () => {
       <div className="flex-none h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-sm z-20">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-gray-900">Flow Editor</h1>
+          {isDirty && <span className="text-sm text-yellow-600">*unsaved changes</span>}
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -202,22 +220,31 @@ export const FlowEditor = () => {
           </div>
         </div>
 
-        <div className="flex-1 relative" style={{ minWidth: 0, minHeight: 0 }}>
+        <div className="flex-1 relative">
+          <FlowManager flowApi={reactFlowApiRef} />
           <ReactFlowProvider>
-            <FlowCanvas
-              onNodeSelect={handleNodeSelect}
+            <FlowCanvas 
               registerReactFlowApi={handleRegisterApi}
+              onNodeSelect={handleNodeSelect}
             />
-            <FlowManager flowApi={reactFlowApiRef} />
           </ReactFlowProvider>
         </div>
 
-        {
-          selectedNode?.type === 'group' 
-            ? <GroupDetailSidebar selectedNodeId={selectedNodeId} />
-            : <NodeConfigSidebar selectedNodeId={selectedNodeId} />
-        }
+        {selectedNode && (
+          selectedNode.type === 'group' ? (
+            <GroupDetailSidebar 
+              selectedNodeId={selectedNode.id} 
+            />
+          ) : (
+            <NodeConfigSidebar 
+              selectedNodeId={selectedNode.id} 
+            />
+          )
+        )}
       </div>
+      
+      {/* Status bar for debug info */}
+      <StatusBar />
     </div>
   );
 }; 
