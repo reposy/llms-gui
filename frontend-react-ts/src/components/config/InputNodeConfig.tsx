@@ -26,13 +26,14 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }
     itemCounts,
     formattedItems,
     showIterateOption,
+    iterateEachRow,
     handleTextChange,
     handleAddText,
     handleFileChange,
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode
-  } = useInputNodeData({ nodeId, data });
+  } = useInputNodeData({ nodeId });
 
   // Prevent keydown events from bubbling to parent components
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -45,17 +46,19 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }
       <div>
         <ConfigLabel>Processing Mode</ConfigLabel>
         <InputModeToggle 
-          iterateEachRow={Boolean(data.iterateEachRow)}
+          iterateEachRow={iterateEachRow}
           onToggle={handleToggleProcessingMode}
           showLabel={false}
           size="md"
+          layout="column"
+          showDescription={true}
         />
       </div>
 
       {/* Item Count Summary */}
       <InputSummaryBar
         itemCounts={itemCounts}
-        iterateEachRow={Boolean(data.iterateEachRow)}
+        iterateEachRow={iterateEachRow}
       />
 
       {/* Text Input */}
@@ -89,20 +92,6 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }
             onClear={handleClearItems}
             showClear={true}
           />
-        </div>
-      )}
-
-      {/* Processing mode explanation when there are multiple items */}
-      {showIterateOption && (
-        <div className="text-sm bg-gray-50 p-3 rounded-md">
-          <p className="font-medium mb-1">
-            {data.iterateEachRow ? "Foreach Mode" : "Batch Mode"}
-          </p>
-          <p className="text-xs text-gray-600">
-            {data.iterateEachRow 
-              ? "Each item will be sent separately to downstream nodes" 
-              : "All items will be processed together as a batch"}
-          </p>
         </div>
       )}
     </div>

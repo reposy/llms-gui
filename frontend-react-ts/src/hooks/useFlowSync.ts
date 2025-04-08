@@ -1,9 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { Node, Edge, useNodesState, useEdgesState, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../store/store';
-import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
+import { useNodes, useEdges, setNodes as setZustandNodes, setEdges as setZustandEdges } from '../store/useFlowStructureStore';
 
 interface UseFlowSyncOptions {
   isRestoringHistory: React.MutableRefObject<boolean>;
@@ -22,21 +20,20 @@ interface UseFlowSyncReturn {
 
 /**
  * Hook responsible for synchronizing the *structure* (nodes, edges, positions) 
- * between React Flow's local state and the Redux store.
+ * between React Flow's local state and the Zustand store.
  * Content synchronization is handled separately (e.g., by useManagedNodeContent).
  */
 export const useFlowSync = ({ 
   isRestoringHistory 
 }: UseFlowSyncOptions): UseFlowSyncReturn => {
-  const dispatch = useDispatch();
+  // Get nodes and edges from Zustand instead of Redux
+  const zustandNodes = useNodes();
+  const zustandEdges = useEdges();
   
-  const reduxNodes = useSelector((state: RootState) => state.flow.nodes);
-  const reduxEdges = useSelector((state: RootState) => state.flow.edges);
+  const [localNodes, setLocalNodes, onLocalNodesChangeInternal] = useNodesState(zustandNodes);
+  const [localEdges, setLocalEdges, onLocalEdgesChangeInternal] = useEdgesState(zustandEdges);
   
-  const [localNodes, setLocalNodes, onLocalNodesChangeInternal] = useNodesState(reduxNodes);
-  const [localEdges, setLocalEdges, onLocalEdgesChangeInternal] = useEdgesState(reduxEdges);
-  
-  // Track if local structural changes exist that haven't been committed to Redux
+  // Track if local structural changes exist that haven't been committed to Zustand
   const hasPendingStructuralChanges = useRef(false);
   
   // Track initial load
@@ -121,18 +118,18 @@ export const useFlowSync = ({
       setLocalNodes(nodes => applyNodeChanges(changes, nodes));
     }
     
-    // For position changes, immediately sync to Redux to ensure 
+    // For position changes, immediately sync to Zustand store to ensure 
     // dragging multiple nodes works consistently
     if (hasPositionChanges) {
       // Delay this slightly to ensure the setLocalNodes has completed
       setTimeout(() => {
-        dispatch(setReduxNodes([...localNodes]));
+        setZustandNodes([...localNodes]);
       }, 0);
     }
     
     hasPendingStructuralChanges.current = true;
     console.log("[FlowSync Structure] Local nodes changed, pending commit.", changes);
-  }, [setLocalNodes, localNodes, dispatch]);
+  }, [setLocalNodes, localNodes]);
 
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
     setLocalEdges((eds) => applyEdgeChanges(changes, eds));
@@ -140,74 +137,74 @@ export const useFlowSync = ({
     console.log("[FlowSync Structure] Local edges changed, pending commit.", changes);
   }, [setLocalEdges]);
 
-  // Function to commit local structural changes to Redux
-  const commitStructureToRedux = useCallback(() => {
+  // Function to commit local structural changes to Zustand store
+  const commitStructureToZustand = useCallback(() => {
     // Check the flag instead of comparing potentially large arrays every time
     if (hasPendingStructuralChanges.current) {
-      console.log(`[FlowSync Structure] Committing structural changes to Redux`);
+      console.log(`[FlowSync Structure] Committing structural changes to Zustand store`);
       
-      // Directly dispatch local state to Redux
+      // Directly set local state to Zustand store
       // Ensure we're preserving node selection state
       const nodesWithSelection = localNodes.map(node => ({
         ...node,
         selected: node.selected || false // Ensure selection state is explicitly set
       }));
       
-      dispatch(setReduxNodes([...nodesWithSelection])); 
-      dispatch(setReduxEdges([...localEdges]));
+      setZustandNodes([...nodesWithSelection]); 
+      setZustandEdges([...localEdges]);
       
       // Reset the flag after commit
       hasPendingStructuralChanges.current = false;
     } else {
        console.log("[FlowSync Structure] No pending structural changes to commit.");
     }
-  }, [dispatch, localNodes, localEdges]);
+  }, [localNodes, localEdges]);
   
-  // Function to force a sync from Redux to local state
+  // Function to force a sync from Zustand store to local state
   // Overwrites any uncommitted local structural changes.
-  const forceSyncFromRedux = useCallback(() => {
-    console.log("[FlowSync Structure] Force sync from Redux requested. Overwriting local state.");
-    setLocalNodes(reduxNodes);
-    setLocalEdges(reduxEdges);
-    hasPendingStructuralChanges.current = false; // Local state now matches Redux
-    console.log("[FlowSync Structure] Completed force sync from Redux to local.");
-  }, [reduxNodes, reduxEdges, setLocalNodes, setLocalEdges]);
+  const forceSyncFromZustand = useCallback(() => {
+    console.log("[FlowSync Structure] Force sync from Zustand store requested. Overwriting local state.");
+    setLocalNodes(zustandNodes);
+    setLocalEdges(zustandEdges);
+    hasPendingStructuralChanges.current = false; // Local state now matches Zustand
+    console.log("[FlowSync Structure] Completed force sync from Zustand store to local.");
+  }, [zustandNodes, zustandEdges, setLocalNodes, setLocalEdges]);
   
   // Initial sync on mount
   useEffect(() => {
     if (isInitialSyncRef.current) {
-      console.log("[FlowSync Structure] Initial sync from Redux");
-      setLocalNodes(reduxNodes);
-      setLocalEdges(reduxEdges);
+      console.log("[FlowSync Structure] Initial sync from Zustand store");
+      setLocalNodes(zustandNodes);
+      setLocalEdges(zustandEdges);
       isInitialSyncRef.current = false;
       hasPendingStructuralChanges.current = false;
     }
-  }, [reduxNodes, reduxEdges, setLocalNodes, setLocalEdges]); // Dependencies ensure initial sync happens
+  }, [zustandNodes, zustandEdges, setLocalNodes, setLocalEdges]); // Dependencies ensure initial sync happens
   
-  // Handle external Redux updates (e.g., from history restore, or potentially collaboration later)
+  // Handle external Zustand store updates (e.g., from history restore, or potentially collaboration later)
   useEffect(() => {
     // Skip initial sync phase
     if (isInitialSyncRef.current) {
         return;
     }
 
-    // If restoring history, force local state to match Redux
+    // If restoring history, force local state to match Zustand store
     if (isRestoringHistory.current) {
-      console.log("[FlowSync Structure] Syncing local state from Redux due to history restoration.");
-      setLocalNodes(reduxNodes);
-      setLocalEdges(reduxEdges);
+      console.log("[FlowSync Structure] Syncing local state from Zustand store due to history restoration.");
+      setLocalNodes(zustandNodes);
+      setLocalEdges(zustandEdges);
       hasPendingStructuralChanges.current = false;
       return;
     }
 
     // Check if there's a meaningful difference before updating
-    const nodesChanged = reduxNodes.length !== localNodes.length;
-    const edgesChanged = reduxEdges.length !== localEdges.length;
+    const nodesChanged = zustandNodes.length !== localNodes.length;
+    const edgesChanged = zustandEdges.length !== localEdges.length;
 
-    // Special case: when Redux nodes and edges are empty (new flow creation)
+    // Special case: when Zustand nodes and edges are empty (new flow creation)
     // immediately sync this to local state
-    if (reduxNodes.length === 0 && reduxEdges.length === 0 && (localNodes.length > 0 || localEdges.length > 0)) {
-      console.log("[FlowSync Structure] Detected empty Redux state (new flow). Clearing local state.");
+    if (zustandNodes.length === 0 && zustandEdges.length === 0 && (localNodes.length > 0 || localEdges.length > 0)) {
+      console.log("[FlowSync Structure] Detected empty Zustand state (new flow). Clearing local state.");
       setLocalNodes([]);
       setLocalEdges([]);
       hasPendingStructuralChanges.current = false;
@@ -216,38 +213,13 @@ export const useFlowSync = ({
 
     // Only update if there's a meaningful change and we're not in the middle of editing
     if ((nodesChanged || edgesChanged) && !hasPendingStructuralChanges.current) {
-      console.log("[FlowSync Structure] Detected Redux state change, updating local state");
-      setLocalNodes(reduxNodes);
-      setLocalEdges(reduxEdges);
+      console.log("[FlowSync Structure] Detected Zustand state change, updating local state");
+      setLocalNodes(zustandNodes);
+      setLocalEdges(zustandEdges);
       hasPendingStructuralChanges.current = false;
     }
-
-    // Removed comment referencing the old isEditingNodeRef
-    // const isEditingCurrentNode = isEditingNodeRef.current === node.id;
-    // if (isEditingCurrentNode) {
-
-    // --- Handling non-history external Redux changes --- 
-    // This part becomes simpler without isEditingNodeRef.
-    // If Redux state changes externally (and not via history), 
-    // we need to decide the strategy:
-    // Option A: Always overwrite local state (like forceSync). Simple, but loses uncommitted local changes.
-    // Option B: Only update if local state hasn't diverged (more complex, needs reliable change detection).
-    // Option C: Ignore external changes unless explicitly forced (requires `forceSyncFromRedux`). Safest for local work.
-
-    // Let's implement Option C for now: Local changes take precedence unless forced.
-    // We don't automatically update from Redux here unless `isRestoringHistory` is true.
-    // The comparison checks below are illustrative if Option B was chosen.
-
-    // Example check (if implementing Option B):
-    // const nodesChanged = !areNodesStructureEqual(localNodes, reduxNodes);
-    // const edgesChanged = !areEdgesStructureEqual(localEdges, reduxEdges);
-    // if (nodesChanged || edgesChanged) {
-    //    console.log("[FlowSync Structure] External Redux change detected.");
-    //    // Decide whether to merge, overwrite, or ignore based on `hasPendingStructuralChanges`
-    // }
-
-  }, [reduxNodes, reduxEdges, isRestoringHistory, localNodes, localEdges, setLocalNodes, setLocalEdges]); // Add local state to deps if comparing
-
+  }, [zustandNodes, zustandEdges, isRestoringHistory, localNodes, localEdges, setLocalNodes, setLocalEdges]); 
+  
   return {
     localNodes,
     localEdges,
@@ -255,7 +227,7 @@ export const useFlowSync = ({
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromRedux,
-    commitStructureToRedux,
+    forceSyncFromRedux: forceSyncFromZustand,
+    commitStructureToRedux: commitStructureToZustand
   };
 }; 

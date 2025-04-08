@@ -25,6 +25,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     itemCounts,
     formattedItems,
     showIterateOption,
+    iterateEachRow,
     handleTextChange,
     handleAddText,
     handleFileChange,
@@ -32,7 +33,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     handleClearItems,
     handleToggleProcessingMode,
     handleConfigChange
-  } = useInputNodeData({ nodeId: id, data });
+  } = useInputNodeData({ nodeId: id });
 
   const handleLabelUpdate = useCallback((newLabel: string) => {
     handleConfigChange({ label: newLabel });
@@ -84,8 +85,10 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           {/* Processing Mode toggle button */}
           <div className="mb-3">
             <InputModeToggle 
-              iterateEachRow={Boolean(data.iterateEachRow)}
+              iterateEachRow={iterateEachRow}
               onToggle={handleToggleProcessingMode}
+              layout="column"
+              showDescription={true}
             />
           </div>
 
@@ -107,7 +110,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
             {/* Items Summary */}
             <InputSummaryBar
               itemCounts={itemCounts}
-              iterateEachRow={Boolean(data.iterateEachRow)}
+              iterateEachRow={iterateEachRow}
             />
             
             {/* Item List Display */}
@@ -118,20 +121,6 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
               limit={3}
               totalCount={data.items?.length || 0}
             />
-            
-            {/* Show iterateEachRow explanation only when items exist */}
-            {showIterateOption && (
-              <div className="text-xs text-gray-500 p-2 bg-gray-50 rounded-md">
-                <p className="font-medium mb-1">
-                  {data.iterateEachRow ? "Foreach Mode" : "Batch Mode"}:
-                </p>
-                <p>
-                  {data.iterateEachRow 
-                    ? "Each item will be processed separately" 
-                    : "All items will be processed together"}
-                </p>
-              </div>
-            )}
           </div>
         </NodeBody>
         <NodeFooter>
@@ -139,7 +128,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
             <div className="flex items-center justify-between w-full">
               <span className="text-xs text-gray-500">{footerSummary}</span>
               <span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-                {data.iterateEachRow ? 'Foreach mode' : 'Batch mode'}
+                {iterateEachRow ? 'Foreach mode' : 'Batch mode'}
               </span>
             </div>
           ) : (

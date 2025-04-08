@@ -1,6 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 
+// Optional backwards compatibility type
 export interface FormattedItem {
   id: string;
   index: number;
@@ -10,7 +11,8 @@ export interface FormattedItem {
 }
 
 interface InputItemListProps {
-  items: FormattedItem[];
+  // Update type to accept string[] instead of FormattedItem[]
+  items: string[];
   onDelete: (index: number) => void;
   limit?: number;
   showClear?: boolean;
@@ -37,6 +39,7 @@ export const InputItemList: React.FC<InputItemListProps> = ({
   // Limit items if specified
   const displayItems = limit ? items.slice(-limit) : items;
   const hasMore = totalCount && totalCount > displayItems.length;
+  const isFile = (item: string) => item.startsWith('📄 ');
 
   return (
     <div>
@@ -55,19 +58,19 @@ export const InputItemList: React.FC<InputItemListProps> = ({
         )}
       </div>
       <div className="space-y-1 mb-1">
-        {displayItems.map((item) => (
+        {displayItems.map((item, index) => (
           <div 
-            key={item.id} 
+            key={`item-${index}`} 
             className={clsx(
               "text-sm p-2 border border-gray-200 rounded flex items-center justify-between",
-              item.isFile ? "bg-blue-50" : "bg-gray-50"
+              isFile(item) ? "bg-blue-50" : "bg-gray-50"
             )}
           >
-            <span className="truncate block flex-grow" title={item.display}>
-              {item.isFile ? `📄 ${item.display}` : item.display}
+            <span className="truncate block flex-grow" title={item}>
+              {item}
             </span>
             <button
-              onClick={() => onDelete(item.index)}
+              onClick={() => onDelete(index)}
               className="text-red-500 hover:text-red-700 ml-2 p-1 text-xs"
               title="Remove item"
             >

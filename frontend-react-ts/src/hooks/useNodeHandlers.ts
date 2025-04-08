@@ -13,8 +13,7 @@ import {
   OnSelectionChangeParams
 } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { useDispatch } from 'react-redux';
-import { setNodes as setReduxNodes, setEdges as setReduxEdges } from '../store/flowSlice';
+import { setNodes as setZustandNodes, setEdges as setZustandEdges } from '../store/useFlowStructureStore';
 
 
 interface UseNodeHandlersOptions {
@@ -42,7 +41,6 @@ export const useNodeHandlers = (
   options: UseNodeHandlersOptions
 ): UseNodeHandlersReturn => {
   const { onNodeSelect, pushToHistory, isRestoringHistory } = options;
-  const dispatch = useDispatch();
   const { getNodes, getEdges } = useReactFlow();
   
   // Add a ref to track shift key state
@@ -123,9 +121,9 @@ export const useNodeHandlers = (
         change => change.type === 'position' && change.position
       );
       
-      // Update Redux if there was a position change
+      // Update Zustand if there was a position change
       if (hasPositionChange) {
-        dispatch(setReduxNodes(nextNodes));
+        setZustandNodes(nextNodes);
       }
       
       // Update sidebar based on selection
@@ -151,9 +149,9 @@ export const useNodeHandlers = (
         change => change.type === 'position' && change.position
       );
       
-      // Update Redux if there was a position change (to avoid unnecessary updates)
+      // Update Zustand if there was a position change (to avoid unnecessary updates)
       if (hasPositionChange) {
-        dispatch(setReduxNodes(nextNodes));
+        setZustandNodes(nextNodes);
       }
       
       // Check for selection changes to update sidebar
@@ -170,7 +168,7 @@ export const useNodeHandlers = (
         }
       }
     }
-  }, [localNodes, setLocalNodes, dispatch, onNodeSelect, isRestoringHistory]);
+  }, [localNodes, setLocalNodes, onNodeSelect, isRestoringHistory]);
 
   // Handle edges change
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -183,9 +181,9 @@ export const useNodeHandlers = (
     // Update local state
     setLocalEdges(nextEdges);
     
-    // Update Redux
-    dispatch(setReduxEdges(nextEdges));
-  }, [localEdges, setLocalEdges, dispatch, isRestoringHistory]);
+    // Update Zustand
+    setZustandEdges(nextEdges);
+  }, [localEdges, setLocalEdges, isRestoringHistory]);
 
   // Handle new connections
   const handleConnect = useCallback((connection: Connection) => {
@@ -209,12 +207,12 @@ export const useNodeHandlers = (
     // Update local state
     setLocalEdges(nextEdges);
     
-    // Update Redux
-    dispatch(setReduxEdges(nextEdges));
+    // Update Zustand
+    setZustandEdges(nextEdges);
     
     // Add to history
     pushToHistory(localNodes, nextEdges);
-  }, [localNodes, localEdges, setLocalEdges, dispatch, pushToHistory, isRestoringHistory]);
+  }, [localNodes, localEdges, setLocalEdges, pushToHistory, isRestoringHistory]);
 
   // Handle selection change for sidebar update
   const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
@@ -365,13 +363,13 @@ export const useNodeHandlers = (
       // Only update if something changed
       if (needsUpdate) {
         setLocalNodes(updatedNodes);
-        dispatch(setReduxNodes(updatedNodes));
+        setZustandNodes(updatedNodes);
       }
 
       // Always push to history to capture position changes
       pushToHistory(needsUpdate ? updatedNodes : localNodes, localEdges);
     },
-    [localNodes, setLocalNodes, localEdges, pushToHistory, isRestoringHistory, checkNodeGroupIntersection, dispatch]
+    [localNodes, setLocalNodes, localEdges, pushToHistory, isRestoringHistory, checkNodeGroupIntersection, setZustandNodes]
   );
 
   // Handle selection drag stop to update history
@@ -393,13 +391,13 @@ export const useNodeHandlers = (
       // Update local state
       setLocalEdges(nextEdges);
       
-      // Update Redux
-      dispatch(setReduxEdges(nextEdges));
+      // Update Zustand
+      setZustandEdges(nextEdges);
       
       // Push to history
       pushToHistory(localNodes, nextEdges);
     }
-  }, [localNodes, localEdges, setLocalEdges, dispatch, pushToHistory, isRestoringHistory]);
+  }, [localNodes, localEdges, setLocalEdges, pushToHistory, isRestoringHistory]);
 
   // Handle nodes delete
   const handleNodesDelete = useCallback((nodes: Node<NodeData>[]) => {
@@ -459,9 +457,9 @@ export const useNodeHandlers = (
       setLocalNodes(nextNodes);
       setLocalEdges(nextEdges);
       
-      // Update Redux
-      dispatch(setReduxNodes(nextNodes));
-      dispatch(setReduxEdges(nextEdges));
+      // Update Zustand
+      setZustandNodes(nextNodes);
+      setZustandEdges(nextEdges);
       
       // Clear selection in sidebar
       onNodeSelect(null);
@@ -469,7 +467,7 @@ export const useNodeHandlers = (
       // Push to history
       pushToHistory(nextNodes, nextEdges);
     }
-  }, [localNodes, localEdges, setLocalNodes, setLocalEdges, dispatch, onNodeSelect, pushToHistory, isRestoringHistory]);
+  }, [localNodes, localEdges, setLocalNodes, setLocalEdges, pushToHistory, isRestoringHistory]);
 
   return {
     handleNodesChange,
