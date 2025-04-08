@@ -2,112 +2,126 @@ import { Node } from 'reactflow';
 import axios from 'axios';
 import { LLMNodeData, NodeType, LLMResult } from '../types/nodes'; // Adjusted import
 import { ExecutionContext, NodeState } from '../types/execution';
-import { getNodeContent } from '../store/nodeContentStore';
+import { getNodeContent, LLMNodeContent } from '../store/useNodeContentStore';
 
 export async function executeLlmNode(params: {
-  node: Node<LLMNodeData>;
+  node: LLMNodeData;
   inputs: any[];
   context: ExecutionContext;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
-  resolveTemplate: (template: string, data: any) => string;
-}): Promise<any> {
-  const { node, inputs, context, setNodeState, resolveTemplate } = params;
-  const nodeId = node.id;
-  const nodeData = node.data;
+}): Promise<LLMResult> {
+  const { node, inputs, context, setNodeState } = params;
   const { executionId } = context;
-  
-  // Get node content from content store
-  const nodeContent = getNodeContent(nodeId) || {};
+  const nodeId = node.id;
 
-  console.log(`[ExecuteNode ${nodeId}] (LLM) Executing with context:`, context, `Inputs:`, inputs);
+  console.log(`[LLM Executor] Executing LLM node ${nodeId}...`);
+  console.log(`[LLM Executor] Inputs:`, inputs);
 
-  // --- Proceed with Execution --- 
-
-  // Use inputs[0] as the primary data input for prompt templating
-  // If called, assume it's on an active path and should use the primary input.
-  const promptInput = inputs.length > 0 ? inputs[0] : {};
-  console.log(`[ExecuteNode ${nodeId}] (LLM) Using prompt input:`, promptInput);
-  
-  // Use content from store if available, fallback to Redux data
-  const promptTemplate = nodeContent.prompt || nodeData.prompt || '';
-  const resolvedPrompt = resolveTemplate(promptTemplate, promptInput);
-  console.log(`[ExecuteNode ${nodeId}] (LLM) Resolved prompt:`, resolvedPrompt);
-
-  if (!resolvedPrompt) {
-    // If the prompt resolves to nothing AFTER potentially passing the condition,
-    // it's an error in the prompt/data, not a conditional skip.
-    throw new Error("Prompt resolves to empty or null.");
-  }
-
-  let apiUrl: string;
-  let requestPayload: any;
-  let isDirectOllamaCall = false;
-  
-  // Use content from store or fallback to Redux data
-  const provider = nodeContent.provider || nodeData.provider;
-  const model = nodeContent.model || nodeData.model;
-  const temperature = nodeContent.temperature ?? nodeData.temperature ?? 0.7;
-  const ollamaUrl = nodeContent.ollamaUrl || nodeData.ollamaUrl;
-
-  // Determine API URL and Payload based on provider and ollamaUrl presence
-  if (provider === 'ollama' && ollamaUrl) {
-    // Direct Ollama Call
-    isDirectOllamaCall = true;
-    apiUrl = `${ollamaUrl.replace(/\/$/, '')}/api/chat`; // Use chat endpoint
-    requestPayload = {
-      model: model, // Use the selected model
-      messages: [{ role: 'user', content: resolvedPrompt }],
-      stream: false, // Assuming non-streaming for now
-      options: {
-        temperature: temperature,
-      },
-    };
-    console.log(`[ExecuteNode ${nodeId}] (LLM) Using Direct Ollama URL: ${apiUrl}`);
-  } else {
-    // Call via Proxy (/api/llm)
-    apiUrl = 'http://localhost:8000/api/llm'; // Fallback proxy URL
-    requestPayload = {
-      provider: provider || 'ollama',
-      model: model || (provider === 'openai' ? 'gpt-3.5-turbo' : 'llama2'),
-      prompt: resolvedPrompt,
-      temperature: temperature,
-      // Conditionally include ollama_url if calling proxy for ollama
-      ...(provider === 'ollama' && ollamaUrl && { ollama_url: ollamaUrl }),
-    };
-    console.log(`[ExecuteNode ${nodeId}] (LLM) Using Proxy URL: ${apiUrl}`);
-  }
-
-  console.log(`[ExecuteNode ${nodeId}] (LLM) Sending payload:`, requestPayload);
+  // Start executing and update state
+  setNodeState(nodeId, {
+    status: 'running',
+    executionId,
+    error: undefined,
+    inputs: inputs, // Store input values
+    result: undefined, // Clear any previous result
+  });
 
   try {
-    const response = await axios.post(apiUrl, requestPayload);
-    let output: string | undefined;
+    // Get content from node content store
+    const nodeContent = getNodeContent(nodeId) as LLMNodeContent;
+    if (!nodeContent) {
+      throw new Error('LLM node content not found in store.');
+    }
 
-    // Parse response based on which endpoint was called
-    if (isDirectOllamaCall) {
-      // Direct Ollama /api/chat response structure
-      output = response.data?.message?.content;
-      console.log(`[ExecuteNode ${nodeId}] (LLM) Received direct Ollama output:`, output);
+    // Prepare prompt, replacing any {{input}} placeholders with actual input
+    let promptText = nodeContent.prompt || '';
+    
+    // Replace placeholders
+    if (inputs.length > 0 && promptText.includes('{{input}}')) {
+      // Convert input to string if needed
+      const inputText = typeof inputs[0] === 'object' 
+        ? JSON.stringify(inputs[0], null, 2) 
+        : String(inputs[0]);
+      
+      promptText = promptText.replace(/\{\{input\}\}/g, inputText);
+    }
+
+    console.log(`[LLM Executor] Using model "${nodeContent.model}" with temperature ${nodeContent.temperature}`);
+    console.log(`[LLM Executor] Processed prompt:`, promptText);
+
+    // Prepare model settings
+    const provider = nodeContent.provider || 'ollama';
+    const model = nodeContent.model || 'llama3';
+    const temperature = nodeContent.temperature !== undefined ? nodeContent.temperature : 0.7;
+    const ollamaUrl = nodeContent.ollamaUrl || 'http://localhost:11434';
+
+    // LLM Call implementation based on provider
+    let result: string;
+    
+    if (provider === 'ollama') {
+      // Ollama API call
+      console.log(`[LLM Executor] Calling Ollama API at ${ollamaUrl} for model ${model}`);
+      
+      try {
+        const response = await fetch(`${ollamaUrl}/api/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: model,
+            prompt: promptText,
+            stream: false,
+            temperature: temperature,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Ollama API returned ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        result = data.response;
+        
+        // Successful result handling
+        console.log(`[LLM Executor] Received result for ${nodeId}:`, result.substring(0, 100) + (result.length > 100 ? '...' : ''));
+      } catch (error) {
+        console.error(`[LLM Executor] API error for ${nodeId}:`, error);
+        throw new Error(`Ollama API error: ${error.message}`);
+      }
+    } else if (provider === 'openai') {
+      // OpenAI integration would go here
+      throw new Error('OpenAI provider not yet implemented');
     } else {
-      // Proxy /api/llm response structure (assuming { response: '...' })
-      output = response.data?.response;
-      console.log(`[ExecuteNode ${nodeId}] (LLM) Received proxy output:`, output);
+      throw new Error(`Unknown provider: ${provider}`);
     }
 
-    if (output === undefined) {
-        console.warn(`[ExecuteNode ${nodeId}] (LLM) API response did not contain expected content. Response data:`, response.data);
-        throw new Error("LLM API response did not contain expected content.");
-    }
+    // Update state with success
+    setNodeState(nodeId, {
+      status: 'success',
+      result: {
+        text: result,
+        model: model,
+        provider: provider,
+      },
+      executionTime: Date.now(),
+    });
 
-    return output;
-
-  } catch (apiError: any) {
-    let errorMessage = apiError.message;
-    if (apiError.response) {
-      // Attempt to get more specific error from response data
-      errorMessage = JSON.stringify(apiError.response.data) || `HTTP ${apiError.response.status} ${apiError.response.statusText}`;
-    }
-    console.error(`[ExecuteNode ${nodeId}] (LLM) API Error calling ${apiUrl}:`, errorMessage, apiError);
-    throw new Error(`LLM API Error: ${errorMessage}`);
+    return {
+      text: result,
+      model: model,
+      provider: provider,
+    };
+  } catch (error) {
+    console.error(`[LLM Executor] Error executing LLM node ${nodeId}:`, error);
+    
+    // Update state with error
+    setNodeState(nodeId, {
+      status: 'error',
+      error: error.message || 'Unknown error executing LLM model',
+      executionTime: Date.now(),
+    });
+    
+    throw error;
   }
 } 

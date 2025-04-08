@@ -1,25 +1,9 @@
 import React, { useRef } from 'react';
-import { Node, Edge } from 'reactflow';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { cloneDeep } from 'lodash';
 import { FlowCanvasApi } from './FlowCanvas';
-import { NodeData } from '../types/nodes';
-import { resetAllContent, getAllNodeContents, loadFromImportedContents, NodeContent } from '../store/useNodeContentStore';
+import { resetAllContent } from '../store/useNodeContentStore';
 import { useNodes, useEdges, setNodes, setEdges } from '../store/useFlowStructureStore';
-
-interface FlowData {
-  name: string;
-  createdAt: string;
-  nodes: Node<NodeData>[];
-  edges: Edge[];
-  contents?: Record<string, NodeContent>;
-  meta?: {
-    llmDefaults?: {
-      provider: string;
-      url: string;
-    };
-  };
-}
+import { importFlowFromJson, exportFlowAsJson, FlowData } from '../utils/importExportUtils';
 
 interface FlowManagerProps {
   flowApi: React.MutableRefObject<FlowCanvasApi | null>;
@@ -40,19 +24,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   };
 
   const exportFlow = () => {
-    const flowData: FlowData = {
-      name: `Flow ${new Date().toLocaleString()}`,
-      createdAt: new Date().toISOString(),
-      nodes: nodesFromState,
-      edges: edgesFromState,
-      contents: getAllNodeContents(),
-      meta: {
-        llmDefaults: {
-          provider: 'ollama',
-          url: 'http://localhost:11434'
-        }
-      }
-    };
+    // Use the utility function to get the flow data
+    const flowData = exportFlowAsJson();
 
     const blob = new Blob([JSON.stringify(flowData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -72,40 +45,13 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
+        // Parse the JSON data from the file
         const flowData: FlowData = JSON.parse(e.target?.result as string);
-
-        const importedNodes: Node<NodeData>[] = flowData.nodes.map(node => {
-          const importedNode = cloneDeep(node);
-          
-          if (importedNode.type === 'group' && !importedNode.dragHandle) {
-              console.warn(`[Import] Adding missing dragHandle to group node ${importedNode.id}`);
-              importedNode.dragHandle = '.group-node-header';
-          }
-          
-          return importedNode; 
-        });
-
-        const importedEdges: Edge[] = flowData.edges.map(edge => ({
-          ...cloneDeep(edge)
-        }));
-
-        setNodes(importedNodes);
-        setEdges(importedEdges);
-        console.log('Imported nodes:', importedNodes);
-        console.log('Imported edges:', importedEdges);
-
-        if (flowData.contents) {
-          Object.entries(flowData.contents).forEach(([nodeId, content]) => {
-            const node = importedNodes.find(n => n.id === nodeId);
-            if (node) {
-              console.log(`[Import] Loading stored content for node ${nodeId}`);
-            }
-          });
-          
-          loadFromImportedContents(flowData.contents);
-          console.log('[Import] Loaded node contents from imported flow data');
-        }
-
+        
+        // Use the utility function to import the flow data
+        importFlowFromJson(flowData);
+        
+        // Force UI sync after import with a small delay to ensure React Flow has updated
         setTimeout(() => {
           console.log('[FlowManager] Forcing sync after import');
           if (flowApi.current) {
@@ -120,6 +66,7 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
     };
     reader.readAsText(file);
 
+    // Reset the file input so the same file can be imported again if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

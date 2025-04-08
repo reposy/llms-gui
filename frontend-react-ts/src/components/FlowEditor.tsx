@@ -8,7 +8,7 @@ import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from 'reactflow';
 import { createNewNode } from '../utils/flowUtils';
 import { useHistory } from '../hooks/useHistory';
-import { setNodeContent } from '../store/nodeContentStore';
+import { setNodeContent } from '../store/useNodeContentStore';
 // Import from Zustand store
 import { useNodes, useEdges, useSelectedNodeId, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
 // Import StoreInitializer
