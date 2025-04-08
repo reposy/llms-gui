@@ -19,6 +19,7 @@ import {
 import { Node as ReactFlowNode } from 'reactflow';
 import { isEqual } from 'lodash';
 import { useFlowStructureStore } from './useFlowStructureStore';
+import { recentlyPastedNodes, explicitlyInitializedNodeIds } from '../utils/clipboardUtils';
 
 // Base content type for all nodes
 export interface BaseNodeContent {
@@ -101,7 +102,7 @@ interface NodeContentStore {
   
   // Actions
   getNodeContent: (nodeId: string) => NodeContent;
-  setNodeContent: (nodeId: string, updates: Partial<NodeContent>) => void;
+  setNodeContent: (nodeId: string, updates: Partial<NodeContent>, allowFallback?: boolean) => void;
   resetNodeContent: (nodeId: string) => void;
   
   // Utility
@@ -274,6 +275,19 @@ const safelyInitializeContent = (
   updates?: Partial<NodeContent>, 
   allowFallback = false
 ): NodeContent | undefined => {
+  // Check if this node was recently pasted - if so, we should skip initialization
+  // as the clipboardUtils will handle content creation for pasted nodes
+  if (recentlyPastedNodes.has(nodeId)) {
+    console.log(`[NodeContentStore] Skipping initialization for recently pasted node ${nodeId}`);
+    return updates as NodeContent; // Return the updates directly if provided
+  }
+  
+  // Check if this node was explicitly initialized elsewhere
+  if (explicitlyInitializedNodeIds.has(nodeId)) {
+    console.log(`[NodeContentStore] Skipping initialization for explicitly initialized node ${nodeId}`);
+    return updates as NodeContent; // Return the updates directly if provided
+  }
+
   const nodeType = resolveNodeType(nodeId, updates);
   
   // If no valid type was found and fallbacks aren't allowed, return undefined
@@ -309,7 +323,11 @@ const safelyInitializeContent = (
     });
   }
   
-  return defaultContent;
+  // Mark node as explicitly initialized
+  explicitlyInitializedNodeIds.add(nodeId);
+  
+  // Merge with updates if provided
+  return updates ? { ...defaultContent, ...updates } : defaultContent;
 };
 
 // Create the Zustand store
@@ -334,14 +352,14 @@ export const useNodeContentStore = create<NodeContentStore>()(
       },
       
       // Set or update content for a node
-      setNodeContent: (nodeId, updates) => {
+      setNodeContent: (nodeId, updates, allowFallback = false) => {
         set(state => {
           // Get current node content
           const currentContent = state.nodeContents[nodeId];
           
           if (!currentContent) {
             // Initialize only if we can determine a valid type
-            const initialContent = safelyInitializeContent(nodeId, updates, false);
+            const initialContent = safelyInitializeContent(nodeId, updates, allowFallback);
             
             // If we couldn't resolve a valid node type, exit early to prevent infinite loops
             if (!initialContent) {
@@ -430,6 +448,13 @@ export const useNodeContentStore = create<NodeContentStore>()(
       
       // Load content from nodes (e.g., during initialization)
       loadFromNodes: (nodes) => {
+        // Track how many nodes are actually loaded vs skipped
+        let loadedCount = 0;
+        let skippedCount = 0;
+        let recentlyPastedSkipped = 0;
+        let explicitlyInitializedSkipped = 0;
+        let existingContentSkipped = 0;
+        
         set(state => {
           nodes.forEach(node => {
             if (!node) return;
@@ -441,27 +466,55 @@ export const useNodeContentStore = create<NodeContentStore>()(
               return;
             }
             
+            // Skip if this node was recently pasted (content already initialized by clipboard utils)
+            if (recentlyPastedNodes.has(nodeId)) {
+              console.log(`[NodeContentStore] Skipping recently pasted node ${nodeId} in loadFromNodes`);
+              recentlyPastedSkipped++;
+              skippedCount++;
+              return;
+            }
+            
+            // Skip if this node was explicitly initialized elsewhere
+            if (explicitlyInitializedNodeIds.has(nodeId)) {
+              console.log(`[NodeContentStore] Skipping explicitly initialized node ${nodeId} in loadFromNodes`);
+              explicitlyInitializedSkipped++;
+              skippedCount++;
+              return;
+            }
+            
+            // Skip if content already exists for this node
+            if (state.nodeContents[nodeId]) {
+              console.log(`[NodeContentStore] Node ${nodeId} already has content, skipping initialization`);
+              existingContentSkipped++;
+              skippedCount++;
+              return;
+            }
+            
             const nodeData = 'data' in node ? node.data : node;
             const nodeType = nodeData.type?.toLowerCase();
             
             // Skip nodes without a valid type
             if (!nodeType) {
               console.warn(`[NodeContentStore] Skipping node ${nodeId} with no type:`, nodeData);
+              skippedCount++;
               return;
             }
             
             let content: NodeContent = {};
 
+            // Prepare content based on node type
             switch (nodeType) {
               case 'input':
                 const inputData = nodeData as InputNodeData;
-                // Log input data before sanitization
-                console.log(`[NodeContentStore] Loading input node ${nodeId}:`, {
-                  rawItems: inputData.items?.map(item => ({
-                    value: item,
-                    type: typeof item
-                  }))
-                });
+                // Log input data before sanitization (only if not a bulk operation)
+                if (nodes.length < 5) {
+                  console.log(`[NodeContentStore] Loading input node ${nodeId}:`, {
+                    rawItems: inputData.items?.map(item => ({
+                      value: item,
+                      type: typeof item
+                    }))
+                  });
+                }
                 
                 content = {
                   ...content,
@@ -471,13 +524,15 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   label: inputData.label
                 };
                 
-                // Log sanitized content
-                console.log(`[NodeContentStore] Sanitized input node ${nodeId}:`, {
-                  sanitizedItems: content.items?.map(item => ({
-                    value: item,
-                    type: typeof item
-                  }))
-                });
+                // Log sanitized content (only if not a bulk operation)
+                if (nodes.length < 5) {
+                  console.log(`[NodeContentStore] Sanitized input node ${nodeId}:`, {
+                    sanitizedItems: content.items?.map(item => ({
+                      value: item,
+                      type: typeof item
+                    }))
+                  });
+                }
                 break;
               case 'llm':
                 const llmData = nodeData as LLMNodeData;
@@ -560,8 +615,16 @@ export const useNodeContentStore = create<NodeContentStore>()(
             
             // Store the sanitized content
             state.nodeContents[nodeId] = content;
+            
+            // Mark as explicitly initialized to avoid duplicate initialization
+            explicitlyInitializedNodeIds.add(nodeId);
+            
+            loadedCount++;
           });
         });
+        
+        // Log detailed summary statistics
+        console.log(`[NodeContentStore] loadFromNodes summary: ${loadedCount} loaded, ${skippedCount} skipped (${recentlyPastedSkipped} recently pasted, ${explicitlyInitializedSkipped} explicitly initialized, ${existingContentSkipped} existing content), ${nodes.length} total`);
       },
       
       // Load content from imported flow

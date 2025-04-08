@@ -1,6 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNodeContentStore } from '../store/useNodeContentStore';
 import { useNodes } from '../store/useFlowStructureStore';
+import { recentlyPastedNodes, explicitlyInitializedNodeIds } from '../utils/clipboardUtils';
+import { throttle } from '../utils/throttleUtils';
+
+// Constants
+const BULK_OPERATION_THRESHOLD = 5; // Consider 5+ new nodes a bulk operation
+const THROTTLE_DELAY = 100; // 100ms throttle for bulk operations
 
 /**
  * StoreInitializer component initializes Zustand stores when the app loads
@@ -15,21 +21,81 @@ const StoreInitializer: React.FC = () => {
   
   // Track the last node count to detect bulk operations like paste
   const lastNodeCountRef = useRef<number>(0);
+  const processingBulkOperationRef = useRef<boolean>(false);
+
+  // Create a throttled loadFromNodes function for bulk operations
+  const throttledLoadFromNodes = useMemo(() => 
+    throttle((nodesToLoad) => {
+      console.log(`[StoreInitializer] Throttled loading of ${nodesToLoad.length} nodes`);
+      loadFromNodes(nodesToLoad);
+      
+      // Clear bulk operation flag when done
+      setTimeout(() => {
+        processingBulkOperationRef.current = false;
+        console.log('[StoreInitializer] Bulk operation processing completed');
+      }, 200);
+    }, THROTTLE_DELAY),
+  [loadFromNodes]);
+  
+  // Helper function to safely check if a node needs initialization
+  const shouldInitializeNode = useCallback((nodeId: string, nodeType: string) => {
+    // Skip if node has already been initialized in this session
+    if (initializedNodesRef.current.has(nodeId)) {
+      return false;
+    }
+    
+    // Skip if node was recently pasted (handled by clipboard utils)
+    if (recentlyPastedNodes.has(nodeId)) {
+      console.log(`[StoreInitializer] Node ${nodeId} was recently pasted, skipping initialization`);
+      initializedNodesRef.current.add(nodeId); // Still mark as initialized
+      return false;
+    }
+    
+    // Skip if node was explicitly initialized elsewhere (common tracking with NodeContentStore)
+    if (explicitlyInitializedNodeIds.has(nodeId)) {
+      console.log(`[StoreInitializer] Node ${nodeId} was explicitly initialized, skipping initialization`);
+      initializedNodesRef.current.add(nodeId); // Still mark as initialized
+      return false;
+    }
+    
+    // Skip if node already has content in the store
+    const existingContents = getNodeContents();
+    if (existingContents[nodeId]) {
+      // Just mark as initialized for future reference
+      initializedNodesRef.current.add(nodeId);
+      // Also add to global tracking
+      explicitlyInitializedNodeIds.add(nodeId);
+      return false;
+    }
+    
+    console.log(`[StoreInitializer] Node ${nodeId} (${nodeType}) needs initialization`);
+    return true;
+  }, [getNodeContents]);
   
   // Initialize the Zustand stores when the component mounts or nodes change
   useEffect(() => {
-    // Get current contents to check what already exists
-    const existingContents = getNodeContents();
+    if (processingBulkOperationRef.current) {
+      console.log('[StoreInitializer] Skipping while bulk operation is in progress');
+      return;
+    }
+    
+    // Get current counts
     const currentNodeCount = nodes.length;
+    const newNodeCount = currentNodeCount - lastNodeCountRef.current;
     
     // Detect bulk operations like paste by checking for sudden node increases
-    const isBulkOperation = currentNodeCount > lastNodeCountRef.current + 1;
+    const isBulkOperation = newNodeCount >= BULK_OPERATION_THRESHOLD;
+    
     if (isBulkOperation) {
-      console.log(`[StoreInitializer] Detected bulk operation: ${lastNodeCountRef.current} → ${currentNodeCount} nodes`);
+      console.log(`[StoreInitializer] Detected bulk operation: ${lastNodeCountRef.current} → ${currentNodeCount} nodes (+${newNodeCount})`);
+      processingBulkOperationRef.current = true;
     }
     
     // Update for next render
     lastNodeCountRef.current = currentNodeCount;
+    
+    // Get existing content to check what already exists
+    const existingContents = getNodeContents();
     
     // Find nodes that haven't been initialized yet and don't have existing content
     const newNodes = nodes.filter(node => {
@@ -38,37 +104,31 @@ const StoreInitializer: React.FC = () => {
         return false;
       }
       
-      // If node is already in our tracking ref, skip it
-      if (initializedNodesRef.current.has(node.id)) {
-        // Only log in non-bulk operations to reduce console noise
-        if (!isBulkOperation) {
-          console.log(`[StoreInitializer] Node ${node.id} already in ref, skipping`);
-        }
-        return false;
-      }
-      
-      // If content already exists for this node in the store, skip initialization
-      // but still add to our tracking ref to avoid future initialization attempts
-      if (existingContents[node.id]) {
-        console.log(`[StoreInitializer] Node ${node.id} already has content in store, marking as initialized`);
-        initializedNodesRef.current.add(node.id);
-        return false;
-      }
-      
-      console.log(`[StoreInitializer] Found new node to initialize: ${node.id} (${node.data.type})`);
-      initializedNodesRef.current.add(node.id);
-      return true;
+      return shouldInitializeNode(node.id, node.data.type);
     });
     
-    if (newNodes.length > 0) {
-      console.log(`[StoreInitializer] Initializing ${newNodes.length} new nodes:`, 
-        newNodes.map(n => ({ id: n.id, type: n.data?.type }))
-      );
-      
-      // Only initialize content for new nodes
+    if (newNodes.length === 0) {
+      return; // Nothing to initialize
+    }
+    
+    // Record all new nodes as initialized
+    newNodes.forEach(node => {
+      initializedNodesRef.current.add(node.id);
+      // Also mark in global tracking - will be set again in NodeContentStore but that's ok
+      explicitlyInitializedNodeIds.add(node.id);
+    });
+    
+    console.log(`[StoreInitializer] Found ${newNodes.length} nodes needing initialization`);
+    
+    // Use throttled function for bulk operations, regular for small batches
+    if (isBulkOperation) {
+      console.log(`[StoreInitializer] Using throttled load for ${newNodes.length} nodes`);
+      throttledLoadFromNodes(newNodes);
+    } else {
+      console.log(`[StoreInitializer] Loading ${newNodes.length} new nodes normally`);
       loadFromNodes(newNodes);
     }
-  }, [nodes, loadFromNodes, getNodeContents]);
+  }, [nodes, loadFromNodes, getNodeContents, throttledLoadFromNodes, shouldInitializeNode]);
   
   // Log when component unmounts to track lifecycle
   useEffect(() => {

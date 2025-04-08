@@ -10,10 +10,12 @@ import {
   applyEdgeChanges,
   useReactFlow,
   getConnectedEdges,
-  OnSelectionChangeParams
+  OnSelectionChangeParams,
+  getIncomers, getOutgoers,
+  OnConnectStartParams
 } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { setNodes as setZustandNodes, setEdges as setZustandEdges } from '../store/useFlowStructureStore';
+import { setNodes as setZustandNodes, setEdges as setZustandEdges, applyNodeSelection } from '../store/useFlowStructureStore';
 
 
 interface UseNodeHandlersOptions {
@@ -218,6 +220,13 @@ export const useNodeHandlers = (
   const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
     const { nodes } = params;
     
+    // Extract the IDs of selected nodes
+    const selectedNodeIds = nodes.map(node => node.id);
+    
+    // Update selection state in the store to keep ReactFlow and store in sync
+    applyNodeSelection(selectedNodeIds);
+    
+    // Update sidebar selection based on selection count
     if (nodes.length === 1) {
       onNodeSelect(nodes[0]);
     } else if (nodes.length > 1) {

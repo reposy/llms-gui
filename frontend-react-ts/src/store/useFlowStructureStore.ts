@@ -16,6 +16,7 @@ export interface FlowStructureState {
   setEdges: (edges: Edge[]) => void;
   setSelectedNodeId: (id: string | null) => void;
   updateNode: (id: string, updater: (node: Node<NodeData>) => Node<NodeData>) => void;
+  applyNodeSelection: (nodeIds: string[]) => void;
 }
 
 // Create the Zustand store
@@ -48,6 +49,40 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
           
           return { nodes: newNodes };
         }),
+        
+        // New action to apply selection to specific nodes
+        applyNodeSelection: (nodeIds) => set((state) => {
+          // Create a set for O(1) lookup
+          const selectedNodeIdSet = new Set(nodeIds);
+          
+          // Count current selection state for logging
+          const previouslySelectedCount = state.nodes.filter(n => n.selected).length;
+          
+          // Update all nodes' selected state
+          const updatedNodes = state.nodes.map(node => {
+            // If the node ID is in the set, mark as selected, otherwise unselected
+            const isSelected = selectedNodeIdSet.has(node.id);
+            
+            // Only create a new node object if the selection state changed
+            if (node.selected !== isSelected) {
+              return {
+                ...node,
+                selected: isSelected
+              };
+            }
+            
+            // Return the original node if selection state didn't change
+            return node;
+          });
+          
+          // Count new selection state for debugging
+          const nowSelectedCount = updatedNodes.filter(n => n.selected).length;
+          
+          console.log(`[FlowStructureStore] Applied selection to ${nodeIds.length} nodes: ${nodeIds.slice(0, 3).join(', ')}${nodeIds.length > 3 ? '...' : ''}`);
+          console.log(`[FlowStructureStore] Selection state: ${previouslySelectedCount} → ${nowSelectedCount} nodes selected`);
+          
+          return { nodes: updatedNodes };
+        }),
       }),
       {
         name: 'flow-structure-storage',
@@ -73,4 +108,5 @@ export const {
   setEdges,
   setSelectedNodeId,
   updateNode,
+  applyNodeSelection,
 } = useFlowStructureStore.getState(); 
