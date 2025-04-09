@@ -15,8 +15,8 @@ import {
   OnConnectStartParams
 } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { useSelectionManager } from './useSelectionManager';
+import { setNodes as setZustandNodes, setEdges as setZustandEdges, applyNodeSelection } from '../store/useFlowStructureStore';
+
 
 interface UseNodeHandlersOptions {
   onNodeSelect: (node: Node | null) => void;
@@ -44,8 +44,6 @@ export const useNodeHandlers = (
 ): UseNodeHandlersReturn => {
   const { onNodeSelect, pushToHistory, isRestoringHistory } = options;
   const { getNodes, getEdges } = useReactFlow();
-  const { setNodes: setZustandNodes, setEdges: setZustandEdges } = useFlowStructureStore();
-  const { applyNodeSelection } = useSelectionManager();
   
   // Add a ref to track shift key state
   const isShiftPressed = useRef(false);

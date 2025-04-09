@@ -17,10 +17,9 @@ import { useHistory } from '../hooks/useHistory';
 import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
-import { useSelectionManager } from '../hooks/useSelectionManager';
 import { createNewNode } from '../utils/flowUtils';
 // Import Zustand store
-import { setNodes, setEdges } from '../store/useFlowStructureStore';
+import { setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -101,9 +100,6 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   const { project, addNodes } = useReactFlow();
   
   const isRestoringHistory = useRef<boolean>(false);
-  
-  // Get selection manager functions
-  const { setSelectedNodeId } = useSelectionManager();
 
   // Use the refactored flow sync hook (now using Zustand)
   const { 
@@ -113,8 +109,8 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromStore,
-    commitStructureToStore
+    forceSyncFromRedux: forceSyncFromZustand, // Renamed internally but kept same API
+    commitStructureToRedux: commitStructureToZustand // Renamed internally but kept same API
   } = useFlowSync({ isRestoringHistory });
   
   // History hook now uses Zustand setters
@@ -151,7 +147,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     { 
       onNodeSelect: (node) => {
         onNodeSelect(node);
-        setSelectedNodeId(node?.id || null); // Update selection using the manager
+        setSelectedNodeId(node?.id || null); // Update Zustand selectedNodeId
       }, 
       pushToHistory, 
       isRestoringHistory 
@@ -161,20 +157,13 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   // Register the API functions with the parent component
   useEffect(() => {
     if (registerReactFlowApi) {
-      // Create a stable API object reference that won't change unless needed
-      const stableFlowApi = {
+      registerReactFlowApi({ 
         addNodes,
-        forceSync: forceSyncFromStore,
-        commitStructure: commitStructureToStore
-      };
-      
-      console.log("[FlowCanvas] Registering React Flow API");
-      registerReactFlowApi(stableFlowApi);
+        forceSync: forceSyncFromZustand, // Now references Zustand
+        commitStructure: () => commitStructureToZustand() // Now commits to Zustand
+      });
     }
-    
-    // Only re-register if one of these functions changes their identity
-    // This is much less likely than the previous dependency array
-  }, [registerReactFlowApi]);
+  }, [registerReactFlowApi, addNodes, forceSyncFromZustand]);
 
   // Set up keyboard shortcuts (Undo/Redo/Copy/Paste/Delete)
   useEffect(() => {
@@ -294,9 +283,8 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
       onDrop={onDrop}
     >
       <ReactFlow
-        // Only use pasteVersion as part of the key when paste operation had issues
-        // This prevents unnecessary remounts
-        key={isJustAfterPaste && pasteVersion > 0 ? `flow-${pasteVersion}` : 'flow'}
+        // Use pasteVersion as part of the key to force remount after paste
+        key={`flow-${pasteVersion}`}
         nodes={localNodes}
         edges={localEdges}
         onNodesChange={onLocalNodesChange}
