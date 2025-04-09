@@ -9,7 +9,9 @@ import type { Node } from 'reactflow';
 import { createNewNode } from '../utils/flowUtils';
 import { setNodeContent, getAllNodeContents } from '../store/useNodeContentStore';
 // Import from Zustand store
-import { useNodes, useEdges, useSelectedNodeId, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
+import { useNodes, useEdges, setNodes, setEdges } from '../store/useFlowStructureStore';
+import { useSelectionManager } from '../hooks/useSelectionManager';
+import { useSelectionStateStore } from '../store/useSelectionStateStore';
 // Import StoreInitializer
 import StoreInitializer from './StoreInitializer';
 // Import history and dirty tracking
@@ -22,7 +24,8 @@ export const FlowEditor = () => {
   // Use Zustand hooks
   const nodes = useNodes();
   const edges = useEdges();
-  const selectedNodeId = useSelectedNodeId();
+  const { setSelectedNodeId } = useSelectionManager();
+  const selectedNodeId = useSelectionStateStore(state => state.selectedNodeId);
   const [isExecuting, setIsExecuting] = useState(false);
 
   // Use dirty tracker
@@ -90,7 +93,7 @@ export const FlowEditor = () => {
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
     setSelectedNodeId(node?.id || null);
-  }, []);
+  }, [setSelectedNodeId]);
 
   const handleRunFlow = useCallback(async () => {
     // Ensure the latest structure is committed before running

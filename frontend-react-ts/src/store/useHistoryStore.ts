@@ -3,7 +3,8 @@ import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { NodeContent, setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
 import { isEqual, cloneDeep } from 'lodash';
-import { setNodes, setEdges, applyNodeSelection, setSelectedNodeId } from './useFlowStructureStore';
+import { setNodes, setEdges } from './useFlowStructureStore';
+import { useSelectionManager } from '../hooks/useSelectionManager';
 import { resetNodeStates } from './useNodeStateStore';
 
 // Define snapshot interface
@@ -89,6 +90,9 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     const newPast = [...state.past];
     const current = newPast.pop()!; // Get current state
     const previous = newPast[newPast.length - 1]; // Get previous state
+    
+    // Get selection functions from the hook
+    const { applyNodeSelection, setSelectedNodeId } = useSelectionManager();
 
     console.log(`[HistoryStore] Undoing to snapshot with ${previous.nodes.length} nodes, ${previous.edges.length} edges, and ${Object.keys(previous.contents).length} content entries`);
 
@@ -103,7 +107,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setNodes(previous.nodes);
     setEdges(previous.edges);
     
-    // 4. Restore selection state
+    // 4. Restore selection state using functions from useSelectionManager
     const selectedNodes = previous.nodes.filter(node => node.selected).map(node => node.id);
     if (selectedNodes.length > 0) {
       console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
@@ -111,6 +115,9 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       
       // Set the first selected node as the primary one for sidebar
       setSelectedNodeId(selectedNodes[0]);
+    } else {
+      // If no nodes were selected previously, clear the selection
+      setSelectedNodeId(null);
     }
     
     set({
@@ -130,6 +137,9 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
     const newFuture = [...state.future];
     const next = newFuture.shift()!;
+    
+    // Get selection functions from the hook
+    const { applyNodeSelection, setSelectedNodeId } = useSelectionManager();
 
     console.log(`[HistoryStore] Redoing to snapshot with ${next.nodes.length} nodes, ${next.edges.length} edges, and ${Object.keys(next.contents).length} content entries`);
 
@@ -146,7 +156,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setNodes(next.nodes);
     setEdges(next.edges);
     
-    // 4. Restore selection state
+    // 4. Restore selection state using functions from useSelectionManager
     const selectedNodes = next.nodes.filter(node => node.selected).map(node => node.id);
     if (selectedNodes.length > 0) {
       console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
@@ -154,6 +164,9 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       
       // Set the first selected node as the primary one for sidebar
       setSelectedNodeId(selectedNodes[0]);
+    } else {
+      // If no nodes were selected previously, clear the selection
+      setSelectedNodeId(null);
     }
     
     set({

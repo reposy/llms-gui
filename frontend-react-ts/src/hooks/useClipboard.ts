@@ -13,7 +13,7 @@ import { setNodeContent } from '../store/useNodeContentStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { resetNodeStates } from '../store/useNodeStateStore';
 import { getAllNodeContents } from '../store/useNodeContentStore';
-import { applyNodeSelection, setSelectedNodeId, useSelectionLock } from '../store/useFlowStructureStore';
+import { useSelectionManager } from './useSelectionManager';
 import { cloneDeep } from 'lodash';
 
 // Global flag for paste operations (for debugging and coordination)
@@ -56,8 +56,14 @@ export const useClipboard = (): UseClipboardReturnType => {
   const reactFlowStore = useStoreApi();
   const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
   
-  // Get selection lock functions (to prevent selection override)
-  const { lockSelection, unlockSelection } = useSelectionLock();
+  // Get selection manager functions
+  const { 
+    lockSelection, 
+    unlockSelection, 
+    applyNodeSelection, 
+    setSelectedNodeId,
+    isSelectionLocked
+  } = useSelectionManager();
   
   // Paste version counter for forcing remounts
   const pasteVersionRef = useRef<number>(0);
@@ -348,13 +354,18 @@ export const useClipboard = (): UseClipboardReturnType => {
     
     // Schedule selection unlock with delay to prevent immediate override
     const timeoutId = window.setTimeout(() => {
-      console.log(`[Clipboard] Unlocking selection after paste`);
-      unlockSelection();
+      // Check if selection is still locked before unlocking
+      // This prevents duplicate unlock calls from different places
+      if (isSelectionLocked()) {
+        console.log(`[Clipboard] Unlocking selection after paste`);
+        unlockSelection();
+      } else {
+        console.log(`[Clipboard] Selection already unlocked, skipping`);
+      }
     }, MAX_SELECTION_LOCK_TIME);
     
     // Track the timeout
     activeTimeoutRefs.current.push(timeoutId);
-    
   }, [getNodes, reactFlowStore, forceSyncReactFlow, lockSelection, unlockSelection]);
 
   const handleCopy = useCallback(() => {
@@ -424,6 +435,8 @@ export const useClipboard = (): UseClipboardReturnType => {
             
             // Last resort: attempt to trigger a key change on the ReactFlow component
             // through the global paste version counter
+            // ONLY increment pasteVersion when nodes are actually missing from DOM
+            // This prevents unnecessary ReactFlow remounting
             window._devFlags.pasteVersion += 1;
             pasteVersionRef.current += 1;
             console.log(`[Clipboard] Incremented paste version to ${pasteVersionRef.current} to force ReactFlow remount`);
@@ -483,7 +496,12 @@ export const useClipboard = (): UseClipboardReturnType => {
               // Release selection lock and clear paste flag after delay
               const releaseTimeout = window.setTimeout(() => {
                 console.log('[Clipboard] Releasing selection lock and clearing paste flag');
-                unlockSelection();
+                // Check if still locked before unlocking
+                if (isSelectionLocked()) {
+                  unlockSelection();
+                } else {
+                  console.log('[Clipboard] Selection already unlocked, skipping');
+                }
                 window._devFlags.hasJustPasted = false;
                 
                 isManualPasteInProgressRef.current = false;
@@ -508,7 +526,12 @@ export const useClipboard = (): UseClipboardReturnType => {
           // Release selection lock and clear paste flag after delay
           const releaseTimeout = window.setTimeout(() => {
             console.log('[Clipboard] Releasing selection lock and clearing paste flag');
-            unlockSelection();
+            // Check if still locked before unlocking
+            if (isSelectionLocked()) {
+              unlockSelection();
+            } else {
+              console.log('[Clipboard] Selection already unlocked, skipping');
+            }
             window._devFlags.hasJustPasted = false;
             
             isManualPasteInProgressRef.current = false;
