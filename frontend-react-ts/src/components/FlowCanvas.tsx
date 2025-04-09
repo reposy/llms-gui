@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo } from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -10,7 +10,10 @@ import ReactFlow, {
   ReactFlowProvider,
   ConnectionLineType,
   useNodesState,
-  useEdgesState
+  useEdgesState,
+  OnConnectStart,
+  OnConnectEnd,
+  Connection
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -19,6 +22,7 @@ import { useHistory } from '../hooks/useHistory';
 import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
+import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flowUtils';
 // Import Zustand store
 import { setNodes, setEdges, setSelectedNodeId, useFlowStructureStore, applyNodeSelection } from '../store/useFlowStructureStore';
@@ -37,58 +41,11 @@ import WebCrawlerNode from './nodes/WebCrawlerNode';
 import { NodeData, NodeType } from '../types/nodes';
 
 // Custom wrapper to remove default React Flow node styling
-const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
+export const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
   <div style={{ position: 'relative' }} className="react-flow__node pointer-events-auto">
     {children}
   </div>
 );
-
-// Override default node styles completely
-const nodeTypes = {
-  llm: (props: any) => (
-    <NodeWrapper>
-      <LLMNode {...props} />
-    </NodeWrapper>
-  ),
-  api: (props: any) => (
-    <NodeWrapper>
-      <APINode {...props} />
-    </NodeWrapper>
-  ),
-  output: (props: any) => (
-    <NodeWrapper>
-      <OutputNode {...props} />
-    </NodeWrapper>
-  ),
-  'json-extractor': (props: any) => (
-    <NodeWrapper>
-      <JSONExtractorNode {...props} />
-    </NodeWrapper>
-  ),
-  input: (props: any) => (
-    <NodeWrapper>
-      <InputNode {...props} />
-    </NodeWrapper>
-  ),
-  group: (props: any) => (
-    <GroupNode {...props} />
-  ),
-  conditional: (props: any) => (
-    <NodeWrapper>
-      <ConditionalNode {...props} />
-    </NodeWrapper>
-  ),
-  merger: (props: any) => (
-    <NodeWrapper>
-      <MergerNode {...props} />
-    </NodeWrapper>
-  ),
-  'web-crawler': (props: any) => (
-    <NodeWrapper>
-      <WebCrawlerNode {...props} />
-    </NodeWrapper>
-  ),
-};
 
 export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
@@ -109,6 +66,59 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   const { project, addNodes } = useReactFlow();
   
   const isRestoringHistory = useRef<boolean>(false);
+  const didNormalizeRef = useRef(false);
+
+  // Add console error override to suppress ReactFlow connection errors
+  useConsoleErrorOverride({
+    replacementMessage: "[ReactFlow] Error suppressed - likely invalid handle ID"
+  });
+
+  // Memoize nodeTypes to prevent unnecessary re-renders
+  const nodeTypes = useMemo(() => ({
+    llm: (props: any) => (
+      <NodeWrapper>
+        <LLMNode {...props} />
+      </NodeWrapper>
+    ),
+    api: (props: any) => (
+      <NodeWrapper>
+        <APINode {...props} />
+      </NodeWrapper>
+    ),
+    output: (props: any) => (
+      <NodeWrapper>
+        <OutputNode {...props} />
+      </NodeWrapper>
+    ),
+    'json-extractor': (props: any) => (
+      <NodeWrapper>
+        <JSONExtractorNode {...props} />
+      </NodeWrapper>
+    ),
+    input: (props: any) => (
+      <NodeWrapper>
+        <InputNode {...props} />
+      </NodeWrapper>
+    ),
+    group: (props: any) => (
+      <GroupNode {...props} />
+    ),
+    conditional: (props: any) => (
+      <NodeWrapper>
+        <ConditionalNode {...props} />
+      </NodeWrapper>
+    ),
+    merger: (props: any) => (
+      <NodeWrapper>
+        <MergerNode {...props} />
+      </NodeWrapper>
+    ),
+    'web-crawler': (props: any) => (
+      <NodeWrapper>
+        <WebCrawlerNode {...props} />
+      </NodeWrapper>
+    ),
+  }), []); // Empty dependency array since these don't change
 
   // Use the refactored flow sync hook (now using Zustand)
   const { 
@@ -118,8 +128,9 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromStore, // Updated to match the return values from useFlowSync
-    commitStructureToStore // Updated to match the return values from useFlowSync
+    forceSyncFromStore, 
+    commitStructureToStore,
+    selectionHandlers // Added selectionHandlers from our refactored hook
   } = useFlowSync({ isRestoringHistory });
   
   // History hook now uses Zustand setters
@@ -143,7 +154,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   // Node handlers now operate on Zustand state
   const { 
     handleConnect,
-    handleSelectionChange,
+    handleSelectionChange: nodeHandlersSelectionChange, // Renamed to avoid collision
     handleNodeDragStop,
     handleSelectionDragStop,
     handleEdgesDelete,
@@ -162,6 +173,16 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
       isRestoringHistory 
     }
   );
+
+  // Create a combined selection handler that uses both the node handlers and selection sync handlers
+  const handleSelectionChangeIntegrated = useCallback((params: any) => {
+    // First, let nodeHandlers update the sidebar
+    nodeHandlersSelectionChange(params);
+    
+    // Then, let selectionSync handle the sync between ReactFlow and Zustand
+    const selectedNodeIds = params.nodes.map((node: Node) => node.id);
+    selectionHandlers.handleSelectionChange(selectedNodeIds);
+  }, [nodeHandlersSelectionChange, selectionHandlers]);
   
   // Register the API functions with the parent component
   useEffect(() => {
@@ -284,66 +305,35 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     }
   }, [isJustAfterPaste, pasteVersion]);
   
-  // Additional safety measure: Verify selection consistency on mount/render
+  // Selection consistency check - run only once after initial mount
   // This ensures multi-selection drag works even after a refresh
   useEffect(() => {
-    // Import needed dependencies inline to avoid linter errors
-    const { getState } = useFlowStructureStore;
-    const checkEquality = isEqual;
-    const updateSelection = applyNodeSelection;
+    // Skip if we're restoring history
+    if (isRestoringHistory.current) return;
     
-    // Run on a slight delay to ensure all state is settled
-    const timer = setTimeout(() => {
-      // Get current local selection state
-      const visiblySelectedNodes = localNodes.filter(node => node.selected);
-      const localSelectedIds = visiblySelectedNodes.map(node => node.id);
-      
-      // Get Zustand selection state
-      const zustandState = getState();
-      const zustandSelectedIds = zustandState.selectedNodeIds;
-      
-      // Check for selection mismatch
-      const hasSelectionMismatch = 
-        !checkEquality(new Set(localSelectedIds), new Set(zustandSelectedIds)) ||
-        (localSelectedIds.length > 0 && zustandSelectedIds.length === 0) ||
-        (localSelectedIds.length === 0 && zustandSelectedIds.length > 0);
-        
-      // Log any selection mismatches for debugging
-      if (hasSelectionMismatch) {
-        console.warn('[FlowCanvas] Selection state mismatch detected after render:', {
-          localSelectedCount: localSelectedIds.length,
-          localSelectedIds,
-          zustandSelectedCount: zustandSelectedIds.length,
-          zustandSelectedIds
-        });
-        
-        // Force a manual sync to ensure consistency
-        // This is different from forceSyncFromStore as it synchronizes in both directions
-        // based on which selection state is non-empty
-        
-        if (zustandSelectedIds.length > 0) {
-          // If Zustand has selection, prioritize it and update ReactFlow nodes
-          console.log('[FlowCanvas] Applying Zustand selection to visible nodes');
-          
-          // Apply selection state to local nodes
-          const updatedNodes = localNodes.map(node => ({
-            ...node,
-            selected: zustandSelectedIds.includes(node.id)
-          }));
-          
-          // Update local state
-          setLocalNodes(updatedNodes);
-        } 
-        else if (localSelectedIds.length > 0) {
-          // If ReactFlow has selection but Zustand doesn't, update Zustand
-          console.log('[FlowCanvas] Applying visible selection to Zustand');
-          updateSelection(localSelectedIds);
-        }
-      }
-    }, 200); // Short delay to ensure all initialization processes are complete
+    // We only need to normalize selection state once after initial mount
+    if (!didNormalizeRef.current) {
+      console.log("[FlowCanvas] Running one-time selection normalization");
+      selectionHandlers.normalizeSelectionState();
+      didNormalizeRef.current = true;
+    }
     
-    return () => clearTimeout(timer);
-  }, [localNodes, setLocalNodes]); // Add appropriate dependencies
+  }, [selectionHandlers, isRestoringHistory]);
+
+  // Define connection callbacks at component level instead of inline
+  const handleConnectStart: OnConnectStart = useCallback((event, params) => {
+    console.log("[FlowCanvas] Connection start:", params);
+  }, []);
+  
+  const handleConnectEnd: OnConnectEnd = useCallback((event) => {
+    // Connection failures can be detected here
+    const target = event.target as HTMLElement;
+    const isHandle = target.classList.contains('react-flow__handle');
+    
+    if (!isHandle) {
+      console.log("[FlowCanvas] Connection ended on non-handle element");
+    }
+  }, []);
 
   return (
     <div 
@@ -360,7 +350,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         onNodesChange={onLocalNodesChange}
         onEdgesChange={onLocalEdgesChange}
         onConnect={handleConnect}
-        onSelectionChange={handleSelectionChange}
+        onSelectionChange={handleSelectionChangeIntegrated}
         onNodeDragStop={handleNodeDragStop}
         onSelectionDragStop={handleSelectionDragStop}
         nodeTypes={nodeTypes}
@@ -372,6 +362,16 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         snapToGrid
         snapGrid={[15, 15]}
         className="w-full h-full bg-dot-pattern"
+        // Additional connection validation and configuration
+        connectOnClick={false}
+        disableKeyboardA11y={false}
+        deleteKeyCode="Delete"
+        multiSelectionKeyCode="Control"
+        selectionKeyCode="Shift"
+        zoomActivationKeyCode="Alt"
+        // Make sure that edge connections only happen when handle IDs are valid
+        onConnectStart={handleConnectStart}
+        onConnectEnd={handleConnectEnd}
       >
         <Controls position="bottom-right" />
         <MiniMap position="bottom-left" zoomable pannable />

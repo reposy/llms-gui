@@ -22,7 +22,9 @@ import {
   SelectionModifierKey,
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
+import { syncVisualSelectionToReactFlow } from '../utils/flowUtils';
 import { isEqual } from 'lodash';
+import { hasEqualSelection } from '../utils/selectionUtils';
 
 
 interface UseNodeHandlersOptions {
@@ -117,27 +119,46 @@ export const useNodeHandlers = (
    * @param allNodes - All nodes in the flow (defaults to localNodes if not provided)
    * @returns The nodes that were synced to Zustand (primarily for testing)
    */
-  const syncDraggedNodesToZustand = useCallback(
-    (draggedNodes: Node<NodeData>[], allNodes: Node<NodeData>[] = localNodes) => {
-      if (isRestoringHistory.current) return;
+  const syncDraggedNodesToZustand = (
+    draggedNodes: Node<NodeData>[], 
+    allNodes: Node<NodeData>[],
+    isRestoringHistory: React.MutableRefObject<boolean>
+  ) => {
+    if (isRestoringHistory.current) return;
+    
+    // Skip empty sets of nodes
+    if (draggedNodes.length === 0) return;
+    
+    console.log(`[syncDraggedNodesToZustand] Syncing positions for ${draggedNodes.length} nodes`);
+    
+    // Get current Zustand state for selection info
+    const zustandState = useFlowStructureStore.getState();
+    const zustandSelectedIds = zustandState.selectedNodeIds;
+    
+    // For each node being updated, preserve its original selection state from Zustand
+    // This ensures we're only updating positions, not selection state
+    const nodesToUpdate = allNodes.map(node => {
+      // Check if this node's selection state matches Zustand's
+      const shouldBeSelected = zustandSelectedIds.includes(node.id);
       
-      // Skip empty sets of nodes
-      if (draggedNodes.length === 0) return;
+      // If selection state needs correction, fix it
+      if (!!node.selected !== shouldBeSelected) {
+        return {
+          ...node,
+          selected: shouldBeSelected // Ensure visual selection matches Zustand
+        };
+      }
       
-      console.log(`[syncDraggedNodesToZustand] Syncing positions for ${draggedNodes.length} nodes`);
-      
-      // Get the latest nodes from ReactFlow or use the provided nodes
-      const currentNodes = allNodes;
-      
-      // Synchronize with Zustand (only update position state, not selection state)
-      // This is critical for persisting drag operations
-      setZustandNodes(currentNodes);
-      
-      // Return the synced nodes (primarily for tests or future enhancements)
-      return currentNodes;
-    },
-    [localNodes, isRestoringHistory]
-  );
+      // Otherwise, keep node as is
+      return node;
+    });
+    
+    // Update Zustand nodes with the corrected selection state
+    // This is critical for persisting drag operations without affecting selection
+    setZustandNodes(nodesToUpdate);
+    
+    return nodesToUpdate;
+  };
 
   // Handle nodes change (selection, position, etc)
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
@@ -157,10 +178,11 @@ export const useNodeHandlers = (
       change.type === 'position' && change.position
     );
     
-    // Apply the changes to get the new state
+    // Apply the changes to get the new state ONLY for local ReactFlow display
+    // This doesn't affect Zustand's source of truth yet
     const nextNodes = applyNodeChanges(changes, localNodes);
     
-    // Update local state
+    // Update local React Flow state
     setLocalNodes(nextNodes);
     
     // Special selection debounce for paste operations
@@ -170,7 +192,7 @@ export const useNodeHandlers = (
     const isPossiblePasteSelection = selectionChanges.length > 1 && 
       selectionChanges.every(change => (change as any).selected === true);
     
-    // Handle selection changes
+    // Handle selection changes - delegate to applyNodeSelection
     if (selectionChanges.length > 0) {
       // Get the currently selected node IDs
       const selectedNodeIds = nextNodes
@@ -191,15 +213,13 @@ export const useNodeHandlers = (
       // Otherwise, handle the selection normally
       else {
         // Only update if the selection actually changed
-        const selectionHasSameElements = 
-          selectedNodeIds.length === currentSelection.length && 
-          selectedNodeIds.every(id => currentSelection.includes(id));
+        const selectionHasSameElements = hasEqualSelection(selectedNodeIds, currentSelection);
         
         // Update if selection changed or we have a multi-selection
         if (!selectionHasSameElements || selectedNodeIds.length > 1) {
           console.log('[handleNodesChange] Selection changed:', selectedNodeIds);
           
-          // Apply to Zustand store with the correct modifier key
+          // Delegate to applyNodeSelection - the SINGLE SOURCE OF TRUTH for selection
           applyNodeSelection(selectedNodeIds, modifierKey);
           
           // Update lastSelectionChange time
@@ -225,15 +245,15 @@ export const useNodeHandlers = (
     }
     
     // Handle position changes separately (dragging)
+    // These are local changes that will be committed on drag stop
     if (positionChanges.length > 0) {
       console.log(`[handleNodesChange] Processing ${positionChanges.length} position changes. MultiSelect: ${nextNodes.filter(n => n.selected).length > 1}`);
       
-      // We no longer need to call setZustandNodes here - position updates will be 
-      // handled by syncDraggedNodesToZustand in handleNodeDragStop/handleSelectionDragStop
-      // when the drag operation completes.
+      // We don't update Zustand here - position updates will be handled in 
+      // handleNodeDragStop/handleSelectionDragStop when the drag operation completes.
+      // This avoids excessive updates during dragging.
       
-      // For multi-node selections, still ensure selection state is consistent
-      // without triggering unnecessary updates
+      // For multi-node selections during drag, ensure selection state consistency
       const selectedNodeIds = nextNodes
         .filter(node => node.selected)
         .map(node => node.id);
@@ -243,9 +263,10 @@ export const useNodeHandlers = (
         const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
         
         // Only update selection if it's actually different
-        if (!isEqual(new Set(selectedNodeIds), new Set(currentSelection))) {
+        if (!hasEqualSelection(selectedNodeIds, currentSelection)) {
           console.log('[handleNodesChange] Multi-node drag detected with selection change');
-          applyNodeSelection(selectedNodeIds, 'none'); // Use 'none' to preserve current selection
+          // Delegate to applyNodeSelection
+          applyNodeSelection(selectedNodeIds, 'none'); // 'none' to preserve current multiple selection
         }
       }
     }
@@ -272,7 +293,45 @@ export const useNodeHandlers = (
     if (isRestoringHistory.current) return;
     
     // Ensure connection has required properties
-    if (!connection.source || !connection.target) return;
+    if (!connection.source || !connection.target) {
+      console.warn("[handleConnect] Invalid connection: missing source or target");
+      return;
+    }
+    
+    // Validate handle IDs
+    if (connection.targetHandle === "input") {
+      // This is likely an invalid handle ID that should be more specific
+      // InputNode handles are typically named "input-0", "input-1", etc.
+      console.warn("[handleConnect] Invalid target handle ID 'input', connection skipped. Handle IDs should be specific (e.g., 'input-0')");
+      return;
+    }
+    
+    // Get source and target nodes
+    const sourceNode = localNodes.find(node => node.id === connection.source);
+    const targetNode = localNodes.find(node => node.id === connection.target);
+    
+    if (!sourceNode || !targetNode) {
+      console.warn(`[handleConnect] Invalid connection: ${!sourceNode ? 'source' : 'target'} node not found`);
+      return;
+    }
+    
+    // Check if this connection already exists to prevent duplicates
+    const connectionExists = localEdges.some(edge => 
+      edge.source === connection.source && 
+      edge.target === connection.target && 
+      edge.sourceHandle === connection.sourceHandle && 
+      edge.targetHandle === connection.targetHandle
+    );
+    
+    if (connectionExists) {
+      console.warn("[handleConnect] Connection already exists, skipping duplicate");
+      return;
+    }
+    
+    console.log(`[handleConnect] Creating edge from ${sourceNode.type}:${connection.source} to ${targetNode.type}:${connection.target}`, {
+      sourceHandle: connection.sourceHandle,
+      targetHandle: connection.targetHandle
+    });
     
     // Create new edge with the connection
     const newEdge: Edge = {
@@ -314,9 +373,7 @@ export const useNodeHandlers = (
     // Check if the selection is actually changing
     // For selection operations, order matters so we use regular array equality
     // But we do need to handle the case where the arrays have the same elements in different order
-    const selectionHasSameElements = 
-      selectedNodeIds.length === currentSelection.length && 
-      selectedNodeIds.every(id => currentSelection.includes(id));
+    const selectionHasSameElements = hasEqualSelection(selectedNodeIds, currentSelection);
       
     // Only update if selection actually changed or if we have multiple selected nodes
     // (multi-node drag operations need consistent selection state)
@@ -329,7 +386,8 @@ export const useNodeHandlers = (
         modifierKey
       });
       
-      // Apply the selection change to ensure ReactFlow's internal state is consistent
+      // Apply the selection change to Zustand - this is the SINGLE SOURCE OF TRUTH for selection
+      // This will update both Zustand's selectedNodeIds array and also set the node.selected flags
       applyNodeSelection(selectedNodeIds, modifierKey);
     } else {
       console.log('[handleSelectionChange] Selection unchanged, skipping update', {
@@ -339,6 +397,7 @@ export const useNodeHandlers = (
     }
     
     // Update sidebar selection based on selection count
+    // We do this separately from applyNodeSelection to keep concerns separated
     if (nodes.length === 1) {
       onNodeSelect(nodes[0]);
     } else if (nodes.length > 1) {
@@ -486,7 +545,7 @@ export const useNodeHandlers = (
 
       // Sync the final node positions to Zustand (either modified nodes or current nodes)
       const nodesToSync = needsUpdate ? updatedNodes : localNodes;
-      syncDraggedNodesToZustand([node], nodesToSync);
+      syncDraggedNodesToZustand([node], nodesToSync, isRestoringHistory);
       
       // Always push to history to capture position changes
       pushToHistory(nodesToSync, localEdges);
@@ -505,7 +564,7 @@ export const useNodeHandlers = (
     const currentEdges = getEdges();
     
     // Sync dragged node positions to Zustand using the shared helper
-    syncDraggedNodesToZustand(nodes, currentNodes);
+    syncDraggedNodesToZustand(nodes, currentNodes, isRestoringHistory);
     
     // Push current state to history with the updated positions
     pushToHistory(currentNodes, currentEdges);

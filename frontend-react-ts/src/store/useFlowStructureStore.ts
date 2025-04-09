@@ -302,21 +302,24 @@ export const applyNodeSelection = applyNodeSelectionWithLock = (
       }
     }
     
-    // If selectedNodeIds array isn't changing, check if we need to update any node.selected flags
-    // This is critical to track - we don't want to update node objects unless their selected state is actually changing
-    let nodesRequiringSelectedFlagUpdates = false;
-    
+    // Update the nodes with the new selection state
+    // This keeps the selection visual state in sync with the selectedNodeIds
     const updatedNodes = state.nodes.map(node => {
       const shouldBeSelected = finalNodeIds.includes(node.id);
       const isCurrentlySelected = !!node.selected;
       
       // Only create a new node object if selection state is actually changing
       if (shouldBeSelected !== isCurrentlySelected) {
-        nodesRequiringSelectedFlagUpdates = true;
         return { ...node, selected: shouldBeSelected };
       }
       return node; // Return original node object if selection state is the same
     });
+    
+    // Check if any node.selected flags need to be updated
+    const nodesRequiringSelectedFlagUpdates = !isEqual(
+      state.nodes.filter(n => n.selected).map(n => n.id).sort(),
+      finalNodeIds.sort()
+    );
     
     // EARLY RETURN: If absolutely nothing would change, skip the update completely
     if (!selectionIdsChanged && !nodesRequiringSelectedFlagUpdates && !isSelectedNodeIdChanging) {

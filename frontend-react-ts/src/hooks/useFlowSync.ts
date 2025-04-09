@@ -5,12 +5,12 @@ import {
   useNodes, 
   useEdges, 
   setNodes as setZustandNodes, 
-  setEdges as setZustandEdges, 
-  applyNodeSelection,
-  SelectionModifierKey,
+  setEdges as setZustandEdges,
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
+import { useSelectionSync } from './useSelectionSync';
+import { hasEqualSelection } from '../utils/selectionUtils';
 
 interface UseFlowSyncOptions {
   isRestoringHistory: React.MutableRefObject<boolean>;
@@ -25,12 +25,20 @@ interface UseFlowSyncReturn {
   onLocalEdgesChange: (changes: EdgeChange[]) => void;
   forceSyncFromStore: () => void;
   commitStructureToStore: () => void;
+  selectionHandlers: {
+    handleSelectionChange: (selectedNodeIds: string[]) => void;
+    isShiftPressed: React.MutableRefObject<boolean>;
+    isCtrlPressed: React.MutableRefObject<boolean>;
+    getActiveModifierKey: () => import('../store/useFlowStructureStore').SelectionModifierKey;
+    normalizeSelectionState: () => void;
+  };
 }
 
 /**
  * Hook responsible for synchronizing the *structure* (nodes, edges, positions) 
  * between React Flow's local state and the Zustand store.
  * Content synchronization is handled separately (e.g., by useManagedNodeContent).
+ * Selection sync is now handled by the useSelectionSync hook.
  */
 export const useFlowSync = ({ 
   isRestoringHistory 
@@ -48,53 +56,18 @@ export const useFlowSync = ({
   // Track initial load
   const isInitialSyncRef = useRef(true);
   
-  // Add refs to track modifier key states
-  const isShiftPressed = useRef(false);
-  const isCtrlPressed = useRef(false);
+  // Initialize the selection sync hook
+  const selectionSync = useSelectionSync({
+    localNodes,
+    setLocalNodes,
+    isRestoringHistory
+  });
   
-  // Helper to determine which modifier key is active
-  const getActiveModifierKey = (): SelectionModifierKey => {
-    if (isShiftPressed.current) return 'shift';
-    if (isCtrlPressed.current) return 'ctrl';
-    return 'none';
-  };
-  
-  // Set up keyboard listeners to track modifier key states
+  // Set up keyboard event listeners for modifier keys
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        isShiftPressed.current = true;
-      }
-      if (e.key === 'Control' || e.key === 'Meta') { // Meta for Mac
-        isCtrlPressed.current = true;
-      }
-    };
-    
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        isShiftPressed.current = false;
-      }
-      if (e.key === 'Control' || e.key === 'Meta') { // Meta for Mac
-        isCtrlPressed.current = false;
-      }
-    };
-    
-    // Handle focus/blur events to reset modifier states when window loses focus
-    const handleBlur = () => {
-      isShiftPressed.current = false;
-      isCtrlPressed.current = false;
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', handleBlur);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, []);
+    const cleanup = selectionSync.trackKeyboardModifiers();
+    return cleanup;
+  }, [selectionSync]);
 
   // Helper function to check if changes are only selection changes
   const onlySelectionChanges = (changes: NodeChange[]): boolean => {
@@ -127,7 +100,7 @@ export const useFlowSync = ({
       const selectedNodeCount = nextNodes.filter(n => n.selected).length;
       
       if (selectedNodeCount > 1) {
-        console.log(`[onLocalNodesChange] Multi-selection drag in progress - ${positionChanges.length} position changes for ${selectedNodeCount} selected nodes`);
+        console.log(`[FlowSync] Multi-selection drag in progress - ${positionChanges.length} position changes for ${selectedNodeCount} selected nodes`);
         
         // Just mark that structural changes are pending - the actual Zustand sync
         // will happen in handleSelectionDragStop
@@ -138,7 +111,7 @@ export const useFlowSync = ({
     // Let useNodeHandlers handle selection changes, to avoid double processing
     // This helps prevent infinite loops
     if (selectionChanges.length > 0 && positionChanges.length === 0) {
-      console.log(`[onLocalNodesChange] Selection-only changes, handled by useNodeHandlers`);
+      console.log(`[FlowSync] Selection-only changes, handled by useNodeHandlers`);
       return;
     }
     
@@ -151,43 +124,26 @@ export const useFlowSync = ({
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
     setLocalEdges((eds) => applyEdgeChanges(changes, eds));
     hasPendingStructuralChanges.current = true;
-    console.log("[FlowSync Structure] Local edges changed, pending commit.", changes);
+    console.log("[FlowSync] Local edges changed, pending commit.", changes);
   }, [setLocalEdges]);
 
   // Function to commit local structural changes to Zustand store
   const commitStructureToStore = useCallback(() => {
     // Skip if we're currently restoring history
     if (isRestoringHistory.current) {
-      console.log("[FlowSync Structure] Skipping commit during history restoration");
+      console.log("[FlowSync] Skipping commit during history restoration");
       return;
     }
     
     // Check the flag instead of comparing potentially large arrays every time
     if (hasPendingStructuralChanges.current) {
-      console.log(`[FlowSync Structure] Committing structural changes to Zustand store`);
+      console.log(`[FlowSync] Committing structural changes to Zustand store`);
       
       // Get the current state from the store
       const storeState = useFlowStructureStore.getState();
       
-      // Ensure we're preserving node selection state by explicitly checking each node
-      const nodesWithSelection = localNodes.map(node => {
-        // Get this node's ID
-        const nodeId = node.id;
-        
-        // Check if this node should be selected based on Zustand's selectedNodeIds
-        const shouldBeSelected = storeState.selectedNodeIds.includes(nodeId);
-        
-        // If the selection state is different from current, update it
-        if (shouldBeSelected !== !!node.selected) {
-          return { ...node, selected: shouldBeSelected };
-        }
-        
-        // Otherwise return the node as is (with explicit selection state)
-        return { 
-          ...node, 
-          selected: !!node.selected // Ensure selection state is explicitly set
-        };
-      });
+      // Ensure we're preserving node selection state using the selection sync helper
+      const nodesWithSelection = selectionSync.applyStoreSelectionToNodes(localNodes);
       
       // Check if nodes or edges actually changed before updating
       const nodesChanged = !isEqual(nodesWithSelection, storeState.nodes);
@@ -195,7 +151,7 @@ export const useFlowSync = ({
       
       // Only update what's needed
       if (nodesChanged) {
-        console.log('[FlowSync Structure] Updating nodes with selection state');
+        console.log('[FlowSync] Updating nodes with selection state');
         setZustandNodes([...nodesWithSelection]);
       }
       
@@ -204,240 +160,124 @@ export const useFlowSync = ({
       }
       
       if (nodesChanged || edgesChanged) {
-        console.log(`[FlowSync Structure] Updated store: nodes changed=${nodesChanged}, edges changed=${edgesChanged}`);
+        console.log(`[FlowSync] Updated store: nodes changed=${nodesChanged}, edges changed=${edgesChanged}`);
       } else {
-        console.log(`[FlowSync Structure] No actual changes detected, skipping store update`);
+        console.log(`[FlowSync] No actual changes detected, skipping store update`);
       }
       
       // Reset the flag after commit
       hasPendingStructuralChanges.current = false;
     } else {
-      console.log("[FlowSync Structure] No pending structural changes to commit.");
+      console.log("[FlowSync] No pending structural changes to commit.");
     }
-  }, [localNodes, localEdges, isRestoringHistory]);
-
-  // Function to force a sync from Zustand store to local state
-  // Overwrites any uncommitted local structural changes.
-  const forceSyncFromStore = useCallback(() => {
-    console.log("[FlowSync Structure] Force sync from Zustand store requested");
-    
-    // Get current store state
-    const storeState = useFlowStructureStore.getState();
-    
-    // Check for visual selection state in local nodes
-    const localSelectedNodes = localNodes.filter(node => node.selected);
-    const localSelectedIds = localSelectedNodes.map(node => node.id);
-    
-    // Get Zustand's selection state
-    const zustandSelectedIds = storeState.selectedNodeIds;
-    
-    // Detect selection state mismatch
-    const selectionMismatch = !isEqual(new Set(localSelectedIds), new Set(zustandSelectedIds));
-    
-    // Check if we have significant differences before syncing
-    // This helps prevent infinite loops, especially after paste operations
-    const hasNodeCountChange = localNodes.length !== storeState.nodes.length;
-    const hasEdgeCountChange = localEdges.length !== storeState.edges.length;
-    const hasPendingChanges = hasPendingStructuralChanges.current;
-    
-    if (hasNodeCountChange || hasEdgeCountChange || selectionMismatch || hasPendingChanges) {
-      console.log("[FlowSync Structure] Syncing due to detected differences:", {
-        hasNodeCountChange,
-        hasEdgeCountChange,
-        selectionMismatch,
-        hasPendingChanges
-      });
-      
-      // Always normalize selection state using Zustand's selection as the source of truth
-      const normalizedNodes = storeState.nodes.map(node => ({
-        ...node,
-        selected: zustandSelectedIds.includes(node.id)
-      }));
-      
-      // Log selection changes for debugging
-      if (selectionMismatch) {
-        console.log("[FlowSync Structure] Normalized selection state during force sync:", {
-          before: localSelectedIds,
-          after: zustandSelectedIds
-        });
-      }
-      
-      // Set local state from store with normalized selection
-      setLocalNodes(normalizedNodes);
-      setLocalEdges(storeState.edges);
-      
-      // Reset flag as local state now matches Zustand
-      hasPendingStructuralChanges.current = false;
-      
-      console.log("[FlowSync Structure] Completed force sync from Zustand store to local");
-    } else {
-      console.log("[FlowSync Structure] Skipping sync, no significant differences detected");
-    }
-  }, [localNodes, localEdges, setLocalNodes, setLocalEdges]);
+  }, [localNodes, localEdges, isRestoringHistory, selectionSync]);
 
   // Initial sync on mount
   useEffect(() => {
     if (isInitialSyncRef.current) {
-      console.log("[FlowSync Structure] Initial sync from Zustand store");
+      console.log("[FlowSync] Initial sync from Zustand store");
       
       // Get current store state
       const storeState = useFlowStructureStore.getState();
       
-      // Check for selection state mismatch on initial load
-      const visiblySelectedNodes = storeState.nodes.filter(node => node.selected);
-      const storedSelectedIds = storeState.selectedNodeIds;
-      
-      const selectionMismatch = 
-        (visiblySelectedNodes.length > 0 && storedSelectedIds.length === 0) || 
-        (visiblySelectedNodes.length === 0 && storedSelectedIds.length > 0) ||
-        !visiblySelectedNodes.every(node => storedSelectedIds.includes(node.id));
-      
-      if (selectionMismatch) {
-        console.warn("[FlowSync Structure] Selection state mismatch detected on initial load", {
-          visiblySelectedCount: visiblySelectedNodes.length,
-          visiblySelectedIds: visiblySelectedNodes.map(n => n.id),
-          storedSelectedIds
-        });
-      }
-      
-      // NORMALIZE SELECTION STATE:
-      // 1. If Zustand has selectedNodeIds, apply them to node.selected flags
-      // 2. If Zustand has no selection but nodes have visual selection, clear it
-      
-      let normalizedNodes;
-      if (storedSelectedIds.length > 0) {
-        // Case 1: Apply Zustand's selection state to the nodes
-        normalizedNodes = storeState.nodes.map(node => ({
-          ...node,
-          selected: storedSelectedIds.includes(node.id)
-        }));
-        
-        console.log("[FlowSync Structure] Applied Zustand selection state to nodes:", storedSelectedIds);
-      } else if (visiblySelectedNodes.length > 0) {
-        // Case 2: Clear all visual selections since Zustand has no selection state
-        normalizedNodes = storeState.nodes.map(node => ({
-          ...node,
-          selected: false
-        }));
-        
-        console.log("[FlowSync Structure] Cleared orphaned visual selections from nodes");
-      } else {
-        // No selection anywhere, ensure nodes are explicitly marked as unselected
-        normalizedNodes = storeState.nodes.map(node => ({
-          ...node,
-          selected: false
-        }));
-      }
-      
-      // Initial sync with normalized selection state
-      setLocalNodes(normalizedNodes);
+      // The selection sync hook handles selection state normalization
+      // We just need to set the edges here
       setLocalEdges(storeState.edges);
       
-      // If we had to make selection changes, sync back to Zustand to ensure consistency
-      if (selectionMismatch) {
-        // Update Zustand nodes with correct selection state
-        setZustandNodes(normalizedNodes);
-        
-        // If we had visually selected nodes but no Zustand selection, update the selectedNodeIds
-        // This ensures selection state is fully consistent
-        if (visiblySelectedNodes.length > 0 && storedSelectedIds.length === 0) {
-          const selectedIds = visiblySelectedNodes.map(node => node.id);
-          applyNodeSelection(selectedIds);
-          console.log("[FlowSync Structure] Updated Zustand selectedNodeIds to match visual selection:", selectedIds);
-        }
-      }
-      
-      // Reset flags
+      // Reset flag
       isInitialSyncRef.current = false;
       hasPendingStructuralChanges.current = false;
     }
-  }, [zustandNodes, zustandEdges, setLocalNodes, setLocalEdges]);
+  }, [zustandNodes, zustandEdges, setLocalEdges]);
 
-  // Handle external Zustand store updates (e.g., from history restore, or potentially collaboration later)
+  // Function to force a sync from Zustand store to local state
+  // Overwrites any uncommitted local structural changes.
+  const forceSyncFromStore = useCallback(() => {
+    const storeNodes = useFlowStructureStore.getState().nodes;
+    const storeEdges = useFlowStructureStore.getState().edges;
+    const selectedNodeIds = useFlowStructureStore.getState().selectedNodeIds;
+    const localSelectedIds = localNodes.filter(n => n.selected).map(n => n.id);
+    
+    console.log(
+      `[FlowSync] Force sync requested. Local nodes: ${localNodes.length}, Store nodes: ${storeNodes.length}. ` +
+      `Selected in store: ${selectedNodeIds.length}, Selected locally: ${localSelectedIds.length}`
+    );
+
+    // Skip if nothing significant has changed
+    const nodeCountDifference = Math.abs(localNodes.length - storeNodes.length);
+    const selectionDifference = !hasEqualSelection(localSelectedIds, selectedNodeIds);
+    
+    if (
+      !hasPendingStructuralChanges.current && 
+      nodeCountDifference === 0 && 
+      !selectionDifference &&
+      !isRestoringHistory.current &&
+      !isInitialSyncRef.current
+    ) {
+      console.log(`[FlowSync] Skipping force sync - no significant differences`);
+      return;
+    }
+
+    console.log(`[FlowSync] Forcing sync from store. History restoring: ${isRestoringHistory.current}`);
+
+    // Sync node structure with proper selection state
+    const nodesWithSelection = selectionSync.applyStoreSelectionToNodes(storeNodes);
+    setLocalNodes(nodesWithSelection);
+    setLocalEdges(storeEdges);
+    
+    // Reset pending changes flag
+    hasPendingStructuralChanges.current = false;
+  }, [setLocalNodes, setLocalEdges, isRestoringHistory, localNodes, selectionSync]);
+
+  // Subscribes to flow structure store, to update local view when store changes
   useEffect(() => {
-    // Skip initial sync phase
     if (isInitialSyncRef.current) {
+      console.log("[FlowSync] Skipping initial sync phase");
+      isInitialSyncRef.current = false;
       return;
     }
 
-    // If restoring history, force local state to match Zustand store
+    // For history restoration, we always force sync from store
     if (isRestoringHistory.current) {
-      console.log("[FlowSync Structure] Syncing local state from Zustand store due to history restoration");
-      
-      // Get current store state
-      const storeState = useFlowStructureStore.getState();
-      
-      // Similar to initial load, ensure selection state is fully normalized
-      // during history restoration to prevent any mismatch
-      const storedSelectedIds = storeState.selectedNodeIds;
-      
-      // When restoring history, we're stricter - always apply Zustand's selection state
-      // rather than checking for mismatches first
-      const normalizedNodes = storeState.nodes.map(node => ({
-        ...node,
-        selected: storedSelectedIds.includes(node.id)
-      }));
-      
-      console.log("[FlowSync Structure] Normalized selection during history restoration:", {
-        selectedCount: storedSelectedIds.length,
-        selectedIds: storedSelectedIds
-      });
-      
-      // Sync from store with explicit selection state
-      setLocalNodes(normalizedNodes);
-      setLocalEdges(storeState.edges);
-      
-      hasPendingStructuralChanges.current = false;
+      console.log("[FlowSync] History restoring - forcing sync");
+      forceSyncFromStore();
       return;
     }
 
-    // Compare selection state between local and Zustand
-    const localSelectedIds = localNodes.filter(node => node.selected).map(node => node.id);
-    const zustandSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
+    // Check if structure has changed between local and store
+    const hasNodeCountChanged = localNodes.length !== zustandNodes.length;
+    const hasEdgeCountChanged = localEdges.length !== zustandEdges.length;
     
-    // Check if there are meaningful structure changes
-    const hasNodeCountChange = zustandNodes.length !== localNodes.length;
-    const hasEdgeCountChange = zustandEdges.length !== localEdges.length;
+    // For new flows, we might get empty nodes/edges
+    const isNewOrEmptyFlow = zustandNodes.length === 0 && zustandEdges.length === 0;
     
-    // Selection changes need special handling to avoid loops
-    const hasSelectionChange = !isEqual(new Set(localSelectedIds), new Set(zustandSelectedIds));
-
-    // Special case: when Zustand nodes and edges are empty (new flow creation)
-    // immediately sync this to local state
-    if (zustandNodes.length === 0 && zustandEdges.length === 0 && (localNodes.length > 0 || localEdges.length > 0)) {
-      console.log("[FlowSync Structure] Detected empty Zustand state (new flow). Clearing local state");
-      setLocalNodes([]);
-      setLocalEdges([]);
-      hasPendingStructuralChanges.current = false;
-      return;
-    }
-
-    // Only update if there's a meaningful change and we're not in the middle of editing
-    if ((hasNodeCountChange || hasEdgeCountChange || hasSelectionChange) && !hasPendingStructuralChanges.current) {
-      console.log("[FlowSync Structure] Detected Zustand state change, updating local state", {
-        hasNodeCountChange,
-        hasEdgeCountChange,
-        hasSelectionChange,
-        localSelectedIds,
-        zustandSelectedIds
+    // Only update local if there are meaningful structure changes and no pending local changes
+    const shouldForceSync = 
+      hasNodeCountChanged || 
+      hasEdgeCountChanged || 
+      isNewOrEmptyFlow;
+    
+    if (shouldForceSync && !hasPendingStructuralChanges.current) {
+      console.log(`[FlowSync] Store changed, forcing sync due to structural changes:`, {
+        nodeCountChange: hasNodeCountChanged ? `${localNodes.length} -> ${zustandNodes.length}` : false, 
+        edgeCountChange: hasEdgeCountChanged ? `${localEdges.length} -> ${zustandEdges.length}` : false
       });
       
-      // Get current store state to ensure selection is properly preserved
-      const storeState = useFlowStructureStore.getState();
-      
-      // Always normalize selection state using Zustand as the source of truth
-      const normalizedNodes = storeState.nodes.map(node => ({
-        ...node,
-        selected: storeState.selectedNodeIds.includes(node.id)
-      }));
-      
-      // Update with normalized selection state
-      setLocalNodes(normalizedNodes);
-      setLocalEdges(storeState.edges);
-      
-      hasPendingStructuralChanges.current = false;
+      // Force sync to update both structure and selection
+      forceSyncFromStore();
+    } else if (hasPendingStructuralChanges.current) {
+      console.log("[FlowSync] Skipping sync from store due to pending local changes");
+    } else {
+      console.log("[FlowSync] Store changed but no significant structural differences detected");
     }
-  }, [zustandNodes, zustandEdges, isRestoringHistory, localNodes, localEdges, setLocalNodes, setLocalEdges]);
+  }, [
+    zustandNodes, 
+    zustandEdges, 
+    localNodes,
+    localEdges,
+    isRestoringHistory,
+    forceSyncFromStore
+  ]);
 
   return {
     localNodes,
@@ -447,6 +287,13 @@ export const useFlowSync = ({
     onLocalNodesChange,
     onLocalEdgesChange,
     commitStructureToStore,
-    forceSyncFromStore
+    forceSyncFromStore,
+    selectionHandlers: {
+      handleSelectionChange: selectionSync.handleSelectionChange,
+      isShiftPressed: selectionSync.isShiftPressed,
+      isCtrlPressed: selectionSync.isCtrlPressed,
+      getActiveModifierKey: selectionSync.getActiveModifierKey,
+      normalizeSelectionState: selectionSync.normalizeSelectionState
+    }
   };
 };
