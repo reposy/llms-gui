@@ -14,7 +14,7 @@ interface LLMNodeExpandedViewProps {
   onToggleView: () => void;
 }
 
-export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
+export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.memo(({
   id,
   data,
   nodeState,
@@ -159,4 +159,4 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
       </div>
     </>
   );
-}; 
+}); 
