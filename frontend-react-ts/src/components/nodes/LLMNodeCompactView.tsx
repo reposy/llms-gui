@@ -1,6 +1,7 @@
+import React from 'react';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
-import { NodeViewMode } from '../../store/viewModeSlice';
+import { NodeViewMode } from '../../store/viewModeStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 

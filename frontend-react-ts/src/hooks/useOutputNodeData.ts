@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useNodeContent, OutputNodeContent } from '../store/useNodeContentStore';
+import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage Output node state and operations using Zustand store.
@@ -24,21 +25,67 @@ export const useOutputNodeData = ({
   const format = content.format || 'text';
   const outputContent = content.content || '';
   const label = content.label || 'Output Node';
+  const mode = content.mode || 'batch'; // Add mode tracking
 
   /**
-   * Handle format change
+   * Format content based on type and format
+   */
+  const formatContent = useCallback((content: any): string => {
+    if (content === null || content === undefined) return '';
+
+    // Handle array content
+    if (Array.isArray(content)) {
+      if (format === 'json') {
+        return JSON.stringify(content, null, 2);
+      }
+      return content.join('\n');
+    }
+
+    // Handle object content in JSON mode
+    if (format === 'json' && typeof content === 'object') {
+      try {
+        return JSON.stringify(content, null, 2);
+      } catch (e) {
+        console.error(`[OutputNode ${nodeId}] Error stringifying JSON:`, e);
+        return String(content);
+      }
+    }
+
+    // Default to string conversion
+    return String(content);
+  }, [format, nodeId]);
+
+  /**
+   * Handle format change with deep equality check
    */
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
-    if (newFormat === format) return;
+    if (isEqual(newFormat, format)) return;
     setContent({ format: newFormat });
   }, [format, setContent]);
 
   /**
-   * Handle content change
+   * Handle content change with deep equality check
    */
-  const handleContentChange = useCallback((newContent: string) => {
-    setContent({ content: newContent });
-  }, [setContent]);
+  const handleContentChange = useCallback((newContent: any, isForeachUpdate?: boolean) => {
+    // Format the content appropriately
+    const formattedContent = formatContent(newContent);
+
+    // In foreach mode, always overwrite content
+    if (isForeachUpdate || mode === 'foreach') {
+      console.log(`[OutputNode ${nodeId}] Foreach mode: Overwriting content with:`, formattedContent);
+      setContent({ content: formattedContent });
+      return;
+    }
+
+    // Skip update if content hasn't changed (deep equality)
+    if (isEqual(formattedContent, outputContent)) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - no change (deep equal)`);
+      return;
+    }
+
+    console.log(`[OutputNode ${nodeId}] Updating content from "${outputContent}" to:`, formattedContent);
+    setContent({ content: formattedContent });
+  }, [nodeId, outputContent, mode, setContent, formatContent]);
 
   /**
    * Formats result based on the provided format
@@ -77,11 +124,40 @@ export const useOutputNodeData = ({
   }, []);
 
   /**
-   * Update multiple properties at once
+   * Update multiple properties at once with deep equality check
    */
   const updateOutputContent = useCallback((updates: Partial<OutputNodeContent>) => {
+    // If mode is changing, clear existing content
+    if ('mode' in updates && updates.mode !== mode) {
+      updates.content = '';
+    }
+
+    // Skip update if no actual changes using deep equality
+    const hasChanges = Object.entries(updates).some(([key, value]) => {
+      const currentValue = content[key as keyof OutputNodeContent];
+      return !isEqual(currentValue, value);
+    });
+    
+    if (!hasChanges) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
+      return;
+    }
+    
+    // Create new content object with updates
+    const newContent = {
+      ...content,
+      ...updates
+    };
+
+    // Final deep equality check against current content
+    if (isEqual(newContent, content)) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      return;
+    }
+    
+    console.log(`[OutputNode ${nodeId}] Updating content with:`, updates);
     setContent(updates);
-  }, [setContent]);
+  }, [nodeId, content, mode, setContent]);
 
   return {
     // Data

@@ -3,7 +3,7 @@ import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { LLMNodeHeader } from './LLMNodeHeader';
-import { NodeViewMode } from '../../store/viewModeSlice';
+import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface LLMNodeExpandedViewProps {
@@ -14,7 +14,7 @@ interface LLMNodeExpandedViewProps {
   onToggleView: () => void;
 }
 
-export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
+export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.memo(({
   id,
   data,
   nodeState,
@@ -159,4 +159,4 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({
       </div>
     </>
   );
-}; 
+}); 

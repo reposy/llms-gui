@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { NodeContent } from './useNodeContentStore';
-import { isEqual } from 'lodash';
-import { setNodes, setEdges } from './useFlowStructureStore';
+import { NodeContent, setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
+import { isEqual, cloneDeep } from 'lodash';
+import { setNodes, setEdges, applyNodeSelection, setSelectedNodeId } from './useFlowStructureStore';
+import { resetNodeStates } from './useNodeStateStore';
 
 // Define snapshot interface
 export interface FlowSnapshot {
@@ -48,20 +49,28 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     if (!get().isCapturing) return;
 
     set(state => {
+      // Ensure we're storing a deep copy of the contents to prevent reference issues
+      const snapshotWithDeepCopy = {
+        ...snapshot,
+        contents: cloneDeep(snapshot.contents)
+      };
+
       // Check if this snapshot is identical to the most recent one
       const latestSnapshot = state.past[state.past.length - 1];
       if (latestSnapshot && 
-          isEqual(latestSnapshot.nodes, snapshot.nodes) && 
-          isEqual(latestSnapshot.edges, snapshot.edges) && 
-          isEqual(latestSnapshot.contents, snapshot.contents)) {
+          isEqual(latestSnapshot.nodes, snapshotWithDeepCopy.nodes) && 
+          isEqual(latestSnapshot.edges, snapshotWithDeepCopy.edges) && 
+          isEqual(latestSnapshot.contents, snapshotWithDeepCopy.contents)) {
         return state; // No change, return the current state
       }
 
       // Limit history size
-      const newPast = [...state.past, snapshot];
+      const newPast = [...state.past, snapshotWithDeepCopy];
       if (newPast.length > state.maxHistorySize) {
         newPast.shift(); // Remove oldest item
       }
+
+      console.log(`[HistoryStore] Pushed snapshot with ${snapshotWithDeepCopy.nodes.length} nodes, ${snapshotWithDeepCopy.edges.length} edges, and ${Object.keys(snapshotWithDeepCopy.contents).length} content entries`);
 
       return {
         past: newPast,
@@ -81,9 +90,34 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     const current = newPast.pop()!; // Get current state
     const previous = newPast[newPast.length - 1]; // Get previous state
 
-    // Apply the previous state
+    console.log(`[HistoryStore] Undoing to snapshot with ${previous.nodes.length} nodes, ${previous.edges.length} edges, and ${Object.keys(previous.contents).length} content entries`);
+
+    // 1. Reset execution state for all affected nodes
+    const allNodeIds = [...previous.nodes.map(n => n.id), ...current.nodes.map(n => n.id)];
+    resetNodeStates(allNodeIds);
+
+    // 2. Restore node contents using loadFromImportedContents
+    loadFromImportedContents(cloneDeep(previous.contents));
+
+    // 3. Restore flow structure
     setNodes(previous.nodes);
     setEdges(previous.edges);
+    
+    // 4. Restore selection state - use a short timeout to ensure flow structure is updated first
+    const selectedNodes = previous.nodes.filter(node => node.selected).map(node => node.id);
+    setTimeout(() => {
+      if (selectedNodes.length > 0) {
+        console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
+        applyNodeSelection(selectedNodes, 'none');
+        
+        // Set the first selected node as the primary one for sidebar
+        setSelectedNodeId(selectedNodes[0]);
+      } else {
+        // If no nodes were selected, clear selection
+        applyNodeSelection([], 'none');
+        setSelectedNodeId(null);
+      }
+    }, 50);
     
     set({
       past: newPast,
@@ -103,9 +137,36 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     const newFuture = [...state.future];
     const next = newFuture.shift()!;
 
-    // Apply the next state
+    console.log(`[HistoryStore] Redoing to snapshot with ${next.nodes.length} nodes, ${next.edges.length} edges, and ${Object.keys(next.contents).length} content entries`);
+
+    // 1. Reset execution state for all affected nodes
+    const currentNodeIds = state.past[state.past.length - 1]?.nodes.map(n => n.id) || [];
+    const nextNodeIds = next.nodes.map(n => n.id);
+    const allNodeIds = [...currentNodeIds, ...nextNodeIds];
+    resetNodeStates(allNodeIds);
+
+    // 2. Restore node contents using loadFromImportedContents
+    loadFromImportedContents(cloneDeep(next.contents));
+
+    // 3. Restore flow structure
     setNodes(next.nodes);
     setEdges(next.edges);
+    
+    // 4. Restore selection state - use a short timeout to ensure flow structure is updated first
+    const selectedNodes = next.nodes.filter(node => node.selected).map(node => node.id);
+    setTimeout(() => {
+      if (selectedNodes.length > 0) {
+        console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
+        applyNodeSelection(selectedNodes, 'none');
+        
+        // Set the first selected node as the primary one for sidebar
+        setSelectedNodeId(selectedNodes[0]);
+      } else {
+        // If no nodes were selected, clear selection
+        applyNodeSelection([], 'none');
+        setSelectedNodeId(null);
+      }
+    }, 50);
     
     set({
       past: [...state.past, next],

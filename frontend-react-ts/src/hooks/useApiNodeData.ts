@@ -1,5 +1,6 @@
 import { useCallback, ChangeEvent } from 'react';
 import { useNodeContent, APINodeContent } from '../store/useNodeContentStore';
+import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage API node state and operations using Zustand store.
@@ -24,6 +25,7 @@ export const useApiNodeData = ({
   const url = content.url || '';
   const method = content.method || 'GET';
   const headers = content.headers || {};
+  const params = content.params || {};
   const body = content.body || '';
   const queryParams = content.queryParams || {};
   const useInputAsBody = content.useInputAsBody || false;
@@ -33,11 +35,16 @@ export const useApiNodeData = ({
   const label = content.label || 'API Node';
 
   /**
-   * Handle URL change
+   * Handle URL change with deep equality check
    */
-  const handleUrlChange = useCallback((newUrl: string) => {
+  const handleUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const newUrl = event.target.value;
+    if (isEqual(newUrl, url)) {
+      console.log(`[APINode ${nodeId}] Skipping URL update - no change (deep equal)`);
+      return;
+    }
     setContent({ url: newUrl });
-  }, [setContent]);
+  }, [nodeId, url, setContent]);
 
   /**
    * Handle URL change from event
@@ -48,11 +55,16 @@ export const useApiNodeData = ({
   }, [setContent]);
 
   /**
-   * Handle method change
+   * Handle method change with deep equality check
    */
-  const handleMethodChange = useCallback((newMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
+  const handleMethodChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const newMethod = event.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE';
+    if (isEqual(newMethod, method)) {
+      console.log(`[APINode ${nodeId}] Skipping method update - no change (deep equal)`);
+      return;
+    }
     setContent({ method: newMethod });
-  }, [setContent]);
+  }, [nodeId, method, setContent]);
 
   /**
    * Handle method change from event
@@ -63,11 +75,15 @@ export const useApiNodeData = ({
   }, [setContent]);
 
   /**
-   * Handle headers change
+   * Handle headers change with deep equality check
    */
   const handleHeadersChange = useCallback((newHeaders: Record<string, string>) => {
+    if (isEqual(newHeaders, headers)) {
+      console.log(`[APINode ${nodeId}] Skipping headers update - no change (deep equal)`);
+      return;
+    }
     setContent({ headers: newHeaders });
-  }, [setContent]);
+  }, [nodeId, headers, setContent]);
 
   /**
    * Handle single header change
@@ -108,11 +124,16 @@ export const useApiNodeData = ({
   }, [headers, setContent]);
 
   /**
-   * Handle body change
+   * Handle body change with deep equality check
    */
-  const handleBodyChange = useCallback((newBody: string) => {
+  const handleBodyChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    const newBody = event.target.value;
+    if (isEqual(newBody, body)) {
+      console.log(`[APINode ${nodeId}] Skipping body update - no change (deep equal)`);
+      return;
+    }
     setContent({ body: newBody });
-  }, [setContent]);
+  }, [nodeId, body, setContent]);
 
   /**
    * Handle body change from event
@@ -123,11 +144,15 @@ export const useApiNodeData = ({
   }, [setContent]);
 
   /**
-   * Handle query params change
+   * Handle query params change with deep equality check
    */
   const handleQueryParamsChange = useCallback((newQueryParams: Record<string, string>) => {
+    if (isEqual(newQueryParams, queryParams)) {
+      console.log(`[APINode ${nodeId}] Skipping query params update - no change (deep equal)`);
+      return;
+    }
     setContent({ queryParams: newQueryParams });
-  }, [setContent]);
+  }, [nodeId, queryParams, setContent]);
 
   /**
    * Toggle useInputAsBody
@@ -152,11 +177,35 @@ export const useApiNodeData = ({
   }, [setContent]);
 
   /**
-   * Update multiple properties at once
+   * Update multiple properties at once with deep equality check
    */
   const updateApiContent = useCallback((updates: Partial<APINodeContent>) => {
+    // Skip update if no actual changes using deep equality
+    const hasChanges = Object.entries(updates).some(([key, value]) => {
+      const currentValue = content[key as keyof APINodeContent];
+      return !isEqual(currentValue, value);
+    });
+    
+    if (!hasChanges) {
+      console.log(`[APINode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
+      return;
+    }
+    
+    // Create new content object with updates
+    const newContent = {
+      ...content,
+      ...updates
+    };
+
+    // Final deep equality check against current content
+    if (isEqual(newContent, content)) {
+      console.log(`[APINode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      return;
+    }
+    
+    console.log(`[APINode ${nodeId}] Updating content with:`, updates);
     setContent(updates);
-  }, [setContent]);
+  }, [nodeId, content, setContent]);
 
   return {
     // Data
@@ -164,7 +213,7 @@ export const useApiNodeData = ({
     url,
     method,
     headers,
-    body,
+    params,
     queryParams,
     useInputAsBody,
     contentType,

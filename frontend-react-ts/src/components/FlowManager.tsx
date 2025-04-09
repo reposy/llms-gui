@@ -4,7 +4,7 @@ import { FlowCanvasApi } from './FlowCanvas';
 import { resetAllContent, getAllNodeContents } from '../store/useNodeContentStore';
 import { useNodes, useEdges, setNodes, setEdges } from '../store/useFlowStructureStore';
 import { importFlowFromJson, exportFlowAsJson, FlowData } from '../utils/importExportUtils';
-import { useDirtyTracker, markClean } from '../store/useDirtyTracker';
+import { useDirtyTracker, useMarkClean } from '../store/useDirtyTracker';
 import { undo, redo, useCanUndo, useCanRedo } from '../store/useHistoryStore';
 import { pushCurrentSnapshot } from '../utils/historyUtils';
 
@@ -19,6 +19,7 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   
   // Access dirty tracking
   const { isDirty } = useDirtyTracker();
+  const markClean = useMarkClean();
   
   // Access undo/redo capability
   const canUndo = useCanUndo();

@@ -38,7 +38,7 @@ export const InputItemList: React.FC<InputItemListProps> = ({
 
   // Limit items if specified
   const displayItems = limit ? items.slice(-limit) : items;
-  const hasMore = totalCount && totalCount > displayItems.length;
+  const hasMore = typeof totalCount === 'number' && totalCount > displayItems.length;
   const isFile = (item: string) => item.startsWith('📄 ');
 
   return (

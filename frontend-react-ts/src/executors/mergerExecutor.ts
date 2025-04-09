@@ -6,62 +6,168 @@ export function executeMergerNode(params: {
   node: Node<MergerNodeData>;
   inputs: any[];
   context: ExecutionContext;
-  setNodeState: (nodeId: string, state: Partial<NodeState>) => void; // Ensure correct signature
-  getNodeState: (nodeId: string) => NodeState; // Need access to current state
-}): any[] { // Merger node always outputs an array
+  setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
+  getNodeState: (nodeId: string) => NodeState;
+}): any {
   const { node, inputs, context, setNodeState, getNodeState } = params;
   const nodeId = node.id;
   const nodeData = node.data;
   const { executionId } = context;
   const currentState = getNodeState(nodeId) || defaultNodeState;
   
-  // Determine if state needs reset based on execution ID (assuming this logic is handled before calling the executor)
+  // Determine if this is a new execution
   const nodeLastExecutionId = currentState.executionId;
   const needsReset = nodeLastExecutionId !== executionId;
+  
+  // Determine merge mode with defaults
+  const mergeMode = nodeData.mergeMode || 'concat';
+  const joinSeparator = nodeData.joinSeparator || ' ';
+  const arrayStrategy = nodeData.arrayStrategy || 'flatten';
+  const waitForAll = nodeData.waitForAll === undefined ? true : nodeData.waitForAll;
+  
+  console.log(`[ExecuteNode ${nodeId}] (Merger) Executing with mode:`, mergeMode);
+  console.log(`[ExecuteNode ${nodeId}] (Merger) Wait for all inputs:`, waitForAll);
+  console.log(`[ExecuteNode ${nodeId}] (Merger) Inputs:`, inputs);
 
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Executing with context:`, context);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Needs Reset: ${needsReset}, Current State ExecutionID: ${nodeLastExecutionId}, Context ExecutionID: ${executionId}`);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Processing inputs:`, inputs);
-
-  let accumulatedResults: any[] = [];
-  // If it's the same execution context AND the previous result was an array, reuse it.
-  if (!needsReset && Array.isArray(currentState.result)) {
-    accumulatedResults = [...currentState.result]; // Use spread to create a new array copy
-    console.log(`[Merger ${nodeId}] Reusing previous results from same execution ${executionId}:`, accumulatedResults);
-  } else {
-    console.log(`[Merger ${nodeId}] Initializing results for execution ${executionId} (needsReset: ${needsReset}, prevResult type: ${typeof currentState.result})`);
+  // Prepare storage for accumulated inputs
+  let accumulatedInputs: any[] = [];
+  
+  // If this is the same execution and we've processed before, reuse accumulated inputs
+  if (!needsReset && Array.isArray(currentState.accumulatedInputs)) {
+    accumulatedInputs = [...currentState.accumulatedInputs];
+    console.log(`[Merger ${nodeId}] Reusing ${accumulatedInputs.length} previously accumulated inputs from execution ${executionId}`);
   }
-
-  // Add current inputs to the list
-  inputs.forEach(input => {
+  
+  // Add current inputs
+  for (const input of inputs) {
     if (input !== undefined && input !== null) {
-      // If input is already an array (e.g., from another merger or group result), spread its items
-      if (Array.isArray(input)) {
-        accumulatedResults.push(...input);
-        console.log(`[Merger ${nodeId}] Spreading array input:`, input);
+      accumulatedInputs.push(input);
+    }
+  }
+  
+  // Add custom items if configured
+  if (nodeData.items && nodeData.items.length > 0) {
+    for (const item of nodeData.items) {
+      if (item !== undefined && item !== null) {
+        accumulatedInputs.push(item);
+      }
+    }
+  }
+  
+  // Save accumulated inputs for future calls (in case not all inputs are ready yet)
+  setNodeState(nodeId, { 
+    accumulatedInputs,
+    executionId
+  });
+  
+  console.log(`[Merger ${nodeId}] Total accumulated inputs:`, accumulatedInputs.length);
+  
+  // If we're waiting for all inputs and we don't have any yet, return null
+  if (waitForAll && accumulatedInputs.length === 0) {
+    console.log(`[Merger ${nodeId}] No inputs available and waiting mode is enabled. Returning null.`);
+    return null;
+  }
+  
+  // Process based on merge mode
+  let result: any;
+  
+  switch (mergeMode) {
+    case 'concat':
+      result = processConcatMode(accumulatedInputs, arrayStrategy);
+      break;
+      
+    case 'join':
+      result = processJoinMode(accumulatedInputs, joinSeparator);
+      break;
+      
+    case 'object':
+      result = processObjectMode(accumulatedInputs, nodeData.propertyNames);
+      break;
+      
+    default:
+      console.warn(`[Merger ${nodeId}] Unknown merge mode: ${mergeMode}. Falling back to concat.`);
+      result = processConcatMode(accumulatedInputs, arrayStrategy);
+  }
+  
+  console.log(`[Merger ${nodeId}] Final result:`, result);
+  return result;
+}
+
+/**
+ * Processes inputs in concat mode, creating an array
+ */
+function processConcatMode(inputs: any[], arrayStrategy: 'flatten' | 'preserve' = 'flatten'): any[] {
+  let result: any[] = [];
+  
+  for (const input of inputs) {
+    if (Array.isArray(input)) {
+      // For arrays, either flatten or preserve based on strategy
+      if (arrayStrategy === 'flatten') {
+        result.push(...input);
       } else {
-        accumulatedResults.push(input);
-        console.log(`[Merger ${nodeId}] Adding single input:`, input);
+        result.push(input);
       }
     } else {
-      console.log(`[Merger ${nodeId}] Skipping null/undefined input.`);
+      // For other values, just add them directly
+      result.push(input);
     }
-  });
-
-  // Optionally merge with custom items if defined
-  if (nodeData.items && nodeData.items.length > 0) {
-    console.log(`[Merger ${nodeId}] Including custom items:`, nodeData.items);
-    // Treat custom items similar to inputs - add them if they aren't null/undefined
-    nodeData.items.forEach(item => {
-      if (item !== undefined && item !== null) {
-        // Check if item is already in the array to avoid duplicates from nodeData? Optional.
-        accumulatedResults.push(item);
-      }
-    });
   }
+  
+  return result;
+}
 
-  const output = accumulatedResults; // The final output is the accumulated array
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Final accumulated results for execution ${executionId}:`, output);
+/**
+ * Processes inputs in join mode, converting to strings and joining
+ */
+function processJoinMode(inputs: any[], separator: string = ' '): string {
+  // Convert each input to string and join
+  const stringValues = inputs.map(input => {
+    if (input === null || input === undefined) {
+      return '';
+    }
+    
+    if (typeof input === 'object') {
+      if (Array.isArray(input)) {
+        // For arrays, join the elements with commas
+        return input.map(item => String(item)).join(', ');
+      }
+      try {
+        // For objects, use JSON.stringify
+        return JSON.stringify(input);
+      } catch (e) {
+        return String(input);
+      }
+    }
+    
+    return String(input);
+  });
+  
+  return stringValues.join(separator);
+}
 
-  return output;
+/**
+ * Processes inputs in object mode, creating an object with keys
+ */
+function processObjectMode(inputs: any[], propertyNames?: string[]): Record<string, any> {
+  const result: Record<string, any> = {};
+  
+  // Process each input
+  inputs.forEach((input, index) => {
+    // Determine the property name
+    let key: string;
+    
+    if (propertyNames && propertyNames[index]) {
+      key = propertyNames[index];
+    } else if (input && input._meta && input._meta.sourceId) {
+      // Try to use source node ID if available
+      key = `input_from_${input._meta.sourceId}`;
+    } else {
+      key = `input_${index + 1}`;
+    }
+    
+    // Add to result object
+    result[key] = input;
+  });
+  
+  return result;
 } 

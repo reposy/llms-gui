@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
-import { VIEW_MODES } from '../../store/viewModeSlice';
+import { VIEW_MODES } from '../../store/viewModeStore';
 import { APINodeData } from '../../types/nodes';
 import { useNodeState, executeFlow, useIsRootNode } from '../../store/flowExecutionStore';
 import axios from 'axios';
@@ -12,6 +12,7 @@ import { useManagedNodeContent } from '../../hooks/useManagedNodeContent';
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 import { EditableNodeLabel } from './shared/EditableNodeLabel';
+import { APINodeContent } from '../../store/useNodeContentStore';
 
 interface Props {
   id: string;
@@ -41,10 +42,10 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const isCompactMode = viewMode === VIEW_MODES.COMPACT;
   
   const { 
-    content: reduxContent, 
-    isDirty: reduxIsDirty, 
-    updateContent: updateReduxContent, 
-    saveContent: saveReduxContent
+    content, 
+    isDirty, 
+    updateContent, 
+    saveContent
   } = useManagedNodeContent(id, data);
 
   const {
@@ -55,7 +56,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     handleMethodChange: setMethod,
     handleQueryParamsChange: setQueryParams,
     updateApiContent,
-    isDirty
+    isDirty: apiIsDirty
   } = useApiNodeData({ nodeId: id });
 
   const [urlDraft, setUrlDraft] = useState(url || '');
@@ -66,42 +67,62 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const [isEditingUrl, setIsEditingUrl] = useState(false);
   const [isEditingParams, setIsEditingParams] = useState(false);
 
+  const buildParamDrafts = useCallback((params: Record<string, string> = {}) => {
+    const drafts: QueryParamDrafts = {};
+    Object.entries(params).forEach(([key, value], index) => {
+      const draftKey = `param-${index}-${key}`; 
+      drafts[draftKey] = { key, value };
+    });
+    return drafts;
+  }, []);
+
+  const areParamDraftsEqual = useCallback((drafts1: QueryParamDrafts, drafts2: QueryParamDrafts) => {
+    const keys1 = Object.keys(drafts1);
+    const keys2 = Object.keys(drafts2);
+    if (keys1.length !== keys2.length) return false;
+    
+    return keys1.every(key => {
+      const draft1 = drafts1[key];
+      const draft2 = drafts2[key];
+      return draft1.key === draft2.key && draft1.value === draft2.value;
+    });
+  }, []);
+
   useEffect(() => {
-    if (!isEditingUrl && !isComposing) {
+    if (!isEditingUrl && !isComposing && urlDraft !== (url || '')) {
       setUrlDraft(url || '');
     }
-    const newDrafts: QueryParamDrafts = {};
-    Object.entries(queryParams || {}).forEach(([key, value], index) => {
-      const draftKey = `param-${index}-${key}`; 
-      newDrafts[draftKey] = { key, value };
-    });
-    if (!isEditingParams) { 
+
+    if (!isEditingParams) {
+      const newDrafts = buildParamDrafts(queryParams);
+      if (!areParamDraftsEqual(paramDrafts, newDrafts)) {
         setParamDrafts(newDrafts);
+      }
     }
-  }, [id, url, queryParams, isEditingUrl, isEditingParams, isComposing]);
+  }, [url, queryParams, isEditingUrl, isEditingParams, isComposing, urlDraft, buildParamDrafts, areParamDraftsEqual, paramDrafts]);
 
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
     setUrlDraft(newUrl);
     
-    setUrl(newUrl);
-    
-    updateReduxContent({ url: newUrl });
-  }, [updateReduxContent, setUrl]);
+    if (newUrl !== url) {
+      setUrl(newUrl);
+    }
+  }, [url, setUrl]);
 
   const handleUrlSave = useCallback(() => {
     setIsEditingUrl(false);
     setIsComposing(false);
     
-    saveReduxContent();
-  }, [saveReduxContent]);
+    saveContent();
+  }, [saveContent]);
 
   const handleMethodChange = useCallback((newMethod: APINodeData['method']) => {
     setMethod(newMethod);
     
-    updateReduxContent({ method: newMethod });
-    saveReduxContent();
-  }, [updateReduxContent, saveReduxContent, setMethod]);
+    updateContent({ method: newMethod });
+    saveContent();
+  }, [updateContent, saveContent, setMethod]);
 
   const handleAddParam = useCallback(() => {
     const currentParams = queryParams || {};
@@ -110,13 +131,11 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     
     setQueryParams(newParams);
     
-    updateReduxContent({ queryParams: newParams });
-    
     setParamDrafts(prev => ({
         ...prev,
         [`param-${Object.keys(prev).length}-${newKey}`]: { key: newKey, value: '' } 
     }));
-  }, [queryParams, updateReduxContent, setQueryParams]);
+  }, [queryParams, setQueryParams]);
 
   const handleParamDraftChange = useCallback((draftKey: string, field: 'key' | 'value', newValue: string) => {
     setIsEditingParams(true);
@@ -141,9 +160,9 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     
     setQueryParams(newParams);
     
-    updateReduxContent({ queryParams: newParams });
-    saveReduxContent();
-  }, [paramDrafts, updateReduxContent, saveReduxContent, setQueryParams]);
+    updateContent({ queryParams: newParams });
+    saveContent();
+  }, [paramDrafts, updateContent, saveContent, setQueryParams]);
 
   const handleRemoveParam = useCallback((keyToRemove: string) => {
     const currentParams = queryParams || {};
@@ -152,8 +171,8 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     
     setQueryParams(newParams);
     
-    updateReduxContent({ queryParams: newParams });
-    saveReduxContent();
+    updateContent({ queryParams: newParams });
+    saveContent();
 
     setParamDrafts(prev => {
       const nextDrafts = { ...prev };
@@ -164,14 +183,14 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       return nextDrafts;
     });
 
-  }, [queryParams, updateReduxContent, saveReduxContent, setQueryParams]);
+  }, [queryParams, updateContent, saveContent, setQueryParams]);
 
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     updateApiContent({ label: newLabel });
     
-    updateReduxContent({ label: newLabel });
-    saveReduxContent();
-  }, [updateApiContent, updateReduxContent, saveReduxContent]);
+    updateContent({ label: newLabel });
+    saveContent();
+  }, [updateApiContent, updateContent, saveContent]);
 
   const handleRun = useCallback(() => {
     executeFlow(id);
@@ -189,16 +208,17 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
         });
       }
 
-      let requestBody: RequestBody | string = reduxContent.body || {};
+      const apiContent = content as APINodeContent;
+      let requestBody: RequestBody | string = apiContent.body || {};
       if (input && typeof input === 'object') {
-        requestBody = { ...(typeof reduxContent.body === 'object' ? reduxContent.body : {}), ...input };
+        requestBody = { ...(typeof apiContent.body === 'object' ? apiContent.body : {}), ...input };
       } else if (input && typeof input === 'string') {
         requestBody = input;
       }
 
       const headers: Record<string, string> = {
-        'Content-Type': reduxContent.contentType || 'application/json',
-        ...(reduxContent.headers || {})
+        'Content-Type': apiContent.contentType || 'application/json',
+        ...(apiContent.headers || {})
       };
 
       const response = await axios({
@@ -213,7 +233,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       console.error('API request failed:', error);
       throw error;
     }
-  }, [url, method, queryParams, reduxContent]);
+  }, [url, method, queryParams, content]);
 
   const handleTest = useCallback(async () => {
     setTestStatus('testing');
@@ -240,12 +260,16 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     if (globalViewMode === 'auto') {
       const zoom = getZoom();
       const shouldBeCompact = zoom < 0.7;
-      setNodeViewMode({ 
-        nodeId: id, 
-        mode: shouldBeCompact ? VIEW_MODES.COMPACT : VIEW_MODES.EXPANDED 
-      });
+      const newMode = shouldBeCompact ? VIEW_MODES.COMPACT : VIEW_MODES.EXPANDED;
+      
+      if (viewMode !== newMode) {
+        setNodeViewMode({ 
+          nodeId: id, 
+          mode: newMode
+        });
+      }
     }
-  }, [globalViewMode, getZoom, id, setNodeViewMode]);
+  }, [globalViewMode, getZoom, id, setNodeViewMode, viewMode]);
 
   const mapStatus = (status: string | undefined): 'idle' | 'running' | 'success' | 'error' => {
     if (!status) return 'idle';
@@ -257,13 +281,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     <>
       <NodeHeader
         nodeId={id}
-        label={reduxContent.label || 'API'}
+        label={content.label || 'API'}
         placeholderLabel="API"
         isRootNode={isRootNode}
         isRunning={nodeState?.status === 'running'}
         viewMode={viewMode}
         themeColor="green"
-        isContentDirty={reduxIsDirty}
+        isContentDirty={isDirty}
         onRun={handleRun}
         onLabelUpdate={handleLabelUpdate}
         onToggleView={toggleNodeView}
@@ -281,13 +305,13 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     <>
       <NodeHeader
         nodeId={id}
-        label={reduxContent.label || 'API'}
+        label={content.label || 'API'}
         placeholderLabel="API"
         isRootNode={isRootNode}
         isRunning={nodeState?.status === 'running'}
         viewMode={viewMode}
         themeColor="green"
-        isContentDirty={reduxIsDirty}
+        isContentDirty={isDirty}
         onRun={handleRun}
         onLabelUpdate={handleLabelUpdate}
         onToggleView={toggleNodeView}

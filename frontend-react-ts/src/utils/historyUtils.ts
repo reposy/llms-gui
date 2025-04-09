@@ -1,43 +1,56 @@
 import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { getAllNodeContents, NodeContent } from '../store/useNodeContentStore';
-import { useNodes, useEdges } from '../store/useFlowStructureStore';
-import { pushSnapshot, FlowSnapshot } from '../store/useHistoryStore';
+import { FlowSnapshot, pushSnapshot } from '../store/useHistoryStore';
+import { getAllNodeContents } from '../store/useNodeContentStore';
+import { useFlowStructureStore } from '../store/useFlowStructureStore';
 
 /**
- * Creates a snapshot of the current flow state
+ * Creates a snapshot of the current flow state and pushes it to the history store
  */
-export function createFlowSnapshot(): FlowSnapshot {
-  const nodes = useNodes();
-  const edges = useEdges();
+export const pushCurrentSnapshot = () => {
+  // Get nodes and edges from the Zustand store
+  const { nodes, edges } = useFlowStructureStore.getState();
   const contents = getAllNodeContents();
   
-  return {
-    nodes,
-    edges, 
-    contents
-  };
-}
-
-/**
- * Creates and pushes a snapshot of the current flow state to history
- */
-export function pushCurrentSnapshot(): void {
-  const snapshot = createFlowSnapshot();
-  pushSnapshot(snapshot);
-}
-
-/**
- * Creates a snapshot of the provided flow state
- */
-export function createSnapshotFromState(
-  nodes: Node<NodeData>[], 
-  edges: Edge[],
-  contents?: Record<string, NodeContent>
-): FlowSnapshot {
-  return {
+  // Create a snapshot
+  const snapshot: FlowSnapshot = {
     nodes,
     edges,
-    contents: contents || getAllNodeContents()
+    contents
   };
-} 
+  
+  console.log(`[HistoryUtils] Pushing snapshot with ${nodes.length} nodes, ${edges.length} edges, and ${Object.keys(contents).length} contents`);
+  
+  // Push the snapshot to the history store
+  pushSnapshot(snapshot);
+};
+
+/**
+ * Creates a snapshot specifically after a node operation
+ * @param operation - Description of the operation for logging
+ */
+export const pushSnapshotAfterNodeOperation = (operation: string) => {
+  console.log(`[HistoryUtils] Creating snapshot after: ${operation}`);
+  setTimeout(() => pushCurrentSnapshot(), 0);
+};
+
+/**
+ * Creates a snapshot with the provided nodes and edges
+ * @param nodes - The nodes to include in the snapshot
+ * @param edges - The edges to include in the snapshot
+ */
+export const pushCustomSnapshot = (nodes: Node<NodeData>[], edges: Edge[]) => {
+  const contents = getAllNodeContents();
+  
+  // Create a snapshot
+  const snapshot: FlowSnapshot = {
+    nodes,
+    edges,
+    contents
+  };
+  
+  console.log(`[HistoryUtils] Pushing custom snapshot with ${nodes.length} nodes, ${edges.length} edges, and ${Object.keys(contents).length} contents`);
+  
+  // Push the snapshot to the history store
+  pushSnapshot(snapshot);
+}; 

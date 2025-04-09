@@ -10,12 +10,13 @@ import {
   markNodeDirty,
   isNodeDirty
 } from '../store/useNodeContentStore';
+import { pushCurrentSnapshot } from '../utils/historyUtils';
 import { NodeData } from '../types/nodes'; // Assuming NodeData exists and is relevant
 
 interface UseManagedNodeContentResult {
   content: NodeContent; // The current content for the node
   isDirty: boolean; // Is the content different from the last saved state?
-  updateContent: (updatedFields: Partial<NodeContent>) => void; // Update content in Zustand, mark as dirty
+  updateContent: (updatedFields: Partial<NodeContent>, shouldSnapshot?: boolean) => void; // Update content in Zustand, mark as dirty
   saveContent: () => void; // Mark content as clean in Zustand (no longer persists to Redux)
 }
 
@@ -45,10 +46,20 @@ export const useManagedNodeContent = (nodeId: string, initialNodeData?: NodeData
   /**
    * Updates the content in the Zustand store and marks it as dirty.
    */
-  const updateContent = useCallback((updatedFields: Partial<NodeContent>) => {
-    // Directly call the Zustand action to update content and handle dirtiness
-    setNodeContent(nodeId, updatedFields); 
-    console.log(`[useManagedNodeContent ${nodeId}] Updated store content.`, updatedFields);
+  const updateContent = useCallback((updatedFields: Partial<NodeContent>, shouldSnapshot = false) => {
+    console.log(`[useManagedNodeContent ${nodeId}] Updating content:`, {
+      updatedFields,
+      shouldSnapshot
+    });
+
+    // Update content in store
+    setNodeContent(nodeId, updatedFields);
+
+    // Create snapshot if requested (default false)
+    if (shouldSnapshot) {
+      console.log(`[useManagedNodeContent ${nodeId}] Creating history snapshot after update`);
+      pushCurrentSnapshot();
+    }
   }, [nodeId]);
 
   /**
@@ -62,7 +73,10 @@ export const useManagedNodeContent = (nodeId: string, initialNodeData?: NodeData
       // Mark content as clean in the Zustand store
       markNodeDirty(nodeId, false);
 
-      console.log(`[useManagedNodeContent ${nodeId}] Content marked clean.`);
+      // Create snapshot when content is saved
+      pushCurrentSnapshot();
+      
+      console.log(`[useManagedNodeContent ${nodeId}] Content marked clean and snapshot created.`);
     } else {
       console.log(`[useManagedNodeContent ${nodeId}] No dirty content in store to save.`);
     }

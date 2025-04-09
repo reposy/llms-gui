@@ -9,13 +9,13 @@ import type { Node } from 'reactflow';
 import { createNewNode } from '../utils/flowUtils';
 import { setNodeContent, getAllNodeContents } from '../store/useNodeContentStore';
 // Import from Zustand store
-import { useNodes, useEdges, useSelectedNodeId, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
+import { useNodes, useEdges, useSelectedNodeId, useSelectedNodeIds, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
 // Import StoreInitializer
 import StoreInitializer from './StoreInitializer';
 // Import history and dirty tracking
 import { pushSnapshot } from '../store/useHistoryStore';
 import { useDirtyTracker } from '../store/useDirtyTracker';
-import { pushCurrentSnapshot, createSnapshotFromState } from '../utils/historyUtils';
+import { pushCurrentSnapshot } from '../utils/historyUtils';
 import { StatusBar } from './StatusBar';
 
 export const FlowEditor = () => {
@@ -23,6 +23,7 @@ export const FlowEditor = () => {
   const nodes = useNodes();
   const edges = useEdges();
   const selectedNodeId = useSelectedNodeId();
+  const selectedNodeIds = useSelectedNodeIds();
   const [isExecuting, setIsExecuting] = useState(false);
 
   // Use dirty tracker
@@ -67,7 +68,7 @@ export const FlowEditor = () => {
       newNode.parentNode = selectedGroup.id;
       // Use relative positioning within the group
       newNode.position = {
-        x: 100 + Math.random() * 200, // Position relative to group
+        x: 100 + Math.random() * 200,
         y: 100 + Math.random() * 100
       };
       console.log(`[FlowEditor] Adding node to group ${selectedGroup.id}`);
@@ -80,13 +81,12 @@ export const FlowEditor = () => {
     const updatedNodes = [...nodes, newNode];
     setNodes(updatedNodes);
     
-    // Add node data to Zustand nodeContentStore for immediate availability
-    setNodeContent(newNode.id, newNode.data);
+    // Add node data to Zustand nodeContentStore without triggering a snapshot
+    setNodeContent(newNode.id, { ...newNode.data, isDirty: false });
     console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, newNode.data);
     
-    // Capture the new state in history
-    const contents = getAllNodeContents();
-    pushSnapshot(createSnapshotFromState(updatedNodes, edges, contents));
+    // Create a single snapshot after all state updates
+    pushCurrentSnapshot();
   }, [nodes, edges, selectedNodeId]);
 
   const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
@@ -230,16 +230,37 @@ export const FlowEditor = () => {
           </ReactFlowProvider>
         </div>
 
-        {selectedNode && (
-          selectedNode.type === 'group' ? (
+        {selectedNodeIds.length === 1 && (
+          selectedNode?.type === 'group' ? (
             <GroupDetailSidebar 
               selectedNodeId={selectedNode.id} 
             />
           ) : (
             <NodeConfigSidebar 
-              selectedNodeId={selectedNode.id} 
+              selectedNodeId={selectedNode?.id}
             />
           )
+        )}
+        {selectedNodeIds.length > 1 && (
+          <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto p-4">
+            <h3 className="text-lg font-semibold mb-4">Multiple Nodes Selected</h3>
+            <p className="text-sm text-gray-600">
+              {selectedNodeIds.length} nodes selected
+            </p>
+            <div className="mt-4">
+              <ul className="space-y-2">
+                {selectedNodeIds.map(id => {
+                  const node = nodes.find(n => n.id === id);
+                  return (
+                    <li key={id} className="p-2 bg-gray-50 rounded">
+                      <span className="font-medium">{node?.data?.label || node?.type}</span>
+                      <span className="text-xs text-gray-500 ml-2">({node?.type})</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
         )}
       </div>
       

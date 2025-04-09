@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { persist } from 'zustand/middleware';
 import { shallow } from 'zustand/shallow';
+import { sanitizeInputItems } from '../utils/inputUtils';
 import { 
   NodeData, 
   FileLikeObject, 
@@ -11,10 +13,13 @@ import {
   JSONExtractorNodeData,
   GroupNodeData,
   ConditionalNodeData,
-  MergerNodeData
+  MergerNodeData,
+  BaseNodeData
 } from '../types/nodes';
 import { Node as ReactFlowNode } from 'reactflow';
 import { isEqual } from 'lodash';
+import { useFlowStructureStore } from './useFlowStructureStore';
+import { recentlyPastedNodes, explicitlyInitializedNodeIds } from '../utils/clipboardUtils';
 
 // Base content type for all nodes
 export interface BaseNodeContent {
@@ -48,6 +53,7 @@ export interface APINodeContent extends BaseNodeContent {
 export interface OutputNodeContent extends BaseNodeContent {
   format?: 'json' | 'text';
   content?: string;
+  mode?: 'batch' | 'foreach';
 }
 
 // JSON Extractor node content
@@ -96,7 +102,7 @@ interface NodeContentStore {
   
   // Actions
   getNodeContent: (nodeId: string) => NodeContent;
-  setNodeContent: (nodeId: string, updates: Partial<NodeContent>) => void;
+  setNodeContent: (nodeId: string, updates: Partial<NodeContent>, allowFallback?: boolean) => void;
   resetNodeContent: (nodeId: string) => void;
   
   // Utility
@@ -111,8 +117,57 @@ interface NodeContentStore {
   reset: () => void;
 }
 
+/**
+ * Type guard to check if content is InputNodeContent
+ */
+const isInputNodeContent = (content: NodeContent): content is InputNodeContent => {
+  return !!content && typeof content === 'object' && 'items' in content;
+};
+
+/**
+ * Sanitizes input node content if applicable
+ */
+const sanitizeNodeContent = (content: NodeContent): NodeContent => {
+  if (!content) return {};
+  
+  if (isInputNodeContent(content)) {
+    // Log content state before sanitization
+    console.log('[NodeContentStore] Pre-sanitization content:', {
+      hasItems: 'items' in content,
+      itemCount: content.items?.length,
+      items: content.items?.map(item => ({
+        value: item,
+        type: typeof item
+      }))
+    });
+
+    const sanitizedItems = sanitizeInputItems(content.items || []);
+    
+    // Log sanitization results
+    if (!isEqual(sanitizedItems, content.items)) {
+      console.log('[NodeContentStore] Items changed after sanitization:', {
+        before: content.items?.map(item => ({
+          value: item,
+          type: typeof item
+        })),
+        after: sanitizedItems.map(item => ({
+          value: item,
+          type: typeof item
+        }))
+      });
+      return { ...content, items: sanitizedItems };
+    }
+  }
+  return content;
+};
+
 // Create default content for various node types
 const createDefaultContent = (nodeType?: string): NodeContent => {
+  if (!nodeType) {
+    console.warn('[NodeContentStore] Creating default content with undefined type');
+    return { isDirty: false, label: 'Unknown Node' };
+  }
+
   const baseContent: BaseNodeContent = {
     isDirty: false,
     label: nodeType ? `${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node` : 'Node'
@@ -141,7 +196,8 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
       return {
         ...baseContent,
         format: 'text',
-        content: ''
+        content: '',
+        mode: 'batch'
       };
     
     case 'input':
@@ -182,250 +238,463 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
   }
 };
 
+/**
+ * Resolves the node type from various sources without fallbacks
+ */
+const resolveNodeType = (nodeId: string, updates?: Partial<NodeContent>): string | undefined => {
+  // First try to get the type from existing nodes in the store
+  const nodes = useFlowStructureStore.getState().nodes;
+  const node = nodes.find(n => n.id === nodeId);
+  const nodeType = (node?.data as BaseNodeData)?.type?.toLowerCase();
+  
+  // If not found in store nodes, try to get from updates if provided
+  const updatesType = (updates as BaseNodeData)?.type?.toLowerCase();
+  
+  // Check if the node exists but doesn't have a type
+  const hasNodeButNoType = !!node && !nodeType;
+  
+  // Log resolution attempt with detailed diagnostics
+  console.log(`[NodeContentStore] Resolving type for ${nodeId}:`, {
+    fromNode: nodeType,
+    fromUpdates: updatesType,
+    foundNode: !!node,
+    hasNodeButNoType,
+    nodeData: node?.data ? { ...node.data } : undefined,
+    updatesKeys: updates ? Object.keys(updates) : []
+  });
+  
+  // Return the first valid type found (no fallbacks)
+  return nodeType || updatesType;
+};
+
+/**
+ * Safely initializes node content with proper type validation
+ */
+const safelyInitializeContent = (
+  nodeId: string, 
+  updates?: Partial<NodeContent>, 
+  allowFallback = false
+): NodeContent | undefined => {
+  // Check if this node was recently pasted - if so, we should skip initialization
+  // as the clipboardUtils will handle content creation for pasted nodes
+  if (recentlyPastedNodes.has(nodeId)) {
+    console.log(`[NodeContentStore] Skipping initialization for recently pasted node ${nodeId}`);
+    return updates as NodeContent; // Return the updates directly if provided
+  }
+  
+  // Check if this node was explicitly initialized elsewhere
+  if (explicitlyInitializedNodeIds.has(nodeId)) {
+    console.log(`[NodeContentStore] Skipping initialization for explicitly initialized node ${nodeId}`);
+    return updates as NodeContent; // Return the updates directly if provided
+  }
+
+  const nodeType = resolveNodeType(nodeId, updates);
+  
+  // If no valid type was found and fallbacks aren't allowed, return undefined
+  if (!nodeType && !allowFallback) {
+    console.warn(`[NodeContentStore] Cannot initialize content for ${nodeId}: No valid type found`);
+    return undefined;
+  }
+  
+  // Only use fallback if explicitly allowed
+  const finalType = nodeType || (allowFallback ? 'input' : undefined);
+  
+  if (!finalType) {
+    return undefined;
+  }
+  
+  // Create default content with the resolved type
+  const defaultContent = createDefaultContent(finalType);
+  
+  // Mark content if it was created with a fallback type (for debugging)
+  if (!nodeType && allowFallback) {
+    console.warn(`[NodeContentStore] Using fallback type '${finalType}' for ${nodeId}`);
+    
+    // Log instead of storing in the object to avoid type issues
+    console.log(`[NodeContentStore] Content initialization metadata:`, {
+      nodeId,
+      usedFallbackType: true,
+      initializationTimestamp: Date.now()
+    });
+  } else {
+    console.log(`[NodeContentStore] Content initialization metadata:`, {
+      nodeId,
+      initializationTimestamp: Date.now()
+    });
+  }
+  
+  // Mark node as explicitly initialized
+  explicitlyInitializedNodeIds.add(nodeId);
+  
+  // Merge with updates if provided
+  return updates ? { ...defaultContent, ...updates } : defaultContent;
+};
+
 // Create the Zustand store
 export const useNodeContentStore = create<NodeContentStore>()(
-  immer((set, get) => ({
-    // Initial state - empty record
-    nodeContents: {},
-    
-    // Get content for a node, with default values if not found
-    getNodeContent: (nodeId) => {
-      return get().nodeContents[nodeId] || createDefaultContent();
-    },
-    
-    // Set or update content for a node
-    setNodeContent: (nodeId, updates) => {
-      set((state) => {
-        // Get current node content or initialize with default
-        const currentContent = state.nodeContents[nodeId] || createDefaultContent();
+  persist(
+    immer((set, get) => ({
+      // Initial state - empty record
+      nodeContents: {},
+      
+      // Get content for a node, with default values if not found
+      getNodeContent: (nodeId) => {
+        const state = get();
+        const existingContent = state.nodeContents[nodeId];
         
-        console.log(`[NodeContentStore] setNodeContent START - Node: ${nodeId}`, { 
-          currentContent, 
-          updates 
-        });
-        
-        // Ensure the node content exists
-        if (!state.nodeContents[nodeId]) {
-          state.nodeContents[nodeId] = currentContent;
+        if (!existingContent) {
+          console.log(`[NodeContentStore] No content found for ${nodeId}`);
+          return {};
         }
-        
-        // Apply updates
-        Object.assign(state.nodeContents[nodeId], updates);
-        
-        // Mark as dirty unless explicitly set
-        if (updates.isDirty === undefined) {
-          state.nodeContents[nodeId].isDirty = true;
-        }
-        
-        console.log(`[NodeContentStore] setNodeContent END - Node: ${nodeId}`, { 
-          result: state.nodeContents[nodeId] 
-        });
-        
-        // Trigger history snapshot on significant content changes
-        // This will be executed after the state update is applied
-        setTimeout(() => {
-          try {
-            const { pushCurrentSnapshot } = require('../utils/historyUtils');
-            pushCurrentSnapshot();
-          } catch (error) {
-            console.warn('[NodeContentStore] Failed to push snapshot:', error);
+
+        // Always sanitize content before returning
+        return sanitizeNodeContent(existingContent);
+      },
+      
+      // Set or update content for a node
+      setNodeContent: (nodeId, updates, allowFallback = false) => {
+        set(state => {
+          // Get current node content
+          const currentContent = state.nodeContents[nodeId];
+          
+          if (!currentContent) {
+            // Initialize only if we can determine a valid type
+            const initialContent = safelyInitializeContent(nodeId, updates, allowFallback);
+            
+            // If we couldn't resolve a valid node type, exit early to prevent infinite loops
+            if (!initialContent) {
+              console.warn(`[NodeContentStore] Skipping content initialization for ${nodeId}: No valid type available`);
+              return;
+            }
+            
+            console.log(`[NodeContentStore] Initializing new content for ${nodeId} with type: ${(initialContent as any).type || 'unknown'}`);
+            state.nodeContents[nodeId] = initialContent;
           }
-        }, 0);
-        
-        return state;
-      });
-    },
-    
-    // Reset a node's content to default values
-    resetNodeContent: (nodeId) => {
-      set((state) => {
-        // Get the node type from existing content if available
-        const nodeContent = state.nodeContents[nodeId];
-        const nodeType = nodeContent ? (nodeContent as any).type : undefined;
-        state.nodeContents[nodeId] = createDefaultContent(nodeType);
-        return state;
-      });
-    },
-    
-    // Mark a node as dirty or clean
-    markNodeDirty: (nodeId, isDirty = true) => {
-      set((state) => {
-        if (state.nodeContents[nodeId]) {
-          state.nodeContents[nodeId].isDirty = isDirty;
-        }
-        return state;
-      });
-    },
-    
-    // Check if a node is dirty
-    isNodeDirty: (nodeId) => {
-      const content = get().nodeContents[nodeId];
-      return content ? !!content.isDirty : false;
-    },
-    
-    // Load content from nodes
-    loadFromNodes: (nodes) => {
-      set((state) => {
-        nodes.forEach(node => {
-          if (!node) return;
+
+          // Only proceed with updates if content exists (either pre-existing or newly initialized)
+          if (state.nodeContents[nodeId]) {
+            // Create new content by merging current and updates
+            const newContent = {
+              ...state.nodeContents[nodeId],
+              ...updates
+            };
+
+            // Always sanitize the entire content if it's an input node
+            const sanitizedContent = sanitizeNodeContent(newContent);
+            
+            // Log if content was modified by sanitization
+            if (!isEqual(sanitizedContent, newContent)) {
+              console.log(`[NodeContentStore] Content sanitized for ${nodeId}:`, {
+                before: newContent,
+                after: sanitizedContent
+              });
+            }
+
+            state.nodeContents[nodeId] = sanitizedContent;
+            
+            // Mark as dirty unless explicitly set
+            if (updates.isDirty === undefined) {
+              state.nodeContents[nodeId].isDirty = true;
+            }
+          }
+        });
+      },
+      
+      // Reset a node's content to default values
+      resetNodeContent: (nodeId) => {
+        set((state) => {
+          // Get the current node content
+          const currentContent = state.nodeContents[nodeId];
           
-          // Extract node ID, type, and data, handling both ReactFlowNode and NodeData
-          const nodeId = 'id' in node ? node.id : (node as any).id;
-          if (!nodeId) return;
-          
-          // Extract type and data based on whether it's a ReactFlow Node or NodeData
-          const nodeType = node.type;
-          const nodeData = 'data' in node ? node.data : node;
-          
-          // Create content based on node type
-          let content: NodeContent = createDefaultContent(nodeType);
-          
-          // Extract specific data based on node type
-          switch (nodeType) {
-            case 'llm':
-              const llmData = nodeData as LLMNodeData;
-              content = {
-                ...content,
-                prompt: llmData.prompt,
-                model: llmData.model,
-                temperature: llmData.temperature,
-                provider: llmData.provider,
-                ollamaUrl: llmData.ollamaUrl,
-                label: llmData.label
-              };
-              break;
-              
-            case 'api':
-              const apiData = nodeData as APINodeData;
-              content = {
-                ...content,
-                url: apiData.url,
-                method: apiData.method,
-                headers: apiData.headers,
-                queryParams: apiData.queryParams,
-                body: apiData.body,
-                useInputAsBody: apiData.useInputAsBody,
-                contentType: apiData.contentType,
-                bodyFormat: apiData.bodyFormat,
-                bodyParams: apiData.bodyParams,
-                label: apiData.label
-              };
-              break;
-              
-            case 'output':
-              const outputData = nodeData as OutputNodeData;
-              content = {
-                ...content,
-                format: outputData.format,
-                content: outputData.content,
-                label: outputData.label
-              };
-              break;
-              
-            case 'input':
-              const inputData = nodeData as InputNodeData;
-              content = {
-                ...content,
-                items: inputData.items || [],
-                textBuffer: inputData.textBuffer || '',
-                iterateEachRow: !!inputData.iterateEachRow,
-                label: inputData.label
-              };
-              break;
-              
-            case 'json-extractor':
-              const extractorData = nodeData as JSONExtractorNodeData;
-              content = {
-                ...content,
-                path: extractorData.path,
-                label: extractorData.label
-              };
-              break;
-              
-            case 'group':
-              const groupData = nodeData as GroupNodeData;
-              content = {
-                ...content,
-                isCollapsed: groupData.isCollapsed,
-                label: groupData.label
-              };
-              break;
-              
-            case 'conditional':
-              const conditionalData = nodeData as ConditionalNodeData;
-              content = {
-                ...content,
-                conditionType: conditionalData.conditionType,
-                conditionValue: conditionalData.conditionValue,
-                label: conditionalData.label
-              };
-              break;
-              
-            case 'merger':
-              const mergerData = nodeData as MergerNodeData;
-              content = {
-                ...content,
-                items: mergerData.items,
-                label: mergerData.label
-              };
-              break;
+          // If no content exists, try to initialize with proper type
+          if (!currentContent) {
+            const initialContent = safelyInitializeContent(nodeId, undefined, false);
+            if (!initialContent) {
+              console.warn(`[NodeContentStore] Cannot reset content for ${nodeId}: No valid type available`);
+              return state;
+            }
+            state.nodeContents[nodeId] = initialContent;
+            return state;
           }
           
-          // Set dirty flag to false for imported content
-          content.isDirty = false;
+          // If content exists, try to get type from existing content
+          const nodeType = resolveNodeType(nodeId);
+          if (!nodeType) {
+            console.warn(`[NodeContentStore] Cannot reset content for ${nodeId}: Unable to determine type`);
+            return state;
+          }
           
-          // Store the content
-          state.nodeContents[nodeId] = content;
+          // Reset with the resolved type
+          state.nodeContents[nodeId] = createDefaultContent(nodeType);
+          return state;
+        });
+      },
+      
+      // Mark a node as dirty or clean
+      markNodeDirty: (nodeId, isDirty = true) => {
+        set((state) => {
+          if (state.nodeContents[nodeId]) {
+            state.nodeContents[nodeId].isDirty = isDirty;
+          }
+          return state;
+        });
+      },
+      
+      // Check if a node is dirty
+      isNodeDirty: (nodeId) => {
+        const content = get().nodeContents[nodeId];
+        return content ? !!content.isDirty : false;
+      },
+      
+      // Load content from nodes (e.g., during initialization)
+      loadFromNodes: (nodes) => {
+        // Track how many nodes are actually loaded vs skipped
+        let loadedCount = 0;
+        let skippedCount = 0;
+        let recentlyPastedSkipped = 0;
+        let explicitlyInitializedSkipped = 0;
+        let existingContentSkipped = 0;
+        
+        set(state => {
+          nodes.forEach(node => {
+            if (!node) return;
+            
+            // Extract node ID and data based on type
+            const nodeId = 'id' in node ? node.id : undefined;
+            if (!nodeId) {
+              console.warn('[NodeContentStore] Node without ID encountered:', node);
+              return;
+            }
+            
+            // Skip if this node was recently pasted (content already initialized by clipboard utils)
+            if (recentlyPastedNodes.has(nodeId)) {
+              console.log(`[NodeContentStore] Skipping recently pasted node ${nodeId} in loadFromNodes`);
+              recentlyPastedSkipped++;
+              skippedCount++;
+              return;
+            }
+            
+            // Skip if this node was explicitly initialized elsewhere
+            if (explicitlyInitializedNodeIds.has(nodeId)) {
+              console.log(`[NodeContentStore] Skipping explicitly initialized node ${nodeId} in loadFromNodes`);
+              explicitlyInitializedSkipped++;
+              skippedCount++;
+              return;
+            }
+            
+            // Skip if content already exists for this node
+            if (state.nodeContents[nodeId]) {
+              console.log(`[NodeContentStore] Node ${nodeId} already has content, skipping initialization`);
+              existingContentSkipped++;
+              skippedCount++;
+              return;
+            }
+            
+            const nodeData = 'data' in node ? node.data : node;
+            const nodeType = nodeData.type?.toLowerCase();
+            
+            // Skip nodes without a valid type
+            if (!nodeType) {
+              console.warn(`[NodeContentStore] Skipping node ${nodeId} with no type:`, nodeData);
+              skippedCount++;
+              return;
+            }
+            
+            let content: NodeContent = {};
+
+            // Prepare content based on node type
+            switch (nodeType) {
+              case 'input':
+                const inputData = nodeData as InputNodeData;
+                // Log input data before sanitization (only if not a bulk operation)
+                if (nodes.length < 5) {
+                  console.log(`[NodeContentStore] Loading input node ${nodeId}:`, {
+                    rawItems: inputData.items?.map(item => ({
+                      value: item,
+                      type: typeof item
+                    }))
+                  });
+                }
+                
+                content = {
+                  ...content,
+                  items: sanitizeInputItems(inputData.items || []), // Sanitize during load
+                  textBuffer: inputData.textBuffer || '',
+                  iterateEachRow: !!inputData.iterateEachRow,
+                  label: inputData.label
+                };
+                
+                // Log sanitized content (only if not a bulk operation)
+                if (nodes.length < 5) {
+                  console.log(`[NodeContentStore] Sanitized input node ${nodeId}:`, {
+                    sanitizedItems: content.items?.map(item => ({
+                      value: item,
+                      type: typeof item
+                    }))
+                  });
+                }
+                break;
+              case 'llm':
+                const llmData = nodeData as LLMNodeData;
+                content = {
+                  ...content,
+                  prompt: llmData.prompt,
+                  model: llmData.model,
+                  temperature: llmData.temperature,
+                  provider: llmData.provider,
+                  ollamaUrl: llmData.ollamaUrl,
+                  label: llmData.label
+                };
+                break;
+                
+              case 'api':
+                const apiData = nodeData as APINodeData;
+                content = {
+                  ...content,
+                  url: apiData.url,
+                  method: apiData.method,
+                  headers: apiData.headers,
+                  queryParams: apiData.queryParams,
+                  body: apiData.body,
+                  useInputAsBody: apiData.useInputAsBody,
+                  contentType: apiData.contentType,
+                  bodyFormat: apiData.bodyFormat,
+                  bodyParams: apiData.bodyParams,
+                  label: apiData.label
+                };
+                break;
+                
+              case 'output':
+                const outputData = nodeData as OutputNodeData;
+                content = {
+                  ...content,
+                  format: outputData.format,
+                  content: outputData.content,
+                  mode: outputData.mode,
+                  label: outputData.label
+                };
+                break;
+                
+              case 'json-extractor':
+                const extractorData = nodeData as JSONExtractorNodeData;
+                content = {
+                  ...content,
+                  path: extractorData.path,
+                  label: extractorData.label
+                };
+                break;
+                
+              case 'group':
+                const groupData = nodeData as GroupNodeData;
+                content = {
+                  ...content,
+                  isCollapsed: groupData.isCollapsed,
+                  label: groupData.label
+                };
+                break;
+                
+              case 'conditional':
+                const conditionalData = nodeData as ConditionalNodeData;
+                content = {
+                  ...content,
+                  conditionType: conditionalData.conditionType,
+                  conditionValue: conditionalData.conditionValue,
+                  label: conditionalData.label
+                };
+                break;
+                
+              case 'merger':
+                const mergerData = nodeData as MergerNodeData;
+                content = {
+                  ...content,
+                  items: mergerData.items,
+                  label: mergerData.label
+                };
+                break;
+            }
+            
+            // Store the sanitized content
+            state.nodeContents[nodeId] = content;
+            
+            // Mark as explicitly initialized to avoid duplicate initialization
+            explicitlyInitializedNodeIds.add(nodeId);
+            
+            loadedCount++;
+          });
         });
         
-        return state;
-      });
-    },
-    
-    // Load content from imported flow
-    loadFromImportedContents: (contents) => {
-      set((state) => {
-        console.log('[NodeContentStore] Loading contents from imported flow', contents);
+        // Log detailed summary statistics
+        console.log(`[NodeContentStore] loadFromNodes summary: ${loadedCount} loaded, ${skippedCount} skipped (${recentlyPastedSkipped} recently pasted, ${explicitlyInitializedSkipped} explicitly initialized, ${existingContentSkipped} existing content), ${nodes.length} total`);
+      },
+      
+      // Load content from imported flow
+      loadFromImportedContents: (contents) => {
+        console.log('[NodeContentStore] Loading imported contents:', contents);
         
-        Object.entries(contents).forEach(([nodeId, content]) => {
-          console.log(`[NodeContentStore] Loading content for node ${nodeId}:`, content);
+        set(state => {
+          // Sanitize all content during import
+          Object.entries(contents).forEach(([nodeId, content]) => {
+            // Skip entries with no valid content
+            if (!content || typeof content !== 'object') {
+              console.warn(`[NodeContentStore] Skipping invalid content for ${nodeId}:`, content);
+              return;
+            }
+            
+            // Validate node type consistency if possible
+            const existingType = resolveNodeType(nodeId);
+            const contentType = (content as any)?.type?.toLowerCase();
+            
+            if (existingType && contentType && existingType !== contentType) {
+              console.warn(`[NodeContentStore] Type mismatch for ${nodeId}:`, {
+                existingType,
+                importedType: contentType
+              });
+            }
+            
+            // Store the sanitized content
+            state.nodeContents[nodeId] = sanitizeNodeContent(content);
+          });
+        });
+        
+        // Log final state after import
+        const finalState = get().nodeContents;
+        console.log('[NodeContentStore] Final state after import:', finalState);
+      },
+      
+      // Clean up content for deleted nodes
+      cleanupDeletedNodes: (existingNodeIds) => {
+        set((state) => {
+          const existingNodeIdSet = new Set(existingNodeIds);
+          const nodeIdsToRemove = Object.keys(state.nodeContents).filter(
+            nodeId => !existingNodeIdSet.has(nodeId)
+          );
           
-          state.nodeContents[nodeId] = {
-            ...content,
-            isDirty: false
-          };
+          nodeIdsToRemove.forEach(nodeId => {
+            delete state.nodeContents[nodeId];
+          });
+          
+          return state;
         });
-        
-        return state;
-      });
-    },
-    
-    // Clean up content for deleted nodes
-    cleanupDeletedNodes: (existingNodeIds) => {
-      set((state) => {
-        const existingNodeIdSet = new Set(existingNodeIds);
-        const nodeIdsToRemove = Object.keys(state.nodeContents).filter(
-          nodeId => !existingNodeIdSet.has(nodeId)
-        );
-        
-        nodeIdsToRemove.forEach(nodeId => {
-          delete state.nodeContents[nodeId];
-        });
-        
-        return state;
-      });
-    },
-    
-    // Get all node contents
-    getAllNodeContents: () => {
-      return get().nodeContents;
-    },
-    
-    // Reset the store
-    reset: () => {
-      set({ nodeContents: {} });
+      },
+      
+      // Get all node contents
+      getAllNodeContents: () => {
+        return get().nodeContents;
+      },
+      
+      // Reset the store
+      reset: () => {
+        set({ nodeContents: {} });
+      }
+    })),
+    {
+      name: 'node-content-storage',
+      partialize: (state) => ({
+        nodeContents: state.nodeContents
+      }),
+      version: 1
     }
-  }))
+  )
 );
 
 // Create a hook to use content for a specific node

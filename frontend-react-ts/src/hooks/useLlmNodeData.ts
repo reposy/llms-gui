@@ -1,5 +1,6 @@
 import { useCallback, useMemo, ChangeEvent } from 'react';
 import { useNodeContent, LLMNodeContent } from '../store/useNodeContentStore';
+import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage LLM node state and operations using Zustand store.
@@ -29,65 +30,117 @@ export const useLlmNodeData = ({
   const label = content.label || 'LLM Node';
 
   /**
-   * Handle prompt change
+   * Handle prompt change with deep equality check
    */
   const handlePromptChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
     const newPrompt = event.target.value;
+    if (isEqual(newPrompt, prompt)) {
+      console.log(`[LLMNode ${nodeId}] Skipping prompt update - no change (deep equal)`);
+      return;
+    }
     setContent({ prompt: newPrompt });
-  }, [setContent]);
+  }, [nodeId, prompt, setContent]);
 
   /**
-   * Handle model change
+   * Handle model change with deep equality check
    */
   const handleModelChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const newModel = event.target.value;
+    if (isEqual(newModel, model)) {
+      console.log(`[LLMNode ${nodeId}] Skipping model update - no change (deep equal)`);
+      return;
+    }
     setContent({ model: newModel });
-  }, [setContent]);
+  }, [nodeId, model, setContent]);
 
   /**
-   * Handle temperature change
+   * Handle temperature change with deep equality check
    */
   const handleTemperatureChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const newTemperature = parseFloat(event.target.value);
+    if (isEqual(newTemperature, temperature)) {
+      console.log(`[LLMNode ${nodeId}] Skipping temperature update - no change (deep equal)`);
+      return;
+    }
     setContent({ temperature: newTemperature });
-  }, [setContent]);
+  }, [nodeId, temperature, setContent]);
 
   /**
-   * Set temperature directly
+   * Set temperature directly with deep equality check
    */
   const setTemperature = useCallback((newTemperature: number) => {
+    if (isEqual(newTemperature, temperature)) {
+      console.log(`[LLMNode ${nodeId}] Skipping temperature update - no change (deep equal)`);
+      return;
+    }
     setContent({ temperature: newTemperature });
-  }, [setContent]);
+  }, [nodeId, temperature, setContent]);
 
   /**
-   * Handle provider change
+   * Handle provider change with deep equality check
    */
   const handleProviderChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
     const newProvider = event.target.value as 'ollama' | 'openai';
+    if (isEqual(newProvider, provider)) {
+      console.log(`[LLMNode ${nodeId}] Skipping provider update - no change (deep equal)`);
+      return;
+    }
     setContent({ provider: newProvider });
-  }, [setContent]);
+  }, [nodeId, provider, setContent]);
 
   /**
-   * Set provider directly
+   * Set provider directly with deep equality check
    */
   const setProvider = useCallback((newProvider: 'ollama' | 'openai') => {
+    if (isEqual(newProvider, provider)) {
+      console.log(`[LLMNode ${nodeId}] Skipping provider update - no change (deep equal)`);
+      return;
+    }
     setContent({ provider: newProvider });
-  }, [setContent]);
+  }, [nodeId, provider, setContent]);
 
   /**
-   * Handle Ollama URL change
+   * Handle Ollama URL change with deep equality check
    */
   const handleOllamaUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const newUrl = event.target.value;
+    if (isEqual(newUrl, ollamaUrl)) {
+      console.log(`[LLMNode ${nodeId}] Skipping URL update - no change (deep equal)`);
+      return;
+    }
     setContent({ ollamaUrl: newUrl });
-  }, [setContent]);
+  }, [nodeId, ollamaUrl, setContent]);
 
   /**
-   * Update multiple properties at once
+   * Update multiple properties at once with deep equality check
    */
   const updateLlmContent = useCallback((updates: Partial<LLMNodeContent>) => {
+    // Skip update if no actual changes using deep equality
+    const hasChanges = Object.entries(updates).some(([key, value]) => {
+      const currentValue = content[key as keyof LLMNodeContent];
+      return !isEqual(currentValue, value);
+    });
+    
+    if (!hasChanges) {
+      console.log(`[LLMNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
+      return;
+    }
+    
+    // Create new content object with updates
+    const newContent = {
+      ...content,
+      ...updates
+    };
+
+    // Final deep equality check against current content
+    if (isEqual(newContent, content)) {
+      console.log(`[LLMNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      return;
+    }
+    
+    console.log(`[LLMNode ${nodeId}] Updating content with:`, updates);
     setContent(updates);
-  }, [setContent]);
+  }, [nodeId, content, setContent]);
 
   return {
     // Data

@@ -1,5 +1,5 @@
 import { Node, Edge } from 'reactflow';
-import { NodeData, NodeType, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, InputNodeData, ConditionalNodeData, MergerNodeData } from '../types/nodes';
+import { NodeData, NodeType, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, InputNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData } from '../types/nodes';
 import { ExecutionContext, NodeState, defaultNodeState, ConditionalExecutionResult } from '../types/execution';
 import { resolveTemplate } from '../utils/executionUtils'; // Corrected path if utils moved
 import { getIncomers } from 'reactflow';
@@ -12,6 +12,7 @@ import { executeConditionalNode } from './conditionalExecutor';
 import { executeInputNode } from './inputExecutor';
 import { executeOutputNode } from './outputExecutor';
 import { executeJsonExtractorNode } from './jsonExtractorExecutor';
+import { executeWebCrawlerNode } from './webCrawlerExecutor';
 
 interface DispatchParams {
   node: Node<NodeData>;
@@ -153,6 +154,15 @@ export async function dispatchNodeExecution(params: DispatchParams): Promise<any
           context,
           setNodeState,
           getNodeState
+        });
+        break;
+      }
+      case 'web-crawler': {
+        output = await executeWebCrawlerNode({
+          node: node as Node<WebCrawlerNodeData>,
+          inputs,
+          context,
+          resolveTemplate
         });
         break;
       }

@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
-import { VIEW_MODES, NodeViewMode } from '../../store/viewModeSlice';
+import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
 import { LLMNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/flowExecutionStore';
 import NodeErrorBoundary from './NodeErrorBoundary';

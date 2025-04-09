@@ -192,4 +192,35 @@ export const removeConnectedEdges = (
 ): Edge[] => {
   const nodeIds = new Set(nodesToDelete.map(n => n.id));
   return edges.filter(e => !nodeIds.has(e.source) && !nodeIds.has(e.target));
-}; 
+};
+
+/**
+ * Ensures ReactFlow nodes' visual selection state matches Zustand's selectedNodeIds
+ * 
+ * @param nodes - The ReactFlow nodes to update
+ * @param selectedNodeIds - Array of node IDs that should be visually selected
+ * @returns A new array of nodes with updated selection states
+ */
+export function syncVisualSelectionToReactFlow(
+  nodes: Node<NodeData>[],
+  selectedNodeIds: string[]
+): Node<NodeData>[] {
+  // Create a Set for faster lookups
+  const selectedIdsSet = new Set(selectedNodeIds);
+  
+  // Return a new array where each node has a correct selection state
+  return nodes.map(node => {
+    const shouldBeSelected = selectedIdsSet.has(node.id);
+    
+    // Only create a new node object if selection state needs to change
+    if (!!node.selected !== shouldBeSelected) {
+      return {
+        ...node,
+        selected: shouldBeSelected
+      };
+    }
+    
+    // Return unchanged node if selection state already matches
+    return node;
+  });
+} 

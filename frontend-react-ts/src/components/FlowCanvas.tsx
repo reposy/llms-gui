@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo } from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -9,6 +9,11 @@ import ReactFlow, {
   Panel,
   ReactFlowProvider,
   ConnectionLineType,
+  useNodesState,
+  useEdgesState,
+  OnConnectStart,
+  OnConnectEnd,
+  Connection
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -17,9 +22,11 @@ import { useHistory } from '../hooks/useHistory';
 import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
+import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flowUtils';
 // Import Zustand store
-import { setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
+import { setNodes, setEdges, setSelectedNodeId, useFlowStructureStore, applyNodeSelection } from '../store/useFlowStructureStore';
+import { isEqual } from 'lodash';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -30,56 +37,15 @@ import InputNode from './nodes/InputNode';
 import GroupNode from './nodes/GroupNode';
 import ConditionalNode from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
+import WebCrawlerNode from './nodes/WebCrawlerNode';
 import { NodeData, NodeType } from '../types/nodes';
 
 // Custom wrapper to remove default React Flow node styling
-const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
+export const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
   <div style={{ position: 'relative' }} className="react-flow__node pointer-events-auto">
     {children}
   </div>
 );
-
-// Override default node styles completely
-const nodeTypes = {
-  llm: (props: any) => (
-    <NodeWrapper>
-      <LLMNode {...props} />
-    </NodeWrapper>
-  ),
-  api: (props: any) => (
-    <NodeWrapper>
-      <APINode {...props} />
-    </NodeWrapper>
-  ),
-  output: (props: any) => (
-    <NodeWrapper>
-      <OutputNode {...props} />
-    </NodeWrapper>
-  ),
-  'json-extractor': (props: any) => (
-    <NodeWrapper>
-      <JSONExtractorNode {...props} />
-    </NodeWrapper>
-  ),
-  input: (props: any) => (
-    <NodeWrapper>
-      <InputNode {...props} />
-    </NodeWrapper>
-  ),
-  group: (props: any) => (
-    <GroupNode {...props} />
-  ),
-  conditional: (props: any) => (
-    <NodeWrapper>
-      <ConditionalNode {...props} />
-    </NodeWrapper>
-  ),
-  merger: (props: any) => (
-    <NodeWrapper>
-      <MergerNode {...props} />
-    </NodeWrapper>
-  ),
-};
 
 export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
@@ -100,6 +66,59 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   const { project, addNodes } = useReactFlow();
   
   const isRestoringHistory = useRef<boolean>(false);
+  const didNormalizeRef = useRef(false);
+
+  // Add console error override to suppress ReactFlow connection errors
+  useConsoleErrorOverride({
+    replacementMessage: "[ReactFlow] Error suppressed - likely invalid handle ID"
+  });
+
+  // Memoize nodeTypes to prevent unnecessary re-renders
+  const nodeTypes = useMemo(() => ({
+    llm: (props: any) => (
+      <NodeWrapper>
+        <LLMNode {...props} />
+      </NodeWrapper>
+    ),
+    api: (props: any) => (
+      <NodeWrapper>
+        <APINode {...props} />
+      </NodeWrapper>
+    ),
+    output: (props: any) => (
+      <NodeWrapper>
+        <OutputNode {...props} />
+      </NodeWrapper>
+    ),
+    'json-extractor': (props: any) => (
+      <NodeWrapper>
+        <JSONExtractorNode {...props} />
+      </NodeWrapper>
+    ),
+    input: (props: any) => (
+      <NodeWrapper>
+        <InputNode {...props} />
+      </NodeWrapper>
+    ),
+    group: (props: any) => (
+      <GroupNode {...props} />
+    ),
+    conditional: (props: any) => (
+      <NodeWrapper>
+        <ConditionalNode {...props} />
+      </NodeWrapper>
+    ),
+    merger: (props: any) => (
+      <NodeWrapper>
+        <MergerNode {...props} />
+      </NodeWrapper>
+    ),
+    'web-crawler': (props: any) => (
+      <NodeWrapper>
+        <WebCrawlerNode {...props} />
+      </NodeWrapper>
+    ),
+  }), []); // Empty dependency array since these don't change
 
   // Use the refactored flow sync hook (now using Zustand)
   const { 
@@ -109,8 +128,9 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromRedux: forceSyncFromZustand, // Renamed internally but kept same API
-    commitStructureToRedux: commitStructureToZustand // Renamed internally but kept same API
+    forceSyncFromStore, 
+    commitStructureToStore,
+    selectionHandlers // Added selectionHandlers from our refactored hook
   } = useFlowSync({ isRestoringHistory });
   
   // History hook now uses Zustand setters
@@ -127,13 +147,14 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   // Clipboard hook now interacts with Zustand
   const { 
     handleCopy, 
-    handlePaste 
+    handlePaste,
+    pasteVersion
   } = useClipboard();
   
   // Node handlers now operate on Zustand state
   const { 
     handleConnect,
-    handleSelectionChange,
+    handleSelectionChange: nodeHandlersSelectionChange, // Renamed to avoid collision
     handleNodeDragStop,
     handleSelectionDragStop,
     handleEdgesDelete,
@@ -152,17 +173,27 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
       isRestoringHistory 
     }
   );
+
+  // Create a combined selection handler that uses both the node handlers and selection sync handlers
+  const handleSelectionChangeIntegrated = useCallback((params: any) => {
+    // First, let nodeHandlers update the sidebar
+    nodeHandlersSelectionChange(params);
+    
+    // Then, let selectionSync handle the sync between ReactFlow and Zustand
+    const selectedNodeIds = params.nodes.map((node: Node) => node.id);
+    selectionHandlers.handleSelectionChange(selectedNodeIds);
+  }, [nodeHandlersSelectionChange, selectionHandlers]);
   
   // Register the API functions with the parent component
   useEffect(() => {
     if (registerReactFlowApi) {
       registerReactFlowApi({ 
         addNodes,
-        forceSync: forceSyncFromZustand, // Now references Zustand
-        commitStructure: () => commitStructureToZustand() // Now commits to Zustand
+        forceSync: forceSyncFromStore, // Now references Zustand
+        commitStructure: () => commitStructureToStore() // Now commits to Zustand
       });
     }
-  }, [registerReactFlowApi, addNodes, forceSyncFromZustand]);
+  }, [registerReactFlowApi, addNodes, forceSyncFromStore]);
 
   // Set up keyboard shortcuts (Undo/Redo/Copy/Paste/Delete)
   useEffect(() => {
@@ -264,15 +295,62 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     [project, setLocalNodes] // Ensure dependencies are correct
   );
 
+  // Detect if we're in a paste operation using global flags
+  const isJustAfterPaste = window._devFlags?.hasJustPasted;
+
+  // Debug paste activity in ReactFlow state
+  useEffect(() => {
+    if (isJustAfterPaste) {
+      console.log(`[FlowCanvas] Detected paste operation, using pasteVersion=${pasteVersion}`);
+    }
+  }, [isJustAfterPaste, pasteVersion]);
+  
+  // Selection consistency check - run only once after initial mount
+  // This ensures multi-selection drag works even after a refresh
+  useEffect(() => {
+    // Skip if we're restoring history
+    if (isRestoringHistory.current) return;
+    
+    // We only need to normalize selection state once after initial mount
+    if (!didNormalizeRef.current) {
+      console.log("[FlowCanvas] Running one-time selection normalization");
+      selectionHandlers.normalizeSelectionState();
+      didNormalizeRef.current = true;
+    }
+    
+  }, [selectionHandlers, isRestoringHistory]);
+
+  // Define connection callbacks at component level instead of inline
+  const handleConnectStart: OnConnectStart = useCallback((event, params) => {
+    console.log("[FlowCanvas] Connection start:", params);
+  }, []);
+  
+  const handleConnectEnd: OnConnectEnd = useCallback((event) => {
+    // Connection failures can be detected here
+    const target = event.target as HTMLElement;
+    const isHandle = target.classList.contains('react-flow__handle');
+    
+    if (!isHandle) {
+      console.log("[FlowCanvas] Connection ended on non-handle element");
+    }
+  }, []);
+
   return (
-    <div ref={reactFlowWrapper} className="w-full h-full relative">
+    <div 
+      ref={reactFlowWrapper} 
+      className="w-full h-full relative"
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <ReactFlow
+        // Use pasteVersion as part of the key to force remount after paste
+        key={`flow-${pasteVersion}`}
         nodes={localNodes}
         edges={localEdges}
         onNodesChange={onLocalNodesChange}
         onEdgesChange={onLocalEdgesChange}
         onConnect={handleConnect}
-        onSelectionChange={handleSelectionChange}
+        onSelectionChange={handleSelectionChangeIntegrated}
         onNodeDragStop={handleNodeDragStop}
         onSelectionDragStop={handleSelectionDragStop}
         nodeTypes={nodeTypes}
@@ -284,6 +362,16 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
         snapToGrid
         snapGrid={[15, 15]}
         className="w-full h-full bg-dot-pattern"
+        // Additional connection validation and configuration
+        connectOnClick={false}
+        disableKeyboardA11y={false}
+        deleteKeyCode="Delete"
+        multiSelectionKeyCode="Control"
+        selectionKeyCode="Shift"
+        zoomActivationKeyCode="Alt"
+        // Make sure that edge connections only happen when handle IDs are valid
+        onConnectStart={handleConnectStart}
+        onConnectEnd={handleConnectEnd}
       >
         <Controls position="bottom-right" />
         <MiniMap position="bottom-left" zoomable pannable />

@@ -1,7 +1,7 @@
 import { Node, Edge } from 'reactflow';
-import { NodeViewMode } from '../store/viewModeSlice';
+import { NodeViewMode } from '../store/viewModeStore';
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger' | 'web-crawler';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -68,6 +68,7 @@ export interface OutputNodeData extends BaseNodeData {
   type: 'output';
   format: 'json' | 'text';
   content?: string;
+  mode?: 'batch' | 'foreach';
   label?: string;
   viewMode?: NodeViewMode;
 }
@@ -121,9 +122,31 @@ export interface ConditionalNodeData extends BaseNodeData {
 export interface MergerNodeData extends BaseNodeData {
   type: 'merger';
   label?: string;
+  // Merge mode determines how values are combined
+  mergeMode?: 'concat' | 'join' | 'object';
+  // Join string for join mode
+  joinSeparator?: string;
+  // Strategy for handling array items
+  arrayStrategy?: 'flatten' | 'preserve';
+  // Custom property names for object mode
+  propertyNames?: string[];
+  // Whether to wait for all inputs or process as they arrive
+  waitForAll?: boolean;
   // Array to store manually edited/managed items via sidebar
-  items?: string[]; 
-  // Options like deduplication could be added later
+  items?: string[];
+}
+
+// Add WebCrawlerNodeData
+export interface WebCrawlerNodeData extends BaseNodeData {
+  type: 'web-crawler';
+  label?: string;
+  url?: string;
+  waitForSelector?: string;
+  extractSelectors?: Record<string, string>;
+  timeout?: number;
+  headers?: Record<string, string>;
+  includeHtml?: boolean;
+  outputFormat?: 'full' | 'text' | 'extracted' | 'html';
 }
 
 // Update NodeData union type
@@ -135,7 +158,8 @@ export type NodeData =
   | InputNodeData
   | GroupNodeData
   | ConditionalNodeData
-  | MergerNodeData; // Add MergerNodeData
+  | MergerNodeData
+  | WebCrawlerNodeData;
 
 export interface FlowState {
   nodes: Node<NodeData>[];

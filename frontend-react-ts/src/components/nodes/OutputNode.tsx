@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { downloadFile } from '../../utils/downloadUtils';
 import { useOutputNodeData } from '../../hooks/useOutputNodeData';
+import { isEqual } from 'lodash';
 
 interface Props {
   id: string;
@@ -17,6 +18,7 @@ interface Props {
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const contentRef = useRef<HTMLPreElement>(null);
+  const previousContentRef = useRef<string | undefined>(data.content);
   
   const { 
     format,
@@ -33,31 +35,49 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     
     if (nodeState?.result) {
       const newContent = formatResultBasedOnFormat(nodeState.result, newFormat);
-      handleContentChange(newContent);
+      // Only update content if it's different using deep equality
+      if (!isEqual(newContent, data.content) && !isEqual(newContent, previousContentRef.current)) {
+        previousContentRef.current = newContent;
+        handleContentChange(newContent);
+      }
     }
-  }, [format, nodeState?.result, handleFormatChange, handleContentChange, formatResultBasedOnFormat]);
+  }, [format, nodeState?.result, data.content, handleFormatChange, handleContentChange, formatResultBasedOnFormat]);
 
   // Update data.content when node result or format changes
   useEffect(() => {
+    // Skip effect if node state hasn't changed or if we're not in a valid state
+    if (!nodeState) return;
+
     let newContent: string | undefined;
 
-    if (nodeState?.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
+    if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       newContent = formatResultBasedOnFormat(nodeState.result, format);
-    } else if (nodeState?.status === 'running') {
+    } else if (nodeState.status === 'running') {
       newContent = '처리 중...';
-    } else if (nodeState?.status === 'error') {
+    } else if (nodeState.status === 'error') {
       newContent = `오류: ${nodeState.error}`;
-    } else if (nodeState?.status === 'idle') {
+    } else if (nodeState.status === 'idle') {
       newContent = '실행 대기 중...';
-    } else { // Handle case where status is success but result is null/undefined
-       newContent = '결과 없음';
+    } else {
+      newContent = '결과 없음';
     }
 
-    // Only update if the content actually needs updating
-    if (newContent !== undefined && newContent !== data.content) {
+    // Only update if content has actually changed using deep equality
+    if (newContent !== undefined && 
+        !isEqual(newContent, data.content) && 
+        !isEqual(newContent, previousContentRef.current)) {
+      console.log(`[OutputNode ${id}] Updating content from "${data.content}" to "${newContent}" (prev: "${previousContentRef.current}")`);
+      previousContentRef.current = newContent;
       handleContentChange(newContent);
     }
-  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, data.content, handleContentChange, formatResultBasedOnFormat]);
+  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, data.content, handleContentChange, formatResultBasedOnFormat, id]);
+
+  // Update previousContentRef when data.content changes externally
+  useEffect(() => {
+    if (!isEqual(data.content, previousContentRef.current)) {
+      previousContentRef.current = data.content;
+    }
+  }, [data.content]);
 
   // This function now determines the *displayed* content in the node using the formatter
   const renderContentForDisplay = () => {
