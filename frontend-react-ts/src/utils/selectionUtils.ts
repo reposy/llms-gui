@@ -7,7 +7,7 @@ import { isEqual } from 'lodash';
  * 
  * @param nodes - The ReactFlow nodes to update
  * @param selectedNodeIds - Array of node IDs that should be visually selected
- * @returns A new array of nodes with updated selection states
+ * @returns A new array of nodes with updated selection states, or the original array if no changes
  */
 export function syncVisualSelectionToReactFlow(
   nodes: Node<NodeData>[],
@@ -16,7 +16,23 @@ export function syncVisualSelectionToReactFlow(
   // Create a Set for faster lookups
   const selectedIdsSet = new Set(selectedNodeIds);
   
-  // Return a new array where each node has a correct selection state
+  // First check if there are any changes needed at all
+  let hasChanges = false;
+  for (const node of nodes) {
+    const shouldBeSelected = selectedIdsSet.has(node.id);
+    if (!!node.selected !== shouldBeSelected) {
+      hasChanges = true;
+      break;
+    }
+  }
+  
+  // If no changes are needed, return the original nodes array
+  // This prevents unnecessary renders
+  if (!hasChanges) {
+    return nodes;
+  }
+  
+  // If changes are needed, create a new array with the updated selection states
   return nodes.map(node => {
     const shouldBeSelected = selectedIdsSet.has(node.id);
     

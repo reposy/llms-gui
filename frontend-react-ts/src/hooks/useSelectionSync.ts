@@ -183,7 +183,10 @@ export const useSelectionSync = ({
       return;
     }
     
-    console.log("[Selection] Normalizing selection state between Zustand and ReactFlow");
+    console.log("[Selection] Normalizing selection state between Zustand and ReactFlow", {
+      visiblySelected: visiblySelectedIds,
+      storedSelected: storedSelectedIds
+    });
     
     // Set flag to prevent recursive calls
     isNormalizing.current = true;
@@ -194,9 +197,22 @@ export const useSelectionSync = ({
       !visiblySelectedNodes.every(node => storedSelectedIds.includes(node.id));
     
     if (selectionMismatch) {
+      // DEBUGGING: Track when selection mismatches occur
+      const now = Date.now();
+      if (now - lastSelectionUpdate.time < 100) {
+        lastSelectionUpdate.count++;
+        console.warn("[Selection] Multiple selection mismatches in quick succession", {
+          count: lastSelectionUpdate.count,
+          timeSinceLast: now - lastSelectionUpdate.time
+        });
+      } else {
+        lastSelectionUpdate.time = now;
+        lastSelectionUpdate.count = 1;
+      }
+      
       console.warn("[Selection] Selection state mismatch detected", {
         visiblySelectedCount: visiblySelectedNodes.length,
-        visiblySelectedIds: visiblySelectedNodes.map(n => n.id),
+        visiblySelectedIds,
         storedSelectedIds
       });
     }
@@ -219,21 +235,27 @@ export const useSelectionSync = ({
       normalizedNodes = syncVisualSelectionToReactFlow(localNodes, []);
     }
     
-    // Update local nodes with normalized selection state
-    setLocalNodes(normalizedNodes);
-    
-    // If we had to make selection changes, sync back to Zustand to ensure consistency
-    if (selectionMismatch) {
-      // Update Zustand nodes with correct selection state
-      setZustandNodes(normalizedNodes);
+    // Only update local nodes if we actually got a new array (indicating changes)
+    // syncVisualSelectionToReactFlow only returns a new array if changes are needed
+    if (normalizedNodes !== localNodes) {
+      console.log("[Selection] Updated local nodes with normalized selection state");
+      setLocalNodes(normalizedNodes);
       
-      // If we had visually selected nodes but no Zustand selection, update the selectedNodeIds
-      // This ensures selection state is fully consistent
-      if (visiblySelectedNodes.length > 0 && storedSelectedIds.length === 0) {
-        const selectedIds = visiblySelectedNodes.map(node => node.id);
-        applyNodeSelection(selectedIds);
-        console.log("[Selection] Updated Zustand selectedNodeIds to match visual selection:", selectedIds);
+      // If we had to make selection changes, sync back to Zustand to ensure consistency
+      if (selectionMismatch) {
+        // Update Zustand nodes with correct selection state
+        setZustandNodes(normalizedNodes);
+        
+        // If we had visually selected nodes but no Zustand selection, update the selectedNodeIds
+        // This ensures selection state is fully consistent
+        if (visiblySelectedNodes.length > 0 && storedSelectedIds.length === 0) {
+          const selectedIds = visiblySelectedNodes.map(node => node.id);
+          applyNodeSelection(selectedIds);
+          console.log("[Selection] Updated Zustand selectedNodeIds to match visual selection:", selectedIds);
+        }
       }
+    } else {
+      console.log("[Selection] No actual selection changes needed, skipping setLocalNodes");
     }
     
     // Reset the flag after sync is complete
@@ -252,63 +274,49 @@ export const useSelectionSync = ({
     }
   }, [normalizeSelectionState]);
 
-  // Effect for subscribing to Zustand selection changes
-  useEffect(() => {
-    // Skip first run
-    if (isInitialSyncRef.current) return;
-    
-    // Skip if we're restoring history (handled elsewhere)
-    if (isRestoringHistory.current) return;
-    
-    // Get and memoize the current store selected IDs to avoid reference equality issues
-    const storeSelectedIds = [...useFlowStructureStore.getState().selectedNodeIds];
-    
-    // Check if selection state is different between local and store
-    const localSelectedIds = localNodes.filter(n => n.selected).map(n => n.id);
-    const selectionChanged = !hasEqualSelection(localSelectedIds, storeSelectedIds);
-    
-    if (selectionChanged) {
-      logSelectionChange(
-        'Store selection changed', 
-        localSelectedIds, 
-        storeSelectedIds
-      );
-      
-      // Use utility function to sync selection state
-      const nodesWithSelection = syncVisualSelectionToReactFlow(
-        localNodes, 
-        storeSelectedIds
-      );
-      
-      setLocalNodes(nodesWithSelection);
-    }
-  }, [localNodes, setLocalNodes, isRestoringHistory]);
-  
   // Add a separate subscription outside the effect to listen for store changes
   useEffect(() => {
-    // Create a subscription to selection changes in the store
-    const unsubscribe = useFlowStructureStore.subscribe(
-      (state) => state.selectedNodeIds,
-      (selectedNodeIds) => {
-        // Skip if initial sync or restoring history
-        if (isInitialSyncRef.current || isRestoringHistory.current) return;
+    let prevSelectedNodeIds: string[] = [];
+    
+    // Create a subscription to store changes
+    const unsubscribe = useFlowStructureStore.subscribe((state) => {
+      // Skip if initial sync or restoring history
+      if (isInitialSyncRef.current || isRestoringHistory.current) return;
+      
+      const storeSelectedIds = state.selectedNodeIds;
+      
+      // Check if selection has changed from previous state
+      if (!hasEqualSelection(prevSelectedNodeIds, storeSelectedIds)) {
+        // Save current selection for next comparison
+        prevSelectedNodeIds = [...storeSelectedIds];
         
-        // Trigger the effect to update only when selection actually changes
+        // Compare with local node selection
         const localSelectedIds = localNodes.filter(n => n.selected).map(n => n.id);
-        const selectionChanged = !hasEqualSelection(localSelectedIds, selectedNodeIds);
+        const selectionChanged = !hasEqualSelection(localSelectedIds, storeSelectedIds);
         
         if (selectionChanged) {
+          logSelectionChange(
+            'Store selection changed', 
+            localSelectedIds, 
+            storeSelectedIds
+          );
+          
           // Use utility function to sync selection state
           const nodesWithSelection = syncVisualSelectionToReactFlow(
             localNodes, 
-            selectedNodeIds
+            storeSelectedIds
           );
           
-          setLocalNodes(nodesWithSelection);
+          // Only update if the sync actually changed nodes
+          if (nodesWithSelection !== localNodes) {
+            console.log("[Selection] Store subscription: updating local nodes with new selection state");
+            setLocalNodes(nodesWithSelection);
+          } else {
+            console.log("[Selection] Store subscription: selection state already matches, skipping update");
+          }
         }
-      },
-      { equalityFn: (prev, next) => isEqual(new Set(prev), new Set(next)) }
-    );
+      }
+    });
     
     return unsubscribe;
   }, [localNodes, setLocalNodes, isRestoringHistory]);

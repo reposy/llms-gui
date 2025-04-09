@@ -227,7 +227,7 @@ export const useFlowSync = ({
     
     // Reset pending changes flag
     hasPendingStructuralChanges.current = false;
-  }, [setLocalNodes, setLocalEdges, isRestoringHistory, localNodes, selectionSync]);
+  }, [localNodes, setLocalNodes, setLocalEdges, isRestoringHistory, selectionSync]);
 
   // Subscribes to flow structure store, to update local view when store changes
   useEffect(() => {
