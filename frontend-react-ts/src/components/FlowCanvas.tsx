@@ -9,6 +9,8 @@ import ReactFlow, {
   Panel,
   ReactFlowProvider,
   ConnectionLineType,
+  useNodesState,
+  useEdgesState
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -19,7 +21,8 @@ import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { createNewNode } from '../utils/flowUtils';
 // Import Zustand store
-import { setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
+import { setNodes, setEdges, setSelectedNodeId, useFlowStructureStore, applyNodeSelection } from '../store/useFlowStructureStore';
+import { isEqual } from 'lodash';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -30,6 +33,7 @@ import InputNode from './nodes/InputNode';
 import GroupNode from './nodes/GroupNode';
 import ConditionalNode from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
+import WebCrawlerNode from './nodes/WebCrawlerNode';
 import { NodeData, NodeType } from '../types/nodes';
 
 // Custom wrapper to remove default React Flow node styling
@@ -79,6 +83,11 @@ const nodeTypes = {
       <MergerNode {...props} />
     </NodeWrapper>
   ),
+  'web-crawler': (props: any) => (
+    <NodeWrapper>
+      <WebCrawlerNode {...props} />
+    </NodeWrapper>
+  ),
 };
 
 export interface FlowCanvasApi {
@@ -109,8 +118,8 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    forceSyncFromRedux: forceSyncFromZustand, // Renamed internally but kept same API
-    commitStructureToRedux: commitStructureToZustand // Renamed internally but kept same API
+    forceSyncFromStore, // Updated to match the return values from useFlowSync
+    commitStructureToStore // Updated to match the return values from useFlowSync
   } = useFlowSync({ isRestoringHistory });
   
   // History hook now uses Zustand setters
@@ -159,11 +168,11 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
     if (registerReactFlowApi) {
       registerReactFlowApi({ 
         addNodes,
-        forceSync: forceSyncFromZustand, // Now references Zustand
-        commitStructure: () => commitStructureToZustand() // Now commits to Zustand
+        forceSync: forceSyncFromStore, // Now references Zustand
+        commitStructure: () => commitStructureToStore() // Now commits to Zustand
       });
     }
-  }, [registerReactFlowApi, addNodes, forceSyncFromZustand]);
+  }, [registerReactFlowApi, addNodes, forceSyncFromStore]);
 
   // Set up keyboard shortcuts (Undo/Redo/Copy/Paste/Delete)
   useEffect(() => {
@@ -274,6 +283,67 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
       console.log(`[FlowCanvas] Detected paste operation, using pasteVersion=${pasteVersion}`);
     }
   }, [isJustAfterPaste, pasteVersion]);
+  
+  // Additional safety measure: Verify selection consistency on mount/render
+  // This ensures multi-selection drag works even after a refresh
+  useEffect(() => {
+    // Import needed dependencies inline to avoid linter errors
+    const { getState } = useFlowStructureStore;
+    const checkEquality = isEqual;
+    const updateSelection = applyNodeSelection;
+    
+    // Run on a slight delay to ensure all state is settled
+    const timer = setTimeout(() => {
+      // Get current local selection state
+      const visiblySelectedNodes = localNodes.filter(node => node.selected);
+      const localSelectedIds = visiblySelectedNodes.map(node => node.id);
+      
+      // Get Zustand selection state
+      const zustandState = getState();
+      const zustandSelectedIds = zustandState.selectedNodeIds;
+      
+      // Check for selection mismatch
+      const hasSelectionMismatch = 
+        !checkEquality(new Set(localSelectedIds), new Set(zustandSelectedIds)) ||
+        (localSelectedIds.length > 0 && zustandSelectedIds.length === 0) ||
+        (localSelectedIds.length === 0 && zustandSelectedIds.length > 0);
+        
+      // Log any selection mismatches for debugging
+      if (hasSelectionMismatch) {
+        console.warn('[FlowCanvas] Selection state mismatch detected after render:', {
+          localSelectedCount: localSelectedIds.length,
+          localSelectedIds,
+          zustandSelectedCount: zustandSelectedIds.length,
+          zustandSelectedIds
+        });
+        
+        // Force a manual sync to ensure consistency
+        // This is different from forceSyncFromStore as it synchronizes in both directions
+        // based on which selection state is non-empty
+        
+        if (zustandSelectedIds.length > 0) {
+          // If Zustand has selection, prioritize it and update ReactFlow nodes
+          console.log('[FlowCanvas] Applying Zustand selection to visible nodes');
+          
+          // Apply selection state to local nodes
+          const updatedNodes = localNodes.map(node => ({
+            ...node,
+            selected: zustandSelectedIds.includes(node.id)
+          }));
+          
+          // Update local state
+          setLocalNodes(updatedNodes);
+        } 
+        else if (localSelectedIds.length > 0) {
+          // If ReactFlow has selection but Zustand doesn't, update Zustand
+          console.log('[FlowCanvas] Applying visible selection to Zustand');
+          updateSelection(localSelectedIds);
+        }
+      }
+    }, 200); // Short delay to ensure all initialization processes are complete
+    
+    return () => clearTimeout(timer);
+  }, [localNodes, setLocalNodes]); // Add appropriate dependencies
 
   return (
     <div 

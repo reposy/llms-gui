@@ -19,18 +19,17 @@ export function executeJsonExtractorNode(params: ExecuteJsonExtractorNodeParams)
   const { node, inputs, context } = params;
   const nodeId = node.id;
   const nodeData = node.data;
-  const { executionId } = context;
 
   console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Executing with context:`, context);
 
   const jsonInput = inputs.length > 0 ? inputs[0] : null;
   console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Input:`, jsonInput);
-  console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Path:`, nodeData.jsonPath);
+  console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Path:`, nodeData.path);
 
   if (jsonInput === null || jsonInput === undefined) {
     throw new Error("Input is null or undefined.");
   }
-  if (!nodeData.jsonPath) {
+  if (!nodeData.path) {
     throw new Error("JSONPath is not defined.");
   }
 
@@ -49,10 +48,10 @@ export function executeJsonExtractorNode(params: ExecuteJsonExtractorNodeParams)
     }
     
     // Use the centralized extractValue utility
-    const output = extractValue(dataToParse, nodeData.jsonPath);
+    const output = extractValue(dataToParse, nodeData.path);
     console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Extracted output:`, output);
     if (output === undefined) {
-      console.warn(`[ExecuteNode ${nodeId}] (JSON Extractor) Path "${nodeData.jsonPath}" returned undefined.`);
+      console.warn(`[ExecuteNode ${nodeId}] (JSON Extractor) Path "${nodeData.path}" returned undefined.`);
     }
     return output;
 

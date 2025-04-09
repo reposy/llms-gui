@@ -103,15 +103,21 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setNodes(previous.nodes);
     setEdges(previous.edges);
     
-    // 4. Restore selection state
+    // 4. Restore selection state - use a short timeout to ensure flow structure is updated first
     const selectedNodes = previous.nodes.filter(node => node.selected).map(node => node.id);
-    if (selectedNodes.length > 0) {
-      console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
-      applyNodeSelection(selectedNodes);
-      
-      // Set the first selected node as the primary one for sidebar
-      setSelectedNodeId(selectedNodes[0]);
-    }
+    setTimeout(() => {
+      if (selectedNodes.length > 0) {
+        console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
+        applyNodeSelection(selectedNodes, 'none');
+        
+        // Set the first selected node as the primary one for sidebar
+        setSelectedNodeId(selectedNodes[0]);
+      } else {
+        // If no nodes were selected, clear selection
+        applyNodeSelection([], 'none');
+        setSelectedNodeId(null);
+      }
+    }, 50);
     
     set({
       past: newPast,
@@ -146,15 +152,21 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setNodes(next.nodes);
     setEdges(next.edges);
     
-    // 4. Restore selection state
+    // 4. Restore selection state - use a short timeout to ensure flow structure is updated first
     const selectedNodes = next.nodes.filter(node => node.selected).map(node => node.id);
-    if (selectedNodes.length > 0) {
-      console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
-      applyNodeSelection(selectedNodes);
-      
-      // Set the first selected node as the primary one for sidebar
-      setSelectedNodeId(selectedNodes[0]);
-    }
+    setTimeout(() => {
+      if (selectedNodes.length > 0) {
+        console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
+        applyNodeSelection(selectedNodes, 'none');
+        
+        // Set the first selected node as the primary one for sidebar
+        setSelectedNodeId(selectedNodes[0]);
+      } else {
+        // If no nodes were selected, clear selection
+        applyNodeSelection([], 'none');
+        setSelectedNodeId(null);
+      }
+    }, 50);
     
     set({
       past: [...state.past, next],

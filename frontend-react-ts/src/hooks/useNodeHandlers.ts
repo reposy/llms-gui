@@ -15,7 +15,14 @@ import {
   OnConnectStartParams
 } from 'reactflow';
 import { NodeData } from '../types/nodes';
-import { setNodes as setZustandNodes, setEdges as setZustandEdges, applyNodeSelection } from '../store/useFlowStructureStore';
+import { 
+  setNodes as setZustandNodes, 
+  setEdges as setZustandEdges, 
+  applyNodeSelection,
+  SelectionModifierKey,
+  useFlowStructureStore
+} from '../store/useFlowStructureStore';
+import { isEqual } from 'lodash';
 
 
 interface UseNodeHandlersOptions {
@@ -45,14 +52,18 @@ export const useNodeHandlers = (
   const { onNodeSelect, pushToHistory, isRestoringHistory } = options;
   const { getNodes, getEdges } = useReactFlow();
   
-  // Add a ref to track shift key state
+  // Add refs to track modifier key states
   const isShiftPressed = useRef(false);
+  const isCtrlPressed = useRef(false);
   
-  // Set up keyboard listeners to track shift key state
+  // Set up keyboard listeners to track modifier key states
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         isShiftPressed.current = true;
+      }
+      if (e.key === 'Control' || e.key === 'Meta') { // Meta for Mac
+        isCtrlPressed.current = true;
       }
     };
     
@@ -60,11 +71,15 @@ export const useNodeHandlers = (
       if (e.key === 'Shift') {
         isShiftPressed.current = false;
       }
+      if (e.key === 'Control' || e.key === 'Meta') {
+        isCtrlPressed.current = false;
+      }
     };
     
-    // Handle focus/blur events to reset shift state when window loses focus
+    // Handle focus/blur events to reset modifier states when window loses focus
     const handleBlur = () => {
       isShiftPressed.current = false;
+      isCtrlPressed.current = false;
     };
     
     window.addEventListener('keydown', handleKeyDown);
@@ -78,95 +93,159 @@ export const useNodeHandlers = (
     };
   }, []);
 
+  // Helper to determine which modifier key is active
+  const getActiveModifierKey = (): SelectionModifierKey => {
+    if (isShiftPressed.current) return 'shift';
+    if (isCtrlPressed.current) return 'ctrl';
+    return 'none';
+  };
+
+  /**
+   * Shared helper function to sync dragged node positions to Zustand.
+   * 
+   * This function centralizes the position update logic to:
+   * 1. Avoid duplicate code across different drag handlers
+   * 2. Ensure consistent behavior between single and multi-node drags
+   * 3. Prevent selection-related infinite update loops
+   * 
+   * Key aspects:
+   * - Only updates positions without changing selection state (preventing loops)
+   * - Used by both handleNodeDragStop and handleSelectionDragStop
+   * - Properly respects history restoration to avoid interfering with undo/redo
+   * 
+   * @param draggedNodes - The nodes that were directly involved in the drag operation
+   * @param allNodes - All nodes in the flow (defaults to localNodes if not provided)
+   * @returns The nodes that were synced to Zustand (primarily for testing)
+   */
+  const syncDraggedNodesToZustand = useCallback(
+    (draggedNodes: Node<NodeData>[], allNodes: Node<NodeData>[] = localNodes) => {
+      if (isRestoringHistory.current) return;
+      
+      // Skip empty sets of nodes
+      if (draggedNodes.length === 0) return;
+      
+      console.log(`[syncDraggedNodesToZustand] Syncing positions for ${draggedNodes.length} nodes`);
+      
+      // Get the latest nodes from ReactFlow or use the provided nodes
+      const currentNodes = allNodes;
+      
+      // Synchronize with Zustand (only update position state, not selection state)
+      // This is critical for persisting drag operations
+      setZustandNodes(currentNodes);
+      
+      // Return the synced nodes (primarily for tests or future enhancements)
+      return currentNodes;
+    },
+    [localNodes, isRestoringHistory]
+  );
+
   // Handle nodes change (selection, position, etc)
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     // Skip if we're currently restoring history to avoid feedback loops
     if (isRestoringHistory.current) return;
     
-    // Use the shift state from our ref instead of window.event
-    const isShiftKeyPressed = isShiftPressed.current;
+    // Use the modifier key state
+    const modifierKey = getActiveModifierKey();
     
     // Filter selection changes for special handling
     const selectionChanges = changes.filter(change => 
       change.type === 'select' && change.selected !== undefined
     );
     
-    // Apply special multi-select logic if shift is pressed and there are selection changes
-    if (isShiftKeyPressed && selectionChanges.length > 0) {
-      // Create a copy of current nodes to modify
-      let nextNodes = [...localNodes];
+    // Filter position changes (dragging)
+    const positionChanges = changes.filter(change => 
+      change.type === 'position' && change.position
+    );
+    
+    // Apply the changes to get the new state
+    const nextNodes = applyNodeChanges(changes, localNodes);
+    
+    // Update local state
+    setLocalNodes(nextNodes);
+    
+    // Special selection debounce for paste operations
+    // We'll track when the last paste-triggered selection happened to avoid loops
+    const now = Date.now();
+    const lastSelectionChange = useRef({ time: 0 });
+    const isPossiblePasteSelection = selectionChanges.length > 1 && 
+      selectionChanges.every(change => (change as any).selected === true);
+    
+    // Handle selection changes
+    if (selectionChanges.length > 0) {
+      // Get the currently selected node IDs
+      const selectedNodeIds = nextNodes
+        .filter(node => node.selected)
+        .map(node => node.id);
       
-      // Process each selection change
-      selectionChanges.forEach(change => {
-        const { id, selected } = change as { id: string; selected: boolean };
-        // Find the node index
-        const nodeIndex = nextNodes.findIndex(node => node.id === id);
+      // Get current selection from Zustand
+      const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
+      
+      // For selection operations after paste, be more aggressive with debouncing
+      // to avoid loops of unnecessary selection updates  
+      if (isPossiblePasteSelection && now - lastSelectionChange.current.time < 200) {
+        console.log('[handleNodesChange] Debouncing rapid selection change', {
+          selectedNodeIds,
+          timeSinceLastChange: now - lastSelectionChange.current.time
+        });
+      } 
+      // Otherwise, handle the selection normally
+      else {
+        // Only update if the selection actually changed
+        const selectionHasSameElements = 
+          selectedNodeIds.length === currentSelection.length && 
+          selectedNodeIds.every(id => currentSelection.includes(id));
         
-        if (nodeIndex !== -1) {
-          // Update the node's selection state while preserving other selections
-          nextNodes[nodeIndex] = {
-            ...nextNodes[nodeIndex],
-            selected
-          };
+        // Update if selection changed or we have a multi-selection
+        if (!selectionHasSameElements || selectedNodeIds.length > 1) {
+          console.log('[handleNodesChange] Selection changed:', selectedNodeIds);
+          
+          // Apply to Zustand store with the correct modifier key
+          applyNodeSelection(selectedNodeIds, modifierKey);
+          
+          // Update lastSelectionChange time
+          lastSelectionChange.current.time = now;
+          
+          // Handle sidebar updates based on selection count
+          const selectedNodes = nextNodes.filter(node => node.selected);
+          if (selectedNodes.length === 1) {
+            onNodeSelect(selectedNodes[0]);
+          } else if (selectedNodes.length > 1) {
+            // Multiple nodes selected
+            onNodeSelect(null);
+          } else {
+            onNodeSelect(null);
+          }
+        } else {
+          console.log('[handleNodesChange] Selection unchanged, skipping update', {
+            selectedNodeIds,
+            currentSelection
+          });
         }
-      });
-      
-      // Apply non-selection changes normally
-      const otherChanges = changes.filter(change => change.type !== 'select');
-      nextNodes = applyNodeChanges(otherChanges, nextNodes);
-      
-      // Update local state
-      setLocalNodes(nextNodes);
-      
-      // Determine if any position changed (dragging)
-      const hasPositionChange = otherChanges.some(
-        change => change.type === 'position' && change.position
-      );
-      
-      // Update Zustand if there was a position change
-      if (hasPositionChange) {
-        setZustandNodes(nextNodes);
       }
+    }
+    
+    // Handle position changes separately (dragging)
+    if (positionChanges.length > 0) {
+      console.log(`[handleNodesChange] Processing ${positionChanges.length} position changes. MultiSelect: ${nextNodes.filter(n => n.selected).length > 1}`);
       
-      // Update sidebar based on selection
-      const selectedNodes = nextNodes.filter(node => node.selected);
-      if (selectedNodes.length === 1) {
-        onNodeSelect(selectedNodes[0]);
-      } else if (selectedNodes.length === 0) {
-        onNodeSelect(null);
-      } else {
-        // Multiple nodes selected
-        onNodeSelect(null);
-      }
-    } else {
-      // Standard behavior without shift key
-      // Apply the changes to get the new state
-      const nextNodes = applyNodeChanges(changes, localNodes);
+      // We no longer need to call setZustandNodes here - position updates will be 
+      // handled by syncDraggedNodesToZustand in handleNodeDragStop/handleSelectionDragStop
+      // when the drag operation completes.
       
-      // Update local state
-      setLocalNodes(nextNodes);
-      
-      // Determine if any position changed (dragging)
-      const hasPositionChange = changes.some(
-        change => change.type === 'position' && change.position
-      );
-      
-      // Update Zustand if there was a position change (to avoid unnecessary updates)
-      if (hasPositionChange) {
-        setZustandNodes(nextNodes);
-      }
-      
-      // Check for selection changes to update sidebar
-      const selectionChange = changes.find(change => 
-        change.type === 'select' && change.selected !== undefined
-      ) as { id: string; selected: boolean } | undefined;
-      
-      if (selectionChange) {
-        const selectedNode = nextNodes.find(node => node.id === selectionChange.id);
-        if (selectedNode && selectionChange.selected) {
-          onNodeSelect(selectedNode);
-        } else if (!nextNodes.some(node => node.selected)) {
-          onNodeSelect(null);
+      // For multi-node selections, still ensure selection state is consistent
+      // without triggering unnecessary updates
+      const selectedNodeIds = nextNodes
+        .filter(node => node.selected)
+        .map(node => node.id);
+        
+      if (selectedNodeIds.length > 1) {
+        // Get current selection from Zustand
+        const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
+        
+        // Only update selection if it's actually different
+        if (!isEqual(new Set(selectedNodeIds), new Set(currentSelection))) {
+          console.log('[handleNodesChange] Multi-node drag detected with selection change');
+          applyNodeSelection(selectedNodeIds, 'none'); // Use 'none' to preserve current selection
         }
       }
     }
@@ -218,24 +297,57 @@ export const useNodeHandlers = (
 
   // Handle selection change for sidebar update
   const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
+    // Skip if we're in the process of restoring history
+    if (isRestoringHistory.current) return;
+    
     const { nodes } = params;
     
-    // Extract the IDs of selected nodes
+    // Determine which modifier key is active
+    const modifierKey = getActiveModifierKey();
+    
+    // Extract the IDs of selected nodes from the event
     const selectedNodeIds = nodes.map(node => node.id);
     
-    // Update selection state in the store to keep ReactFlow and store in sync
-    applyNodeSelection(selectedNodeIds);
+    // Get current selection from Zustand store
+    const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
+    
+    // Check if the selection is actually changing
+    // For selection operations, order matters so we use regular array equality
+    // But we do need to handle the case where the arrays have the same elements in different order
+    const selectionHasSameElements = 
+      selectedNodeIds.length === currentSelection.length && 
+      selectedNodeIds.every(id => currentSelection.includes(id));
+      
+    // Only update if selection actually changed or if we have multiple selected nodes
+    // (multi-node drag operations need consistent selection state)
+    if (!selectionHasSameElements || selectedNodeIds.length > 1) {
+      console.log('[handleSelectionChange] Selection changed or multi-selection active', {
+        selectedNodeIds,
+        currentSelection,
+        hasSameElements: selectionHasSameElements,
+        multiSelection: selectedNodeIds.length > 1,
+        modifierKey
+      });
+      
+      // Apply the selection change to ensure ReactFlow's internal state is consistent
+      applyNodeSelection(selectedNodeIds, modifierKey);
+    } else {
+      console.log('[handleSelectionChange] Selection unchanged, skipping update', {
+        selectedNodeIds,
+        currentSelection
+      });
+    }
     
     // Update sidebar selection based on selection count
     if (nodes.length === 1) {
       onNodeSelect(nodes[0]);
     } else if (nodes.length > 1) {
-      // Multiple nodes selected - optionally, we could show multi-selection info
+      // Multiple nodes selected - show multi-selection UI
       onNodeSelect(null);
     } else {
       onNodeSelect(null);
     }
-  }, [onNodeSelect]);
+  }, [onNodeSelect, isRestoringHistory]);
 
   // Helper function to detect group intersections
   const checkNodeGroupIntersection = useCallback((node: Node<NodeData>, allNodes: Node<NodeData>[]) => {
@@ -287,9 +399,7 @@ export const useNodeHandlers = (
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, node: Node<NodeData>) => {
       // If we're in the middle of a history restoration, don't register these changes
-      if (isRestoringHistory.current) {
-        return;
-      }
+      if (isRestoringHistory.current) return;
       
       let updatedNodes = [...localNodes];
       let needsUpdate = false;
@@ -369,25 +479,37 @@ export const useNodeHandlers = (
         }
       }
       
-      // Only update if something changed
+      // Only update local state if node-group membership changed
       if (needsUpdate) {
         setLocalNodes(updatedNodes);
-        setZustandNodes(updatedNodes);
       }
 
+      // Sync the final node positions to Zustand (either modified nodes or current nodes)
+      const nodesToSync = needsUpdate ? updatedNodes : localNodes;
+      syncDraggedNodesToZustand([node], nodesToSync);
+      
       // Always push to history to capture position changes
-      pushToHistory(needsUpdate ? updatedNodes : localNodes, localEdges);
+      pushToHistory(nodesToSync, localEdges);
     },
-    [localNodes, setLocalNodes, localEdges, pushToHistory, isRestoringHistory, checkNodeGroupIntersection, setZustandNodes]
+    [localNodes, setLocalNodes, localEdges, pushToHistory, isRestoringHistory, checkNodeGroupIntersection, syncDraggedNodesToZustand]
   );
 
   // Handle selection drag stop to update history
   const handleSelectionDragStop = useCallback((event: React.MouseEvent, nodes: Node<NodeData>[]) => {
     if (isRestoringHistory.current) return;
     
-    // Push current state to history
-    pushToHistory(getNodes(), getEdges());
-  }, [getNodes, getEdges, pushToHistory, isRestoringHistory]);
+    console.log(`[SelectionDragStop] Multi-selection drag completed for ${nodes.length} nodes`);
+    
+    // Get the current nodes with their updated positions after drag
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    
+    // Sync dragged node positions to Zustand using the shared helper
+    syncDraggedNodesToZustand(nodes, currentNodes);
+    
+    // Push current state to history with the updated positions
+    pushToHistory(currentNodes, currentEdges);
+  }, [getNodes, getEdges, pushToHistory, isRestoringHistory, syncDraggedNodesToZustand]);
 
   // Handle edges delete
   const handleEdgesDelete = useCallback((edges: Edge[]) => {

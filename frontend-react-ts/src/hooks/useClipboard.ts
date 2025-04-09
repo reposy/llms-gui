@@ -305,7 +305,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     lockSelection();
     
     // 1. First update our Zustand store selection state
-    applyNodeSelection(nodesToSelect);
+    applyNodeSelection(nodesToSelect, 'none');
     
     // 2. Force ReactFlow to sync with our updated store
     forceSyncReactFlow();
@@ -636,7 +636,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     
     // Apply selection
     if (newNodeIds.length > 0) {
-      applyNodeSelection(newNodeIds);
+      applyNodeSelection(newNodeIds, 'none');
       setSelectedNodeId(newNodeIds[0]);
     }
     
