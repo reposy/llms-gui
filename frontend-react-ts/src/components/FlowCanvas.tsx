@@ -13,7 +13,8 @@ import ReactFlow, {
   useEdgesState,
   OnConnectStart,
   OnConnectEnd,
-  Connection
+  Connection,
+  NodeTypes
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -39,6 +40,7 @@ import ConditionalNode from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
 import WebCrawlerNode from './nodes/WebCrawlerNode';
 import { NodeData, NodeType } from '../types/nodes';
+import { SelectionModifierKey } from '../store/useFlowStructureStore';
 
 // Custom wrapper to remove default React Flow node styling
 export const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
@@ -47,10 +49,27 @@ export const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
+// Map of node types to components
+const nodeTypes: Record<string, React.ComponentType<any>> = {
+  llm: LLMNode,
+  api: APINode,
+  output: OutputNode,
+  jsonExtractor: JSONExtractorNode,
+  input: InputNode,
+  group: GroupNode,
+  conditional: ConditionalNode,
+  merger: MergerNode,
+  webCrawler: WebCrawlerNode
+};
+
+// Default viewport
+const defaultViewport = { x: 0, y: 0, zoom: 1 };
+
+// API exported to parent components
 export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
-  forceSync: () => void; // Now fetches from Zustand
-  commitStructure: () => void; // Now commits to Zustand
+  forceSync: () => void;
+  commitStructure: () => void;
 }
 
 interface FlowCanvasProps {
@@ -58,80 +77,53 @@ interface FlowCanvasProps {
   registerReactFlowApi?: (api: FlowCanvasApi) => void;
 }
 
-// ... defaultViewport ...
-const defaultViewport = { x: 0, y: 0, zoom: 0.7 };
+// Define the expected shape of the selectionHandlers
+interface SelectionHandlers {
+  handleSelectionChange: (selectedNodeIds: string[], modifierKey?: SelectionModifierKey) => void;
+  isShiftPressed: React.MutableRefObject<boolean>;
+  isCtrlPressed: React.MutableRefObject<boolean>;
+  getActiveModifierKey: () => SelectionModifierKey;
+  normalizeSelectionState: () => void;
+  forceDeselection: () => void;
+}
 
+// Component implementation
 export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: FlowCanvasProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { project, addNodes } = useReactFlow();
   
-  const isRestoringHistory = useRef<boolean>(false);
+  // Access React Flow instance
+  const { project } = useReactFlow();
+  
+  // Flag to track if we're restoring history (to avoid feedback loops)
+  const isRestoringHistory = useRef(false);
+  
+  // Flag to track if we normalized selection state
   const didNormalizeRef = useRef(false);
-
-  // Add console error override to suppress ReactFlow connection errors
-  useConsoleErrorOverride({
-    replacementMessage: "[ReactFlow] Error suppressed - likely invalid handle ID"
-  });
-
-  // Memoize nodeTypes to prevent unnecessary re-renders
-  const nodeTypes = useMemo(() => ({
-    llm: (props: any) => (
-      <NodeWrapper>
-        <LLMNode {...props} />
-      </NodeWrapper>
-    ),
-    api: (props: any) => (
-      <NodeWrapper>
-        <APINode {...props} />
-      </NodeWrapper>
-    ),
-    output: (props: any) => (
-      <NodeWrapper>
-        <OutputNode {...props} />
-      </NodeWrapper>
-    ),
-    'json-extractor': (props: any) => (
-      <NodeWrapper>
-        <JSONExtractorNode {...props} />
-      </NodeWrapper>
-    ),
-    input: (props: any) => (
-      <NodeWrapper>
-        <InputNode {...props} />
-      </NodeWrapper>
-    ),
-    group: (props: any) => (
-      <GroupNode {...props} />
-    ),
-    conditional: (props: any) => (
-      <NodeWrapper>
-        <ConditionalNode {...props} />
-      </NodeWrapper>
-    ),
-    merger: (props: any) => (
-      <NodeWrapper>
-        <MergerNode {...props} />
-      </NodeWrapper>
-    ),
-    'web-crawler': (props: any) => (
-      <NodeWrapper>
-        <WebCrawlerNode {...props} />
-      </NodeWrapper>
-    ),
-  }), []); // Empty dependency array since these don't change
-
-  // Use the refactored flow sync hook (now using Zustand)
+  
+  // Get the current paste version for key regeneration
+  const pasteVersion = window._devFlags?.pasteVersion || 0;
+  
+  // Initialize flow sync hook for the local ReactFlow state
+  // This handles syncing to/from Zustand store, and tracks selection state
   const { 
     localNodes, 
     localEdges, 
     setLocalNodes, 
-    setLocalEdges,
-    onLocalNodesChange,
+    setLocalEdges, 
+    onLocalNodesChange, 
     onLocalEdgesChange,
-    forceSyncFromStore, 
+    forceSyncFromStore,
     commitStructureToStore,
-    selectionHandlers // Added selectionHandlers from our refactored hook
+    selectionHandlers
   } = useFlowSync({ isRestoringHistory });
+
+  useConsoleErrorOverride();
+  
+  // Add nodes utility function
+  const addNodes = useCallback((nodes: Node<NodeData>[]) => {
+    console.log('Adding nodes:', nodes);
+    setLocalNodes(nds => [...nds, ...nodes]);
+  }, [setLocalNodes]);
   
   // History hook now uses Zustand setters
   const { 
@@ -147,8 +139,7 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
   // Clipboard hook now interacts with Zustand
   const { 
     handleCopy, 
-    handlePaste,
-    pasteVersion
+    handlePaste
   } = useClipboard();
   
   // Node handlers now operate on Zustand state
@@ -176,12 +167,31 @@ export const FlowCanvas = React.memo(({ onNodeSelect, registerReactFlowApi }: Fl
 
   // Create a combined selection handler that uses both the node handlers and selection sync handlers
   const handleSelectionChangeIntegrated = useCallback((params: any) => {
-    // First, let nodeHandlers update the sidebar
-    nodeHandlersSelectionChange(params);
-    
-    // Then, let selectionSync handle the sync between ReactFlow and Zustand
+    // Extract selected nodes from params
     const selectedNodeIds = params.nodes.map((node: Node) => node.id);
-    selectionHandlers.handleSelectionChange(selectedNodeIds);
+    
+    // Check if this is a deselection event (empty selection)
+    const isDeselection = selectedNodeIds.length === 0;
+    
+    // For a deselection event (clicking on canvas), use our special handler
+    // that forces proper synchronization of selection states
+    if (isDeselection) {
+      console.log('[FlowCanvas] Canvas deselection detected, forcing complete deselection');
+      
+      // First, let nodeHandlers update the sidebar
+      nodeHandlersSelectionChange(params);
+      
+      // Then force a complete deselection sync
+      selectionHandlers.forceDeselection();
+    } else {
+      // For normal selection, use the regular flow
+      
+      // First, let nodeHandlers update the sidebar
+      nodeHandlersSelectionChange(params);
+      
+      // Then, let selectionSync handle the sync between ReactFlow and Zustand
+      selectionHandlers.handleSelectionChange(selectedNodeIds);
+    }
   }, [nodeHandlersSelectionChange, selectionHandlers]);
   
   // Register the API functions with the parent component

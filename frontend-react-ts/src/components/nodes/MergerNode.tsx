@@ -70,6 +70,22 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
         ? "bg-gradient-to-r from-indigo-50 to-indigo-100 border-indigo-500" 
         : "bg-gradient-to-r from-indigo-100 to-indigo-200 border-indigo-400"
     )}>
+      {/* Generic "input" handle to ensure compatibility */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="input"
+        style={{ 
+          top: '50%', 
+          background: '#6366F1', 
+          borderColor: '#4F46E5',
+          width: '10px',
+          height: '10px',
+          zIndex: 100
+        }}
+        isConnectable={isConnectable}
+      />
+      
       {/* Input handles - dynamically create based on connections */}
       {Array.from({ length: MAX_HANDLES }).map((_, i) => (
         <Handle
