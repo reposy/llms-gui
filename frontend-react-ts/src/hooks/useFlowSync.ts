@@ -10,7 +10,7 @@ import {
 } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
 import { useSelectionSync } from './useSelectionSync';
-import { hasEqualSelection } from '../utils/selectionUtils';
+import { hasEqualSelection, syncVisualSelectionToReactFlow } from '../utils/selectionUtils';
 
 interface UseFlowSyncOptions {
   isRestoringHistory: React.MutableRefObject<boolean>;
@@ -25,12 +25,196 @@ interface UseFlowSyncReturn {
   onLocalEdgesChange: (changes: EdgeChange[]) => void;
   forceSyncFromStore: () => void;
   commitStructureToStore: () => void;
+  flowResetKey: number; // New key to force React Flow component rerender
   selectionHandlers: {
     handleSelectionChange: (selectedNodeIds: string[]) => void;
     isShiftPressed: React.MutableRefObject<boolean>;
     isCtrlPressed: React.MutableRefObject<boolean>;
     getActiveModifierKey: () => import('../store/useFlowStructureStore').SelectionModifierKey;
     normalizeSelectionState: () => void;
+    forceDeselection: () => void;
+  };
+}
+
+/**
+ * Custom hook to handle empty flow detection and visual canvas resetting
+ */
+function useEmptyFlowDetector(
+  localNodes: Node<NodeData>[],
+  localEdges: Edge[],
+  setLocalNodes: React.Dispatch<React.SetStateAction<Node<NodeData>[]>>,
+  setLocalEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
+  hasPendingStructuralChanges: React.MutableRefObject<boolean>
+) {
+  // Create a version ref to track when we've cleared the flow
+  const lastClearedVersion = useRef<number>(0);
+  // Key to force ReactFlow component to rerender (timestamp-based)
+  const flowResetKey = useRef<number>(Date.now());
+  // Track empty flow state to avoid redundant logs
+  const emptyFlowState = useRef<{
+    storeEmpty: boolean;
+    localPopulated: boolean;
+    lastDetectedAt: number;
+    cleared: boolean;
+  }>({
+    storeEmpty: false,
+    localPopulated: false,
+    lastDetectedAt: 0,
+    cleared: false
+  });
+  
+  // Function to force clear the React Flow canvas
+  const forceVisualClear = useCallback(() => {
+    // Check if we've already cleared this exact version to prevent cycles
+    const now = Date.now();
+    const timeSinceLastClear = now - lastClearedVersion.current;
+    
+    // Skip if we've cleared recently (within 500ms) to prevent rapid loops
+    if (timeSinceLastClear < 500 && emptyFlowState.current.cleared) {
+      console.log(`[FlowSync] 🛑 Skipping redundant clear - already cleared ${timeSinceLastClear}ms ago`);
+      return;
+    }
+    
+    console.warn('[FlowSync] 🧼 Forcing visual clear of React Flow canvas');
+    
+    // First, ensure we have new array references
+    const emptyNodes = Array.from([]);
+    const emptyEdges = Array.from([]);
+    
+    // Reset in current tick
+    setLocalNodes(emptyNodes);
+    setLocalEdges(emptyEdges);
+    
+    // Also clear in next microtask to ensure React Flow internal state is reset
+    // but only if we haven't already cleared in this version
+    queueMicrotask(() => {
+      setLocalNodes([...emptyNodes]); // Use spread to create new reference
+      setLocalEdges([...emptyEdges]);
+      hasPendingStructuralChanges.current = false;
+    });
+    
+    // Update our reset key only once per clear operation
+    flowResetKey.current = now;
+    // Mark this version as cleared to prevent redundant operations
+    lastClearedVersion.current = now;
+    // Update state tracking
+    emptyFlowState.current = {
+      ...emptyFlowState.current,
+      lastDetectedAt: now,
+      cleared: true
+    };
+    
+    // Clear pending changes flag
+    hasPendingStructuralChanges.current = false;
+    
+    console.log('[FlowSync] 🧹 Local state cleared with new reset key:', flowResetKey.current);
+  }, [setLocalNodes, setLocalEdges, hasPendingStructuralChanges]);
+  
+  // Detect empty flow state - runs only when counts change to minimize effect calls
+  useEffect(() => {
+    // Only check when counts change to reduce effect runs
+    const storeState = useFlowStructureStore.getState();
+    const isStoreEmpty = storeState.nodes.length === 0 && storeState.edges.length === 0;
+    const hasLocalContent = localNodes.length > 0 || localEdges.length > 0;
+    
+    // Update our current state tracking
+    const previousState = { ...emptyFlowState.current };
+    emptyFlowState.current = {
+      storeEmpty: isStoreEmpty,
+      localPopulated: hasLocalContent,
+      lastDetectedAt: previousState.lastDetectedAt,
+      cleared: previousState.cleared
+    };
+    
+    // Only log and act when the state actually changes
+    const stateChanged = 
+      previousState.storeEmpty !== isStoreEmpty || 
+      previousState.localPopulated !== hasLocalContent;
+    
+    if (stateChanged) {
+      // Log once when state changes, not every render
+      if (isStoreEmpty && hasLocalContent) {
+        console.warn(`[FlowSync] 🔴 Empty flow detected - store empty but local state has content`);
+      } else if (isStoreEmpty && !hasLocalContent) {
+        console.log(`[FlowSync] ✅ Empty flow state consistent - both store and local are empty`);
+        // Reset cleared flag to allow future clears
+        emptyFlowState.current.cleared = false;
+      }
+    }
+  }, [
+    localNodes.length, 
+    localEdges.length
+  ]);
+  
+  // Handle clearing - separate from detection to prevent clearing on every render
+  useEffect(() => {
+    const { storeEmpty, localPopulated, cleared } = emptyFlowState.current;
+    
+    // Only clear if:
+    // 1. Store is empty
+    // 2. Local state has content
+    // 3. We haven't already cleared this exact version
+    if (storeEmpty && localPopulated && !cleared) {
+      // Use setTimeout to debounce and prevent multiple clears in one tick
+      const timeoutId = setTimeout(() => {
+        // Double-check state hasn't changed before applying
+        if (emptyFlowState.current.storeEmpty && emptyFlowState.current.localPopulated) {
+          forceVisualClear();
+        }
+      }, 50); // Small delay to debounce
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [
+    emptyFlowState.current.storeEmpty,
+    emptyFlowState.current.localPopulated,
+    emptyFlowState.current.cleared,
+    forceVisualClear
+  ]);
+  
+  // Track specific store empty changes from Zustand to detect new flows being created
+  useEffect(() => {
+    const storeState = useFlowStructureStore.getState();
+    const isStoreEmpty = storeState.nodes.length === 0 && storeState.edges.length === 0;
+    
+    // Only act on transitions to empty state (e.g., new flow creation)
+    if (isStoreEmpty && !emptyFlowState.current.storeEmpty) {
+      console.log('[FlowSync] 🆕 Zustand store transitioned to empty state (possible new flow creation)');
+      emptyFlowState.current.storeEmpty = true;
+      
+      // If local has content and we haven't cleared, schedule a clear
+      if (localNodes.length > 0 || localEdges.length > 0) {
+        emptyFlowState.current.localPopulated = true;
+        
+        // Only if not already cleared recently
+        if (!emptyFlowState.current.cleared) {
+          console.warn('[FlowSync] 🔄 Scheduling canvas clear due to store empty transition');
+          // Delay slightly to avoid multiple clears
+          setTimeout(() => forceVisualClear(), 50);
+        }
+      }
+    }
+    // Track transitions away from empty to allow future clears
+    else if (!isStoreEmpty && emptyFlowState.current.storeEmpty) {
+      console.log('[FlowSync] ⬆️ Zustand store transitioned from empty to populated');
+      emptyFlowState.current = {
+        storeEmpty: false,
+        localPopulated: localNodes.length > 0 || localEdges.length > 0,
+        lastDetectedAt: Date.now(),
+        cleared: false // Reset cleared state to allow future clearing
+      };
+    }
+  }, [
+    useFlowStructureStore.getState().nodes.length,
+    useFlowStructureStore.getState().edges.length,
+    localNodes.length,
+    localEdges.length,
+    forceVisualClear
+  ]);
+  
+  return {
+    forceVisualClear,
+    flowResetKey: flowResetKey.current
   };
 }
 
@@ -62,6 +246,15 @@ export const useFlowSync = ({
     setLocalNodes,
     isRestoringHistory
   });
+  
+  // Use the empty flow detector hook
+  const { forceVisualClear, flowResetKey } = useEmptyFlowDetector(
+    localNodes,
+    localEdges,
+    setLocalNodes,
+    setLocalEdges,
+    hasPendingStructuralChanges
+  );
   
   // Set up keyboard event listeners for modifier keys
   useEffect(() => {
@@ -180,15 +373,21 @@ export const useFlowSync = ({
       // Get current store state
       const storeState = useFlowStructureStore.getState();
       
-      // The selection sync hook handles selection state normalization
-      // We just need to set the edges here
-      setLocalEdges(storeState.edges);
+      // Check for empty initial state
+      if (storeState.nodes.length === 0 && storeState.edges.length === 0) {
+        console.log("[FlowSync] Initial state is empty, ensuring clean canvas");
+        forceVisualClear();
+      } else {
+        // The selection sync hook handles selection state normalization
+        // We just need to set the edges here
+        setLocalEdges([...storeState.edges]); // Use spread to ensure new reference
+      }
       
       // Reset flag
       isInitialSyncRef.current = false;
       hasPendingStructuralChanges.current = false;
     }
-  }, [zustandNodes, zustandEdges, setLocalEdges]);
+  }, [zustandNodes, zustandEdges, setLocalEdges, forceVisualClear]);
 
   // Function to force a sync from Zustand store to local state
   // Overwrites any uncommitted local structural changes.
@@ -203,7 +402,18 @@ export const useFlowSync = ({
       `Selected in store: ${selectedNodeIds.length}, Selected locally: ${localSelectedIds.length}`
     );
 
-    // Skip if nothing significant has changed
+    // Special handling for empty flow - always force a sync with empty arrays
+    const isEmptyFlow = storeNodes.length === 0 && storeEdges.length === 0;
+    if (isEmptyFlow) {
+      console.warn('[FlowSync] 🚨 Empty flow detected in forceSyncFromStore');
+      forceVisualClear();
+      return;
+    }
+
+    // Check for paste operation: store has more nodes than local and selectedNodeIds has values
+    const isPossiblePasteOperation = storeNodes.length > localNodes.length && selectedNodeIds.length > 0;
+    
+    // Skip if nothing significant has changed - EXCEPT for paste operations which must always sync
     const nodeCountDifference = Math.abs(localNodes.length - storeNodes.length);
     const selectionDifference = !hasEqualSelection(localSelectedIds, selectedNodeIds);
     
@@ -212,70 +422,218 @@ export const useFlowSync = ({
       nodeCountDifference === 0 && 
       !selectionDifference &&
       !isRestoringHistory.current &&
-      !isInitialSyncRef.current
+      !isInitialSyncRef.current &&
+      !isEmptyFlow &&
+      !isPossiblePasteOperation  // Never skip for paste operations
     ) {
       console.log(`[FlowSync] Skipping force sync - no significant differences`);
       return;
+    }
+
+    // Log extra details for paste operations
+    if (isPossiblePasteOperation) {
+      console.warn(`[FlowSync] 📋 Possible paste operation detected - forcing sync`);
+      console.log(`[FlowSync] Paste details:`, {
+        storeNodeCount: storeNodes.length,
+        localNodeCount: localNodes.length,
+        difference: storeNodes.length - localNodes.length,
+        selectedInStore: selectedNodeIds.length
+      });
     }
 
     console.log(`[FlowSync] Forcing sync from store. History restoring: ${isRestoringHistory.current}`);
 
     // Sync node structure with proper selection state
     const nodesWithSelection = selectionSync.applyStoreSelectionToNodes(storeNodes);
-    setLocalNodes(nodesWithSelection);
-    setLocalEdges(storeEdges);
+    
+    // Always use spread to create new array references to ensure React Flow updates
+    setLocalNodes([...nodesWithSelection]);
+    setLocalEdges([...storeEdges]);
+    
+    // Extra verification of sync after operation, specifically for paste
+    if (isPossiblePasteOperation) {
+      // Add microtask verification to ensure React Flow gets the update
+      queueMicrotask(() => {
+        if (localNodes.length !== storeNodes.length) {
+          console.warn(`[FlowSync] ⚠️ Sync verification failed - doing emergency re-sync`);
+          // Force another update with explicit new references
+          setLocalNodes([...nodesWithSelection.map(n => ({...n}))]);
+        } else {
+          console.log(`[FlowSync] ✅ Sync verification passed - local nodes updated to ${localNodes.length}`);
+        }
+      });
+    }
     
     // Reset pending changes flag
     hasPendingStructuralChanges.current = false;
-  }, [localNodes, setLocalNodes, setLocalEdges, isRestoringHistory, selectionSync]);
+  }, [localNodes, setLocalNodes, setLocalEdges, isRestoringHistory, selectionSync, forceVisualClear]);
 
-  // Subscribes to flow structure store, to update local view when store changes
+  // Subscribe to external store updates
   useEffect(() => {
+    // Skip initial sync phase (initial render). This is handled by the selection sync now
     if (isInitialSyncRef.current) {
-      console.log("[FlowSync] Skipping initial sync phase");
+      console.log("[FlowSync] Skipping initial store sync, already handled");
       isInitialSyncRef.current = false;
       return;
     }
 
-    // For history restoration, we always force sync from store
+    // If we're restoring history, always force local state to match store
     if (isRestoringHistory.current) {
-      console.log("[FlowSync] History restoring - forcing sync");
+      console.log("[FlowSync] History restoration in progress, forcing sync");
       forceSyncFromStore();
       return;
     }
 
-    // Check if structure has changed between local and store
+    // Check all meaningful state changes
+    const storeState = useFlowStructureStore.getState();
+    const zustandNodes = storeState.nodes;
+    const zustandEdges = storeState.edges;
+    const storeSelectedIds = storeState.selectedNodeIds;
+    
+    // Check for paste operation: store has more nodes than local
+    const isPossiblePasteOperation = zustandNodes.length > localNodes.length;
+    
+    // IMPORTANT: Check for flow reset/new flow (empty arrays in store)
+    const isEmptyFlow = zustandNodes.length === 0 && zustandEdges.length === 0;
+    if (isEmptyFlow && (localNodes.length > 0 || localEdges.length > 0)) {
+      console.warn("[FlowSync] 🚨 Empty flow detected in store subscription effect");
+      forceVisualClear();
+      return;
+    }
+    
+    // IMPORTANT: Detect paste operations that need immediate sync
+    if (isPossiblePasteOperation) {
+      console.warn(`[FlowSync] 📋 Paste operation detected in subscription - node count: ${zustandNodes.length} vs ${localNodes.length}`);
+      forceSyncFromStore();
+      return;
+    }
+    
+    // IMPORTANT: Debug edges to understand why they disappear
+    console.log("[FlowSync] Sync Effect - Edge state:", { 
+      localEdgeCount: localEdges.length,
+      storeEdgeCount: zustandEdges.length,
+      hasPendingChanges: hasPendingStructuralChanges.current,
+      emptyFlow: isEmptyFlow,
+      possiblePaste: isPossiblePasteOperation
+    });
+    
+    // Check for selection state changes
+    const localSelectedIds = localNodes.filter(n => n.selected).map(n => n.id);
+    const hasSelectionChanged = !hasEqualSelection(localSelectedIds, storeSelectedIds);
+    
+    console.log(`[FlowSync] External store updated, checking for changes:`, {
+      nodeCount: `${localNodes.length} (local) vs ${zustandNodes.length} (store)`,
+      edgeCount: `${localEdges.length} (local) vs ${zustandEdges.length} (store)`,
+      selectionChanged: hasSelectionChanged,
+      localSelectedIds,
+      storeSelectedIds
+    });
+
     const hasNodeCountChanged = localNodes.length !== zustandNodes.length;
     const hasEdgeCountChanged = localEdges.length !== zustandEdges.length;
-    
-    // For new flows, we might get empty nodes/edges
-    const isNewOrEmptyFlow = zustandNodes.length === 0 && zustandEdges.length === 0;
+    const hasNodeContentChanged = !isEqual(localNodes, zustandNodes);
+    const hasEdgeContentChanged = !isEqual(localEdges, zustandEdges);
     
     // Only update local if there are meaningful structure changes and no pending local changes
     const shouldForceSync = 
       hasNodeCountChanged || 
       hasEdgeCountChanged || 
-      isNewOrEmptyFlow;
+      hasNodeContentChanged ||
+      hasEdgeContentChanged ||
+      isEmptyFlow;
     
     if (shouldForceSync && !hasPendingStructuralChanges.current) {
       console.log(`[FlowSync] Store changed, forcing sync due to structural changes:`, {
         nodeCountChange: hasNodeCountChanged ? `${localNodes.length} -> ${zustandNodes.length}` : false, 
-        edgeCountChange: hasEdgeCountChanged ? `${localEdges.length} -> ${zustandEdges.length}` : false
+        edgeCountChange: hasEdgeCountChanged ? `${localEdges.length} -> ${zustandEdges.length}` : false,
+        nodeContentChanged: hasNodeContentChanged,
+        edgeContentChanged: hasEdgeContentChanged,
+        emptyFlow: isEmptyFlow
       });
       
       // Force sync to update both structure and selection
       forceSyncFromStore();
+    } else if (hasSelectionChanged && !hasPendingStructuralChanges.current) {
+      // Just sync selection state if that's the only change
+      console.log("[FlowSync] Syncing selection state from store");
+      const nodesWithUpdatedSelection = syncVisualSelectionToReactFlow(localNodes, storeSelectedIds);
+      
+      // IMPORTANT: Also ensure edges are synced when selection state changes
+      // This helps prevent edge disappearance issues
+      if (hasEdgeCountChanged || !isEqual(localEdges, zustandEdges)) {
+        console.log(`[FlowSync] Edge count or content changed during selection sync, updating edges`);
+        setLocalEdges([...zustandEdges]);
+      }
+      
+      if (nodesWithUpdatedSelection !== localNodes) {
+        console.log(`[FlowSync] Selection state changed, updating ${storeSelectedIds.length} nodes`);
+        setLocalNodes(nodesWithUpdatedSelection);
+      } else {
+        console.log(`[FlowSync] Selection state unchanged despite different IDs - optimization prevented update`);
+      }
     } else if (hasPendingStructuralChanges.current) {
       console.log("[FlowSync] Skipping sync from store due to pending local changes");
     } else {
-      console.log("[FlowSync] Store changed but no significant structural differences detected");
+      console.log("[FlowSync] Store changed but no significant differences detected");
+      
+      // Extra validation to ensure edges stay synced even when other conditions don't trigger
+      if (zustandEdges.length > 0 && (localEdges.length === 0 || !isEqual(localEdges, zustandEdges))) {
+        console.log("[FlowSync] Edge mismatch detected despite no count changes, force syncing edges");
+        setLocalEdges([...zustandEdges]);
+      }
     }
+    
+    // Validate edge sync after effect processing
+    setTimeout(() => {
+      const currentLocalEdges = localEdges;
+      const currentStoreEdges = useFlowStructureStore.getState().edges;
+      if (currentLocalEdges.length !== currentStoreEdges.length) {
+        console.warn("[FlowSync] Edge count mismatch after sync:", {
+          localEdges: currentLocalEdges.length,
+          storeEdges: currentStoreEdges.length
+        });
+      }
+    }, 0);
   }, [
-    zustandNodes, 
-    zustandEdges, 
     localNodes,
     localEdges,
+    setLocalNodes,
+    setLocalEdges,
+    forceSyncFromStore,
     isRestoringHistory,
+    forceVisualClear,
+    // Include store state to make the effect reactive to store changes
+    useFlowStructureStore.getState().nodes,
+    useFlowStructureStore.getState().edges,
+    useFlowStructureStore.getState().selectedNodeIds
+  ]);
+
+  // Add a dedicated paste operation monitor
+  useEffect(() => {
+    // This effect specifically watches for changes in store node count that suggest paste operations
+    const storeNodes = useFlowStructureStore.getState().nodes;
+    
+    // Don't run on initial sync
+    if (isInitialSyncRef.current) return;
+    
+    // Check if store has more nodes than local (paste operation)
+    if (storeNodes.length > localNodes.length) {
+      console.warn(`[FlowSync] 📋 Paste monitor detected node count increase: ${storeNodes.length} (store) vs ${localNodes.length} (local)`);
+      
+      // Ensure the new nodes are synced to local state
+      const timeoutId = setTimeout(() => {
+        // Verify if sync still needed after timeout
+        if (useFlowStructureStore.getState().nodes.length > localNodes.length) {
+          console.warn(`[FlowSync] 🔄 Paste sync verification - forcing sync after delay`);
+          forceSyncFromStore();
+        }
+      }, 50);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [
+    useFlowStructureStore.getState().nodes.length,
+    localNodes.length,
     forceSyncFromStore
   ]);
 
@@ -288,12 +646,14 @@ export const useFlowSync = ({
     onLocalEdgesChange,
     commitStructureToStore,
     forceSyncFromStore,
+    flowResetKey, // Expose the key for ReactFlow component
     selectionHandlers: {
       handleSelectionChange: selectionSync.handleSelectionChange,
       isShiftPressed: selectionSync.isShiftPressed,
       isCtrlPressed: selectionSync.isCtrlPressed,
       getActiveModifierKey: selectionSync.getActiveModifierKey,
-      normalizeSelectionState: selectionSync.normalizeSelectionState
+      normalizeSelectionState: selectionSync.normalizeSelectionState,
+      forceDeselection: selectionSync.forceDeselection
     }
   };
 };

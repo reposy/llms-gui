@@ -25,6 +25,7 @@ interface UseSelectionSyncReturn {
   isShiftPressed: React.MutableRefObject<boolean>;
   isCtrlPressed: React.MutableRefObject<boolean>;
   getActiveModifierKey: () => SelectionModifierKey;
+  forceDeselection: () => void;
 }
 
 // Debug object to track frequent selection updates
@@ -120,17 +121,21 @@ export const useSelectionSync = ({
     
     // Check if the selection is actually changing
     const selectionHasChanged = !hasEqualSelection(selectedNodeIds, currentSelection);
+    
+    // Special handling for deselection (empty selection)
+    const isDeselection = selectedNodeIds.length === 0 && currentSelection.length > 0;
       
     // Only update if selection actually changed or if we have multiple selected nodes
     // (multi-node drag operations need consistent selection state)
     if (selectionHasChanged || selectedNodeIds.length > 1) {
       logSelectionChange(
-        'Selection changed', 
+        isDeselection ? 'Deselection' : 'Selection changed', 
         currentSelection, 
         selectedNodeIds, 
         { 
           multiSelection: selectedNodeIds.length > 1,
-          modifierKey 
+          modifierKey,
+          isDeselection
         }
       );
       
@@ -150,6 +155,14 @@ export const useSelectionSync = ({
       
       // Apply the selection change to Zustand - this is the SINGLE SOURCE OF TRUTH for selection
       applyNodeSelection(selectedNodeIds, modifierKey);
+      
+      // For deselection, ensure we force a normalization after the state update
+      if (isDeselection) {
+        // We need to schedule this after the current execution to allow Zustand to update
+        setTimeout(() => {
+          normalizeSelectionState();
+        }, 0);
+      }
     } else {
       console.log('[Selection] Selection unchanged, skipping update', {
         selectedNodeIds,
@@ -191,6 +204,9 @@ export const useSelectionSync = ({
     // Set flag to prevent recursive calls
     isNormalizing.current = true;
     
+    // Check for critical deselection scenario: Zustand empty but ReactFlow has selections
+    const deselectScenario = storedSelectedIds.length === 0 && visiblySelectedNodes.length > 0;
+    
     const selectionMismatch = 
       (visiblySelectedNodes.length > 0 && storedSelectedIds.length === 0) || 
       (visiblySelectedNodes.length === 0 && storedSelectedIds.length > 0) ||
@@ -213,7 +229,8 @@ export const useSelectionSync = ({
       console.warn("[Selection] Selection state mismatch detected", {
         visiblySelectedCount: visiblySelectedNodes.length,
         visiblySelectedIds,
-        storedSelectedIds
+        storedSelectedIds,
+        deselectScenario
       });
     }
     
@@ -227,8 +244,9 @@ export const useSelectionSync = ({
     } 
     else if (visiblySelectedNodes.length > 0) {
       // Case 2: Clear all visual selections since Zustand has no selection state
+      // This is the critical deselection scenario we need to address
       normalizedNodes = syncVisualSelectionToReactFlow(localNodes, []);
-      console.log("[Selection] Cleared orphaned visual selections from nodes");
+      console.log("[Selection] Cleared orphaned visual selections from nodes (deselect scenario)");
     } 
     else {
       // No selection anywhere, ensure nodes are explicitly marked as unselected
@@ -239,7 +257,18 @@ export const useSelectionSync = ({
     // syncVisualSelectionToReactFlow only returns a new array if changes are needed
     if (normalizedNodes !== localNodes) {
       console.log("[Selection] Updated local nodes with normalized selection state");
-      setLocalNodes(normalizedNodes);
+      
+      // If we're in the deselection scenario, we need to ensure the update 
+      // is prioritized and not batched with other updates
+      if (deselectScenario) {
+        // Use immediate update for deselection to prevent desync
+        Promise.resolve().then(() => {
+          setLocalNodes(normalizedNodes);
+          console.log("[Selection] Forced immediate deselection update");
+        });
+      } else {
+        setLocalNodes(normalizedNodes);
+      }
       
       // If we had to make selection changes, sync back to Zustand to ensure consistency
       if (selectionMismatch) {
@@ -249,9 +278,13 @@ export const useSelectionSync = ({
         // If we had visually selected nodes but no Zustand selection, update the selectedNodeIds
         // This ensures selection state is fully consistent
         if (visiblySelectedNodes.length > 0 && storedSelectedIds.length === 0) {
-          const selectedIds = visiblySelectedNodes.map(node => node.id);
-          applyNodeSelection(selectedIds);
-          console.log("[Selection] Updated Zustand selectedNodeIds to match visual selection:", selectedIds);
+          // Only update Zustand if we're not in deselection scenario
+          // If we are in deselection, we want Zustand's empty state to win
+          if (!deselectScenario) {
+            const selectedIds = visiblySelectedNodes.map(node => node.id);
+            applyNodeSelection(selectedIds);
+            console.log("[Selection] Updated Zustand selectedNodeIds to match visual selection:", selectedIds);
+          }
         }
       }
     } else {
@@ -321,6 +354,35 @@ export const useSelectionSync = ({
     return unsubscribe;
   }, [localNodes, setLocalNodes, isRestoringHistory]);
 
+  /**
+   * Force deselection of all nodes
+   * Use this when clicking on empty canvas space or explicitly clearing selection
+   */
+  const forceDeselection = useCallback(() => {
+    const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
+    
+    if (currentSelection.length > 0) {
+      console.log('[Selection] Forcing deselection of all nodes', { previous: currentSelection });
+      
+      // Update Zustand store to clear selection
+      applyNodeSelection([]);
+      
+      // Ensure the visual state is also updated
+      if (localNodes.some(node => node.selected)) {
+        const deselectedNodes = syncVisualSelectionToReactFlow(localNodes, []);
+        
+        if (deselectedNodes !== localNodes) {
+          console.log('[Selection] Explicitly updating ReactFlow local state to clear selection');
+          
+          // Use immediate update for deselection to prevent desync
+          Promise.resolve().then(() => {
+            setLocalNodes(deselectedNodes);
+          });
+        }
+      }
+    }
+  }, [localNodes, setLocalNodes]);
+
   return {
     normalizeSelectionState,
     handleSelectionChange,
@@ -328,6 +390,7 @@ export const useSelectionSync = ({
     trackKeyboardModifiers,
     isShiftPressed,
     isCtrlPressed,
-    getActiveModifierKey
+    getActiveModifierKey,
+    forceDeselection
   };
 }; 

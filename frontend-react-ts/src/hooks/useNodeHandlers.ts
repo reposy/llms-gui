@@ -298,14 +298,6 @@ export const useNodeHandlers = (
       return;
     }
     
-    // Validate handle IDs
-    if (connection.targetHandle === "input") {
-      // This is likely an invalid handle ID that should be more specific
-      // InputNode handles are typically named "input-0", "input-1", etc.
-      console.warn("[handleConnect] Invalid target handle ID 'input', connection skipped. Handle IDs should be specific (e.g., 'input-0')");
-      return;
-    }
-    
     // Get source and target nodes
     const sourceNode = localNodes.find(node => node.id === connection.source);
     const targetNode = localNodes.find(node => node.id === connection.target);
