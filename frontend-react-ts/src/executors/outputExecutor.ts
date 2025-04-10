@@ -11,7 +11,9 @@ interface ExecuteOutputNodeParams {
 
 /**
  * Executes an Output node.
- * It simply passes through the input it receives.
+ * It simply passes through the single input it receives.
+ * In the stateless execution model, it always shows the last input processed.
+ * For foreach iterations, this means only the final result will be visible.
  * Returns the input or null.
  */
 export function executeOutputNode(params: ExecuteOutputNodeParams): any {
@@ -19,9 +21,10 @@ export function executeOutputNode(params: ExecuteOutputNodeParams): any {
   const nodeId = node.id;
   const { executionId } = context;
 
-  console.log(`[ExecuteNode ${nodeId}] (Output) Executing with context:`, context);
-  
-  console.log(`[ExecuteNode ${nodeId}] (Output) Passing through input:`, input);
+  console.log(`[OutputExecutor] (${nodeId}) Executing with context ID: ${executionId}`);
+  console.log(`[OutputExecutor] (${nodeId}) Processing input:`, input);
 
+  // Simply pass through the input value
+  // The dispatcher's success handling will update the node state with this result
   return input;
 } 
