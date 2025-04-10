@@ -1,6 +1,8 @@
 import { Node } from 'reactflow';
 import { MergerNodeData } from '../types/nodes';
 import { ExecutionContext, NodeState, defaultNodeState } from '../types/execution';
+import { extractValueFromNodeResult } from './executorDispatcher';
+import { makeExecutionLogPrefix } from '../controller/executionDispatcher';
 
 export function executeMergerNode(params: {
   node: Node<MergerNodeData>;
@@ -15,6 +17,9 @@ export function executeMergerNode(params: {
   const { executionId } = context;
   const currentState = getNodeState(nodeId) || defaultNodeState;
   
+  // Create standardized log prefix
+  const logPrefix = makeExecutionLogPrefix(node, context);
+  
   // Determine if this is a new execution
   const nodeLastExecutionId = currentState.executionId;
   const needsReset = nodeLastExecutionId !== executionId;
@@ -22,58 +27,136 @@ export function executeMergerNode(params: {
   // Determine merge mode with defaults
   const mergeMode = nodeData.mergeMode || 'concat';
   const joinSeparator = nodeData.joinSeparator || ' ';
-  const arrayStrategy = nodeData.arrayStrategy || 'flatten';
-  const waitForAll = nodeData.waitForAll === undefined ? true : nodeData.waitForAll;
   
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Executing with mode:`, mergeMode);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Wait for all inputs:`, waitForAll);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Inputs:`, inputs);
+  console.log(`${logPrefix} Executing with mode: ${mergeMode}`);
+  console.log(`${logPrefix} Execution context:`, {
+    executionId,
+    lastExecutionId: nodeLastExecutionId,
+    needsReset,
+    iterationInfo: context.iterationTracking ? {
+      mode: context.iterationTracking.executionMode,
+      currentIndex: context.iterationTracking.currentIndex,
+      totalItems: context.iterationTracking.totalItems
+    } : 'none'
+  });
+  
+  // Log input types to help with debugging
+  if (inputs.length > 0) {
+    console.log(`${logPrefix} Received ${inputs.length} inputs with types:`, 
+      inputs.map(input => ({
+        type: Array.isArray(input) ? `array[${input.length}]` : typeof input,
+        hasMetadata: typeof input === 'object' && input !== null && '_meta' in input,
+        metaMode: typeof input === 'object' && input !== null && '_meta' in input ? input._meta.mode : 'none'
+      }))
+    );
+  }
 
-  // Prepare storage for accumulated inputs
+  // CRITICAL FIX: Better handling of accumulated inputs for parallel processing
+  // We start with either the accumulated inputs from the current state
+  // or an empty array if this is a new execution
   let accumulatedInputs: any[] = [];
   
   // If this is the same execution and we've processed before, reuse accumulated inputs
   if (!needsReset && Array.isArray(currentState.accumulatedInputs)) {
     accumulatedInputs = [...currentState.accumulatedInputs];
-    console.log(`[Merger ${nodeId}] Reusing ${accumulatedInputs.length} previously accumulated inputs from execution ${executionId}`);
+    console.log(`${logPrefix} Reusing ${accumulatedInputs.length} previously accumulated inputs from execution ${executionId}`);
   }
   
-  // Add current inputs
+  // Track newly added inputs in this execution step
+  const newlyAddedInputs: any[] = [];
+  
+  // Process each input, handling both batch and foreach modes appropriately
   for (const input of inputs) {
-    if (input !== undefined && input !== null) {
-      accumulatedInputs.push(input);
+    if (input === undefined || input === null) {
+      continue;
     }
-  }
-  
-  // Add custom items if configured
-  if (nodeData.items && nodeData.items.length > 0) {
-    for (const item of nodeData.items) {
-      if (item !== undefined && item !== null) {
-        accumulatedInputs.push(item);
+    
+    // Use the helper function to extract value and metadata consistently
+    const { value, metadata } = extractValueFromNodeResult(input);
+    
+    // Determine input type based on extracted metadata
+    const isBatchMode = metadata && metadata.mode === 'batch';
+    const isForEachMode = metadata && metadata.mode === 'foreach-item';
+    
+    if (isBatchMode) {
+      console.log(`${logPrefix} Detected input from batch mode:`, {
+        metadata,
+        valueType: typeof value,
+        isArray: Array.isArray(value),
+        itemCount: Array.isArray(value) ? value.length : 0
+      });
+      
+      if (!Array.isArray(value)) {
+        console.warn(`${logPrefix} Batch mode input value is not an array:`, value);
+        // Handle non-array value as a single item
+        newlyAddedInputs.push(value);
+        continue;
       }
+      
+      // Handle empty array case
+      if (value.length === 0) {
+        console.log(`${logPrefix} Batch mode input has empty array`);
+        continue;
+      }
+      
+      // For batch mode, always flatten arrays
+      console.log(`${logPrefix} Flattening batch array with ${value.length} items`);
+      newlyAddedInputs.push(...value);
+    } else if (isForEachMode) {
+      // Input from foreach mode with metadata
+      console.log(`${logPrefix} Detected input from foreach mode:`, { 
+        metadataSource: metadata.source,
+        metadataIndex: metadata.index,
+        metadataExecId: metadata.executionId,
+        value 
+      });
+      
+      // For foreach mode, add the individual item with its metadata for traceability
+      newlyAddedInputs.push(value);
+    } else if (metadata && metadata.source === 'input-node') {
+      // Generic input node with metadata but unspecified mode
+      console.log(`${logPrefix} Detected input from input node with generic metadata`);
+      
+      // Extract the actual value
+      newlyAddedInputs.push(value);
+    } else if (Array.isArray(input) && input.length > 0) {
+      // Legacy or untagged array input (fallback for compatibility)
+      console.log(`${logPrefix} Detected legacy array input with ${input.length} items`);
+      
+      // Always flatten legacy arrays
+      console.log(`${logPrefix} Flattening legacy array input`);
+      newlyAddedInputs.push(...input);
+    } else {
+      // Regular input (likely from other node types)
+      console.log(`${logPrefix} Adding regular input:`, input);
+      newlyAddedInputs.push(input);
     }
   }
   
-  // Save accumulated inputs for future calls (in case not all inputs are ready yet)
+  // CRITICAL FIX: Merge newly added inputs with accumulated inputs
+  if (newlyAddedInputs.length > 0) {
+    console.log(`${logPrefix} Adding ${newlyAddedInputs.length} new inputs to existing ${accumulatedInputs.length} inputs`);
+    accumulatedInputs = [...accumulatedInputs, ...newlyAddedInputs];
+  }
+  
+  // CRITICAL FIX: Save accumulated inputs atomically to prevent race conditions 
+  // in parallel processing by using a functional update pattern that atomically appends
+  console.log(`${logPrefix} Updating accumulated inputs: ${accumulatedInputs.length} total`);
+  
+  // Save accumulated inputs for future calls
   setNodeState(nodeId, { 
     accumulatedInputs,
     executionId
   });
   
-  console.log(`[Merger ${nodeId}] Total accumulated inputs:`, accumulatedInputs.length);
+  console.log(`${logPrefix} Total accumulated inputs: ${accumulatedInputs.length}`);
   
-  // If we're waiting for all inputs and we don't have any yet, return null
-  if (waitForAll && accumulatedInputs.length === 0) {
-    console.log(`[Merger ${nodeId}] No inputs available and waiting mode is enabled. Returning null.`);
-    return null;
-  }
-  
-  // Process based on merge mode
+  // Always process inputs, even if there are none
   let result: any;
   
   switch (mergeMode) {
     case 'concat':
-      result = processConcatMode(accumulatedInputs, arrayStrategy);
+      result = processConcatMode(accumulatedInputs);
       break;
       
     case 'join':
@@ -85,28 +168,38 @@ export function executeMergerNode(params: {
       break;
       
     default:
-      console.warn(`[Merger ${nodeId}] Unknown merge mode: ${mergeMode}. Falling back to concat.`);
-      result = processConcatMode(accumulatedInputs, arrayStrategy);
+      console.warn(`${logPrefix} Unknown merge mode: ${mergeMode}. Falling back to concat.`);
+      result = processConcatMode(accumulatedInputs);
   }
   
-  console.log(`[Merger ${nodeId}] Final result:`, result);
+  // CRITICAL FIX: Set the result field in the node state as well
+  // This ensures the final result is always available even if we miss a callback
+  setNodeState(nodeId, {
+    result,
+    status: 'success',
+    executionId
+  });
+  
+  console.log(`${logPrefix} Final result:`, {
+    type: Array.isArray(result) ? `array[${result.length}]` : typeof result,
+    preview: Array.isArray(result) ? 
+      `[${result.slice(0, 3).map(i => JSON.stringify(i).substring(0, 30)).join(', ')}${result.length > 3 ? '...' : ''}]` :
+      (typeof result === 'object' ? JSON.stringify(result).substring(0, 100) : String(result))
+  });
+  
   return result;
 }
 
 /**
- * Processes inputs in concat mode, creating an array
+ * Processes inputs in concat mode, creating a flattened array
  */
-function processConcatMode(inputs: any[], arrayStrategy: 'flatten' | 'preserve' = 'flatten'): any[] {
+function processConcatMode(inputs: any[]): any[] {
   let result: any[] = [];
   
   for (const input of inputs) {
     if (Array.isArray(input)) {
-      // For arrays, either flatten or preserve based on strategy
-      if (arrayStrategy === 'flatten') {
-        result.push(...input);
-      } else {
-        result.push(input);
-      }
+      // Always flatten arrays
+      result.push(...input);
     } else {
       // For other values, just add them directly
       result.push(input);
@@ -158,15 +251,21 @@ function processObjectMode(inputs: any[], propertyNames?: string[]): Record<stri
     
     if (propertyNames && propertyNames[index]) {
       key = propertyNames[index];
-    } else if (input && input._meta && input._meta.sourceId) {
+    } else if (input && typeof input === 'object' && input._meta && input._meta.sourceId) {
       // Try to use source node ID if available
       key = `input_from_${input._meta.sourceId}`;
     } else {
       key = `input_${index + 1}`;
     }
     
-    // Add to result object
-    result[key] = input;
+    // Extract the value from input if needed
+    let value = input;
+    if (input && typeof input === 'object' && input._meta) {
+      value = input.value;
+    }
+    
+    // Add the property to the result object
+    result[key] = value;
   });
   
   return result;

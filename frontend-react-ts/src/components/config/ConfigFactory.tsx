@@ -6,7 +6,8 @@ import {
   OutputNodeData, 
   InputNodeData,
   ConditionalNodeData,
-  GroupNodeData
+  GroupNodeData,
+  MergerNodeData
 } from '../../types/nodes';
 
 // Import components directly with relative path
@@ -16,6 +17,8 @@ import { OutputConfig } from './OutputConfig';
 import { InputNodeConfig } from './InputNodeConfig';
 import { ConditionalNodeConfig } from './ConditionalNodeConfig';
 import { GroupNodeConfig } from './GroupNodeConfig';
+import { MergerNodeSidebar } from '../sidebars/MergerNodeSidebar';
+import { useNodeState } from '../../store/flowExecutionStore';
 
 interface ConfigFactoryProps {
   selectedNode: Node<NodeData> | null;
@@ -71,6 +74,11 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
     case 'group':
       console.log('[ConfigFactory] Rendering GroupNodeConfig');
       return <GroupNodeConfig nodeId={id} data={data as GroupNodeData} />;
+    
+    case 'merger':
+      console.log('[ConfigFactory] Rendering MergerNodeSidebar');
+      const nodeState = useNodeState(id);
+      return <MergerNodeSidebar nodeId={id} nodeData={data as MergerNodeData} nodeState={nodeState} />;
     
     default:
       console.log(`[ConfigFactory] No config for node type: ${type}`);

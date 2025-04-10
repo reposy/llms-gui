@@ -93,35 +93,83 @@ export const useOutputNodeData = ({
   const formatResultBasedOnFormat = useCallback((result: any, format: 'json' | 'text'): string => {
     if (result === null || result === undefined) return '';
 
+    console.log(`[OutputNode ${nodeId}] Formatting result:`, {
+      resultType: typeof result,
+      isArray: Array.isArray(result),
+      hasValue: typeof result === 'object' && result !== null && 'value' in result,
+      hasMeta: typeof result === 'object' && result !== null && '_meta' in result,
+      format
+    });
+
+    // Always preserve the full result structure in JSON mode
     if (format === 'json') {
-      // JSON Mode: Stringify if object, otherwise convert to string
-      if (typeof result === 'object') {
-        try {
-          return JSON.stringify(result, null, 2);
-        } catch (e) {
-          console.error("Error stringifying result for JSON display:", e);
-          return String(result); // Fallback
-        }
+      // JSON Mode: Stringify the full object
+      try {
+        return JSON.stringify(result, null, 2);
+      } catch (e) {
+        console.error(`[OutputNode ${nodeId}] Error stringifying result for JSON display:`, e);
+        return String(result); // Fallback
       }
-      // For non-objects in JSON mode, just convert to string
-      return String(result); 
     } else {
-      // TEXT Mode: Prioritize 'content' or 'text' properties
+      // TEXT Mode: Handle different data types
       if (typeof result === 'object') {
+        if (result === null) return 'null';
+        
+        // Array handling in text mode
+        if (Array.isArray(result)) {
+          return result.map(item => {
+            if (typeof item === 'object' && item !== null) {
+              try {
+                return JSON.stringify(item);
+              } catch (e) {
+                return String(item);
+              }
+            }
+            return String(item);
+          }).join('\n');
+        }
+        
+        // Prioritize common LLM output fields for text display
         if ('content' in result && result.content !== null && result.content !== undefined) {
-          // If content itself is an object, stringify it for text view
           return typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
         } 
         if ('text' in result && result.text !== null && result.text !== undefined) {
           return String(result.text);
         }
-        // Fallback for objects in text mode
-        return JSON.stringify(result); 
+        if ('message' in result && result.message !== null && result.message !== undefined) {
+          return String(result.message);
+        }
+        
+        // If this is an InputNode wrapped value (has _meta and value), but we're in text mode,
+        // we still want to show a readable representation
+        if ('_meta' in result && 'value' in result) {
+          if (Array.isArray(result.value)) {
+            return result.value.map((item: any) => {
+              if (typeof item === 'object' && item !== null) {
+                try {
+                  return JSON.stringify(item);
+                } catch (e) {
+                  return String(item);
+                }
+              }
+              return String(item);
+            }).join('\n');
+          } else {
+            return String(result.value);
+          }
+        }
+        
+        // Last resort for objects in text mode
+        try {
+          return JSON.stringify(result, null, 2);
+        } catch (e) {
+          return String(result);
+        }
       }
       // For primitives in text mode, just convert to string
       return String(result); 
     }
-  }, []);
+  }, [nodeId]);
 
   /**
    * Update multiple properties at once with deep equality check

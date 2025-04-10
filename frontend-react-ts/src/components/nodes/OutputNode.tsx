@@ -33,7 +33,8 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     
     handleFormatChange(newFormat);
     
-    if (nodeState?.result) {
+    if (nodeState?.result !== undefined && nodeState?.result !== null) {
+      // Use the full result object directly
       const newContent = formatResultBasedOnFormat(nodeState.result, newFormat);
       // Only update content if it's different using deep equality
       if (!isEqual(newContent, data.content) && !isEqual(newContent, previousContentRef.current)) {
@@ -51,7 +52,13 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     let newContent: string | undefined;
 
     if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
+      // Use the full result object directly
       newContent = formatResultBasedOnFormat(nodeState.result, format);
+      console.log(`[OutputNode ${id}] Formatted full result:`, {
+        resultType: typeof nodeState.result,
+        isResult: nodeState.result !== undefined,
+        formattedContent: newContent ? `${newContent.substring(0, 100)}${newContent.length > 100 ? '...' : ''}` : 'empty'
+      });
     } else if (nodeState.status === 'running') {
       newContent = '처리 중...';
     } else if (nodeState.status === 'error') {
@@ -66,7 +73,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     if (newContent !== undefined && 
         !isEqual(newContent, data.content) && 
         !isEqual(newContent, previousContentRef.current)) {
-      console.log(`[OutputNode ${id}] Updating content from "${data.content}" to "${newContent}" (prev: "${previousContentRef.current}")`);
+      console.log(`[OutputNode ${id}] Updating content from previous state to new content`);
       previousContentRef.current = newContent;
       handleContentChange(newContent);
     }
@@ -85,7 +92,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     if (nodeState.status === 'running') return '처리 중...';
     if (nodeState.status === 'error') return `오류: ${nodeState.error}`;
     if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
-      // Use the single formatter, respecting data.format for display
+      // Use the full result object directly
       return formatResultBasedOnFormat(nodeState.result, format);
     }
     return '결과 없음';
@@ -97,13 +104,13 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
       console.warn('No successful result to download.');
       return;
     }
+    // Use the full result object directly
     const contentToDownload = formatResultBasedOnFormat(nodeState.result, format);
     const fileExtension = format === 'json' ? 'json' : 'txt';
     const mimeType = format === 'json' ? 'application/json' : 'text/plain';
     const filename = `output-${id}.${fileExtension}`;
 
     downloadFile(contentToDownload, filename, mimeType);
-
   }, [nodeState?.status, nodeState?.result, format, id, formatResultBasedOnFormat]);
 
   return (

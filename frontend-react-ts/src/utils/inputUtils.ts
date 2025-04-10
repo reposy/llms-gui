@@ -53,18 +53,56 @@ export const sanitizeInputItems = (items: any[]): (string | FileLikeObject)[] =>
     return [];
   }
 
+  // Log detailed information about input
+  console.log('[inputUtils] sanitizeInputItems input details:', items.map((item, index) => ({
+    index,
+    type: typeof item,
+    isArray: Array.isArray(item),
+    isObject: typeof item === 'object' && item !== null,
+    hasFile: typeof item === 'object' && item !== null && 'file' in item,
+    hasContent: typeof item === 'object' && item !== null && 'content' in item,
+    isString: typeof item === 'string',
+    stringRepresentation: typeof item === 'string' ? 
+      (item.length > 100 ? item.substring(0, 100) + '...' : item) : 
+      (typeof item === 'object' && item !== null ? JSON.stringify(item).substring(0, 100) : String(item))
+  })));
+
   const sanitized = items.filter(item => {
-    const isValid = isValidInputItem(item);
-    if (!isValid) {
-      console.log('[inputUtils] Filtered out invalid item:', item);
+    // Null or undefined check
+    if (item === null || item === undefined) {
+      console.log('[inputUtils] Filtered out null/undefined item');
+      return false;
     }
+    
+    // Check if it's a valid input item
+    const isValid = isValidInputItem(item);
+    
+    // Log detailed information about filtering decisions
+    if (!isValid) {
+      if (typeof item === 'string') {
+        console.log(`[inputUtils] Filtered out invalid string item: '${item}' (length: ${item.length})`);
+      } else if (typeof item === 'object') {
+        console.log('[inputUtils] Filtered out invalid object item:', {
+          hasFile: 'file' in item,
+          hasType: 'type' in item,
+          fileValue: 'file' in item ? item.file : undefined,
+          typeValue: 'type' in item ? item.type : undefined
+        });
+      } else {
+        console.log(`[inputUtils] Filtered out invalid item of type ${typeof item}`);
+      }
+    }
+    
     return isValid;
   });
 
-  console.log('[inputUtils] Sanitization result:', {
-    before: items,
-    after: sanitized,
-    removedCount: items.length - sanitized.length
+  // Log sanitization results with detailed counts
+  console.log('[inputUtils] Sanitization complete:', {
+    originalCount: items.length,
+    finalCount: sanitized.length,
+    removedCount: items.length - sanitized.length,
+    stringItems: sanitized.filter(item => typeof item === 'string').length,
+    fileItems: sanitized.filter(item => isFileLikeObject(item)).length
   });
 
   return sanitized;

@@ -89,6 +89,7 @@ export interface InputNodeData extends BaseNodeData {
   textBuffer?: string; // Buffer for in-progress text entry
   items?: (string | FileLikeObject)[]; // For mixed array of text and file rows
   iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
+  executeInParallel?: boolean; // Whether to execute rows in parallel (default: false = sequential)
   iterationStatus?: {
     currentIndex: number;
     totalItems: number;
@@ -126,14 +127,8 @@ export interface MergerNodeData extends BaseNodeData {
   mergeMode?: 'concat' | 'join' | 'object';
   // Join string for join mode
   joinSeparator?: string;
-  // Strategy for handling array items
-  arrayStrategy?: 'flatten' | 'preserve';
   // Custom property names for object mode
   propertyNames?: string[];
-  // Whether to wait for all inputs or process as they arrive
-  waitForAll?: boolean;
-  // Array to store manually edited/managed items via sidebar
-  items?: string[];
 }
 
 // Add WebCrawlerNodeData

@@ -3,13 +3,19 @@ export interface ExecutionContext {
   triggerNodeId: string;
   executionId: string;
   iterationItem?: any;
+  // For debugging and validation of iteration item presence
+  hasIterationItem?: boolean;
   // For foreach iteration tracking
   iterationTracking?: {
     inputNodeId: string;  // ID of the input node doing the iteration
     originalExecutionId: string; // Original execution ID before iteration
     currentIndex: number; // Current iteration index
     totalItems: number;   // Total number of items to iterate over
+    inputLabel?: string;  // Optional label of the input node for debugging
+    executionMode?: 'foreach' | 'batch'; // Mode of execution
   };
+  // Optional type info for better debugging
+  inputType?: string;
 }
 
 // Represents the state of a single node during execution
@@ -28,6 +34,8 @@ export interface NodeState {
     totalItems: number;
     completed: boolean;
   };
+  // Add accumulated inputs for merger nodes
+  accumulatedInputs?: any[];
 }
 
 // Represents the results for a single item processed by a group

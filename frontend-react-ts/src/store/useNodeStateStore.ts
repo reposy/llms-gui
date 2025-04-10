@@ -28,11 +28,41 @@ export const useNodeStateStore = createWithEqualityFn<NodeStateStoreState>()(
         setNodeState: (nodeId, stateUpdate) => {
           set(prev => {
             const currentState = prev.nodeStates[nodeId] || defaultNodeState;
-            const updatedNodeState = {
-              ...currentState,
-              ...stateUpdate,
-              _lastUpdate: Date.now()
-            };
+            
+            // CRITICAL FIX: Special handling for merger nodes' accumulatedInputs
+            // If we're getting accumulatedInputs and they already exist in the state,
+            // use proper atomic update to prevent race conditions during parallel execution
+            let updatedNodeState: NodeState;
+            
+            if (
+              'accumulatedInputs' in stateUpdate && 
+              Array.isArray(stateUpdate.accumulatedInputs) && 
+              Array.isArray(currentState.accumulatedInputs)
+            ) {
+              // Merger node special handling for accumulated inputs
+              // If both current and update have accumulated inputs arrays, merge them
+              console.log(`[NodeState ${nodeId}] Merging accumulated inputs: ${currentState.accumulatedInputs?.length || 0} existing + ${stateUpdate.accumulatedInputs?.length || 0} new`);
+              
+              const updatedAccumulatedInputs = [
+                ...(currentState.accumulatedInputs || []), 
+                ...(stateUpdate.accumulatedInputs || [])
+              ];
+              
+              // Create updated state with merged accumulated inputs
+              updatedNodeState = {
+                ...currentState,
+                ...stateUpdate,
+                accumulatedInputs: updatedAccumulatedInputs,
+                _lastUpdate: Date.now()
+              };
+            } else {
+              // Standard update without special handling
+              updatedNodeState = {
+                ...currentState,
+                ...stateUpdate,
+                _lastUpdate: Date.now()
+              };
+            }
 
             // Auto-clear results/errors based on status changes if not explicitly provided
             if (stateUpdate.status && stateUpdate.status !== 'success' && stateUpdate.result === undefined) {

@@ -67,6 +67,7 @@ export const useInputNodeData = ({
 
   const textBuffer = content.textBuffer || '';
   const iterateEachRow = !!content.iterateEachRow;
+  const executeInParallel = !!content.executeInParallel;
 
   /**
    * Helper function to read file as text
@@ -125,6 +126,14 @@ export const useInputNodeData = ({
     const newMode = !iterateEachRow;
     setContent({ iterateEachRow: newMode });
   }, [iterateEachRow, setContent]);
+
+  /**
+   * Toggle parallel execution mode
+   */
+  const handleToggleParallelExecution = useCallback(() => {
+    const newMode = !executeInParallel;
+    setContent({ executeInParallel: newMode });
+  }, [executeInParallel, setContent]);
 
   /**
    * Handle file input change
@@ -215,6 +224,7 @@ export const useInputNodeData = ({
     formattedItems,
     showIterateOption,
     iterateEachRow,
+    executeInParallel,
     
     // Event handlers
     handleTextChange,
@@ -223,6 +233,7 @@ export const useInputNodeData = ({
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
+    handleToggleParallelExecution,
     handleConfigChange
   };
 }; 
