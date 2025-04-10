@@ -33,6 +33,19 @@ export interface ExecutionContext {
   triggerNodeId: string;
   executionId: string;
   iterationItem?: any;
+  // For foreach iteration tracking
+  iterationTracking?: {
+    inputNodeId: string;  // ID of the input node doing the iteration
+    originalExecutionId: string; // Original execution ID before iteration
+    currentIndex: number; // Current iteration index
+    totalItems: number;   // Total number of items to iterate over
+  };
+  
+  // Iteration support for foreach/batch control
+  executionMode?: 'batch' | 'foreach' | 'iteration-item'; // Identifies how this node is being executed
+  iterationIndex?: number; // Index of current iteration (only set in foreach)
+  originalInputLength?: number; // Total number of items in the original input
+  inputRows?: any[]; // Full array of inputs in batch mode (used for template resolution or merging)
 }
 
 // Re-export the GroupExecutionItemResult

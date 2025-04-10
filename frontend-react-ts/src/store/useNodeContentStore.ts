@@ -66,6 +66,7 @@ export interface InputNodeContent extends BaseNodeContent {
   items?: (string | FileLikeObject)[];
   textBuffer?: string;
   iterateEachRow?: boolean;
+  executionMode?: 'batch' | 'foreach';
 }
 
 // Group node content
@@ -205,7 +206,8 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
         ...baseContent,
         items: [],
         textBuffer: '',
-        iterateEachRow: false
+        iterateEachRow: false,
+        executionMode: 'batch'
       };
     
     case 'json-extractor':

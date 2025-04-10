@@ -60,11 +60,31 @@ export async function dispatchNodeExecution(
   
   // Special handling for Input nodes with iterateEachRow option
   if (node.type === 'input' && (node.data as InputNodeData).iterateEachRow) {
-    return await handleInputNodeIteration(
-      node as Node<InputNodeData>,
-      context,
-      dependencies
-    );
+    const content = nodeContentStore.getContent(nodeId);
+    const items = content?.items ?? [];
+  
+    if (items.length === 0) {
+      logger.warn(`[InputIteration ${nodeId}] No items to iterate over.`);
+    } else {
+      logger.debug(`[InputIteration ${nodeId}] Iterating over ${items.length} items.`);
+    }
+  
+    const inputRows = items.map(item => ({ input: item }));
+  
+    const results = [];
+    for (let i = 0; i < inputRows.length; i++) {
+      const input = inputRows[i];
+      const result = await executeNode({
+        node,
+        input,
+        executionMode: 'foreach',
+        parentExecutionId: executionId,
+        iterationIndex: i,
+      });
+      results.push(result);
+    }
+  
+    return results;
   }
   
   // For other node types, use the original dispatcher from executorDispatcher.ts
@@ -183,6 +203,7 @@ async function handleInputNodeIteration(
       triggerNodeId: context.triggerNodeId,
       executionId: `${executionId}-item-${index}`, // Create a new unique execution ID for each iteration
       iterationItem: item,
+      executionMode: 'iteration-item', // Set the execution mode explicitly for resolveTemplate
       iterationTracking: {
         inputNodeId,
         originalExecutionId: executionId,
@@ -190,6 +211,8 @@ async function handleInputNodeIteration(
         totalItems: items.length
       }
     };
+    
+    console.log(`[InputIteration ${inputNodeId}] Created iteration context with executionMode='${iterationContext.executionMode}', iterationItem:`, iterationContext.iterationItem);
     
     // Directly execute the input node with the iteration context to get a single item result
     await originalDispatchNodeExecution({
@@ -207,19 +230,20 @@ async function handleInputNodeIteration(
         // Use the iteration context to pass the current item
         const result = await dispatchNodeExecution(
           downstreamNodeId,
-          [item], // Pass the current item as input
-          iterationContext,
+          [item], // Pass the current item as input (as single-item array for input handling)
+          iterationContext, // This contains iterationItem = item and executionMode = 'iteration-item'
           dependencies
         );
         
-        // If this is the last downstream node in the chain, collect its result
-        // Logic to identify "leaf" nodes may need to be more sophisticated
-        if (result !== undefined) {
-          allResults.push(result);
-        }
+        // Collect all results, regardless of value (don't filter based on !undefined)
+        // This allows null, empty strings, and falsy values to be collected too
+        allResults.push(result);
+        
+        console.log(`[InputIteration ${inputNodeId}] Collected result from ${downstreamNodeId}:`, result);
       } catch (error) {
         console.error(`[InputIteration ${inputNodeId}] Error processing item ${index} for node ${downstreamNodeId}:`, error);
         // Add error to results or handle as needed
+        allResults.push({ error: error instanceof Error ? error.message : String(error) });
       }
     }
   }

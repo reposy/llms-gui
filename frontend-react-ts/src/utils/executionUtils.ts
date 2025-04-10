@@ -72,20 +72,47 @@ export const evaluateCondition = (inputType: ConditionType, inputValue: any, con
 
 /**
  * Helper function to determine the appropriate input value based on execution context.
- * Prioritizes iterationItem, then batch input rows, and finally falls back to the provided input.
+ * Properly handles batch and foreach execution modes for template resolution.
+ * 
+ * @param context The execution context which may contain iteration data
+ * @param input The direct input passed to the executor
+ * @returns The appropriate value to use for template resolution
  */
 export const getResolvedInput = (context: any, input: any): any => {
+  console.log(`[getResolvedInput] Starting with context mode: ${context?.executionMode || 'undefined'}`);
+  
   // Priority 1: If we're inside an iteration, use the iteration item
   if (context?.iterationItem !== undefined) {
+    console.log(`[getResolvedInput] Using iterationItem for template resolution:`, context.iterationItem);
+    console.log(`[getResolvedInput] Execution mode: ${context.executionMode}, Execution ID: ${context.executionId}`);
+    if (context.iterationTracking) {
+      console.log(`[getResolvedInput] Iteration tracking: Item ${context.iterationTracking.currentIndex+1} of ${context.iterationTracking.totalItems}`);
+    }
+    // Make it explicitly clear we're returning the iteration item for iteration-item mode
+    if (context.executionMode === 'iteration-item') {
+      console.log(`[getResolvedInput] ITERATION-ITEM MODE: Prioritizing iterationItem over input array`);
+    }
     return context.iterationItem;
   }
   
   // Priority 2: If we're in batch mode with inputRows available, use them
   if (context?.executionMode === 'batch' && Array.isArray(context?.inputRows)) {
+    console.log(`[getResolvedInput] Using batch inputRows (${context.inputRows.length} items)`);
+    console.log(`[getResolvedInput] Batch mode: Will use full array for template resolution`);
     return context.inputRows;
   }
   
-  // Priority 3: Fall back to the direct input parameter
+  // Priority 3: Check for foreach mode (but this should be handled by iterationItem above)
+  if ((context?.executionMode === 'foreach' || context?.executionMode === 'iteration-item') && Array.isArray(input)) {
+    console.log(`[getResolvedInput] Using foreach/iteration input array (${input.length} items)`);
+    return input;
+  }
+  
+  // Priority 4: Fall back to the direct input parameter
+  console.log(`[getResolvedInput] Using direct input (no special context):`, input);
+  if (Array.isArray(input)) {
+    console.log(`[getResolvedInput] Direct input is an array with ${input.length} items`);
+  }
   return input;
 };
 
@@ -94,6 +121,8 @@ export const resolveTemplate = (template: string, data: any, context?: any): str
     if (!template) return '';
     // Basic check to avoid processing non-template strings unnecessarily
     if (!template.includes('{{')) return template;
+
+    console.log(`[resolveTemplate] Processing template with ${template.split('{{').length - 1} placeholder(s)`);
 
     // Determine the effective input data based on execution context if provided
     const effectiveData = context ? getResolvedInput(context, data) : data;
@@ -106,12 +135,20 @@ export const resolveTemplate = (template: string, data: any, context?: any): str
       if (trimmedPath === 'input') {
         if (typeof effectiveData === 'object' && effectiveData !== null) {
           try {
-            return JSON.stringify(effectiveData); // Stringify object/array data
+            const stringified = JSON.stringify(effectiveData);
+            console.log(`[resolveTemplate] Resolved {{input}} to object/array with length: ${Array.isArray(effectiveData) ? effectiveData.length : Object.keys(effectiveData).length}`);
+            if (stringified.length < 200) {
+              console.log(`[resolveTemplate] {{input}} value: ${stringified}`);
+            } else {
+              console.log(`[resolveTemplate] {{input}} value (truncated): ${stringified.substring(0, 200)}...`);
+            }
+            return stringified; // Stringify object/array data
           } catch (e) {
             console.error('Error stringifying input data for {{input}}:', e);
             return '[Object Data]'; // Fallback
           }
         } else {
+          console.log(`[resolveTemplate] Resolved {{input}} to primitive: ${String(effectiveData ?? '')}`);
           return String(effectiveData ?? ''); // Convert primitive data (or null/undefined) to string
         }
       } 

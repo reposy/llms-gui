@@ -4,7 +4,7 @@ import { isEqual } from 'lodash';
 import { sanitizeInputItems } from '../utils/inputUtils';
 
 // Import the general NodeContentStore and the InputNodeContent type
-import { useNodeContent, InputNodeContent } from '../store/useNodeContentStore';
+import { useNodeContent, InputNodeContent, getNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Custom hook to manage InputNode state and operations using Zustand store.
@@ -67,6 +67,18 @@ export const useInputNodeData = ({
 
   const textBuffer = content.textBuffer || '';
   const iterateEachRow = !!content.iterateEachRow;
+  
+  // Ensure executionMode stays in sync with iterateEachRow on initialization and changes
+  useEffect(() => {
+    // Check if executionMode doesn't match iterateEachRow setting
+    const currentMode = content.executionMode;
+    const expectedMode = iterateEachRow ? 'foreach' : 'batch';
+    
+    if (currentMode !== expectedMode) {
+      console.log(`[useInputNodeData] Syncing executionMode (${currentMode}) with iterateEachRow (${iterateEachRow}) for ${nodeId}`);
+      setContent({ executionMode: expectedMode });
+    }
+  }, [nodeId, iterateEachRow, content.executionMode, setContent]);
 
   /**
    * Helper function to read file as text
@@ -123,8 +135,24 @@ export const useInputNodeData = ({
    */
   const handleToggleProcessingMode = useCallback(() => {
     const newMode = !iterateEachRow;
-    setContent({ iterateEachRow: newMode });
-  }, [iterateEachRow, setContent]);
+    // Set both iterateEachRow and executionMode properties with proper types
+    const modeUpdate: Partial<InputNodeContent> = { 
+      iterateEachRow: newMode, 
+      executionMode: newMode ? 'foreach' : 'batch' 
+    };
+    
+    console.log(`[useInputNodeData] Toggling mode for ${nodeId}:`, modeUpdate);
+    setContent(modeUpdate);
+    
+    // Debug log to confirm the update
+    setTimeout(() => {
+      const updatedContent = getNodeContent(nodeId) as InputNodeContent;
+      console.log(`[useInputNodeData] After toggle for ${nodeId}:`, {
+        iterateEachRow: updatedContent.iterateEachRow,
+        executionMode: updatedContent.executionMode
+      });
+    }, 100);
+  }, [iterateEachRow, setContent, nodeId]);
 
   /**
    * Handle file input change

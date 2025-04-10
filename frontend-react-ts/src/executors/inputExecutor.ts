@@ -1,6 +1,7 @@
 import { Node } from 'reactflow';
 import { InputNodeData } from '../types/nodes';
 import { ExecutionContext } from '../types/execution';
+import { getNodeContent, InputNodeContent } from '../store/useNodeContentStore';
 
 // Define the expected parameters for the executor
 interface ExecuteInputNodeParams {
@@ -11,11 +12,67 @@ interface ExecuteInputNodeParams {
 
 /**
  * Executes an Input node.
- * Simply returns the input as-is. 
- * The dispatcher now handles all foreach/batch behavior.
+ * Retrieves the node's internal content (text rows, files, etc) and returns it
+ * as the output for downstream nodes.
+ * 
+ * The dispatcher handles the foreach/batch behavior.
  */
 export function executeInputNode({ node, input, context }: ExecuteInputNodeParams): any {
   const nodeId = node.id;
-  console.log(`[InputExecutor] (${nodeId}) Received input:`, input);
-  return input;
+  const nodeData = node.data as InputNodeData;
+  const { executionId, executionMode } = context;
+  
+  console.log(`[InputExecutor] (${nodeId}) Starting execution in mode: ${executionMode || 'standard'}`);
+  console.log(`[InputExecutor] (${nodeId}) Context:`, {
+    executionId,
+    executionMode,
+    hasIterationItem: context.iterationItem !== undefined,
+    hasInputRows: Array.isArray(context.inputRows),
+    inputRowsLength: Array.isArray(context.inputRows) ? context.inputRows.length : 0
+  });
+  
+  // Check if we're in an iteration - if so, return the iteration item
+  if (context.iterationItem !== undefined) {
+    console.log(`[InputExecutor] (${nodeId}) Returning iteration item:`, context.iterationItem);
+    return context.iterationItem;
+  }
+  
+  // Get internal content from node data and node content store
+  let items: any[] = [];
+  
+  // First check node.data which contains runtime state
+  if (nodeData.items && nodeData.items.length > 0) {
+    items = [...nodeData.items];
+    console.log(`[InputExecutor] (${nodeId}) Using ${items.length} items from node.data`);
+  } 
+  // If no items in node.data, check node content store
+  else {
+    const nodeContent = getNodeContent(nodeId) as InputNodeContent;
+    if (nodeContent?.items && nodeContent.items.length > 0) {
+      items = [...nodeContent.items];
+      console.log(`[InputExecutor] (${nodeId}) Using ${items.length} items from content store`);
+    }
+    // If text property exists, use it
+    else if (nodeData.text) {
+      // Convert text to array of lines
+      items = nodeData.text.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
+      console.log(`[InputExecutor] (${nodeId}) Created ${items.length} items from text property`);
+    }
+  }
+  
+  // If in batch mode with context.inputRows, use that instead
+  if (executionMode === 'batch' && Array.isArray(context.inputRows)) {
+    console.log(`[InputExecutor] (${nodeId}) Batch mode detected. Using inputRows from context (${context.inputRows.length} items)`);
+    return context.inputRows;
+  }
+  
+  // If we couldn't find any items, log a warning
+  if (items.length === 0) {
+    console.warn(`[InputExecutor] (${nodeId}) No items found in node data or content store`);
+    console.log(`[InputExecutor] (${nodeId}) Node data:`, nodeData);
+    return null;
+  }
+  
+  console.log(`[InputExecutor] (${nodeId}) Returning ${items.length} items:`, items);
+  return items;
 } 
