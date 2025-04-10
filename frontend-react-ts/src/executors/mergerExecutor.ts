@@ -4,12 +4,12 @@ import { ExecutionContext, NodeState, defaultNodeState } from '../types/executio
 
 export function executeMergerNode(params: {
   node: Node<MergerNodeData>;
-  inputs: any[];
+  input: any;
   context: ExecutionContext;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
   getNodeState: (nodeId: string) => NodeState;
 }): any {
-  const { node, inputs, context, setNodeState, getNodeState } = params;
+  const { node, input, context, setNodeState, getNodeState } = params;
   const nodeId = node.id;
   const nodeData = node.data;
   const { executionId } = context;
@@ -27,7 +27,7 @@ export function executeMergerNode(params: {
   
   console.log(`[ExecuteNode ${nodeId}] (Merger) Executing with mode:`, mergeMode);
   console.log(`[ExecuteNode ${nodeId}] (Merger) Wait for all inputs:`, waitForAll);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Inputs:`, inputs);
+  console.log(`[ExecuteNode ${nodeId}] (Merger) Input:`, input);
 
   // Prepare storage for accumulated inputs
   let accumulatedInputs: any[] = [];
@@ -38,11 +38,9 @@ export function executeMergerNode(params: {
     console.log(`[Merger ${nodeId}] Reusing ${accumulatedInputs.length} previously accumulated inputs from execution ${executionId}`);
   }
   
-  // Add current inputs
-  for (const input of inputs) {
-    if (input !== undefined && input !== null) {
-      accumulatedInputs.push(input);
-    }
+  // Add current input if not null/undefined
+  if (input !== undefined && input !== null) {
+    accumulatedInputs.push(input);
   }
   
   // Add custom items if configured

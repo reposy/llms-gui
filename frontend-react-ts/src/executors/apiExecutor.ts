@@ -6,23 +6,22 @@ import { ExecutionContext, NodeState } from '../types/execution';
 // Define the expected parameters for the executor
 interface ExecuteApiNodeParams {
   node: Node<APINodeData>;
-  inputs: any[];
+  input: any;
   context: ExecutionContext;
-  setNodeState: (nodeId: string, state: Partial<NodeState>) => void; // Might not be needed if just returning value
-  resolveTemplate: (template: string, data: any) => string;
+  setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
+  resolveTemplate: (template: string, data: any, context?: any) => string;
 }
 
 export async function executeApiNode(params: ExecuteApiNodeParams): Promise<any> {
-  const { node, inputs, context, resolveTemplate } = params;
+  const { node, input, context, resolveTemplate } = params;
   const nodeId = node.id;
   const nodeData = node.data;
   const { executionId } = context;
 
   console.log(`[ExecuteNode ${nodeId}] (API) Executing with context:`, context);
 
-  const apiInput = inputs.length > 0 ? inputs[0] : {};
-  const resolvedUrl = resolveTemplate(nodeData.url || '', apiInput);
-  const resolvedBody = nodeData.body ? resolveTemplate(nodeData.body || '', apiInput) : undefined;
+  const resolvedUrl = resolveTemplate(nodeData.url || '', input, context);
+  const resolvedBody = nodeData.body ? resolveTemplate(nodeData.body || '', input, context) : undefined;
   let resolvedHeaders: Record<string, string> = {}; // Ensure type safety
 
   console.log(`[ExecuteNode ${nodeId}] (API) Resolved URL:`, resolvedUrl);

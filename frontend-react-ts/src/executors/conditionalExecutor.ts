@@ -6,13 +6,13 @@ import { extractValue, evaluateCondition } from '../utils/executionUtils';
 // Define the expected return structure for conditional branching
 interface ConditionalExecutionResult {
   outputHandle: 'trueHandle' | 'falseHandle'; // The ID of the handle to activate
-  value: any; // The original input value (inputs[0]) to pass downstream
+  value: any; // The original input value to pass downstream
 }
 
 // Define the expected parameters for the executor
 interface ExecuteConditionalNodeParams {
   node: Node<ConditionalNodeData>;
-  inputs: any[];
+  input: any;
   context: ExecutionContext;
 }
 
@@ -23,7 +23,7 @@ interface ExecuteConditionalNodeParams {
  * should be activated and passes the original input value along that path.
  */
 export function executeConditionalNode(params: ExecuteConditionalNodeParams): ConditionalExecutionResult {
-  const { node, inputs, context } = params;
+  const { node, input, context } = params;
   const nodeId = node.id;
   const nodeData = node.data;
   const { executionId } = context;
@@ -31,7 +31,7 @@ export function executeConditionalNode(params: ExecuteConditionalNodeParams): Co
   console.log(`[ExecuteNode ${nodeId}] (Conditional) Executing with context:`, context);
 
   // Store the original input data to pass through
-  const originalInput = inputs.length > 0 ? inputs[0] : null;
+  const originalInput = input;
   const conditionType = nodeData.conditionType || 'contains'; // Default condition type
   const conditionValue = nodeData.conditionValue || '';
   let valueToCheck = originalInput; // Value to use for evaluation might change (e.g., for json_path)

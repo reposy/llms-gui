@@ -38,9 +38,11 @@ export async function dispatchNodeExecution(
   
   // Special handling for group nodes
   if (node.type === 'group') {
+    console.log(`[ExecutionDispatcher] Executing group node ${nodeId} with input:`, inputs.length > 0 ? inputs[0] : null);
+    
     const groupResults = await executeGroupNode(
       nodeId,
-      inputs,
+      inputs, // Pass inputs array, but the group executor will use the first item
       context,
       dependencies
     );

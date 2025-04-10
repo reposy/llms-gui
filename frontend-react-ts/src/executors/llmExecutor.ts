@@ -5,24 +5,24 @@ import { ExecutionContext, NodeState } from '../types/execution';
 import { getNodeContent, LLMNodeContent } from '../store/useNodeContentStore';
 
 export async function executeLlmNode(params: {
-  node: LLMNodeData;
-  inputs: any[];
+  node: Node<LLMNodeData>;
+  input: any;
   context: ExecutionContext;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
+  resolveTemplate: (template: string, data: any, context?: any) => string;
 }): Promise<LLMResult> {
-  const { node, inputs, context, setNodeState } = params;
+  const { node, input, context, setNodeState, resolveTemplate } = params;
   const { executionId } = context;
   const nodeId = node.id;
 
   console.log(`[LLM Executor] Executing LLM node ${nodeId}...`);
-  console.log(`[LLM Executor] Inputs:`, inputs);
+  console.log(`[LLM Executor] Input:`, input);
 
   // Start executing and update state
   setNodeState(nodeId, {
     status: 'running',
     executionId,
     error: undefined,
-    inputs: inputs, // Store input values
     result: undefined, // Clear any previous result
   });
 
@@ -36,15 +36,8 @@ export async function executeLlmNode(params: {
     // Prepare prompt, replacing any {{input}} placeholders with actual input
     let promptText = nodeContent.prompt || '';
     
-    // Replace placeholders
-    if (inputs.length > 0 && promptText.includes('{{input}}')) {
-      // Convert input to string if needed
-      const inputText = typeof inputs[0] === 'object' 
-        ? JSON.stringify(inputs[0], null, 2) 
-        : String(inputs[0]);
-      
-      promptText = promptText.replace(/\{\{input\}\}/g, inputText);
-    }
+    // Replace placeholders using resolveTemplate utility
+    promptText = resolveTemplate(promptText, input, context);
 
     console.log(`[LLM Executor] Using model "${nodeContent.model}" with temperature ${nodeContent.temperature}`);
     console.log(`[LLM Executor] Processed prompt:`, promptText);
@@ -85,7 +78,7 @@ export async function executeLlmNode(params: {
         
         // Successful result handling
         console.log(`[LLM Executor] Received result for ${nodeId}:`, result.substring(0, 100) + (result.length > 100 ? '...' : ''));
-      } catch (error) {
+      } catch (error: any) {
         console.error(`[LLM Executor] API error for ${nodeId}:`, error);
         throw new Error(`Ollama API error: ${error.message}`);
       }
@@ -104,7 +97,7 @@ export async function executeLlmNode(params: {
         model: model,
         provider: provider,
       },
-      executionTime: Date.now(),
+      _lastUpdate: Date.now(), // Use _lastUpdate instead of executionTime
     });
 
     return {
@@ -112,14 +105,14 @@ export async function executeLlmNode(params: {
       model: model,
       provider: provider,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[LLM Executor] Error executing LLM node ${nodeId}:`, error);
     
     // Update state with error
     setNodeState(nodeId, {
       status: 'error',
       error: error.message || 'Unknown error executing LLM model',
-      executionTime: Date.now(),
+      _lastUpdate: Date.now(), // Use _lastUpdate instead of executionTime
     });
     
     throw error;

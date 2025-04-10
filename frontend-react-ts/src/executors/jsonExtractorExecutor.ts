@@ -6,7 +6,7 @@ import { extractValue } from '../utils/executionUtils';
 // Define the expected parameters for the executor
 interface ExecuteJsonExtractorNodeParams {
   node: Node<JSONExtractorNodeData>;
-  inputs: any[];
+  input: any;
   context: ExecutionContext; // Included for consistency
 }
 
@@ -16,17 +16,15 @@ interface ExecuteJsonExtractorNodeParams {
  * Returns the extracted value or undefined.
  */
 export function executeJsonExtractorNode(params: ExecuteJsonExtractorNodeParams): any {
-  const { node, inputs, context } = params;
+  const { node, input, context } = params;
   const nodeId = node.id;
   const nodeData = node.data;
 
   console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Executing with context:`, context);
-
-  const jsonInput = inputs.length > 0 ? inputs[0] : null;
-  console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Input:`, jsonInput);
+  console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Input:`, input);
   console.log(`[ExecuteNode ${nodeId}] (JSON Extractor) Path:`, nodeData.path);
 
-  if (jsonInput === null || jsonInput === undefined) {
+  if (input === null || input === undefined) {
     throw new Error("Input is null or undefined.");
   }
   if (!nodeData.path) {
@@ -34,11 +32,11 @@ export function executeJsonExtractorNode(params: ExecuteJsonExtractorNodeParams)
   }
 
   try {
-    let dataToParse = jsonInput;
+    let dataToParse = input;
     // Attempt to parse if input is a stringified JSON
-    if (typeof jsonInput === 'string') {
+    if (typeof input === 'string') {
       try {
-        dataToParse = JSON.parse(jsonInput);
+        dataToParse = JSON.parse(input);
       } catch (parseError) {
         // If parsing fails, maybe it's intended to run path on the string itself?
         // Or more likely, the input string wasn't valid JSON.
