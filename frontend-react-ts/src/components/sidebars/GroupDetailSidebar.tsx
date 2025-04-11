@@ -1,7 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import type { Node } from 'reactflow';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
-import { useNodeState, useExecutionState, executeFlowForGroup } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
+import { executeFlowForGroup, useExecutionState } from '../../store/useExecutionController';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { GroupExecutionItemResult } from '../../types/execution';
 

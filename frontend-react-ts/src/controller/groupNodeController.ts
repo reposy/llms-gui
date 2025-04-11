@@ -218,7 +218,7 @@ async function executeSubgraphInternal(
           // console.log(`[SubG Internal ${execId}] Node ${nodeId} status is ${nodeExecutionStatus[nodeId]}, skipping dispatch.`);
           return;
         }
-        if (executingPromises[nodeId]) {
+        if (executingPromises[nodeId] !== undefined) {
           // console.log(`[SubG Internal ${execId}] Node ${nodeId} is already running, skipping dispatch.`);
           return; // Avoid re-dispatching
         }
@@ -342,7 +342,7 @@ export async function executeGroupNode(groupId: string, dependencies: FlowContro
     };
     
     // Import the dispatcher
-    const { dispatchNodeExecution } = await import('./executionDispatcher');
+    const { dispatchNodeExecution } = await import('../executors/executorDispatcher');
     
     // Create dispatcher dependencies by adding the missing dispatchNodeExecution property
     // This creates a circular reference but it's safe since the imported function is already available
@@ -352,12 +352,14 @@ export async function executeGroupNode(groupId: string, dependencies: FlowContro
     };
     
     // Call the dispatcher with the group node
-    const result = await dispatchNodeExecution(
-      groupId,
-      [input], // Pass null input as an array with a single item
+    const result = await dispatchNodeExecution({
+      node: groupNode,
+      nodes: allNodes,
+      edges: dependencies.getEdges(),
       context,
-      dispatcherDependencies
-    );
+      getNodeState: dependencies.getNodeState,
+      setNodeState: dependencies.setNodeState
+    });
     
     console.log(`[ExecuteGroup ${groupId}] Execution complete. Result:`, result);
     setNodeState(groupId, { 

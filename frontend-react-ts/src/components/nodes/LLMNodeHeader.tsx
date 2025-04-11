@@ -1,6 +1,8 @@
 import React, { useCallback, useRef } from 'react';
 import { NodeViewMode, VIEW_MODES } from '../../store/viewModeStore';
-import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
+import { useIsRootNode } from '../../store/useNodeGraphUtils';
+import { useNodeState } from '../../store/useNodeStateStore';
+import { executeFlow } from '../../store/useExecutionController';
 import { NodeHeader } from './shared/NodeHeader';
 import { LLMNodeData } from '../../types/nodes';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';

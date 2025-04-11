@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { OutputNodeData } from '../../types/nodes';
-import { useNodeState } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
 import { useOutputNodeData } from '../../hooks/useOutputNodeData';
 
 interface OutputConfigProps {

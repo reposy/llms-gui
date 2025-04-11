@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { ConditionalNodeData, NodeData, ConditionType } from '../../types/nodes';
-import { useNodeState } from '../../store/flowExecutionStore'; // Make sure this path is correct
+import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';

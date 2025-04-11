@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { GroupNodeData } from '../../types/nodes';
-import { useNodeState } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
 
 interface GroupNodeConfigProps {

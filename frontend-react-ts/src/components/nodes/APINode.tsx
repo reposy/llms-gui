@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { Handle, Position, useReactFlow } from 'reactflow';
+import { Handle, Position, useReactFlow, NodeProps } from 'reactflow';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { APINodeData } from '../../types/nodes';
-import { useNodeState, executeFlow, useIsRootNode } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
+import { executeFlow } from '../../store/useExecutionController';
+import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import axios from 'axios';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
