@@ -1,5 +1,4 @@
 import { Node } from '../core/Node';
-import { getOutgoingConnections } from '../utils/flowUtils';
 import { setNodeContent, getNodeContent, MergerNodeContent } from '../store/useNodeContentStore';
 
 interface MergerNodeProperty {
@@ -52,8 +51,28 @@ export class MergerNode extends Node {
     const result = this.property.strategy === 'array' 
       ? this.mergeAsArray(newItems) 
       : this.mergeAsObject(newItems);
-      
+    
+    const childNodes = this.getChildNodes();
+    
+    if (childNodes.length > 0) {
+      this.context.log(`MergerNode(${this.id}): Propagating result to ${childNodes.length} child nodes`);
+    
+      for (const child of childNodes) {
+        await child.execute(result);
+      }
+    } else {
+      this.context.log(`MergerNode(${this.id}): No child nodes to execute with result`);
+    }
+    
     return result;
+  }
+
+  /**
+   * Resets the accumulated items to an empty array
+   */
+  resetItems(): void {
+    this.context.log(`MergerNode(${this.id}): Resetting accumulated items`);
+    setNodeContent(this.id, { items: [] });
   }
 
   /**
@@ -104,7 +123,7 @@ export class MergerNode extends Node {
   
   /**
    * Override execute to provide stateless execution
-   * Each execution adds one input to the merged result
+   * Each execution processes the current input and merges with accumulated items
    */
   async execute(input: any): Promise<void> {
     try {
@@ -119,6 +138,9 @@ export class MergerNode extends Node {
       
       // Store the result in the execution context
       this.context.storeOutput(this.id, result);
+      
+      // Mark node as successful
+      this.context.markNodeSuccess(this.id, result);
       
       // Get child nodes and propagate the merged result
       const childNodes = this.getChildNodes();

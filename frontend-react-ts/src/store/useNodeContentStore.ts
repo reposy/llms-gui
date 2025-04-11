@@ -84,7 +84,7 @@ export interface ConditionalNodeContent extends BaseNodeContent {
 
 // Merger node content
 export interface MergerNodeContent extends BaseNodeContent {
-  items?: string[];
+  items?: any[];
 }
 
 // Union type for all node content types
