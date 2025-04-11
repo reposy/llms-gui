@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { LLMNodeData } from '../../types/nodes';
-import { useNodeState } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface LLMConfigProps {

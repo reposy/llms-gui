@@ -25,6 +25,7 @@ import { recentlyPastedNodes, explicitlyInitializedNodeIds } from '../utils/clip
 export interface BaseNodeContent {
   label?: string;
   isDirty?: boolean;
+  _forceUpdate?: number;
 }
 
 // LLM node content
@@ -34,6 +35,7 @@ export interface LLMNodeContent extends BaseNodeContent {
   temperature?: number;
   provider?: 'ollama' | 'openai';
   ollamaUrl?: string;
+  content?: string;
 }
 
 // API node content
@@ -66,6 +68,7 @@ export interface InputNodeContent extends BaseNodeContent {
   items?: (string | FileLikeObject)[];
   textBuffer?: string;
   iterateEachRow?: boolean;
+  executionMode?: 'batch' | 'foreach';
 }
 
 // Group node content
@@ -81,7 +84,7 @@ export interface ConditionalNodeContent extends BaseNodeContent {
 
 // Merger node content
 export interface MergerNodeContent extends BaseNodeContent {
-  items?: string[];
+  items?: any[];
 }
 
 // Union type for all node content types
@@ -205,7 +208,8 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
         ...baseContent,
         items: [],
         textBuffer: '',
-        iterateEachRow: false
+        iterateEachRow: false,
+        executionMode: 'batch'
       };
     
     case 'json-extractor':
@@ -373,10 +377,16 @@ export const useNodeContentStore = create<NodeContentStore>()(
 
           // Only proceed with updates if content exists (either pre-existing or newly initialized)
           if (state.nodeContents[nodeId]) {
+            // Force update for content changes by always creating a new reference
+            const hasContentUpdate = 'content' in updates;
+            
             // Create new content by merging current and updates
             const newContent = {
               ...state.nodeContents[nodeId],
-              ...updates
+              ...updates,
+              // Force a new object reference when 'content' is updated
+              // This ensures the shallow equality check in useNodeContent hook doesn't prevent re-renders
+              _forceUpdate: hasContentUpdate ? Date.now() : state.nodeContents[nodeId]._forceUpdate
             };
 
             // Always sanitize the entire content if it's an input node
@@ -388,6 +398,10 @@ export const useNodeContentStore = create<NodeContentStore>()(
                 before: newContent,
                 after: sanitizedContent
               });
+            }
+
+            if (hasContentUpdate) {
+              console.log(`[NodeContentStore] Forcing update for content change on node ${nodeId}`);
             }
 
             state.nodeContents[nodeId] = sanitizedContent;

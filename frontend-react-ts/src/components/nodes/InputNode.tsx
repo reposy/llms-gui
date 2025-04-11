@@ -1,12 +1,14 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { InputNodeData } from '../../types/nodes';
+import { VIEW_MODES } from '../../store/viewModeStore';
+import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
-import clsx from 'clsx';
-import { executeFlow, useNodeState } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
+import { executeFlow } from '../../store/useExecutionController';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { InputTextManager } from '../input/InputTextManager';
 import { InputFileUploader } from '../input/InputFileUploader';

@@ -6,7 +6,8 @@ import {
   OutputNodeData, 
   InputNodeData,
   ConditionalNodeData,
-  GroupNodeData
+  GroupNodeData,
+  MergerNodeData
 } from '../../types/nodes';
 
 // Import components directly with relative path
@@ -16,6 +17,7 @@ import { OutputConfig } from './OutputConfig';
 import { InputNodeConfig } from './InputNodeConfig';
 import { ConditionalNodeConfig } from './ConditionalNodeConfig';
 import { GroupNodeConfig } from './GroupNodeConfig';
+import { MergerNodeConfig } from './MergerNodeConfig';
 
 interface ConfigFactoryProps {
   selectedNode: Node<NodeData> | null;
@@ -71,6 +73,10 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
     case 'group':
       console.log('[ConfigFactory] Rendering GroupNodeConfig');
       return <GroupNodeConfig nodeId={id} data={data as GroupNodeData} />;
+    
+    case 'merger':
+      console.log('[ConfigFactory] Rendering MergerNodeConfig');
+      return <MergerNodeConfig nodeId={id} data={data as MergerNodeData} />;
     
     default:
       console.log(`[ConfigFactory] No config for node type: ${type}`);

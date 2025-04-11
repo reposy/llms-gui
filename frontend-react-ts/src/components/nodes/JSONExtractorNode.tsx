@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { JSONExtractorNodeData } from '../../types/nodes';
-import { useIsRootNode, useNodeState, executeFlow } from '../../store/flowExecutionStore';
+import { useIsRootNode } from '../../store/useNodeGraphUtils';
+import { useNodeState } from '../../store/useNodeStateStore';
+import { executeFlow } from '../../store/useExecutionController';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';

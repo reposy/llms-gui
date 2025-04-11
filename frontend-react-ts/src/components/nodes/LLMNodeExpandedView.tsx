@@ -28,6 +28,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     provider,
     ollamaUrl,
     label,
+    responseContent,
     isDirty,
     handlePromptChange,
     handleModelChange,
@@ -42,17 +43,24 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     model,
     temperature,
     provider,
+    responseContent,
     isDirty,
     dataFromProps: data 
   });
 
+  // Specific debug log for content changes
+  React.useEffect(() => {
+    if (responseContent) {
+      console.log(`%c[LLMNodeExpandedView] Content changed for ${id}:`, 'color: green; font-weight: bold;', {
+        contentLength: responseContent.length,
+        contentPreview: responseContent.substring(0, 50) + (responseContent.length > 50 ? '...' : '')
+      });
+    }
+  }, [id, responseContent]);
+
   const nodeStatus = useMemo(() => {
     if (!nodeState) return 'idle';
-    return nodeState.status === 'skipped' 
-      ? 'idle' 
-      : nodeState.status === 'running' || nodeState.status === 'success' || nodeState.status === 'error'
-        ? nodeState.status
-        : 'idle';
+    return nodeState.status || 'idle';
   }, [nodeState]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
@@ -149,6 +157,12 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
           <div className="mt-2 p-2 border border-green-200 bg-green-50 rounded text-xs text-green-800">
             <strong>Result:</strong>
             <pre className="whitespace-pre-wrap break-all">{JSON.stringify(nodeState.result, null, 2)}</pre>
+          </div>
+        )}
+        {responseContent && (
+          <div className="mt-2 p-2 border border-blue-200 bg-blue-50 rounded text-xs text-blue-800">
+            <strong>Response Content:</strong>
+            <pre className="whitespace-pre-wrap break-all">{responseContent}</pre>
           </div>
         )}
         {nodeState?.error && (

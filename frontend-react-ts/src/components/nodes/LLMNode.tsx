@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
 import { LLMNodeData } from '../../types/nodes';
-import { useNodeState } from '../../store/flowExecutionStore';
+import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
 import { LLMNodeCompactView } from './LLMNodeCompactView';

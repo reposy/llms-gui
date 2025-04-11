@@ -13,39 +13,6 @@ export interface GroupExecutionItemResult {
   error?: string;
 }
 
-// Extended type definition for GroupNodeData
-interface ExtendedGroupNodeData extends GroupNodeData {
-  iteratorConfig?: {
-    path?: string;
-    collectionMode?: 'all' | 'flatten' | 'first' | 'last';
-    stopOnError?: boolean;
-  };
-  iterationConfig?: {
-    path?: string;
-    collectionMode?: 'all' | 'flatten' | 'first' | 'last';
-    stopOnError?: boolean;
-  };
-}
-
-// Extended type definition for ExecutionContext
-interface ExtendedExecutionContext extends ExecutionContext {
-  parentNodeId?: string;
-  iterationData?: {
-    item: any;
-    index: number;
-    total: number;
-  };
-}
-
-// Extended type definition for NodeState
-interface ExtendedNodeState extends NodeState {
-  iterationStatus?: {
-    currentIndex: number;
-    totalItems: number;
-    completed: boolean;
-  };
-}
-
 // Re-use the FlowControllerDependencies interface from flowController.ts
 export interface GroupExecutorDependencies {
   getNodes: () => Node<NodeData>[];
@@ -58,12 +25,13 @@ export interface GroupExecutorDependencies {
   setIsExecuting: (isExecuting: boolean) => void;
   setCurrentExecutionId: (executionId?: string) => void;
   setIterationContext: (context: { item?: any; index?: number; total?: number }) => void;
+  dispatchNodeExecution: (nodeId: string, inputs: any[], context: ExecutionContext, dependencies: any) => Promise<any>;
 }
 
 /**
- * Executes a group node with iterator functionality
+ * Executes a group node with new stateless execution model
  * @param groupNodeId The ID of the group node to execute
- * @param inputs The inputs passed to the group node
+ * @param inputs The inputs passed to the group node (first input will be used)
  * @param context The execution context
  * @param dependencies The flow controller dependencies
  * @returns An array of results from the group execution
@@ -80,9 +48,8 @@ export async function executeGroupNode(
     getNodeState, 
     setNodeState, 
     resetNodeStates, 
-    getNodesInGroup, 
-    getDownstreamNodes,
-    setIterationContext 
+    getNodesInGroup,
+    getDownstreamNodes
   } = dependencies;
   
   const allNodes = getNodes();
@@ -95,8 +62,10 @@ export async function executeGroupNode(
   
   // Get the group's properties
   const groupData = groupNode.data;
-  const isCollapsed = groupData.isCollapsed || false;
-  const isIterator = !!groupData.iteratorConfig;
+  
+  // Extract single input (new model uses first input from the array)
+  const input = inputs.length > 0 ? inputs[0] : null;
+  console.log(`[Group ${groupNodeId}] Received input:`, input);
   
   // Find all nodes within the group
   const nodesInGroup = getNodesInGroup(groupNodeId);
@@ -107,335 +76,89 @@ export async function executeGroupNode(
     nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target)
   );
   
-  // Find the group's internal root nodes
+  // Find the group's internal root nodes (nodes without incoming edges in this group)
   const rootNodesInGroup = getRootNodesFromSubset(nodesInGroup, internalEdges);
   if (rootNodesInGroup.length === 0) {
     console.warn(`[Group ${groupNodeId}] No root nodes found inside group.`);
     return []; // No root nodes, return empty result
   }
   
+  console.log(`[Group ${groupNodeId}] Found ${rootNodesInGroup.length} root nodes: [${rootNodesInGroup.join(', ')}]`);
+  
   // Prepare execution context for the group
   const groupExecutionId = `group-${groupNodeId}-${context.executionId}`;
   const groupContext: ExecutionContext = {
     ...context,
-    executionId: groupExecutionId, // Create unique execution ID for group
-    parentNodeId: groupNodeId      // Mark parent as the group node
+    executionId: groupExecutionId // Create unique execution ID for group
   };
   
-  // Reset states for nodes inside the group
+  // Add a console log to track the context
+  console.log(`[Group ${groupNodeId}] Created group execution context:`, groupContext);
+  
+  // Reset states for nodes inside the group before execution
   resetNodeStates(Array.from(nodeIdsInGroup));
   
-  // Check if we need to execute in iterator mode
-  if (isIterator && groupData.iteratorConfig) {
-    return executeGroupIterator(
-      groupNodeId, 
-      rootNodesInGroup, 
-      nodesInGroup, 
-      internalEdges, 
-      inputs, 
-      groupContext, 
-      dependencies
-    );
-  } else {
-    // Non-iterator mode - simple execution
-    // Get downstream nodes from root nodes
-    const allDownstreamNodeIds = new Set<string>();
-    rootNodesInGroup.forEach(nodeId => {
-      const downstreamIds = getDownstreamNodes(nodeId, true, nodeIdsInGroup);
-      downstreamIds.forEach(id => allDownstreamNodeIds.add(id));
-    });
-    
-    // Create subgraph from the group
-    const executableNodes = nodesInGroup.filter(n => allDownstreamNodeIds.has(n.id));
-    console.log(`[Group ${groupNodeId}] Executing subgraph with ${executableNodes.length} nodes`);
-    
-    // Execute the subgraph within the group
-    const results = await executeSubgraph(
-      rootNodesInGroup, 
-      executableNodes, 
-      internalEdges, 
-      groupContext,
-      dependencies
-    );
-    
-    // Get results from leaf nodes and ensure it's an array
-    const leafResults = getLeafNodeResults(executableNodes, internalEdges, results);
-    console.log(`[Group ${groupNodeId}] Execution complete. Leaf results:`, leafResults);
-    
-    // Explicitly ensure we return an array - either the array of leaf results or an array containing a single item
-    return Array.isArray(leafResults) ? leafResults : [leafResults];
-  }
-}
-
-/**
- * Executes a group in iterator mode over the input data
- */
-async function executeGroupIterator(
-  groupNodeId: string,
-  rootNodeIds: string[],
-  nodesInGroup: Node<NodeData>[],
-  internalEdges: Edge[],
-  inputs: any[],
-  context: ExecutionContext,
-  dependencies: GroupExecutorDependencies
-): Promise<any[]> {
-  const { setNodeState, setIterationContext } = dependencies;
-  const groupNode = dependencies.getNodes().find(n => n.id === groupNodeId) as Node<GroupNodeData>;
-  const iteratorConfig = groupNode.data.iteratorConfig!;
-  
-  // Extract items to iterate over from inputs based on configuration
-  const iterationSource = extractIterationSource(inputs, iteratorConfig);
-  
-  if (!Array.isArray(iterationSource) || iterationSource.length === 0) {
-    console.log(`[Group Iterator ${groupNodeId}] No items to iterate over.`);
-    return [];
-  }
-  
-  // Intermediate array to store results of each iteration
-  const iterationResults: GroupExecutionItemResult[] = [];
-  
-  // Update group node state to indicate we're running iterations
-  setNodeState(groupNodeId, { 
-    status: 'success', 
-    result: null,
-    executionId: context.executionId,
-    iterationStatus: {
-      currentIndex: 0,
-      totalItems: iterationSource.length,
-      completed: false
-    }
+  // Get all downstream nodes from root nodes (the executable subgraph)
+  const allDownstreamNodeIds = new Set<string>();
+  rootNodesInGroup.forEach(nodeId => {
+    const downstreamIds = getDownstreamNodes(nodeId, true, nodeIdsInGroup);
+    downstreamIds.forEach(id => allDownstreamNodeIds.add(id));
   });
-
-  // Execute each item in the iteration source
-  for (let i = 0; i < iterationSource.length; i++) {
-    const item = iterationSource[i];
-    console.log(`[Group Iterator ${groupNodeId}] Processing item ${i+1}/${iterationSource.length}:`, item);
-    
-    // Update iteration context
-    setIterationContext({
-      item,
-      index: i,
-      total: iterationSource.length
-    });
-    
-    // Update group node state with current iteration
-    setNodeState(groupNodeId, { 
-      iterationStatus: {
-        currentIndex: i,
-        totalItems: iterationSource.length,
-        completed: false
-      }
-    });
-    
-    // Create iteration-specific context
-    const iterationContext: ExecutionContext = {
-      ...context,
-      executionId: `${context.executionId}-iter-${i}`,
-      iterationData: {
-        item,
-        index: i,
-        total: iterationSource.length
-      }
-    };
-    
+  
+  // Create subgraph from the group
+  const executableNodes = nodesInGroup.filter(n => allDownstreamNodeIds.has(n.id));
+  console.log(`[Group ${groupNodeId}] Executing subgraph with ${executableNodes.length} nodes`);
+  
+  // Execute each root node with the input from the left handle
+  const rootResults = [];
+  for (const rootNodeId of rootNodesInGroup) {
     try {
-      // Execute the subgraph for this iteration
-      const results = await executeSubgraph(
-        rootNodeIds, 
-        nodesInGroup, 
-        internalEdges, 
-        iterationContext,
+      console.log(`[Group ${groupNodeId}] Injecting input into root node ${rootNodeId}`);
+      
+      // Dispatch the execution to the root node with the input
+      const rootResult = await dependencies.dispatchNodeExecution(
+        rootNodeId,
+        [input], // Pass the input as an array with a single item
+        groupContext,
         dependencies
       );
       
-      // Extract leaf node results
-      const leafResults = getLeafNodeResults(nodesInGroup, internalEdges, results);
-      
-      // Store the results for this iteration
-      iterationResults.push({
-        itemIndex: i,
-        item,
-        results: leafResults,
-        success: true
+      rootResults.push({
+        nodeId: rootNodeId,
+        result: rootResult
       });
+      
     } catch (error) {
-      console.error(`[Group Iterator ${groupNodeId}] Error in iteration ${i}:`, error);
-      
-      // Store error result
-      iterationResults.push({
-        itemIndex: i,
-        item,
-        results: null,
-        error: error instanceof Error ? error.message : String(error),
-        success: false
-      });
-      
-      // Decide if we should continue or abort based on iteratorConfig
-      if (iteratorConfig.stopOnError) {
-        console.log(`[Group Iterator ${groupNodeId}] Stopping iteration due to error and stopOnError=true`);
-        break;
-      }
+      console.error(`[Group ${groupNodeId}] Error executing root node ${rootNodeId}:`, error);
+      throw error; // Re-throw to stop group execution
     }
   }
   
-  // Reset iteration context
-  setIterationContext({});
-  
-  // Update group node state to indicate we're done
-  setNodeState(groupNodeId, { 
-    status: 'success',
-    result: iterationResults,
-    executionId: context.executionId,
-    iterationStatus: {
-      currentIndex: iterationSource.length - 1,
-      totalItems: iterationSource.length,
-      completed: true
-    }
+  // Get a map of all node results from executing the subgraph
+  const nodeResultsMap: Record<string, any> = {};
+  rootResults.forEach(result => {
+    nodeResultsMap[result.nodeId] = result.result;
   });
   
-  // Extract results based on configuration
-  const results = extractResultsFromIterations(iterationResults, iteratorConfig);
-  return results;
-}
-
-/**
- * Helper function to extract data to iterate over based on iterator configuration
- */
-function extractIterationSource(
-  inputs: any[], 
-  iteratorConfig: NonNullable<GroupNodeData['iteratorConfig']>
-): any[] {
-  if (!inputs || inputs.length === 0) {
-    return [];
+  // Get results from leaf nodes (nodes without outgoing edges in the group)
+  const leafNodes = nodesInGroup.filter(n => !internalEdges.some(e => e.source === n.id));
+  if (leafNodes.length === 0) {
+    console.log(`[Group ${groupNodeId}] No leaf nodes found, using results from root nodes`);
+    return rootResults.map(r => r.result);
   }
   
-  const input = inputs[0]; // Always use the first input for iteration
-  
-  if (Array.isArray(input)) {
-    return input; // If input is already an array, use it directly
-  }
-  
-  // If input is an object and path is specified, try to extract array at path
-  if (typeof input === 'object' && input !== null && iteratorConfig.path) {
-    try {
-      // Simple path extraction logic (could be enhanced for complex paths)
-      const pathParts = iteratorConfig.path.split('.');
-      let result = input;
-      
-      for (const part of pathParts) {
-        if (result === null || result === undefined) break;
-        result = result[part];
-      }
-      
-      if (Array.isArray(result)) {
-        return result;
-      }
-    } catch (error) {
-      console.error(`Error extracting array at path ${iteratorConfig.path}:`, error);
-    }
-  }
-  
-  return []; // Default to empty array if we couldn't extract valid iteration source
-}
-
-/**
- * Extract final results from iterations based on configuration
- */
-function extractResultsFromIterations(
-  iterationResults: GroupExecutionItemResult[],
-  iteratorConfig: NonNullable<GroupNodeData['iteratorConfig']>
-): any[] {
-  // Filter to successful iterations only
-  const successfulResults = iterationResults.filter(r => r.success);
-  
-  // Extract result values based on the configuration
-  const collectionMode = iteratorConfig.collectionMode || 'all';
-  
-  switch (collectionMode) {
-    case 'all':
-      // Return all results
-      return successfulResults.map(r => r.results);
-      
-    case 'flatten':
-      // Flatten array results
-      return successfulResults.flatMap(r => {
-        if (Array.isArray(r.results)) {
-          return r.results;
-        }
-        return [r.results];
-      });
-      
-    case 'first':
-      // Return only the first result
-      return successfulResults.length > 0 ? [successfulResults[0].results] : [];
-      
-    case 'last':
-      // Return only the last result
-      return successfulResults.length > 0 ? [successfulResults[successfulResults.length - 1].results] : [];
-      
-    default:
-      return successfulResults.map(r => r.results);
-  }
-}
-
-/**
- * Helper function to get results from leaf nodes in a subgraph
- * Returns an array of results from leaf nodes (nodes without outgoing edges)
- */
-function getLeafNodeResults(
-  nodes: Node<NodeData>[], 
-  edges: Edge[], 
-  nodeResults: Record<string, any>
-): any[] {
-  // Find leaf nodes (no outgoing edges)
-  const leafNodeIds = nodes
-    .map(n => n.id)
-    .filter(id => !edges.some(e => e.source === id));
-  
-  console.log(`[GroupExecutor] Found ${leafNodeIds.length} leaf nodes:`, leafNodeIds);
-  
-  if (leafNodeIds.length === 0) {
-    // If no leaf nodes, return all results as an array
-    console.log(`[GroupExecutor] No leaf nodes found, returning all results`);
-    return Object.values(nodeResults);
-  }
-  
-  // Collect results from all leaf nodes
-  const leafResults = leafNodeIds
-    .map(id => {
-      console.log(`[GroupExecutor] Getting result from leaf node ${id}:`, nodeResults[id]);
-      return nodeResults[id];
+  // Collect results from the leaf nodes
+  const leafResults = leafNodes
+    .map(node => {
+      const nodeState = getNodeState(node.id);
+      return nodeState?.status === 'success' && nodeState?.executionId === groupExecutionId
+        ? nodeState.result
+        : undefined;
     })
-    .filter(r => r !== undefined);
+    .filter(result => result !== undefined);
   
-  // Always return as an array for consistency
-  return leafResults.length === 0 ? [] : leafResults;
-}
-
-/**
- * Executes a subgraph of nodes starting from specified root nodes.
- * Handles dependency management and parallel execution.
- * 
- * This is a simplified version of the executeSubgraph function from flowController.ts,
- * adapted for use within the group executor.
- */
-async function executeSubgraph(
-  startNodes: string[],
-  nodesInSubgraph: Node<NodeData>[],
-  edgesInSubgraph: Edge[],
-  executionContext: ExecutionContext,
-  dependencies: GroupExecutorDependencies
-): Promise<Record<string, any>> {
-  // Import the function from the main flow controller
-  // In a real implementation, we'd extract the shared logic to avoid duplication
-  const { executeSubgraph } = await import('./flowController');
+  console.log(`[Group ${groupNodeId}] Execution complete. Leaf results:`, leafResults);
   
-  // Call the main executeSubgraph function
-  return executeSubgraph(
-    startNodes,
-    nodesInSubgraph,
-    edgesInSubgraph,
-    executionContext,
-    dependencies
-  );
+  // Return the leaf results or an empty array if none were found
+  return leafResults.length > 0 ? leafResults : [];
 } 

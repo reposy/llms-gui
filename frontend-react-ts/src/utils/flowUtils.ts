@@ -1,5 +1,6 @@
 import { Node, Edge } from 'reactflow';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData } from '../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData } from '../types/nodes';
+import { ExecutableNode } from '../core/ExecutableNode';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -132,6 +133,18 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         items: [], // Initialize items array
         // result is initially null / handled by execution store
       } as MergerNodeData; // Cast to MergerNodeData
+    case 'web-crawler': // Add case for web crawler node
+      return {
+        ...baseData,
+        type: 'web-crawler',
+        label: 'Web Crawler',
+        url: '',
+        waitForSelector: '',
+        extractSelectors: {},
+        timeout: 30000,
+        includeHtml: false,
+        outputFormat: 'text'
+      } as WebCrawlerNodeData; // Cast to WebCrawlerNodeData
     default:
       // If an unknown type is passed, it's an error.
       // This ensures the function always returns a valid NodeData type or throws.
@@ -223,4 +236,292 @@ export function syncVisualSelectionToReactFlow(
     // Return unchanged node if selection state already matches
     return node;
   });
+}
+
+// Get a specific node by ID from a collection of nodes
+export function getNodeById(nodes: Node[], nodeId: string): Node | undefined {
+  return nodes.find(node => node.id === nodeId);
+}
+
+// Updated functions with enhanced return types
+export function getOutgoingEdges(edges: Edge[], nodeId: string): Edge[] {
+  return edges.filter(edge => edge.source === nodeId);
+}
+
+export function getIncomingEdges(edges: Edge[], nodeId: string): Edge[] {
+  return edges.filter(edge => edge.target === nodeId);
+}
+
+export function getConnectedEdges(edges: Edge[], nodeId: string): Edge[] {
+  return edges.filter(edge => edge.source === nodeId || edge.target === nodeId);
+}
+
+// Get all direct child nodes connected to a specified node
+export function getChildNodes(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
+  const outgoingEdges = getOutgoingEdges(edges, nodeId);
+  const childNodeIds = outgoingEdges.map(edge => edge.target);
+  return nodes.filter(node => childNodeIds.includes(node.id));
+}
+
+// Get child nodes connected via a specific handle (for conditional nodes)
+export function getChildNodesByHandle(nodes: Node[], edges: Edge[], nodeId: string, handle: string): Node[] {
+  const outgoingEdges = edges.filter(edge => 
+    edge.source === nodeId && edge.sourceHandle === handle
+  );
+  const childNodeIds = outgoingEdges.map(edge => edge.target);
+  return nodes.filter(node => childNodeIds.includes(node.id));
+}
+
+// Create executable nodes for all child nodes
+export function createExecutableChildNodes(nodes: Node[], edges: Edge[], nodeId: string): ExecutableNode[] {
+  // This function is deprecated as part of the transition to the new Node architecture
+  // Use buildExecutionGraph and getChildNodeIds instead
+  console.warn('createExecutableChildNodes is deprecated. Use buildExecutionGraph instead.');
+  const childNodes = getChildNodes(nodes, edges, nodeId);
+  return childNodes.map(node => {
+    // Return an empty ExecutableNode implementation
+    return {
+      nodeId: node.id,
+      execute: async () => null,
+      getChildNodes: () => [],
+      process: async () => null
+    };
+  });
+}
+
+// Create executable nodes for children connected via a specific handle
+export function createExecutableChildNodesByHandle(
+  nodes: Node[], 
+  edges: Edge[], 
+  nodeId: string, 
+  handle: string
+): ExecutableNode[] {
+  // This function is deprecated as part of the transition to the new Node architecture
+  // Use buildExecutionGraph and getChildNodeIds instead
+  console.warn('createExecutableChildNodesByHandle is deprecated. Use buildExecutionGraph instead.');
+  const childNodes = getChildNodesByHandle(nodes, edges, nodeId, handle);
+  return childNodes.map(node => {
+    // Return an empty ExecutableNode implementation
+    return {
+      nodeId: node.id,
+      execute: async () => null,
+      getChildNodes: () => [],
+      process: async () => null
+    };
+  });
+}
+
+// Remove existing implementations of these functions and update with enhanced versions
+export function getNodeConnections(
+  nodes: Node[],
+  edges: Edge[],
+  nodeId: string,
+  direction: 'incoming' | 'outgoing' = 'outgoing'
+): string[] {
+  if (direction === 'incoming') {
+    return edges
+      .filter(edge => edge.target === nodeId)
+      .map(edge => edge.source);
+  } else {
+    return edges
+      .filter(edge => edge.source === nodeId)
+      .map(edge => edge.target);
+  }
+}
+
+export function findNodeById(nodeId: string, nodes: Node[]): Node | undefined {
+  return nodes.find(node => node.id === nodeId);
+}
+
+/**
+ * Get detailed outgoing connections from a node
+ */
+export function getOutgoingConnections(
+  nodeId: string, 
+  edges: Edge[]
+): { sourceHandle: string | null; targetNodeId: string; targetHandle: string | null }[] {
+  return edges
+    .filter(edge => edge.source === nodeId)
+    .map(edge => ({
+      sourceHandle: edge.sourceHandle ?? null,
+      targetNodeId: edge.target,
+      targetHandle: edge.targetHandle ?? null
+    }));
+}
+
+/**
+ * Get detailed incoming connections to a node
+ */
+export function getIncomingConnections(
+  nodeId: string,
+  edges: Edge[]
+): { sourceNodeId: string; sourceHandle: string | null; targetHandle: string | null }[] {
+  return edges
+    .filter(edge => edge.target === nodeId)
+    .map(edge => ({
+      sourceNodeId: edge.source,
+      sourceHandle: edge.sourceHandle ?? null,
+      targetHandle: edge.targetHandle ?? null
+    }));
+}
+
+/**
+ * Get all output nodes (nodes with no outgoing connections)
+ */
+export function getOutputNodes(nodes: Node[], edges: Edge[]): Node[] {
+  const nodesWithOutgoing = new Set(edges.map(edge => edge.source));
+  return nodes.filter(node => !nodesWithOutgoing.has(node.id));
+}
+
+/**
+ * Get all input nodes (nodes with no incoming connections)
+ */
+export function getInputNodes(nodes: Node[], edges: Edge[]): Node[] {
+  const nodesWithIncoming = new Set(edges.map(edge => edge.target));
+  return nodes.filter(node => !nodesWithIncoming.has(node.id));
+}
+
+/**
+ * Get all root node IDs (nodes with no incoming connections)
+ * These are typically the starting points for flow execution
+ * 
+ * @param nodes Array of nodes in the flow
+ * @param edges Array of edges connecting the nodes
+ * @returns Array of node IDs that have no incoming connections
+ */
+export function getRootNodeIds(nodes: Node[], edges: Edge[]): string[] {
+  // Find all nodes that are targets of edges (have incoming connections)
+  const nodesWithIncoming = new Set(edges.map(edge => edge.target));
+  
+  // Return IDs of nodes that don't have incoming connections
+  return nodes
+    .filter(node => !nodesWithIncoming.has(node.id))
+    .map(node => node.id);
+}
+
+/**
+ * Represents a node in the execution graph with its relationships
+ */
+export interface GraphNode {
+  id: string;
+  type: string;
+  data: any;
+  parentIds: string[];
+  childIds: string[];
+  level: number; // Depth in the graph (0 for root nodes)
+}
+
+/**
+ * Builds a complete execution graph structure from nodes and edges
+ * This provides a runtime-accessible representation of the flow structure
+ * 
+ * @param nodes Array of nodes in the flow
+ * @param edges Array of edges connecting the nodes
+ * @returns Map of node IDs to GraphNode objects with relationship information
+ */
+export function buildExecutionGraph(nodes: Node[], edges: Edge[]): Map<string, GraphNode> {
+  const graph = new Map<string, GraphNode>();
+  
+  // Initialize all nodes in the graph with empty relationships
+  nodes.forEach(node => {
+    graph.set(node.id, {
+      id: node.id,
+      type: node.type as string,
+      data: node.data,
+      parentIds: [],
+      childIds: [],
+      level: -1 // Will be calculated later
+    });
+  });
+  
+  // Build relationships from edges
+  edges.forEach(edge => {
+    const sourceNode = graph.get(edge.source);
+    const targetNode = graph.get(edge.target);
+    
+    if (sourceNode && targetNode) {
+      // Add child relationship
+      if (!sourceNode.childIds.includes(targetNode.id)) {
+        sourceNode.childIds.push(targetNode.id);
+      }
+      
+      // Add parent relationship
+      if (!targetNode.parentIds.includes(sourceNode.id)) {
+        targetNode.parentIds.push(sourceNode.id);
+      }
+    }
+  });
+  
+  // Calculate node levels (depth from root)
+  const rootNodeIds = getRootNodeIds(nodes, edges);
+  
+  // Set all root nodes to level 0
+  rootNodeIds.forEach(id => {
+    const node = graph.get(id);
+    if (node) {
+      node.level = 0;
+    }
+  });
+  
+  // Propagate levels through the graph using a breadth-first approach
+  let currentNodes = [...rootNodeIds];
+  let currentLevel = 0;
+  
+  while (currentNodes.length > 0) {
+    currentLevel++;
+    const nextNodes: string[] = [];
+    
+    // Process all nodes at the current level
+    for (const nodeId of currentNodes) {
+      const node = graph.get(nodeId);
+      if (!node) continue;
+      
+      // Add all children to the next level
+      for (const childId of node.childIds) {
+        const childNode = graph.get(childId);
+        if (childNode) {
+          // Only update the level if it's not set yet or this path is shorter
+          if (childNode.level === -1 || childNode.level > currentLevel) {
+            childNode.level = currentLevel;
+            nextNodes.push(childId);
+          }
+        }
+      }
+    }
+    
+    currentNodes = nextNodes;
+  }
+  
+  // Handle cycles by setting any remaining unleveled nodes
+  graph.forEach(node => {
+    if (node.level === -1) {
+      node.level = 999; // High number to indicate nodes in a cycle or disconnected
+    }
+  });
+  
+  return graph;
+}
+
+/**
+ * Get child node IDs for a node from the execution graph
+ * 
+ * @param nodeId ID of the node to get children for
+ * @param graph Execution graph from buildExecutionGraph
+ * @returns Array of child node IDs
+ */
+export function getChildNodeIdsFromGraph(nodeId: string, graph: Map<string, GraphNode>): string[] {
+  const node = graph.get(nodeId);
+  return node ? node.childIds : [];
+}
+
+/**
+ * Get parent node IDs for a node from the execution graph
+ * 
+ * @param nodeId ID of the node to get parents for
+ * @param graph Execution graph from buildExecutionGraph
+ * @returns Array of parent node IDs
+ */
+export function getParentNodeIdsFromGraph(nodeId: string, graph: Map<string, GraphNode>): string[] {
+  const node = graph.get(nodeId);
+  return node ? node.parentIds : [];
 } 

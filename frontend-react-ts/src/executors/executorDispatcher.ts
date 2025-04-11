@@ -1,8 +1,10 @@
 import { Node, Edge } from 'reactflow';
 import { NodeData, NodeType, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, InputNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData } from '../types/nodes';
 import { ExecutionContext, NodeState, defaultNodeState, ConditionalExecutionResult } from '../types/execution';
-import { resolveTemplate } from '../utils/executionUtils'; // Corrected path if utils moved
+import { resolveTemplate } from '../utils/executionUtils';
 import { getIncomers } from 'reactflow';
+import { v4 as uuidv4 } from 'uuid';
+import { getNodeContent, InputNodeContent } from '../store/useNodeContentStore';
 
 // Import specific executors
 import { executeLlmNode } from './llmExecutor';
@@ -14,7 +16,7 @@ import { executeOutputNode } from './outputExecutor';
 import { executeJsonExtractorNode } from './jsonExtractorExecutor';
 import { executeWebCrawlerNode } from './webCrawlerExecutor';
 
-interface DispatchParams {
+export interface DispatchParams {
   node: Node<NodeData>;
   nodes: Node<NodeData>[]; // All nodes in the flow
   edges: Edge[]; // All edges in the flow
@@ -23,8 +25,19 @@ interface DispatchParams {
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
 }
 
+// Internal params that can include pre-supplied inputs
+export interface InternalDispatchParams extends DispatchParams {
+  _inputs?: any[];
+  status?: string;
+}
+
+// Queue to track running node executions
+// This allows us to wait for previous executions to complete instead of skipping them
+const nodeExecutionQueue: Record<string, Promise<any>> = {};
+
 /**
  * Gathers inputs for a node and dispatches execution to the appropriate node-type-specific executor.
+ * StateSess execution with direct parent → child result propagation.
  */
 export async function dispatchNodeExecution(params: DispatchParams): Promise<any> {
   const { node, nodes, edges, context, getNodeState, setNodeState } = params;
@@ -32,6 +45,20 @@ export async function dispatchNodeExecution(params: DispatchParams): Promise<any
   const { executionId, triggerNodeId } = context;
   const currentState = getNodeState(nodeId) || defaultNodeState;
   const nodeLastExecutionId = currentState.executionId;
+
+  // Check if node is already executing and wait for it to complete if needed
+  if (currentState.status === 'running' && nodeId in nodeExecutionQueue) {
+    console.log(`[Dispatch ${nodeId}] (${node.type}) Node already running, waiting for completion...`);
+    try {
+      // Wait for the current execution to complete before proceeding
+      const previousResult = await nodeExecutionQueue[nodeId];
+      console.log(`[Dispatch ${nodeId}] (${node.type}) Previous execution completed. Result:`, previousResult);
+      return previousResult;
+    } catch (error) {
+      console.error(`[Dispatch ${nodeId}] (${node.type}) Previous execution failed:`, error);
+      // We'll continue with a new execution anyway
+    }
+  }
 
   // --- State Reset Logic ---
   if (nodeLastExecutionId !== executionId) {
@@ -50,144 +77,167 @@ export async function dispatchNodeExecution(params: DispatchParams): Promise<any
     console.log(`[Dispatch ${nodeId}] (${node.type}) Same executionId (${executionId}). Not resetting state.`);
   }
 
-  console.log(`[Dispatch ${nodeId}] (${node.type}) Setting status to running for execution ${executionId}`);
-  // Set running state, clearing previous conditional results but keeping executionId
-  setNodeState(nodeId, { 
-      status: 'running', 
-      executionId, 
-      activeOutputHandle: undefined, // Clear previous handle state
-      conditionResult: undefined // Clear previous boolean result
-  });
+  // Initialize execution task
+  let executionTask: Promise<any>;
+  
+  // Create the execution task function
+  const executeNode = async () => {
+    try {
+      console.log(`[Dispatch ${nodeId}] (${node.type}) Setting status to running for execution ${executionId}`);
+      // Set running state, clearing previous conditional results but keeping executionId
+      setNodeState(nodeId, { 
+          status: 'running', 
+          executionId, 
+          activeOutputHandle: undefined, // Clear previous handle state
+          conditionResult: undefined // Clear previous boolean result
+      });
 
-  // --- Input Gathering ---
-  const incomers = getIncomers(node, nodes, edges);
-  let inputs: any[] = [];
-  console.log(`[Dispatch ${nodeId}] (${node.type}) Getting inputs from ${incomers.length} incomers.`);
-  for (const incomer of incomers) {
-    const incomerState = getNodeState(incomer.id);
-    
-    // --- Standard Input Processing (Simplified) ---
-    // Now relies on the Controller to only call dispatch for nodes on active paths
-    if (incomerState?.status === 'success' && incomerState.executionId === executionId) {
-      console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} (ExecID ${incomerState.executionId}):`, incomerState.result);
-      inputs.push(incomerState.result); // Push result directly
-    } else if (incomerState?.status === 'error' && incomerState.executionId === executionId) {
-      console.log(`[Dispatch ${nodeId}] Incomer ${incomer.id} had error in execution ${executionId}. Propagating error.`);
-      // Set current node state to error due to dependency failure
-      const errorMessage = `Dependency ${incomer.id} failed.`;
-      setNodeState(nodeId, { status: 'error', error: errorMessage, executionId });
-      throw new Error(errorMessage);
-    } else if (incomerState?.executionId !== executionId) {
-      console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (Stale ExecID: ${incomerState?.executionId} vs ${executionId})`);
-    } else if (incomerState?.status !== 'success') {
-      console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (Status: ${incomerState?.status})`);
-    } else {
-         // Log any other cases where input might be skipped unexpectedly
-         console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (State: ${JSON.stringify(incomerState)})`);
-    }
-  }
-  console.log(`[Dispatch ${nodeId}] (${node.type}) Resolved inputs for execution ${executionId}:`, inputs);
+      // --- Input Gathering ---
+      // If _inputs is provided (from a foreach iteration), use those instead of gathering from incomers
+      let inputs: any[] = [];
+      if ('_inputs' in params && Array.isArray((params as InternalDispatchParams)._inputs)) {
+        inputs = (params as InternalDispatchParams)._inputs || [];
+        console.log(`[Dispatch ${nodeId}] (${node.type}) Using provided inputs:`, inputs);
+      } else {
+        const incomers = getIncomers(node, nodes, edges);
+        console.log(`[Dispatch ${nodeId}] (${node.type}) Getting inputs from ${incomers.length} incomers.`);
+        for (const incomer of incomers) {
+          const incomerState = getNodeState(incomer.id);
+          
+          // --- Standard Input Processing ---
+          if (incomerState?.status === 'success' && incomerState.executionId === executionId) {
+            console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} (ExecID ${incomerState.executionId}):`, incomerState.result);
+            inputs.push(incomerState.result); // Push result directly
+          } else if (incomerState?.status === 'error' && incomerState.executionId === executionId) {
+            console.log(`[Dispatch ${nodeId}] Incomer ${incomer.id} had error in execution ${executionId}. Propagating error.`);
+            // Set current node state to error due to dependency failure
+            const errorMessage = `Dependency ${incomer.id} failed.`;
+            setNodeState(nodeId, { status: 'error', error: errorMessage, executionId });
+            throw new Error(errorMessage);
+          } else if (incomerState?.executionId !== executionId) {
+            console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (Stale ExecID: ${incomerState?.executionId} vs ${executionId})`);
+          } else if (incomerState?.status !== 'success') {
+            console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (Status: ${incomerState?.status})`);
+          } else {
+            // Log any other cases where input might be skipped unexpectedly
+            console.log(`[Dispatch ${nodeId}] Input from ${incomer.id} skipped (State: ${JSON.stringify(incomerState)})`);
+          }
+        }
+        console.log(`[Dispatch ${nodeId}] (${node.type}) Resolved inputs for execution ${executionId}:`, inputs);
+      }
 
-  let output: any = null; // This will hold the raw output from the executor function
+      // Dispatch to appropriate node-specific executor with all gathered inputs
+      let result;
+      
+      // Common parameters for all executors
+      const commonParams = {
+        context,
+        setNodeState,
+        getNodeState,
+        resolveTemplate
+      };
+      
+      switch (node.type) {
+        case 'llm':
+          result = await executeLlmNode({
+            node: node as Node<LLMNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'api':
+          result = await executeApiNode({
+            node: node as Node<APINodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'output':
+          result = await executeOutputNode({
+            node: node as Node<OutputNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'conditional':
+          result = await executeConditionalNode({
+            node: node as Node<ConditionalNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'input':
+          result = await executeInputNode({
+            node: node as Node<InputNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'json-extractor':
+          result = await executeJsonExtractorNode({
+            node: node as Node<JSONExtractorNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'merger':
+          result = await executeMergerNode({
+            node: node as Node<MergerNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        case 'web-crawler':
+          result = await executeWebCrawlerNode({
+            node: node as Node<WebCrawlerNodeData>,
+            input: inputs,
+            ...commonParams
+          });
+          break;
+        default:
+          console.log(`[Dispatch ${nodeId}] Node type "${node.type}" not implemented. Passing through inputs.`);
+          // Default passthrough behavior for unknown node types
+          result = inputs.length === 1 ? inputs[0] : inputs;
+      }
 
-  // --- Dispatch Logic ---
-  try {
-    switch (node.type as NodeType) {
-      case 'input': {
-        output = executeInputNode({ node: node as Node<InputNodeData>, inputs, context });
-        break;
-      }
-      case 'llm': {
-        output = await executeLlmNode({
-          node: node as Node<LLMNodeData>,
-          inputs,
-          context,
-          setNodeState, // Potentially needed for streaming/intermediate state
-          resolveTemplate
-        });
-        // Conditional skip check removed, controller handles routing
-        break;
-      }
-      case 'api': {
-        output = await executeApiNode({ 
-            node: node as Node<APINodeData>, 
-            inputs, 
-            context, 
-            setNodeState, // Pass if needed
-            resolveTemplate 
-        });
-        break;
-      }
-      case 'output': {
-        output = executeOutputNode({ node: node as Node<OutputNodeData>, inputs, context });
-        break;
-      }
-      case 'json-extractor': {
-        output = executeJsonExtractorNode({ node: node as Node<JSONExtractorNodeData>, inputs, context });
-        break;
-      }
-      case 'conditional': {
-        // Execute and get the result object
-        const conditionalResult: ConditionalExecutionResult = executeConditionalNode({ node: node as Node<ConditionalNodeData>, inputs, context });
-        // Determine boolean result for state/UI
-        const conditionBooleanResult = conditionalResult.outputHandle === 'trueHandle';
-        console.log(`[Dispatch ${nodeId}] (Conditional) Evaluated: ${conditionBooleanResult}, Activating handle: ${conditionalResult.outputHandle}`);
-        
-        // Set the comprehensive state
+      // Update node state with successful result unless it was already updated
+      // by the specific executor (e.g., conditional nodes set their own state)
+      const currentUpdatedState = getNodeState(nodeId);
+      if (currentUpdatedState.status !== 'success' || currentUpdatedState.executionId !== executionId) {
+        console.log(`[Dispatch ${nodeId}] (${node.type}) Setting success state with result:`, result);
         setNodeState(nodeId, { 
-            status: 'success', 
-            result: conditionalResult.value,        // Store the passed-through value
-            activeOutputHandle: conditionalResult.outputHandle, // Store which handle was chosen
-            conditionResult: conditionBooleanResult, // Store the boolean result for UI
-            executionId 
+          status: 'success', 
+          result,
+          error: undefined,
+          executionId
         });
-        // The 'output' returned to the main loop should be the value that was passed through
-        // The activeOutputHandle is used by the loop to determine the next node(s)
-        output = conditionalResult.value; 
-        // No return here, fall through to common success handling
-        break; 
+      } else {
+        console.log(`[Dispatch ${nodeId}] (${node.type}) Node already marked successful by executor. Not updating state.`);
       }
-      case 'merger': {
-        output = executeMergerNode({
-          node: node as Node<MergerNodeData>,
-          inputs,
-          context,
-          setNodeState,
-          getNodeState
-        });
-        break;
-      }
-      case 'web-crawler': {
-        output = await executeWebCrawlerNode({
-          node: node as Node<WebCrawlerNodeData>,
-          inputs,
-          context,
-          resolveTemplate
-        });
-        break;
-      }
-      case 'group':
-        console.log(`[Dispatch ${nodeId}] (Group) Node execution triggered, logic handled by executeFlowForGroup.`);
-        output = currentState.result; // Pass through result potentially set by controller
-        break;
-      default:
-        console.warn(`[Dispatch ${nodeId}] Unknown node type: ${node.type}`);
-        output = inputs.length > 0 ? inputs[0] : null; // Default pass-through
-    }
 
-    // --- Common Success Handling (excluding conditional, which sets its own state) --- 
-    if (node.type !== 'conditional') {
-        console.log(`[Dispatch ${nodeId}] (${node.type}) Setting status to success for execution ${executionId}. Result:`, output);
-        setNodeState(nodeId, { status: 'success', result: output, executionId });
+      // Return the result for passing to child nodes
+      return result;
+    } catch (error: any) {
+      // Handle and propagate errors
+      console.error(`[Dispatch ${nodeId}] (${node.type}) Execution error:`, error);
+      
+      // Update error state unless it was already updated by the executor
+      setNodeState(nodeId, { 
+        status: 'error', 
+        error: error.message || String(error),
+        executionId
+      });
+      
+      throw error;
+    } finally {
+      // Remove from the execution queue regardless of outcome
+      delete nodeExecutionQueue[nodeId];
     }
-    
-    // Return the primary output value (for conditional, this is output.value)
-    return output;
+  };
 
-  } catch (error: any) {
-    const errorMessage = error.message || 'Unknown error';
-    console.error(`[Dispatch ${nodeId}] (${node.type}) Execution failed for execution ${executionId}:`, error);
-    setNodeState(nodeId, { status: 'error', error: errorMessage, executionId });
-    throw error; // Re-throw to be caught by the calling function (_executeSubgraph)
-  }
-} 
+  // Register the execution task in the queue and run it
+  executionTask = executeNode();
+  nodeExecutionQueue[nodeId] = executionTask;
+  
+  return executionTask;
+}

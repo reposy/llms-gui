@@ -89,6 +89,7 @@ export interface InputNodeData extends BaseNodeData {
   textBuffer?: string; // Buffer for in-progress text entry
   items?: (string | FileLikeObject)[]; // For mixed array of text and file rows
   iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
+  executionMode?: 'batch' | 'foreach'; // Mode of execution, set by the UI
   iterationStatus?: {
     currentIndex: number;
     totalItems: number;

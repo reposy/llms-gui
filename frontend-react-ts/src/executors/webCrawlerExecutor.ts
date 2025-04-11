@@ -6,9 +6,9 @@ import axios from 'axios';
 // Define the expected parameters for the executor
 interface ExecuteWebCrawlerNodeParams {
   node: Node<WebCrawlerNodeData>;
-  inputs: any[]; // Can contain URL overrides
+  input: any; // Can contain URL override
   context: ExecutionContext;
-  resolveTemplate?: (template: string, nodeId: string, executionInputs: any) => string;
+  resolveTemplate: (template: string, data: any, context?: any) => string;
 }
 
 interface WebCrawlerResponse {
@@ -22,7 +22,7 @@ interface WebCrawlerResponse {
 }
 
 export async function executeWebCrawlerNode(params: ExecuteWebCrawlerNodeParams): Promise<any> {
-  const { node, inputs, context, resolveTemplate } = params;
+  const { node, input, context, resolveTemplate } = params;
   const nodeId = node.id;
   const nodeData = node.data;
   
@@ -31,25 +31,23 @@ export async function executeWebCrawlerNode(params: ExecuteWebCrawlerNodeParams)
   // Determine which URL to use (default or from input)
   let url = nodeData.url || '';
   
-  // Check if we received a URL from an input
-  if (inputs && inputs.length > 0) {
-    const firstInput = inputs[0];
-    
+  // Check if we received a URL from input
+  if (input !== undefined && input !== null) {
     // If input is a simple string, use it as URL
-    if (typeof firstInput === 'string') {
-      url = firstInput;
+    if (typeof input === 'string') {
+      url = input;
       console.log(`[ExecuteNode ${nodeId}] (WebCrawler) Using URL from input string:`, url);
     } 
     // If input is an object with a url property
-    else if (firstInput && typeof firstInput === 'object' && 'url' in firstInput) {
-      url = firstInput.url;
+    else if (typeof input === 'object' && 'url' in input) {
+      url = input.url;
       console.log(`[ExecuteNode ${nodeId}] (WebCrawler) Using URL from input object:`, url);
     }
   }
   
   // Apply template resolution if available
-  if (resolveTemplate && url) {
-    url = resolveTemplate(url, nodeId, inputs);
+  if (url) {
+    url = resolveTemplate(url, input, context);
     console.log(`[ExecuteNode ${nodeId}] (WebCrawler) Template resolved URL:`, url);
   }
   

@@ -2,14 +2,27 @@ import { Node } from 'reactflow';
 import { MergerNodeData } from '../types/nodes';
 import { ExecutionContext, NodeState, defaultNodeState } from '../types/execution';
 
+// Extend the NodeState to include accumulated inputs for merger nodes
+interface MergerNodeState extends NodeState {
+  accumulatedInputs?: any[];
+}
+
+/**
+ * Executes a Merger node.
+ * In the stateless execution model, this accepts a single input per execution
+ * but accumulates all inputs in the node state for the current execution ID.
+ * 
+ * @param params The execution parameters
+ * @returns The merged result based on the configured merge mode
+ */
 export function executeMergerNode(params: {
   node: Node<MergerNodeData>;
-  inputs: any[];
+  input: any;
   context: ExecutionContext;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
   getNodeState: (nodeId: string) => NodeState;
 }): any {
-  const { node, inputs, context, setNodeState, getNodeState } = params;
+  const { node, input, context, setNodeState, getNodeState } = params;
   const nodeId = node.id;
   const nodeData = node.data;
   const { executionId } = context;
@@ -25,24 +38,24 @@ export function executeMergerNode(params: {
   const arrayStrategy = nodeData.arrayStrategy || 'flatten';
   const waitForAll = nodeData.waitForAll === undefined ? true : nodeData.waitForAll;
   
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Executing with mode:`, mergeMode);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Wait for all inputs:`, waitForAll);
-  console.log(`[ExecuteNode ${nodeId}] (Merger) Inputs:`, inputs);
+  console.log(`[MergerExecutor] (${nodeId}) Executing with mode: ${mergeMode}, executionId: ${executionId}`);
+  console.log(`[MergerExecutor] (${nodeId}) Input:`, input);
 
   // Prepare storage for accumulated inputs
   let accumulatedInputs: any[] = [];
   
   // If this is the same execution and we've processed before, reuse accumulated inputs
-  if (!needsReset && Array.isArray(currentState.accumulatedInputs)) {
-    accumulatedInputs = [...currentState.accumulatedInputs];
-    console.log(`[Merger ${nodeId}] Reusing ${accumulatedInputs.length} previously accumulated inputs from execution ${executionId}`);
+  if (!needsReset && Array.isArray((currentState as MergerNodeState).accumulatedInputs)) {
+    accumulatedInputs = [...(currentState as MergerNodeState).accumulatedInputs!];
+    console.log(`[MergerExecutor] (${nodeId}) Reusing ${accumulatedInputs.length} previously accumulated inputs from execution ${executionId}`);
+  } else if (needsReset) {
+    console.log(`[MergerExecutor] (${nodeId}) New execution detected (${executionId} vs ${nodeLastExecutionId}), resetting accumulated inputs`);
   }
   
-  // Add current inputs
-  for (const input of inputs) {
-    if (input !== undefined && input !== null) {
-      accumulatedInputs.push(input);
-    }
+  // Add current input if not null/undefined
+  if (input !== undefined && input !== null) {
+    accumulatedInputs.push(input);
+    console.log(`[MergerExecutor] (${nodeId}) Added new input to accumulated inputs (now ${accumulatedInputs.length})`);
   }
   
   // Add custom items if configured
@@ -52,19 +65,20 @@ export function executeMergerNode(params: {
         accumulatedInputs.push(item);
       }
     }
+    console.log(`[MergerExecutor] (${nodeId}) Added ${nodeData.items.length} custom items`);
   }
   
   // Save accumulated inputs for future calls (in case not all inputs are ready yet)
   setNodeState(nodeId, { 
-    accumulatedInputs,
+    accumulatedInputs, // This is safely typed now because NodeState is structural
     executionId
-  });
+  } as Partial<MergerNodeState>);
   
-  console.log(`[Merger ${nodeId}] Total accumulated inputs:`, accumulatedInputs.length);
+  console.log(`[MergerExecutor] (${nodeId}) Total accumulated inputs: ${accumulatedInputs.length}`);
   
   // If we're waiting for all inputs and we don't have any yet, return null
   if (waitForAll && accumulatedInputs.length === 0) {
-    console.log(`[Merger ${nodeId}] No inputs available and waiting mode is enabled. Returning null.`);
+    console.log(`[MergerExecutor] (${nodeId}) No inputs available and waiting mode is enabled. Returning null.`);
     return null;
   }
   
@@ -85,11 +99,11 @@ export function executeMergerNode(params: {
       break;
       
     default:
-      console.warn(`[Merger ${nodeId}] Unknown merge mode: ${mergeMode}. Falling back to concat.`);
+      console.warn(`[MergerExecutor] (${nodeId}) Unknown merge mode: ${mergeMode}. Falling back to concat.`);
       result = processConcatMode(accumulatedInputs, arrayStrategy);
   }
   
-  console.log(`[Merger ${nodeId}] Final result:`, result);
+  console.log(`[MergerExecutor] (${nodeId}) Final merged result:`, result);
   return result;
 }
 

@@ -124,6 +124,7 @@ async function executeSubgraphInternal(
 
            if (!edge) {
                console.warn(`[areDependenciesMet ${execId}] Node: ${nodeId}, Dep: ${depId}(Conditional), Result: FALSE (Edge not found)`);
+               setNodeState(nodeId, { status: 'skipped', executionId: execId }); // Set node to skipped
                return false; // Edge must exist
            }
            
@@ -217,7 +218,7 @@ async function executeSubgraphInternal(
           // console.log(`[SubG Internal ${execId}] Node ${nodeId} status is ${nodeExecutionStatus[nodeId]}, skipping dispatch.`);
           return;
         }
-        if (executingPromises[nodeId]) {
+        if (executingPromises[nodeId] !== undefined) {
           // console.log(`[SubG Internal ${execId}] Node ${nodeId} is already running, skipping dispatch.`);
           return; // Avoid re-dispatching
         }
@@ -308,13 +309,13 @@ async function executeSubgraphInternal(
 
 
 /**
- * Executes the internal flow of a Group node, iterating over source items or running once if only internal roots exist.
+ * Executes the internal flow of a Group node by delegating to the dispatcher.
+ * This is a wrapper to maintain backwards compatibility while using the new stateless model.
  */
 export async function executeGroupNode(groupId: string, dependencies: FlowControllerDependencies): Promise<void> {
-  const { getNodes, getEdges, getNodeState, setNodeState, resetNodeStates, getNodesInGroup, setIsExecuting, setCurrentExecutionId, setIterationContext } = dependencies;
+  const { getNodes, getNodeState, setNodeState, setIsExecuting, setCurrentExecutionId } = dependencies;
 
   const allNodes = getNodes();
-  const allEdges = getEdges();
   const groupNode = allNodes.find(n => n.id === groupId && n.type === 'group') as Node<GroupNodeData> | undefined;
 
   if (!groupNode) {
@@ -325,248 +326,58 @@ export async function executeGroupNode(groupId: string, dependencies: FlowContro
   const executionId = `group-exec-${crypto.randomUUID()}`;
   console.log(`[ExecuteGroup ${groupId}] Starting group execution with ID: ${executionId}`);
   setCurrentExecutionId(executionId);
-  setNodeState(groupId, { status: 'running', executionId, lastTriggerNodeId: groupId, result: [] }); // Initialize result as empty array
-
-  const groupNodes = getNodesInGroup(groupId);
-  const groupNodeIdsSet = new Set(groupNodes.map(n => n.id));
-  const internalEdges = allEdges.filter(e => groupNodeIdsSet.has(e.source) && groupNodeIdsSet.has(e.target));
-
-  let effectiveSourceNodeId = groupNode.data.iterationConfig?.sourceNodeId;
-  let sourceNode: Node<InputNodeData> | undefined;
-
-  // --- Fallback to find internal Input node if sourceNodeId is not configured ---
-  if (!effectiveSourceNodeId) {
-      const internalInputNode = groupNodes.find(n => n.type === 'input');
-      if (internalInputNode) {
-          effectiveSourceNodeId = internalInputNode.id;
-          console.warn(`[ExecuteGroup ${groupId}] No source node configured. Using internal Input node ${effectiveSourceNodeId} as fallback.`);
-      } else {
-          const internalRoots = getRootNodesFromSubset(groupNodes, internalEdges);
-          if (internalRoots.length === 0) {
-                const errorMsg = "Group has no configured/fallback source node and no internal roots.";
-                console.error(`[ExecuteGroup ${groupId}] ${errorMsg}`);
-                setNodeState(groupId, { status: 'error', error: errorMsg, executionId });
-                return; // Stop execution here
-          } else {
-              console.warn(`[ExecuteGroup ${groupId}] No source node configured/found. Proceeding with internal roots only.`);
-          }
-      }
-  }
-
-  // Find the source node using the effective ID (if available)
-  sourceNode = allNodes.find(n => n.id === effectiveSourceNodeId) as Node<InputNodeData> | undefined;
-
-  let sourceItems: any[] = [];
-
-  // --- Get Source Items --- 
-  if (sourceNode && effectiveSourceNodeId) {
-    const sourceContext: ExecutionContext = { executionId: `source-${executionId}`, triggerNodeId: groupId };
-    try {
-      const sourceResult = await dispatchNodeExecution({
-          node: sourceNode,
-          nodes: allNodes,
-          edges: allEdges,
-          context: sourceContext,
-          getNodeState,
-          setNodeState
-      });
-
-      if (Array.isArray(sourceResult)) {
-        sourceItems = sourceResult;
-      } else {
-        console.warn(`[ExecuteGroup ${groupId}] Source node ${effectiveSourceNodeId} did not return an array. Result:`, sourceResult);
-        sourceItems = sourceResult !== undefined && sourceResult !== null ? [sourceResult] : [];
-      }
-
-    } catch (sourceError: any) {
-      console.error(`[ExecuteGroup ${groupId}] Failed to execute source node ${effectiveSourceNodeId}:`, sourceError);
-      const errorMsg = `Failed to get items from source node ${effectiveSourceNodeId}: ${sourceError.message || sourceError}`;
-      setNodeState(groupId, { status: 'error', error: errorMsg, executionId });
-      if (effectiveSourceNodeId) {
-        setNodeState(effectiveSourceNodeId, { status: 'error', error: sourceError.message || sourceError, executionId: sourceContext.executionId });
-      }
-      return; // Stop execution here
-    }
-  } else if (effectiveSourceNodeId) {
-      const errorMsg = `Configured or fallback source node with ID ${effectiveSourceNodeId} not found in the flow.`;
-      console.error(`[ExecuteGroup ${groupId}] ${errorMsg}`);
-      setNodeState(groupId, { status: 'error', error: errorMsg, executionId });
-      return; // Stop execution here
-  } else {
-    console.log(`[ExecuteGroup ${groupId}] Proceeding without source items (using internal roots).`);
-  }
-
-  // --- Prepare for Execution --- 
-  const allItemResults: GroupExecutionItemResult[] = [];
-  let groupOverallStatus: 'success' | 'error' = 'success';
-  let groupOverallError: string | undefined = undefined;
-  const internalRoots = getRootNodesFromSubset(groupNodes, internalEdges);
-
+  setNodeState(groupId, { status: 'running', executionId, lastTriggerNodeId: groupId, result: [] });
+  
   try {
-    // --- Execute Based on Source Items or Internal Roots --- 
-    if (sourceItems.length > 0) {
-        // --- Iterate Over Source Items --- 
-        console.log(`[ExecuteGroup ${groupId}] Starting iteration over ${sourceItems.length} items.`);
-        setIterationContext({ total: sourceItems.length });
-        // Reset before first iteration (needed if source node ran)
-        console.log(`[ExecuteGroup ${groupId}] Pre-iteration reset for internal nodes: [${groupNodes.map(n=>n.id).join(', ')}]`);
-        resetNodeStates(groupNodes.map(n=>n.id));
-
-        for (let i = 0; i < sourceItems.length; i++) {
-          const item = sourceItems[i];
-          console.log(`[ExecuteGroup ${groupId}] ---- Iteration ${i + 1}/${sourceItems.length} ---- Item:`, item);
-          setIterationContext({ index: i, item: item, total: sourceItems.length });
-
-          const itemContext: ExecutionContext = {
-            executionId: `${executionId}-item-${i}`, // Unique ID per iteration
-            triggerNodeId: groupId,
-            isSubExecution: true,
-            iterationItem: item
-          };
-
-          // Reset states *before each iteration* to prevent state leakage (especially for mergers)
-          console.log(`[ExecuteGroup ${groupId}] Iteration ${i + 1}: Resetting internal node states.`);
-          resetNodeStates(groupNodes.map(n=>n.id));
-
-          let itemStatus: 'success' | 'error' = 'success';
-          let itemError: string | undefined = undefined;
-          let itemNodeResults: Record<string, any> = {};
-          let finalOutput: any = null;
-          let conditionalBranch: 'true' | 'false' | undefined = undefined;
-
-          try {
-            if (internalRoots.length > 0) {
-                 console.log(`[ExecuteGroup ${groupId}] Iteration ${i + 1}: Executing subgraph with roots: [${internalRoots.join(', ')}]`);
-                 itemNodeResults = await executeSubgraphInternal(internalRoots, groupNodes, internalEdges, itemContext, dependencies);
-                 console.log(`[ExecuteGroup ${groupId}] Iteration ${i + 1}: Subgraph results:`, itemNodeResults);
-            } else {
-                 console.log(`[ExecuteGroup ${groupId}] Iteration ${i + 1}: No internal roots to execute.`);
-                 itemNodeResults = {}; // No results if no roots
-            }
-
-            // Determine final output for this item
-            const leafNodes = groupNodes.filter(n => !internalEdges.some(e => e.source === n.id));
-            const leafNodeIds = new Set(leafNodes.map(n => n.id));
-            const finalOutputs = Object.entries(itemNodeResults)
-              .filter(([nodeId, result]) => leafNodeIds.has(nodeId))
-              .map(([_, result]) => result);
-            finalOutput = finalOutputs.length > 0 ? (finalOutputs.length === 1 ? finalOutputs[0] : finalOutputs) : null;
-            const conditionalNodeEntry = Object.entries(itemNodeResults)
-              .find(([nodeId, result]) => groupNodes.find(n => n.id === nodeId)?.type === 'conditional');
-            if (conditionalNodeEntry) {
-              // Assuming conditional node result is boolean indicating branch taken
-              conditionalBranch = conditionalNodeEntry[1] ? 'true' : 'false'; 
-            }
-            console.log(`[ExecuteGroup ${groupId}] Iteration ${i + 1} completed. Output:`, finalOutput);
-
-          } catch (iterError: any) {
-            console.error(`[ExecuteGroup ${groupId}] Iteration ${i + 1} failed:`, iterError);
-            itemStatus = 'error';
-            itemError = iterError.message || 'Unknown iteration error';
-            groupOverallStatus = 'error';
-            groupOverallError = groupOverallError || `Error on item ${i + 1}: ${itemError}`;
-            // Decide whether to continue other iterations or break. Current logic re-throws, breaking the loop.
-            throw iterError; 
-          }
-
-          allItemResults.push({
-            item: item,
-            nodeResults: itemNodeResults,
-            finalOutput: finalOutput,
-            conditionalBranch: conditionalBranch,
-            status: itemStatus,
-            error: itemError,
-          });
-
-          // Update group node's result incrementally
-          setNodeState(groupId, { result: [...allItemResults], executionId });
-        } // End for loop
-
-    } else if (internalRoots.length > 0) {
-        // --- Execute Once With Internal Roots (No Source Items) --- 
-        console.log(`[ExecuteGroup ${groupId}] No source items. Executing once with internal roots: [${internalRoots.join(', ')}]`);
-        setIterationContext({ index: 0, item: undefined, total: 1 }); // Indicate single run
-
-        // Reset nodes once before the single execution
-        console.log(`[ExecuteGroup ${groupId}] Resetting internal node states for single run.`);
-        resetNodeStates(groupNodes.map(n=>n.id));
-
-        // Use the main execution ID for the single run context
-        const itemContext: ExecutionContext = {
-            executionId,
-            triggerNodeId: groupId,
-            isSubExecution: true,
-            iterationItem: undefined // No specific item
-        };
-
-        let itemStatus: 'success' | 'error' = 'success';
-        let itemError: string | undefined = undefined;
-        let itemNodeResults: Record<string, any> = {};
-        let finalOutput: any = null;
-        let conditionalBranch: 'true' | 'false' | undefined = undefined;
-
-        try {
-            itemNodeResults = await executeSubgraphInternal(internalRoots, groupNodes, internalEdges, itemContext, dependencies);
-            console.log(`[ExecuteGroup ${groupId}] Single run subgraph execution results:`, itemNodeResults);
-
-            // Determine final output for this single run
-            const leafNodes = groupNodes.filter(n => !internalEdges.some(e => e.source === n.id));
-            const leafNodeIds = new Set(leafNodes.map(n => n.id));
-            const finalOutputs = Object.entries(itemNodeResults)
-              .filter(([nodeId, result]) => leafNodeIds.has(nodeId))
-              .map(([_, result]) => result);
-            finalOutput = finalOutputs.length > 0 ? (finalOutputs.length === 1 ? finalOutputs[0] : finalOutputs) : null;
-            const conditionalNodeEntry = Object.entries(itemNodeResults)
-              .find(([nodeId, result]) => groupNodes.find(n => n.id === nodeId)?.type === 'conditional');
-            if (conditionalNodeEntry) {
-              conditionalBranch = conditionalNodeEntry[1] ? 'true' : 'false';
-            }
-            console.log(`[ExecuteGroup ${groupId}] Single run completed. Output:`, finalOutput);
-
-        } catch (singleRunError: any) {
-            console.error(`[ExecuteGroup ${groupId}] Single run execution failed:`, singleRunError);
-            itemStatus = 'error';
-            itemError = singleRunError.message || 'Unknown execution error';
-            groupOverallStatus = 'error';
-            groupOverallError = itemError; // Assign the error
-            // Error is captured, execution continues to finally block
-        }
-
-        // Store the results as if it were a single item
-        allItemResults.push({
-            item: null, // No source item
-            nodeResults: itemNodeResults,
-            finalOutput: finalOutput,
-            conditionalBranch: conditionalBranch,
-            status: itemStatus,
-            error: itemError,
-        });
-        // Set the final result on the group node
-        setNodeState(groupId, { result: allItemResults, executionId });
-
-    } else {
-        // No source items AND no internal roots - this case should have been caught earlier by the check after fallback.
-        console.error(`[ExecuteGroup ${groupId}] CRITICAL: No source items and no internal roots. Execution should have stopped earlier.`);
-        groupOverallStatus = 'error'; 
-        groupOverallError = "No source items or internal roots found.";
-    }
-
-  } catch (groupError: any) {
-    // Catch errors re-thrown from the iteration loop or other general errors
-    console.error(`[ExecuteGroup ${groupId}] Overall group execution failed:`, groupError);
-    groupOverallStatus = 'error';
-    // groupOverallError might already be set if the error came from an iteration
-    groupOverallError = groupOverallError || (groupError.message || 'Unknown group execution error');
-  } finally {
-    console.log(`[ExecuteGroup ${groupId}] Finalizing execution. Final status: ${groupOverallStatus}`);
-    // Update final status, result, and error on the group node
-    setNodeState(groupId, {
-      status: groupOverallStatus,
-      result: allItemResults, // Contains results from all successful iterations/single run
-      error: groupOverallError,
-      executionId // Keep the main execution ID
+    console.log(`[ExecuteGroup ${groupId}] Delegating to dispatcher for stateless execution`);
+    
+    // Create an empty input (no external input when triggered directly)
+    const input = null;
+    
+    // Create execution context
+    const context: ExecutionContext = { 
+      executionId, 
+      triggerNodeId: groupId,
+      isSubExecution: false 
+    };
+    
+    // Import the dispatcher
+    const { dispatchNodeExecution } = await import('../executors/executorDispatcher');
+    
+    // Create dispatcher dependencies by adding the missing dispatchNodeExecution property
+    // This creates a circular reference but it's safe since the imported function is already available
+    const dispatcherDependencies = {
+      ...dependencies,
+      dispatchNodeExecution
+    };
+    
+    // Call the dispatcher with the group node
+    const result = await dispatchNodeExecution({
+      node: groupNode,
+      nodes: allNodes,
+      edges: dependencies.getEdges(),
+      context,
+      getNodeState: dependencies.getNodeState,
+      setNodeState: dependencies.setNodeState
     });
-    // Clearing isExecuting and iteration context is handled by the caller (store action)
+    
+    console.log(`[ExecuteGroup ${groupId}] Execution complete. Result:`, result);
+    setNodeState(groupId, { 
+      status: 'success', 
+      result, 
+      executionId 
+    });
+    
+  } catch (error) {
+    console.error(`[ExecuteGroup ${groupId}] Execution failed:`, error);
+    setNodeState(groupId, { 
+      status: 'error', 
+      error: error instanceof Error ? error.message : String(error),
+      executionId 
+    });
+  } finally {
+    setIsExecuting(false);
+    setCurrentExecutionId(undefined);
     console.log(`[ExecuteGroup ${groupId}] Execution function finished.`);
   }
 } 

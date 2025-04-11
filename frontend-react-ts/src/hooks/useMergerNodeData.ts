@@ -4,7 +4,7 @@ import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage Merger node state and operations using Zustand store.
- * Centralizes logic for MergerNode component
+ * Centralizes logic for both MergerNode component and any related components
  */
 export const useMergerNodeData = ({ 
   nodeId
@@ -21,87 +21,52 @@ export const useMergerNodeData = ({
   // Cast the general content to MergerNodeContent type
   const content = generalContent as MergerNodeContent;
 
-  // Destructure content for easier access
+  // Get accumulated items from content
   const items = content.items || [];
+  const itemCount = items.length;
   const label = content.label || 'Merger Node';
 
   /**
-   * Handle items change with deep equality check
-   */
-  const handleItemsChange = useCallback((newItems: any[]) => {
-    if (isEqual(newItems, items)) {
-      console.log(`[MergerNode ${nodeId}] Skipping items update - no change (deep equal)`);
-      return;
-    }
-    setContent({ items: newItems });
-  }, [nodeId, items, setContent]);
-
-  /**
-   * Add item with deep equality check
+   * Add a new item to the accumulated items
    */
   const addItem = useCallback((item: any) => {
-    const newItems = [...items, item];
-    if (isEqual(newItems, items)) {
-      console.log(`[MergerNode ${nodeId}] Skipping add item - no change (deep equal)`);
-      return;
-    }
-    setContent({ items: newItems });
-  }, [nodeId, items, setContent]);
-
-  /**
-   * Remove item with deep equality check
-   */
-  const removeItem = useCallback((index: number) => {
-    const newItems = items.filter((_, i) => i !== index);
-    if (isEqual(newItems, items)) {
-      console.log(`[MergerNode ${nodeId}] Skipping remove item - no change (deep equal)`);
-      return;
-    }
-    setContent({ items: newItems });
-  }, [nodeId, items, setContent]);
-
-  /**
-   * Update multiple properties at once with deep equality check
-   */
-  const updateMergerContent = useCallback((updates: Partial<MergerNodeContent>) => {
+    const currentItems = items || [];
+    const newItems = [...currentItems, item];
+    
     // Skip update if no actual changes using deep equality
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof MergerNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[MergerNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
+    if (isEqual(newItems, currentItems)) {
+      console.log(`[MergerNode ${nodeId}] Skipping item add - no change (deep equal)`);
       return;
     }
     
-    // Create new content object with updates
-    const newContent = {
-      ...content,
-      ...updates
-    };
+    console.log(`[MergerNode ${nodeId}] Adding item to accumulator. New count: ${newItems.length}`);
+    setContent({ items: newItems });
+  }, [nodeId, items, setContent]);
 
-    // Final deep equality check against current content
-    if (isEqual(newContent, content)) {
-      console.log(`[MergerNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+  /**
+   * Reset all accumulated items
+   */
+  const resetItems = useCallback(() => {
+    // Skip update if already empty
+    if (items.length === 0) {
+      console.log(`[MergerNode ${nodeId}] Skipping reset - already empty`);
       return;
     }
     
-    console.log(`[MergerNode ${nodeId}] Updating content with:`, updates);
-    setContent(updates);
-  }, [nodeId, content, setContent]);
+    console.log(`[MergerNode ${nodeId}] Resetting ${items.length} accumulated items`);
+    setContent({ items: [] });
+  }, [nodeId, items, setContent]);
 
   return {
     // Data
     content,
     items,
+    itemCount,
     label,
     isDirty: isContentDirty,
     
     // Event handlers
-    handleItemsChange,
     addItem,
-    removeItem,
-    updateMergerContent,
+    resetItems,
   };
 }; 
