@@ -66,20 +66,21 @@ export const useOutputNodeData = ({
   /**
    * Handle content change with deep equality check
    */
-  const handleContentChange = useCallback((newContent: any, isForeachUpdate?: boolean) => {
+  const handleContentChange = useCallback((newContent: any, isForeachUpdate?: boolean, forceUpdate?: boolean) => {
     // Format the content appropriately
     const formattedContent = formatContent(newContent);
 
-    // In foreach mode, always overwrite content
-    if (isForeachUpdate || mode === 'foreach') {
-      console.log(`[OutputNode ${nodeId}] Foreach mode: Overwriting content with:`, formattedContent);
-      setContent({ content: formattedContent });
+    // IMPORTANT: Always check for equality first to prevent infinite loops
+    // Even with forceUpdate, we need to prevent updating with identical content
+    if (isEqual(formattedContent, outputContent)) {
+      console.log(`[OutputNode ${nodeId}] Skipping content update - no change (deep equal)`);
       return;
     }
 
-    // Skip update if content hasn't changed (deep equality)
-    if (isEqual(formattedContent, outputContent)) {
-      console.log(`[OutputNode ${nodeId}] Skipping content update - no change (deep equal)`);
+    // In foreach mode or when forcing update, always overwrite content
+    if (isForeachUpdate || mode === 'foreach' || forceUpdate === true) {
+      console.log(`[OutputNode ${nodeId}] Forced update or foreach mode: Overwriting content with:`, formattedContent);
+      setContent({ content: formattedContent });
       return;
     }
 

@@ -1,18 +1,22 @@
-import { Edge, Node } from 'reactflow';
+import { Edge, Node as ReactFlowNode } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { dispatchNodeExecution } from '../executors/executorDispatcher';
 import { v4 as uuidv4 } from 'uuid';
 import { ExecutionContext } from '../types/execution';
+import { FlowExecutionContext } from '../core/FlowExecutionContext';
+import { NodeFactory } from '../core/NodeFactory';
+import { registerAllNodeTypes } from '../core/NodeRegistry';
+import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
 
 // Define the dependencies interface for flow controller functions
 export interface FlowControllerDependencies {
-  getNodes: () => Node<NodeData>[];
+  getNodes: () => ReactFlowNode<NodeData>[];
   getEdges: () => Edge[];
   getNodeState: (nodeId: string) => any;
   setNodeState: (nodeId: string, state: any) => void;
   resetNodeStates: (nodeIds?: string[]) => void;
   getDownstreamNodes: (nodeId: string) => string[];
-  getNodesInGroup: (groupId: string) => Node<NodeData>[];
+  getNodesInGroup: (groupId: string) => ReactFlowNode<NodeData>[];
   setIsExecuting: (isExecuting: boolean) => void;
   setCurrentExecutionId: (executionId?: string) => void;
   setIterationContext: (context: { item?: any; index?: number; total?: number }) => void;
@@ -32,7 +36,6 @@ export async function executeFlow(
   const { 
     getNodes, 
     getEdges, 
-    setNodeState, 
     resetNodeStates, 
     setIsExecuting, 
     getDownstreamNodes,
@@ -48,6 +51,7 @@ export async function executeFlow(
     
     // Get the start node
     const nodes = getNodes();
+    const edges = getEdges();
     const startNode = nodes.find(node => node.id === startNodeId);
     
     if (!startNode) {
@@ -56,44 +60,57 @@ export async function executeFlow(
     
     // Create execution context
     const executionId = `exec-${uuidv4()}`;
-    const executionContext: ExecutionContext = {
-      executionId,
-      triggerNodeId: startNodeId,
-    };
+    const executionContext = new FlowExecutionContext(executionId);
+    
+    // Set trigger node
+    executionContext.setTriggerNode(startNodeId);
     
     console.log(`[FlowExecution ${executionId}] Starting execution for node ${startNodeId}`);
     
-    // Mark node as running
-    setNodeState(startNodeId, { 
-      status: 'running', 
-      executionId,
-      lastTriggerNodeId: startNodeId
-    });
+    // Mark node as running using context
+    executionContext.markNodeRunning(startNodeId);
     
-    // Execute the node
-    const result = await dispatchNodeExecution({
-      node: startNode,
+    // Update execution controller state
+    setCurrentExecutionId(executionId);
+    setIsExecuting(true);
+
+    // Build execution graph to ensure proper child node resolution
+    buildExecutionGraphFromFlow(nodes, edges);
+    const executionGraph = getExecutionGraph();
+    
+    // Create a node factory and register all node types
+    const nodeFactory = new NodeFactory();
+    registerAllNodeTypes(nodeFactory);
+    
+    // Create the node instance using the factory
+    const nodeInstance = nodeFactory.create(
+      startNode.id,
+      startNode.type as string,
+      startNode.data,
+      executionContext
+    );
+    
+    // Attach graph structure reference to the node property
+    nodeInstance.property = {
+      ...nodeInstance.property,
       nodes,
-      edges: getEdges(),
-      context: executionContext,
-      getNodeState: dependencies.getNodeState,
-      setNodeState: dependencies.setNodeState
-    });
+      edges,
+      nodeFactory,
+      executionGraph // Add the execution graph to allow for dynamic relationship resolution
+    };
     
-    // Update node state with result
-    setNodeState(startNodeId, { 
-      status: 'success', 
-      result, 
-      error: undefined,
-      executionId
-    });
+    // Execute the node with an empty input object
+    // This will trigger child node propagation via Node.execute method
+    console.log(`[FlowExecution ${executionId}] Executing node instance with proper chain propagation`);
+    await nodeInstance.execute({});
     
     console.log(`[FlowController] Finished executing flow from node ${startNodeId}`);
   } catch (error: any) {
     console.error(`[FlowController] Error executing flow from node ${startNodeId}:`, error);
-    setNodeState(startNodeId, { 
+    const errorMessage = error.message || 'Unknown error';
+    dependencies.setNodeState(startNodeId, { 
       status: 'error', 
-      error: error.message || 'Unknown error'
+      error: errorMessage
     });
   } finally {
     // Make sure to clean up

@@ -25,12 +25,36 @@ export abstract class Node {
    * @param input The input value to process
    */
   async execute(input: any): Promise<void> {
-    this.input = structuredClone(input);
-    const result = await this.process(input);
-    
-    // Get all child nodes and execute them
-    for (const child of this.getChildNodes()) {
-      await child.execute(result);
+    try {
+      // Mark the node as running
+      this.context.markNodeRunning(this.id);
+      
+      // Clone input to avoid side effects
+      this.input = structuredClone(input);
+      
+      // Process the input according to this node's specific logic
+      const result = await this.process(input);
+      
+      // Store the result in the execution context if not already stored by the node
+      // This ensures the result is available for downstream nodes and UI updates
+      if (result !== undefined) {
+        this.context.storeOutput(this.id, result);
+      }
+      
+      // Get all child nodes and execute them with the result
+      const childNodes = this.getChildNodes();
+      this.context.log(`Node(${this.id}): Executing ${childNodes.length} child nodes with result`);
+      
+      for (const child of childNodes) {
+        await child.execute(result);
+      }
+    } catch (error) {
+      // Mark this node as failed and log the error
+      this.context.log(`Node(${this.id}): Execution failed: ${error}`);
+      this.context.markNodeError(this.id, String(error));
+      
+      // Re-throw to allow parent nodes to handle the error
+      throw error;
     }
   }
 
@@ -49,10 +73,12 @@ export abstract class Node {
   getChildNodes(): Node[] {
     // Check if we have an execution graph available - if so, use it for faster child resolution
     if (this.property.executionGraph && this.property.executionGraph instanceof Map) {
+      this.context.log(`Node(${this.id}): Using execution graph to resolve child nodes`);
       return this.getChildNodesFromGraph();
     }
     
     // Fallback to direct edge resolution if no graph is available
+    this.context.log(`Node(${this.id}): No execution graph found, using edges to resolve child nodes`);
     return this.getChildNodesFromEdges();
   }
   
@@ -73,16 +99,20 @@ export abstract class Node {
     const childIds = getChildNodeIdsFromGraph(this.id, executionGraph);
     
     if (childIds.length === 0) {
+      this.context.log(`Node(${this.id}): No child nodes found in execution graph.`);
       return [];
     }
     
-    this.context.log(`Node(${this.id}): Resolving ${childIds.length} child nodes from graph`);
+    this.context.log(`Node(${this.id}): Resolving ${childIds.length} child nodes from graph: ${childIds.join(', ')}`);
     
     // Create node instances for all child IDs
-    return childIds
+    const childNodes = childIds
       .map(childId => {
         const childNode = executionGraph.get(childId);
-        if (!childNode) return null;
+        if (!childNode) {
+          this.context.log(`Node(${this.id}): Child node ${childId} not found in execution graph`);
+          return null;
+        }
         
         try {
           // Create the node with the same context
@@ -102,6 +132,7 @@ export abstract class Node {
             executionGraph: this.property.executionGraph
           };
           
+          this.context.log(`Node(${this.id}): Successfully created child node ${childId} of type ${childNode.type}`);
           return node;
         } catch (error) {
           this.context.log(`Node(${this.id}): Error creating child node ${childId}: ${error}`);
@@ -109,6 +140,9 @@ export abstract class Node {
         }
       })
       .filter((node): node is Node => node !== null);
+
+    this.context.log(`Node(${this.id}): Returning ${childNodes.length} child nodes from graph`);
+    return childNodes;
   }
   
   /**
@@ -127,16 +161,20 @@ export abstract class Node {
     const outgoingConnections = getOutgoingConnections(this.id, edges);
     
     if (outgoingConnections.length === 0) {
+      this.context.log(`Node(${this.id}): No outgoing connections found in edges.`);
       return [];
     }
     
-    this.context.log(`Node(${this.id}): Resolving ${outgoingConnections.length} child nodes from edges`);
+    this.context.log(`Node(${this.id}): Resolving ${outgoingConnections.length} child nodes from edges: ${outgoingConnections.map(c => c.targetNodeId).join(', ')}`);
     
     // Map connection targets to actual nodes
-    return outgoingConnections
+    const childNodes = outgoingConnections
       .map(connection => {
         const targetNode = findNodeById(connection.targetNodeId, nodes);
-        if (!targetNode) return null;
+        if (!targetNode) {
+          this.context.log(`Node(${this.id}): Target node ${connection.targetNodeId} not found in nodes`);
+          return null;
+        }
         
         try {
           // Create the node with the same context
@@ -156,6 +194,7 @@ export abstract class Node {
             executionGraph: this.property.executionGraph
           };
           
+          this.context.log(`Node(${this.id}): Successfully created child node ${targetNode.id} of type ${targetNode.type}`);
           return node;
         } catch (error) {
           this.context.log(`Node(${this.id}): Error creating child node ${targetNode.id}: ${error}`);
@@ -163,5 +202,8 @@ export abstract class Node {
         }
       })
       .filter((node): node is Node => node !== null);
+
+    this.context.log(`Node(${this.id}): Returning ${childNodes.length} child nodes from edges`);
+    return childNodes;
   }
 } 

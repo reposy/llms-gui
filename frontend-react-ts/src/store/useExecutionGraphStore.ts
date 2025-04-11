@@ -86,8 +86,8 @@ export const buildExecutionGraphFromFlow = (nodes: Node[], edges: Edge[]) => {
   useExecutionGraphStore.getState().buildGraph(nodes, edges);
 };
 
-export const getExecutionGraph = () => useExecutionGraphStore(state => state.graph);
-export const getNodeLevel = (nodeId: string) => useExecutionGraphStore(state => state.getNodeLevel(nodeId));
-export const getChildNodeIds = (nodeId: string) => useExecutionGraphStore(state => state.getChildNodeIds(nodeId));
-export const getParentNodeIds = (nodeId: string) => useExecutionGraphStore(state => state.getParentNodeIds(nodeId));
-export const getRootNodeIds = () => useExecutionGraphStore(state => state.getRootNodeIds()); 
+export const getExecutionGraph = () => useExecutionGraphStore.getState().graph;
+export const getNodeLevel = (nodeId: string) => useExecutionGraphStore.getState().getNodeLevel(nodeId);
+export const getChildNodeIds = (nodeId: string) => useExecutionGraphStore.getState().getChildNodeIds(nodeId);
+export const getParentNodeIds = (nodeId: string) => useExecutionGraphStore.getState().getParentNodeIds(nodeId);
+export const getRootNodeIds = () => useExecutionGraphStore.getState().getRootNodeIds(); 

@@ -48,10 +48,23 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     // Skip effect if node state hasn't changed or if we're not in a valid state
     if (!nodeState) return;
 
+    console.log(`[OutputNode ${id}] Node state changed: ${nodeState.status}, result:`, nodeState.result);
+
     let newContent: string | undefined;
 
     if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       newContent = formatResultBasedOnFormat(nodeState.result, format);
+      
+      // Only update if content has actually changed - prevents infinite updates
+      if (!isEqual(newContent, data.content)) {
+        console.log(`[OutputNode ${id}] Setting success content: "${newContent}"`);
+        handleContentChange(newContent, false, true);
+      } else {
+        console.log(`[OutputNode ${id}] Skipping success content update - content unchanged: "${newContent}"`);
+      }
+      
+      // Don't continue with the normal deep equality check as we've already handled it
+      return;
     } else if (nodeState.status === 'running') {
       newContent = '처리 중...';
     } else if (nodeState.status === 'error') {

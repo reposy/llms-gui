@@ -35,19 +35,18 @@ export class LlmNode extends Node {
       // Call the LLM endpoint with the provider/model from node property
       const response = await this.callLlmApi(resolvedPrompt);
       
-      this.context.log(`LlmNode(${this.id}): LLM response received`);
+      this.context.log(`LlmNode(${this.id}): LLM response received: "${response.substring(0, 100)}..."`);
+      
+      // Store the result in the execution context
+      // This is critical to ensure the result is available to downstream nodes
+      this.context.storeOutput(this.id, response);
+      
       return response;
     } catch (error) {
       this.context.log(`LlmNode(${this.id}): Error processing through LLM: ${error}`);
+      this.context.markNodeError(this.id, String(error));
       throw error;
     }
-  }
-  
-  /**
-   * Get child nodes that should be executed next
-   */
-  getChildNodes(): Node[] {
-    return [];
   }
   
   /**
