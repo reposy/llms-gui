@@ -15,27 +15,13 @@ interface ExecuteInputNodeParams {
  * Retrieves the node's internal content (text rows, files, etc) and returns it
  * as the output for downstream nodes.
  * 
- * The dispatcher handles the foreach/batch behavior.
+ * The InputNode class now handles the foreach/batch behavior internally.
  */
 export function executeInputNode({ node, input, context }: ExecuteInputNodeParams): any {
   const nodeId = node.id;
   const nodeData = node.data as InputNodeData;
-  const { executionId, executionMode } = context;
   
-  console.log(`[InputExecutor] (${nodeId}) Starting execution in mode: ${executionMode || 'standard'}`);
-  console.log(`[InputExecutor] (${nodeId}) Context:`, {
-    executionId,
-    executionMode,
-    hasIterationItem: context.iterationItem !== undefined,
-    hasInputRows: Array.isArray(context.inputRows),
-    inputRowsLength: Array.isArray(context.inputRows) ? context.inputRows.length : 0
-  });
-  
-  // Check if we're in an iteration - if so, return the iteration item
-  if (context.iterationItem !== undefined) {
-    console.log(`[InputExecutor] (${nodeId}) Returning iteration item:`, context.iterationItem);
-    return context.iterationItem;
-  }
+  console.log(`[InputExecutor] (${nodeId}) Starting execution`);
   
   // Get internal content from node data and node content store
   let items: any[] = [];
@@ -58,12 +44,6 @@ export function executeInputNode({ node, input, context }: ExecuteInputNodeParam
       items = nodeData.text.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
       console.log(`[InputExecutor] (${nodeId}) Created ${items.length} items from text property`);
     }
-  }
-  
-  // If in batch mode with context.inputRows, use that instead
-  if (executionMode === 'batch' && Array.isArray(context.inputRows)) {
-    console.log(`[InputExecutor] (${nodeId}) Batch mode detected. Using inputRows from context (${context.inputRows.length} items)`);
-    return context.inputRows;
   }
   
   // If we couldn't find any items, log a warning

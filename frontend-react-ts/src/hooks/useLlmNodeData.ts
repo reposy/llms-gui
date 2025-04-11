@@ -28,6 +28,7 @@ export const useLlmNodeData = ({
   const provider = content.provider || 'ollama';
   const ollamaUrl = content.ollamaUrl || 'http://localhost:11434';
   const label = content.label || 'LLM Node';
+  const responseContent = content.content || '';  // Added to expose the LLM response
 
   /**
    * Handle prompt change with deep equality check
@@ -115,6 +116,16 @@ export const useLlmNodeData = ({
    * Update multiple properties at once with deep equality check
    */
   const updateLlmContent = useCallback((updates: Partial<LLMNodeContent>) => {
+    // Special handling for content updates - always update content without equality checks
+    const hasContentUpdate = 'content' in updates;
+    
+    if (hasContentUpdate) {
+      console.log(`[LLMNode ${nodeId}] Content update detected - bypassing equality checks`);
+      setContent(updates);
+      return;
+    }
+    
+    // For non-content updates, proceed with normal equality checks
     // Skip update if no actual changes using deep equality
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof LLMNodeContent];
@@ -151,6 +162,7 @@ export const useLlmNodeData = ({
     provider,
     ollamaUrl,
     label,
+    responseContent,
     isDirty: isContentDirty,
     
     // Event handlers

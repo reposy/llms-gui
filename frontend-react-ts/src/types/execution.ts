@@ -1,3 +1,5 @@
+export type NodeStatus = 'idle' | 'running' | 'success' | 'error';
+
 export interface ExecutionContext {
   isSubExecution?: boolean;
   triggerNodeId: string;
@@ -12,28 +14,34 @@ export interface ExecutionContext {
   };
   
   // Iteration support for foreach/batch control
-  executionMode?: 'batch' | 'foreach' | 'iteration-item'; // Identifies how this node is being executed
+  executionMode: 'single' | 'foreach' | 'batch'; // Identifies how this node is being executed
   iterationIndex?: number; // Index of current iteration (only set in foreach)
   originalInputLength?: number; // Total number of items in the original input
   inputRows?: any[]; // Full array of inputs in batch mode (used for template resolution or merging)
+  
+  // Methods
+  log: (message: string) => void;
+  markNodeRunning: (nodeId: string) => void;
+  markNodeSuccess: (nodeId: string, result: any) => void;
+  markNodeError: (nodeId: string, error: string) => void;
+  storeOutput: (nodeId: string, output: any) => void;
+  getOutput: (nodeId: string) => any;
 }
 
 // Represents the state of a single node during execution
 export interface NodeState {
-  status: 'idle' | 'running' | 'success' | 'error' | 'skipped';
+  status: NodeStatus;
   result: any; // This will hold GroupExecutionItemResult[] for groups
   error?: string;
-  _lastUpdate?: number;
   executionId?: string;
   lastTriggerNodeId?: string;
-  activeOutputHandle?: 'trueHandle' | 'falseHandle';
+  activeOutputHandle?: string;
   conditionResult?: boolean;
-  // Add iteration status for Input nodes using foreach
-  iterationStatus?: {
-    currentIndex: number;
-    totalItems: number;
-    completed: boolean;
-  };
+  _lastUpdate?: number;
+  
+  // Iteration metadata
+  iterationIndex?: number;
+  iterationTotal?: number;
 }
 
 // Represents the results for a single item processed by a group

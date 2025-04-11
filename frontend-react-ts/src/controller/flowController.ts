@@ -19,7 +19,6 @@ export interface FlowControllerDependencies {
   getNodesInGroup: (groupId: string) => ReactFlowNode<NodeData>[];
   setIsExecuting: (isExecuting: boolean) => void;
   setCurrentExecutionId: (executionId?: string) => void;
-  setIterationContext: (context: { item?: any; index?: number; total?: number }) => void;
 }
 
 /**

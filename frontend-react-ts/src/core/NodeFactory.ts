@@ -27,6 +27,9 @@ export class NodeFactory {
    * @returns Node instance
    */
   create(id: string, type: string, property: any, context: FlowExecutionContext): Node {
+    console.log(`[NodeFactory] Creating node ${id} of type ${type} with properties:`, property);
+    
+    // Get the creator function for this node type
     const creator = this.creators.get(type);
     
     if (!creator) {
@@ -34,7 +37,38 @@ export class NodeFactory {
       return new PassthroughNode(id, property, context);
     }
     
-    return creator(id, property, context);
+    // Create node instance with property data
+    const node = creator(id, property, context);
+    console.log(`[NodeFactory] Created ${type} node instance ${id}`);
+    
+    return node;
+  }
+  
+  /**
+   * Create a node for a specific iteration context (foreach mode)
+   * @param id Node ID
+   * @param type Node type
+   * @param property Node configuration 
+   * @param context Parent execution context
+   * @param iterationIndex Current iteration index
+   * @param item Current item being processed
+   * @returns Node instance with iteration context
+   */
+  createForIteration(
+    id: string, 
+    type: string, 
+    property: any, 
+    context: FlowExecutionContext, 
+    iterationIndex: number, 
+    item: any
+  ): Node {
+    // Create an iteration-specific context
+    const iterContext = context.createIterationContext(iterationIndex, item);
+    
+    console.log(`[NodeFactory] Creating iteration node ${id} for item ${iterationIndex + 1}`);
+    
+    // Create the node with the iteration context
+    return this.create(id, type, property, iterContext);
   }
 }
 

@@ -14,6 +14,16 @@ export class FlowExecutionContext {
    * Trigger node ID (the node that initiated the execution)
    */
   triggerNodeId: string;
+  
+  /**
+   * Current iteration index for foreach mode
+   */
+  iterationIndex?: number;
+  
+  /**
+   * Total number of items in the iteration
+   */
+  iterationTotal?: number;
 
   /**
    * Output store for nodes
@@ -35,6 +45,28 @@ export class FlowExecutionContext {
    */
   setTriggerNode(nodeId: string) {
     this.triggerNodeId = nodeId;
+  }
+
+  /**
+   * Create a child context for a foreach iteration
+   * @param index Current iteration index
+   * @param item Current iteration item
+   * @returns New execution context with iteration metadata
+   */
+  createIterationContext(index: number, total?: number): FlowExecutionContext {
+    // Create a new context with the same execution ID
+    const iterContext = new FlowExecutionContext(this.executionId);
+    
+    // Copy basic properties
+    iterContext.triggerNodeId = this.triggerNodeId;
+    
+    // Set iteration metadata
+    iterContext.iterationIndex = index;
+    iterContext.iterationTotal = total ?? this.iterationTotal;
+    
+    this.log(`Created iteration context ${index+1}/${iterContext.iterationTotal}`);
+    
+    return iterContext;
   }
 
   /**
@@ -63,7 +95,10 @@ export class FlowExecutionContext {
       status: 'success', 
       result, 
       error: undefined,
-      executionId: this.executionId
+      executionId: this.executionId,
+      // Include iteration metadata in node state
+      iterationIndex: this.iterationIndex,
+      iterationTotal: this.iterationTotal
     });
   }
 
@@ -77,7 +112,10 @@ export class FlowExecutionContext {
     setNodeState(nodeId, { 
       status: 'error', 
       error,
-      executionId: this.executionId
+      executionId: this.executionId,
+      // Include iteration metadata in node state
+      iterationIndex: this.iterationIndex,
+      iterationTotal: this.iterationTotal
     });
   }
 
@@ -87,7 +125,10 @@ export class FlowExecutionContext {
    * @param output The output value to store
    */
   storeOutput(nodeId: string, output: any) {
+    // Store the output in context's memory
     this.outputs.set(nodeId, output);
+    
+    // Also update the node state
     this.markNodeSuccess(nodeId, output);
   }
 
@@ -105,6 +146,10 @@ export class FlowExecutionContext {
    * @param message Message to log
    */
   log(message: string) {
-    console.log(`[Flow ${this.executionId}] ${message}`);
+    // Add iteration info to log if available
+    const iterInfo = this.iterationIndex !== undefined ? 
+      `[Iter ${this.iterationIndex + 1}/${this.iterationTotal}] ` : '';
+    
+    console.log(`[Flow ${this.executionId}] ${iterInfo}${message}`);
   }
 } 

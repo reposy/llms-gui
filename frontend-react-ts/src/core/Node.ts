@@ -42,11 +42,18 @@ export abstract class Node {
       }
       
       // Get all child nodes and execute them with the result
+      // This is the core of the parent → child result propagation
       const childNodes = this.getChildNodes();
-      this.context.log(`Node(${this.id}): Executing ${childNodes.length} child nodes with result`);
       
-      for (const child of childNodes) {
-        await child.execute(result);
+      if (childNodes.length > 0) {
+        this.context.log(`Node(${this.id}): Propagating result to ${childNodes.length} child nodes`);
+        
+        // Execute each child with the result - parent → child result propagation
+        for (const child of childNodes) {
+          await child.execute(result);
+        }
+      } else {
+        this.context.log(`Node(${this.id}): No child nodes to execute`);
       }
     } catch (error) {
       // Mark this node as failed and log the error
@@ -115,7 +122,7 @@ export abstract class Node {
         }
         
         try {
-          // Create the node with the same context
+          // Create the node with the same context to maintain execution flow
           const node = nodeFactory.create(
             childId,
             childNode.type,
@@ -177,7 +184,7 @@ export abstract class Node {
         }
         
         try {
-          // Create the node with the same context
+          // Create the node with the same context to maintain execution flow
           const node = nodeFactory.create(
             targetNode.id,
             targetNode.type as string,
