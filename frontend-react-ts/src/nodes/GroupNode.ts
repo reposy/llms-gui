@@ -1,6 +1,4 @@
 import { Node } from '../core/Node';
-import { findNodeById } from '../utils/flowUtils';
-import { NodeFactory } from '../core/NodeFactory';
 
 interface GroupNodeProperty {
   label: string;

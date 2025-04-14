@@ -1,7 +1,5 @@
 import { Node } from '../core/Node';
-import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { getNodeContent, InputNodeContent } from '../store/useNodeContentStore';
-import { InputNodeData } from '../types/nodes';
 
 /**
  * Input node properties
@@ -70,22 +68,11 @@ export class InputNode extends Node {
   }
   
   /**
-   * Process an input and return the input node's items
-   * @param input The input (typically empty for InputNode)
+   * Process the input node and execute child nodes based on execution mode
+   * @param _ Input argument (typically ignored for InputNode)
    * @returns The array of items from this input node
    */
-  async process(input: any): Promise<any> {
-    const items = this.getItems();
-    
-    this.context.log(`InputNode(${this.id}): Processing complete with ${items.length} items`);
-    return items;
-  }
-  
-  /**
-   * Execute the InputNode and its children based on executionMode
-   * @param _ Input argument (typically ignored for InputNode)
-   */
-  async execute(_: any): Promise<void> {
+  async process(_: any): Promise<any> {
     try {
       // Mark node as running
       this.context.markNodeRunning(this.id);
@@ -104,14 +91,14 @@ export class InputNode extends Node {
       
       if (items.length === 0) {
         this.context.log(`InputNode(${this.id}): No items to process`);
-        return;
+        return items;
       }
       
       const children = this.getChildNodes();
       
       if (children.length === 0) {
         this.context.log(`InputNode(${this.id}): No child nodes found to execute`);
-        return;
+        return items;
       }
       
       if (executionMode === 'foreach' && items.length > 0) {
@@ -139,6 +126,11 @@ export class InputNode extends Node {
           await child.process(items);
         }
       }
+      
+      // Mark node as successful
+      this.context.markNodeSuccess(this.id, items);
+      
+      return items;
     } catch (error) {
       this.context.log(`InputNode(${this.id}): Execution failed: ${error}`);
       this.context.markNodeError(this.id, String(error));
