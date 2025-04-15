@@ -82,7 +82,7 @@ export const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
       };
       
       // Execute the node
-      nodeInstance.process({}).catch(error => {
+      nodeInstance.process({}).catch((error: Error) => {
         console.error(`[LLMNode] Error executing node ${id}:`, error);
       });
     }

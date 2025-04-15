@@ -204,9 +204,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   }, [updateApiContent, updateContent, saveContent]);
 
   const handleRun = useCallback(() => {
-    // Get flow structure
-    const { nodes, edges } = useFlowStructureStore.getState();
-    
     // Create execution context
     const executionId = `exec-${uuidv4()}`;
     const executionContext = new FlowExecutionContext(executionId);
@@ -252,7 +249,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     nodeInstance.process({}).catch(error => {
       console.error(`[APINode] Error executing node ${id}:`, error);
     });
-  }, [id]);
+  }, [id, nodes, edges]);
 
   const executeRequest = useCallback(async (input: any) => {
     if (!url) {

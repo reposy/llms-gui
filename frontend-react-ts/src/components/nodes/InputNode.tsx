@@ -1,25 +1,32 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { InputNodeData } from '../../types/nodes';
-import { VIEW_MODES } from '../../store/viewModeStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { executeFlow } from '../../store/useExecutionController';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { InputTextManager } from '../input/InputTextManager';
 import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
 import { InputModeToggle } from '../input/InputModeToggle';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { v4 as uuidv4 } from 'uuid';
+import { FlowExecutionContext } from '../../core/FlowExecutionContext';
+import { NodeFactory } from '../../core/NodeFactory';
+import { registerAllNodeTypes } from '../../core/NodeRegistry';
+import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 
 const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
   // Get node execution state
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
+  
+  // Get flow structure
+  const { nodes, edges } = useFlowStructureStore();
 
   // Use shared input node hook for state and handlers
   const {
@@ -42,9 +49,53 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
   }, [handleConfigChange]);
 
   // Add handler for running the input node
-  const handleRunNode = useCallback(() => {
-    executeFlow(id);
-  }, [id]);
+  const handleRun = useCallback(() => {
+    // Create execution context
+    const executionId = `exec-${uuidv4()}`;
+    const executionContext = new FlowExecutionContext(executionId);
+    
+    // Set trigger node
+    executionContext.setTriggerNode(id);
+    
+    console.log(`[InputNode] Starting execution for node ${id}`);
+    
+    // Build execution graph
+    buildExecutionGraphFromFlow(nodes, edges);
+    const executionGraph = getExecutionGraph();
+    
+    // Create node factory
+    const nodeFactory = new NodeFactory();
+    registerAllNodeTypes(nodeFactory);
+    
+    // Find the node data
+    const node = nodes.find(n => n.id === id);
+    if (!node) {
+      console.error(`[InputNode] Node ${id} not found.`);
+      return;
+    }
+    
+    // Create the node instance
+    const nodeInstance = nodeFactory.create(
+      id,
+      node.type as string,
+      node.data,
+      executionContext
+    );
+    
+    // Attach graph structure reference to the node property
+    nodeInstance.property = {
+      ...nodeInstance.property,
+      nodes,
+      edges,
+      nodeFactory,
+      executionGraph
+    };
+    
+    // Execute the node
+    nodeInstance.process({}).catch((error: Error) => {
+      console.error(`[InputNode] Error executing node ${id}:`, error);
+    });
+  }, [id, nodes, edges]);
   
   // Create a footer summary for display
   const footerSummary = React.useMemo(() => {
@@ -72,14 +123,14 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           isRunning={isRunning}
           viewMode="expanded"
           themeColor="gray"
-          onRun={handleRunNode}
+          onRun={handleRun}
           onLabelUpdate={handleLabelUpdate}
           onToggleView={() => {}}
         />
         <Handle 
           type="source" 
           position={Position.Right} 
-          id="output"
+          id="source"
           className="w-3 h-3 !bg-gray-500"
           style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '-6px', zIndex: 50 }}
         />
@@ -89,8 +140,6 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
             <InputModeToggle 
               iterateEachRow={iterateEachRow}
               onToggle={handleToggleProcessingMode}
-              layout="column"
-              showDescription={true}
             />
           </div>
 

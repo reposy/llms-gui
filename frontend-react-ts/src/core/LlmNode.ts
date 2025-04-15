@@ -27,6 +27,7 @@ interface LlmNodeContent {
   provider?: string;
   ollamaUrl?: string;
   content?: string;
+  responseContent?: string;
   _forceUpdate?: number;
 }
 
@@ -40,10 +41,11 @@ export class LlmNode extends Node {
   declare property: LlmNodeProperty;
   
   /**
-   * Process the input according to the LLM node's configuration
-   * and propagate results to child nodes
+   * Execute the input according to the LLM node's configuration
+   * @param input The input to process with the language model
+   * @returns The LLM response
    */
-  async process(input: any): Promise<any> {
+  async execute(input: any): Promise<any> {
     this.context.log(`LlmNode(${this.id}): Processing input with ${this.property.provider}/${this.property.model}`);
     
     try {
@@ -104,11 +106,6 @@ export class LlmNode extends Node {
         this.context.log(`LlmNode(${this.id}): LLM response received: "${response.substring(0, 100)}..." (length: ${response.length})`);
       }
       
-      // Store the result in the execution context
-      // This is critical to ensure the result is available to downstream nodes
-      this.context.storeOutput(this.id, response);
-      this.context.log(`LlmNode(${this.id}): Stored output in execution context`);
-      
       // Update the node's content for UI display
       // Force update with timestamp to ensure UI renders the new content
       const contentUpdate: LlmNodeContent = { 
@@ -147,22 +144,6 @@ export class LlmNode extends Node {
         });
       } else {
         this.context.log(`LlmNode(${this.id}): WARNING - Nodes or edges property is missing!`);
-      }
-      
-      // Get all child nodes and process them with the result
-      this.context.log(`LlmNode(${this.id}): Calling getChildNodes() to get downstream nodes...`);
-      const childNodes = this.getChildNodes();
-      
-      if (childNodes.length > 0) {
-        this.context.log(`LlmNode(${this.id}): Propagating result to ${childNodes.length} child nodes: ${childNodes.map(n => n.id).join(', ')}`);
-        
-        // Process each child with the result
-        for (const child of childNodes) {
-          this.context.log(`LlmNode(${this.id}): Processing child node ${child.id} (type: ${child.constructor.name})`);
-          await child.process(response);
-        }
-      } else {
-        this.context.log(`LlmNode(${this.id}): WARNING - No child nodes found to process!`);
       }
       
       return response;
@@ -296,7 +277,7 @@ export class LlmNode extends Node {
   }
   
   /**
-   * Resolve template variables in the prompt
+   * Resolve template placeholders in the prompt
    */
   private resolveTemplate(template: string, input: any): string {
     if (!template) {
@@ -362,27 +343,5 @@ export class LlmNode extends Node {
       // On error, return the original template to ensure we don't lose the prompt
       return template;
     }
-  }
-  
-  /**
-   * Override getChildNodes to add additional logging
-   */
-  getChildNodes(): Node[] {
-    this.context.log(`LlmNode(${this.id}): getChildNodes called - starting child resolution`);
-    
-    // Call the parent class implementation
-    const childNodes = super.getChildNodes();
-    
-    // Add debug logging
-    this.context.log(`LlmNode(${this.id}): getChildNodes returned ${childNodes.length} nodes`);
-    if (childNodes.length > 0) {
-      childNodes.forEach(child => {
-        this.context.log(`LlmNode(${this.id}): Found child node ${child.id} of type ${child.constructor.name}`);
-      });
-    } else {
-      this.context.log(`LlmNode(${this.id}): No child nodes found!`);
-    }
-    
-    return childNodes;
   }
 } 

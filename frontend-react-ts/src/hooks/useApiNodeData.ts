@@ -25,9 +25,8 @@ export const useApiNodeData = ({
   const url = content.url || '';
   const method = content.method || 'GET';
   const headers = content.headers || {};
-  const params = content.params || {};
-  const body = content.body || '';
   const queryParams = content.queryParams || {};
+  const body = content.body || '';
   const useInputAsBody = content.useInputAsBody || false;
   const contentType = content.contentType || 'application/json';
   const bodyFormat = content.bodyFormat || 'raw';
@@ -35,10 +34,11 @@ export const useApiNodeData = ({
   const label = content.label || 'API Node';
 
   /**
-   * Handle URL change with deep equality check
+   * Handle URL change, supporting both direct string values and events
+   * This allows the function to be used directly with onChange and for programmatic updates
    */
-  const handleUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newUrl = event.target.value;
+  const handleUrlChange = useCallback((eventOrString: ChangeEvent<HTMLInputElement> | string) => {
+    const newUrl = typeof eventOrString === 'string' ? eventOrString : eventOrString.target.value;
     if (isEqual(newUrl, url)) {
       console.log(`[APINode ${nodeId}] Skipping URL update - no change (deep equal)`);
       return;
@@ -47,18 +47,10 @@ export const useApiNodeData = ({
   }, [nodeId, url, setContent]);
 
   /**
-   * Handle URL change from event
+   * Handle method change (overloaded version that doesn't require an event)
+   * Supports direct method changes without requiring an event object
    */
-  const handleUrlInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newUrl = event.target.value;
-    setContent({ url: newUrl });
-  }, [setContent]);
-
-  /**
-   * Handle method change with deep equality check
-   */
-  const handleMethodChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const newMethod = event.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE';
+  const handleMethodChange = useCallback((newMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
     if (isEqual(newMethod, method)) {
       console.log(`[APINode ${nodeId}] Skipping method update - no change (deep equal)`);
       return;
@@ -67,7 +59,7 @@ export const useApiNodeData = ({
   }, [nodeId, method, setContent]);
 
   /**
-   * Handle method change from event
+   * Handle method change from select element event
    */
   const handleMethodSelectChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
     const newMethod = event.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -136,14 +128,6 @@ export const useApiNodeData = ({
   }, [nodeId, body, setContent]);
 
   /**
-   * Handle body change from event
-   */
-  const handleBodyInputChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const newBody = event.target.value;
-    setContent({ body: newBody });
-  }, [setContent]);
-
-  /**
    * Handle query params change with deep equality check
    */
   const handleQueryParamsChange = useCallback((newQueryParams: Record<string, string>) => {
@@ -191,18 +175,6 @@ export const useApiNodeData = ({
       return;
     }
     
-    // Create new content object with updates
-    const newContent = {
-      ...content,
-      ...updates
-    };
-
-    // Final deep equality check against current content
-    if (isEqual(newContent, content)) {
-      console.log(`[APINode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
-      return;
-    }
-    
     console.log(`[APINode ${nodeId}] Updating content with:`, updates);
     setContent(updates);
   }, [nodeId, content, setContent]);
@@ -213,8 +185,8 @@ export const useApiNodeData = ({
     url,
     method,
     headers,
-    params,
     queryParams,
+    body,
     useInputAsBody,
     contentType,
     bodyFormat,
@@ -224,7 +196,6 @@ export const useApiNodeData = ({
     
     // Event handlers
     handleUrlChange,
-    handleUrlInputChange,
     handleMethodChange,
     handleMethodSelectChange,
     handleHeadersChange,
@@ -232,7 +203,6 @@ export const useApiNodeData = ({
     removeHeader,
     addHeader,
     handleBodyChange,
-    handleBodyInputChange,
     handleQueryParamsChange,
     toggleUseInputAsBody,
     handleContentTypeChange,

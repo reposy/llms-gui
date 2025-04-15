@@ -19,10 +19,13 @@ export abstract class Node {
   }
 
   /**
-   * Execute this node with the given input and propagate to child nodes
+   * Main entry point for node execution
+   * This method handles setup, execution, and propagation to child nodes
+   * All node implementations should use this as their primary entry point
    * @param input The input value to process
+   * @returns The execution result
    */
-  async execute(input: any): Promise<void> {
+  async process(input: any): Promise<any> {
     try {
       // Mark the node as running
       this.context.markNodeRunning(this.id);
@@ -30,29 +33,38 @@ export abstract class Node {
       // Clone input to avoid side effects
       this.input = structuredClone(input);
       
-      // Process the input according to this node's specific logic
-      const result = await this.process(input);
+      // Execute the node's specific logic
+      const result = await this.execute(input);
       
-      // Store the result in the execution context if not already stored by the node
-      // This ensures the result is available for downstream nodes and UI updates
+      // Store the result in the execution context
       if (result !== undefined) {
         this.context.storeOutput(this.id, result);
       }
+
+      // Mark node as successful
+      this.context.markNodeSuccess(this.id, result);
       
-      // Get all child nodes and execute them with the result
-      // This is the core of the parent → child result propagation
+      // If result is null or undefined, don't propagate to children
+      if (result === null || result === undefined) {
+        this.context.log(`Node(${this.id}): Result is ${result === null ? 'null' : 'undefined'}, not propagating to children`);
+        return result;
+      }
+      
+      // Get all child nodes and propagate the result
       const childNodes = this.getChildNodes();
       
       if (childNodes.length > 0) {
         this.context.log(`Node(${this.id}): Propagating result to ${childNodes.length} child nodes`);
         
-        // Execute each child with the result - parent → child result propagation
+        // Process each child with the result
         for (const child of childNodes) {
-          await child.execute(result);
+          await child.process(result);
         }
       } else {
-        this.context.log(`Node(${this.id}): No child nodes to execute`);
+        this.context.log(`Node(${this.id}): No child nodes to process`);
       }
+      
+      return result;
     } catch (error) {
       // Mark this node as failed and log the error
       this.context.log(`Node(${this.id}): Execution failed: ${error}`);
@@ -64,11 +76,12 @@ export abstract class Node {
   }
 
   /**
-   * Process the input according to this node's specific logic
-   * @param input The input value to process
-   * @returns The processed result
+   * Executes the node's specific logic
+   * Each node type must implement this method with its specific functionality
+   * @param input The input value to execute
+   * @returns The execution result
    */
-  abstract process(input: any): Promise<any>;
+  abstract execute(input: any): Promise<any>;
 
   /**
    * Get child nodes that should be executed next

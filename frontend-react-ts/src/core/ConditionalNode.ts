@@ -38,15 +38,12 @@ export class ConditionalNode extends Node {
   declare property: ConditionalNodeProperty;
   
   /**
-   * Process the input according to the conditional node's configuration
-   * Evaluates the condition and routes to the appropriate child nodes
+   * Execute the input according to the conditional node's configuration
+   * Evaluates the condition and returns the appropriate path information
    * @param input The input to process
-   * @returns The original input to maintain the chain
+   * @returns The original input and path result for child propagation
    */
-  async process(input: any): Promise<any> {
-    // Mark the node as running
-    this.context.markNodeRunning(this.id);
-    
+  async execute(input: any): Promise<any> {
     // Debug the full property object
     this.context.log(`ConditionalNode(${this.id}): Full property: ${JSON.stringify(this.property)}`);
     
@@ -88,22 +85,17 @@ export class ConditionalNode extends Node {
     
     // Determine which path to follow based on condition result
     const path = conditionResult ? 'true' : 'false';
+    this.context.log(`ConditionalNode(${this.id}): Result: following '${path}' path`);
     
-    // Get the child nodes for the determined path
-    const childNodes = this.getChildNodesForPath(path);
+    // Store the path result with the input for potential UI feedback
+    const result = {
+      input: safeInput,
+      path: path,
+      conditionResult: conditionResult
+    };
     
-    this.context.log(`ConditionalNode(${this.id}): Following '${path}' path with ${childNodes.length} child nodes`);
-    
-    // Process child nodes with the input
-    for (const child of childNodes) {
-      await child.process(safeInput);
-    }
-    
-    // Mark node as successful
-    this.context.markNodeSuccess(this.id, safeInput);
-    
-    // Return the original input to maintain the chain
-    return safeInput;
+    // Return the result with condition evaluation for process() to handle propagation
+    return result;
   }
 
   /**
@@ -273,8 +265,24 @@ export class ConditionalNode extends Node {
   }
   
   /**
-   * Helper method to get child nodes for a specific path
-   * @param path The path to get child nodes for ('true' or 'false')
+   * Get child nodes that should be executed based on the condition result
+   * Overrides the base getChildNodes() to filter for only the appropriate path
+   * @returns Array of child nodes for the selected path
+   */
+  getChildNodes(): Node[] {
+    const output = this.context.getOutput(this.id);
+    
+    if (!output || typeof output !== 'object' || !('path' in output)) {
+      this.context.log(`ConditionalNode(${this.id}): No valid output with path found, returning no child nodes`);
+      return [];
+    }
+    
+    const path = output.path as 'true' | 'false';
+    return this.getChildNodesForPath(path);
+  }
+
+  /**
+   * Get child nodes for a specific conditional path
    */
   private getChildNodesForPath(path: 'true' | 'false'): Node[] {
     const { nodes, edges, nodeFactory } = this.property;

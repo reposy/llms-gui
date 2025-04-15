@@ -2,7 +2,7 @@ import { Node } from '../core/Node';
 import { getOutgoingConnections } from '../utils/flowUtils';
 
 interface ApiNodeProperty {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   url: string;
   headers: Record<string, string>;
   // Reference to flow structure (will be provided by FlowRunner)
@@ -13,7 +13,7 @@ interface ApiNodeProperty {
 export class ApiNode extends Node {
   declare property: ApiNodeProperty;
 
-  async process(input: any): Promise<any> {
+  async execute(input: any): Promise<any> {
     this.context.log(`ApiNode(${this.id}): Calling ${this.property.method} ${this.property.url}`);
 
     try {

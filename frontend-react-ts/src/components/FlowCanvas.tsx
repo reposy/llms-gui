@@ -54,7 +54,7 @@ const nodeTypes: Record<string, React.ComponentType<any>> = {
   llm: LLMNode,
   api: APINode,
   output: OutputNode,
-  jsonExtractor: JSONExtractorNode,
+  'json-extractor': JSONExtractorNode,
   input: InputNode,
   group: GroupNode,
   conditional: ConditionalNode,

@@ -1,10 +1,11 @@
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
+import { ExecutionContext } from '../types/execution';
 
 /**
  * Context for flow execution
  * Provides utilities and state management during flow execution
  */
-export class FlowExecutionContext {
+export class FlowExecutionContext implements ExecutionContext {
   /**
    * Unique execution ID
    */
@@ -16,6 +17,16 @@ export class FlowExecutionContext {
   triggerNodeId: string;
   
   /**
+   * Parent node ID for sub-executions
+   */
+  parentNodeId?: string;
+  
+  /**
+   * Execution mode
+   */
+  executionMode: 'single' | 'foreach' | 'batch' = 'single';
+  
+  /**
    * Current iteration index for foreach mode
    */
   iterationIndex?: number;
@@ -24,6 +35,16 @@ export class FlowExecutionContext {
    * Total number of items in the iteration
    */
   iterationTotal?: number;
+  
+  /**
+   * Original input length
+   */
+  originalInputLength?: number;
+  
+  /**
+   * Current iteration item
+   */
+  iterationItem?: any;
 
   /**
    * Output store for nodes
@@ -40,33 +61,48 @@ export class FlowExecutionContext {
   }
 
   /**
-   * Set the trigger node ID
-   * @param nodeId The node ID that triggered this execution
+   * Set the trigger node for this execution
+   * @param nodeId ID of the trigger node
    */
   setTriggerNode(nodeId: string) {
     this.triggerNodeId = nodeId;
   }
 
   /**
-   * Create a child context for a foreach iteration
-   * @param index Current iteration index
-   * @param item Current iteration item
-   * @returns New execution context with iteration metadata
+   * Log a message in the execution context
+   * @param message The message to log
    */
-  createIterationContext(index: number, total?: number): FlowExecutionContext {
-    // Create a new context with the same execution ID
-    const iterContext = new FlowExecutionContext(this.executionId);
-    
-    // Copy basic properties
-    iterContext.triggerNodeId = this.triggerNodeId;
-    
-    // Set iteration metadata
-    iterContext.iterationIndex = index;
-    iterContext.iterationTotal = total ?? this.iterationTotal;
-    
-    this.log(`Created iteration context ${index+1}/${iterContext.iterationTotal}`);
-    
-    return iterContext;
+  log(message: string) {
+    console.log(`[Exec ${this.executionId}] ${message}`);
+  }
+
+  /**
+   * Set execution mode as a foreach iteration
+   * @param context The iteration context details
+   */
+  setIterationContext(context: { item?: any; index?: number; total?: number }) {
+    this.iterationIndex = context.index;
+    this.iterationTotal = context.total;
+    this.iterationItem = context.item;
+    this.executionMode = 'foreach';
+  }
+
+  /**
+   * Get the output value for a node
+   * @param nodeId ID of the node
+   * @returns The output value or undefined if not found
+   */
+  getOutput(nodeId: string): any {
+    return this.outputs.get(nodeId);
+  }
+
+  /**
+   * Get node execution state from the state store
+   * @param nodeId ID of the node
+   * @returns The node state or undefined if not found
+   */
+  getNodeState(nodeId: string): any {
+    return getNodeState(nodeId);
   }
 
   /**
@@ -130,26 +166,5 @@ export class FlowExecutionContext {
     
     // Also update the node state
     this.markNodeSuccess(nodeId, output);
-  }
-
-  /**
-   * Get the stored output for a node
-   * @param nodeId ID of the node
-   * @returns The stored output, or null if none exists
-   */
-  getOutput(nodeId: string): any {
-    return this.outputs.get(nodeId) || null;
-  }
-
-  /**
-   * Log a message with the execution context
-   * @param message Message to log
-   */
-  log(message: string) {
-    // Add iteration info to log if available
-    const iterInfo = this.iterationIndex !== undefined ? 
-      `[Iter ${this.iterationIndex + 1}/${this.iterationTotal}] ` : '';
-    
-    console.log(`[Flow ${this.executionId}] ${iterInfo}${message}`);
   }
 } 
