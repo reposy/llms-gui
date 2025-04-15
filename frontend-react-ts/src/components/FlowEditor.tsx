@@ -13,7 +13,6 @@ import { useNodes, useEdges, useSelectedNodeId, useSelectedNodeIds, setNodes, se
 // Import StoreInitializer
 import StoreInitializer from './StoreInitializer';
 // Import history and dirty tracking
-import { pushSnapshot } from '../store/useHistoryStore';
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/historyUtils';
 import { StatusBar } from './StatusBar';
@@ -226,6 +225,17 @@ export const FlowEditor = () => {
               </svg>
               JSON
             </button>
+            <button
+              className="w-full aspect-square rounded-xl bg-gradient-to-br from-green-400 to-green-500 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-2 text-sm font-medium"
+              onClick={() => handleAddNode('web-crawler' as NodeType)}
+              aria-label="Add Web Crawler Node"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101" />
+              </svg>
+              Crawler
+            </button>
           </div>
         </div>
 
@@ -246,7 +256,7 @@ export const FlowEditor = () => {
             />
           ) : (
             <NodeConfigSidebar 
-              selectedNodeId={selectedNode?.id}
+              selectedNodeId={selectedNode ? selectedNode.id : null}
             />
           )
         )}
