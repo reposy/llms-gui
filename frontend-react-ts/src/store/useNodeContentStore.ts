@@ -134,6 +134,8 @@ interface NodeContentStore {
   reset: () => void;
 }
 
+const MAX_PERSISTED_CONTENT_LENGTH = 1000; // Limit string content size for persistence
+
 /**
  * Type guard to check if content is InputNodeContent
  */
@@ -729,13 +731,45 @@ export const useNodeContentStore = create<NodeContentStore>()(
     })),
     {
       name: 'node-content-storage',
-      storage: createIDBStorage<{ nodeContents: Record<string, NodeContent> }>(),
+      storage: createIDBStorage(),
       partialize: (state) => {
+        // Create a filtered copy of nodeContents with potentially large values truncated
+        const filteredContents: Record<string, NodeContent> = {};
+        
+        Object.entries(state.nodeContents).forEach(([nodeId, content]) => {
+          // Create a copy of the content to modify
+          const filteredContent = { ...content };
+          
+          // Check if this content type has a 'content' property
+          if ('content' in filteredContent && 
+              typeof filteredContent.content === 'string' && 
+              filteredContent.content.length > MAX_PERSISTED_CONTENT_LENGTH) {
+            // Truncate large content strings
+            (filteredContent as any).content = `[Content truncated for storage: ${filteredContent.content.length} chars]`;
+          }
+          
+          // Handle input node special case
+          if (isInputNodeContent(filteredContent) && filteredContent.items) {
+            // Only persist file metadata, not the actual content
+            filteredContent.items = filteredContent.items.map(item => {
+              if (typeof item === 'string') {
+                return item;
+              } else if (typeof item === 'object' && item !== null) {
+                // For file objects, only store metadata
+                const { content, ...metadata } = item as FileLikeObject;
+                return { ...metadata, file: (item as FileLikeObject).file || 'file' };
+              }
+              return item;
+            });
+          }
+          
+          filteredContents[nodeId] = filteredContent;
+        });
+        
         return {
-          nodeContents: state.nodeContents
+          nodeContents: filteredContents
         };
-      },
-      version: 1
+      }
     }
   )
 );

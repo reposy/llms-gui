@@ -2,6 +2,7 @@ import { createWithEqualityFn } from 'zustand/traditional';
 import { devtools, persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { NodeState, defaultNodeState } from '../types/execution';
+import { createIDBStorage } from '../utils/idbStorage';
 
 // Define the state structure for node state management
 export interface NodeStateStoreState {
@@ -74,9 +75,58 @@ export const useNodeStateStore = createWithEqualityFn<NodeStateStoreState>()(
       }),
       {
         name: 'node-state-storage',
-        partialize: (state) => ({
-          nodeStates: state.nodeStates,
-        }),
+        storage: createIDBStorage<NodeStateStoreState>(),
+        partialize: (state) => {
+          // Create a copy of nodeStates with large results filtered out
+          const filteredNodeStates: Record<string, NodeState> = {};
+          
+          Object.entries(state.nodeStates).forEach(([nodeId, nodeState]) => {
+            // Copy the nodeState but exclude potentially large results
+            const { result, ...restOfNodeState } = nodeState;
+            
+            // Store a simplified version of the result if it exists
+            // This prevents localStorage quota issues
+            let simplifiedResult = null;
+            
+            if (result !== null && result !== undefined) {
+              // For arrays, store just the length and type information
+              if (Array.isArray(result)) {
+                simplifiedResult = { 
+                  type: 'array',
+                  length: result.length,
+                  hasResults: true
+                };
+              } else if (typeof result === 'object' && result !== null) {
+                // For objects, store just the keys
+                simplifiedResult = {
+                  type: 'object',
+                  keys: Object.keys(result),
+                  hasResults: true
+                };
+              } else if (typeof result === 'string' && result.length > 1000) {
+                // For large strings, truncate
+                simplifiedResult = {
+                  type: 'string',
+                  length: result.length,
+                  preview: result.substring(0, 100) + '...',
+                  hasResults: true
+                };
+              } else {
+                // For small primitives, keep as is
+                simplifiedResult = result;
+              }
+            }
+            
+            filteredNodeStates[nodeId] = {
+              ...restOfNodeState,
+              result: simplifiedResult
+            };
+          });
+          
+          return {
+            nodeStates: filteredNodeStates
+          };
+        },
       }
     )
   )

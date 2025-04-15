@@ -4,6 +4,7 @@ import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { isEqual } from 'lodash';
 import { useCallback, useRef } from 'react';
+import { createIDBStorage } from '../utils/idbStorage';
 
 // Define the store state structure
 export interface FlowStructureState {
@@ -109,6 +110,7 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
       },
       {
         name: 'flow-structure-storage',
+        storage: createIDBStorage<FlowStructureState>(),
         partialize: (state) => ({
           nodes: state.nodes,
           edges: state.edges,
