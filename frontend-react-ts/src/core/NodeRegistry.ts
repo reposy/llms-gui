@@ -6,6 +6,7 @@ import { InputNode } from './InputNode';
 import { OutputNode } from './OutputNode';
 import { LlmNode } from './LlmNode';
 import { ConditionalNode } from './ConditionalNode';
+import { JsonExtractorNode } from './JsonExtractorNode';
 
 /**
  * Register all node types with the factory
@@ -21,4 +22,5 @@ export function registerAllNodeTypes(factory: NodeFactory): void {
   factory.register('api', (id, property, context) => new ApiNode(id, property, context));
   factory.register('merger', (id, property, context) => new MergerNode(id, property, context));
   factory.register('group', (id, property, context) => new GroupNode(id, property, context));
+  factory.register('json-extractor', (id, property, context) => new JsonExtractorNode(id, property, context));
 }
