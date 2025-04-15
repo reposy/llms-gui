@@ -59,7 +59,7 @@ const nodeTypes: Record<string, React.ComponentType<any>> = {
   group: GroupNode,
   conditional: ConditionalNode,
   merger: MergerNode,
-  webCrawler: WebCrawlerNode
+  'web-crawler': WebCrawlerNode
 };
 
 // Default viewport

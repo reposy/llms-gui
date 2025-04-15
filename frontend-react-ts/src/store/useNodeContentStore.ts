@@ -14,7 +14,8 @@ import {
   GroupNodeData,
   ConditionalNodeData,
   MergerNodeData,
-  BaseNodeData
+  BaseNodeData,
+  WebCrawlerNodeData
 } from '../types/nodes';
 import { Node as ReactFlowNode } from 'reactflow';
 import { isEqual } from 'lodash';
@@ -87,6 +88,17 @@ export interface MergerNodeContent extends BaseNodeContent {
   items?: any[];
 }
 
+// Web Crawler node content
+export interface WebCrawlerNodeContent extends BaseNodeContent {
+  url?: string;
+  waitForSelector?: string;
+  extractSelectors?: Record<string, string>;
+  timeout?: number;
+  headers?: Record<string, string>;
+  includeHtml?: boolean;
+  outputFormat?: 'full' | 'text' | 'extracted' | 'html';
+}
+
 // Union type for all node content types
 export type NodeContent = 
   | LLMNodeContent
@@ -96,7 +108,8 @@ export type NodeContent =
   | JSONExtractorNodeContent
   | GroupNodeContent
   | ConditionalNodeContent
-  | MergerNodeContent;
+  | MergerNodeContent
+  | WebCrawlerNodeContent;
 
 // Store type definition
 interface NodeContentStore {
@@ -235,6 +248,18 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
       return {
         ...baseContent,
         items: []
+      };
+    
+    case 'web-crawler':
+      return {
+        ...baseContent,
+        url: '',
+        waitForSelector: '',
+        extractSelectors: {},
+        timeout: 10000,
+        headers: {},
+        includeHtml: false,
+        outputFormat: 'full'
       };
     
     default:

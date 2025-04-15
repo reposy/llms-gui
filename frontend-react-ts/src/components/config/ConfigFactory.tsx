@@ -7,7 +7,8 @@ import {
   InputNodeData,
   ConditionalNodeData,
   GroupNodeData,
-  MergerNodeData
+  MergerNodeData,
+  WebCrawlerNodeData
 } from '../../types/nodes';
 
 // Import components directly with relative path
@@ -18,6 +19,7 @@ import { InputNodeConfig } from './InputNodeConfig';
 import { ConditionalNodeConfig } from './ConditionalNodeConfig';
 import { GroupNodeConfig } from './GroupNodeConfig';
 import { MergerNodeConfig } from './MergerNodeConfig';
+import { WebCrawlerNodeConfig } from './WebCrawlerNodeConfig';
 
 interface ConfigFactoryProps {
   selectedNode: Node<NodeData> | null;
@@ -77,6 +79,10 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
     case 'merger':
       console.log('[ConfigFactory] Rendering MergerNodeConfig');
       return <MergerNodeConfig nodeId={id} data={data as MergerNodeData} />;
+    
+    case 'web-crawler':
+      console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');
+      return <WebCrawlerNodeConfig nodeId={id} data={data as WebCrawlerNodeData} />;
     
     default:
       console.log(`[ConfigFactory] No config for node type: ${type}`);
