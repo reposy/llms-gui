@@ -4,19 +4,15 @@ export interface ExecutionContext {
   isSubExecution?: boolean;
   triggerNodeId: string;
   executionId: string;
-  iterationItem?: any;
-  // For foreach iteration tracking
-  iterationTracking?: {
-    inputNodeId: string;  // ID of the input node doing the iteration
-    originalExecutionId: string; // Original execution ID before iteration
-    currentIndex: number; // Current iteration index
-    totalItems: number;   // Total number of items to iterate over
-  };
+  parentNodeId?: string; // For sub-execution contexts
   
-  // Iteration support for foreach/batch control
-  executionMode: 'single' | 'foreach' | 'batch'; // Identifies how this node is being executed
+  // Iteration tracking fields
+  iterationItem?: any;
   iterationIndex?: number; // Index of current iteration (only set in foreach)
   originalInputLength?: number; // Total number of items in the original input
+
+  // Optional properties that may not be needed by all implementations
+  executionMode?: 'single' | 'foreach' | 'batch'; // Identifies how this node is being executed
   inputRows?: any[]; // Full array of inputs in batch mode (used for template resolution or merging)
   
   // Methods
@@ -26,6 +22,7 @@ export interface ExecutionContext {
   markNodeError: (nodeId: string, error: string) => void;
   storeOutput: (nodeId: string, output: any) => void;
   getOutput: (nodeId: string) => any;
+  getNodeState?: (nodeId: string) => any; // Get node state from the store
 }
 
 // Represents the state of a single node during execution

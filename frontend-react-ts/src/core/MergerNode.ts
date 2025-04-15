@@ -20,10 +20,12 @@ export class MergerNode extends Node {
   declare property: MergerNodeProperty;
 
   /**
-   * Process an input immediately as it arrives
-   * Accumulates it with previous results and produces a merged output
+   * Execute the node's specific logic
+   * Accumulates the input with previous results and produces a merged output
+   * @param input The input to execute
+   * @returns The merged result
    */
-  async process(input: any): Promise<any> {
+  async execute(input: any): Promise<any> {
     // Get the current accumulated state from the store
     const nodeContent = getNodeContent(this.id) as MergerNodeContent;
     
@@ -51,18 +53,6 @@ export class MergerNode extends Node {
     const result = this.property.strategy === 'array' 
       ? this.mergeAsArray(newItems) 
       : this.mergeAsObject(newItems);
-    
-    const childNodes = this.getChildNodes();
-    
-    if (childNodes.length > 0) {
-      this.context.log(`MergerNode(${this.id}): Propagating result to ${childNodes.length} child nodes`);
-    
-      for (const child of childNodes) {
-        await child.execute(result);
-      }
-    } else {
-      this.context.log(`MergerNode(${this.id}): No child nodes to execute with result`);
-    }
     
     return result;
   }
@@ -119,46 +109,5 @@ export class MergerNode extends Node {
     
     this.context.log(`MergerNode(${this.id}): Merged ${Object.keys(result).length} inputs as object`);
     return result;
-  }
-  
-  /**
-   * Override execute to provide stateless execution
-   * Each execution processes the current input and merges with accumulated items
-   */
-  async execute(input: any): Promise<void> {
-    try {
-      // Mark the node as running
-      this.context.markNodeRunning(this.id);
-      
-      // Store the input for reference
-      this.input = structuredClone(input);
-      
-      // Process the input (add to accumulator and generate merged result)
-      const result = await this.process(input);
-      
-      // Store the result in the execution context
-      this.context.storeOutput(this.id, result);
-      
-      // Mark node as successful
-      this.context.markNodeSuccess(this.id, result);
-      
-      // Get child nodes and propagate the merged result
-      const childNodes = this.getChildNodes();
-      
-      if (childNodes.length > 0) {
-        this.context.log(`MergerNode(${this.id}): Propagating merged result to ${childNodes.length} child nodes`);
-        
-        // Execute each child with the merged result
-        for (const child of childNodes) {
-          await child.execute(result);
-        }
-      } else {
-        this.context.log(`MergerNode(${this.id}): No child nodes to execute with merged result`);
-      }
-    } catch (error) {
-      this.context.log(`MergerNode(${this.id}): Execution failed: ${error}`);
-      this.context.markNodeError(this.id, String(error));
-      throw error;
-    }
   }
 } 

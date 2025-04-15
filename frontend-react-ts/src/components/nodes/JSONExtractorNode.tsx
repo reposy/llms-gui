@@ -3,14 +3,19 @@ import { Handle, Position, useReactFlow } from 'reactflow';
 import { JSONExtractorNodeData } from '../../types/nodes';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { executeFlow } from '../../store/useExecutionController';
 import { VIEW_MODES } from '../../store/viewModeStore';
+import { NodeStatus } from '../../types/execution';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useStore as useViewModeStore, useNodeViewMode } from '../../store/viewModeStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { v4 as uuidv4 } from 'uuid';
+import { FlowExecutionContext } from '../../core/FlowExecutionContext';
+import { NodeFactory } from '../../core/NodeFactory';
+import { registerAllNodeTypes } from '../../core/NodeRegistry';
+import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 
 interface Props {
   id: string;
@@ -21,9 +26,7 @@ interface Props {
 
 const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   // Use updateNode from Zustand store
-  const { updateNode } = useFlowStructureStore(state => ({
-    updateNode: state.updateNode
-  }));
+  const { updateNode, nodes, edges } = useFlowStructureStore();
   
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
@@ -67,8 +70,52 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
   }, [data, updateNode]);
 
   const handleRun = useCallback(() => {
-    executeFlow(id);
-  }, [id]);
+    // Create execution context
+    const executionId = `exec-${uuidv4()}`;
+    const executionContext = new FlowExecutionContext(executionId);
+    
+    // Set trigger node
+    executionContext.setTriggerNode(id);
+    
+    console.log(`[JSONExtractorNode] Starting execution for node ${id}`);
+    
+    // Build execution graph
+    buildExecutionGraphFromFlow(nodes, edges);
+    const executionGraph = getExecutionGraph();
+    
+    // Create node factory
+    const nodeFactory = new NodeFactory();
+    registerAllNodeTypes(nodeFactory);
+    
+    // Find the node data
+    const node = nodes.find(n => n.id === id);
+    if (!node) {
+      console.error(`[JSONExtractorNode] Node ${id} not found.`);
+      return;
+    }
+    
+    // Create the node instance
+    const nodeInstance = nodeFactory.create(
+      id,
+      node.type as string,
+      node.data,
+      executionContext
+    );
+    
+    // Attach graph structure reference to the node property
+    nodeInstance.property = {
+      ...nodeInstance.property,
+      nodes,
+      edges,
+      nodeFactory,
+      executionGraph
+    };
+    
+    // Execute the node
+    nodeInstance.process({}).catch(error => {
+      console.error(`[JSONExtractorNode] Error executing node ${id}:`, error);
+    });
+  }, [id, nodes, edges]);
 
   const toggleNodeView = () => {
     setNodeViewMode({ 
@@ -90,9 +137,9 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
   }, [globalViewMode, getZoom, id, setNodeViewMode]);
 
   // Safe access to node state status - converting to a type that NodeStatusIndicator accepts
-  const nodeStatus = nodeState?.status === 'skipped' 
-    ? 'idle' // Map 'skipped' to 'idle' as it's not in the accepted types
-    : (nodeState?.status || 'idle');
+  const nodeStatus: NodeStatus = (nodeState?.status && ['idle', 'running', 'success', 'error'].includes(nodeState.status)) 
+    ? nodeState.status as NodeStatus
+    : 'idle';
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -100,7 +147,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
         <Handle
           type="target"
           position={Position.Left}
-          id={`${id}-target`}
+          id="target"
           isConnectable={isConnectable}
           style={{
             background: '#a855f7',
@@ -117,7 +164,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
         <Handle
           type="source"
           position={Position.Right}
-          id={`${id}-source`}
+          id="source"
           isConnectable={isConnectable}
           style={{
             background: '#a855f7',

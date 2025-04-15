@@ -76,7 +76,7 @@ export class FlowRunner {
         };
         
         // Execute the node with an empty input object
-        await nodeInstance.execute({});
+        await nodeInstance.process({});
         
         context.log(`Completed execution of root node: ${rootNodeId}`);
       } catch (error) {

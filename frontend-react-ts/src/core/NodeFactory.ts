@@ -60,10 +60,16 @@ export class NodeFactory {
     property: any, 
     context: FlowExecutionContext, 
     iterationIndex: number, 
-    item: any
+    item: any,
+    totalItems: number
   ): Node {
     // Create an iteration-specific context
-    const iterContext = context.createIterationContext(iterationIndex, item);
+    const iterContext = new FlowExecutionContext(context.executionId);
+    iterContext.setIterationContext({
+      item: item,
+      index: iterationIndex,
+      total: totalItems
+    });
     
     console.log(`[NodeFactory] Creating iteration node ${id} for item ${iterationIndex + 1}`);
     
@@ -76,12 +82,8 @@ export class NodeFactory {
  * Default passthrough node used when no specific implementation is available
  */
 class PassthroughNode extends Node {
-  process(input: any): Promise<any> {
+  execute(input: any): Promise<any> {
     this.context.log(`PassthroughNode(${this.id}): No specific implementation for this type, passing through input`);
     return Promise.resolve(input);
-  }
-  
-  getChildNodes(): Node[] {
-    return [];
   }
 }

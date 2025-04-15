@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import type { Node } from 'reactflow';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { executeFlowForGroup, useExecutionState } from '../../store/useExecutionController';
+import { useExecutionController, useExecutionState } from '../../store/useExecutionController';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { GroupExecutionItemResult } from '../../types/execution';
 
@@ -43,7 +43,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   const handleRunGroup = useCallback(() => {
     if (!selectedNodeId) return;
     console.log("Triggering execution for group:", selectedNodeId);
-    executeFlowForGroup(selectedNodeId);
+    useExecutionController.getState().executeFlowForGroup(selectedNodeId);
   }, [selectedNodeId]);
 
   // Handle JSON export

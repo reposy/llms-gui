@@ -13,7 +13,7 @@ interface ApiNodeProperty {
 export class ApiNode extends Node {
   declare property: ApiNodeProperty;
 
-  async process(input: any): Promise<any> {
+  async execute(input: any): Promise<any> {
     this.context.log(`ApiNode(${this.id}): Calling ${this.property.method} ${this.property.url}`);
 
     try {

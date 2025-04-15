@@ -29,52 +29,12 @@ export class OutputNode extends Node {
   declare property: OutputNodeProperty;
   
   /**
-   * Execute this node with the given input and propagate to child nodes
-   * This overrides the base Node.execute method to ensure proper UI status updates
-   * @param input The input value to process
+   * Execute the node's specific logic
+   * Formats the input according to the output node's configuration
+   * @param input The input to execute
+   * @returns The formatted output
    */
-  async execute(input: any): Promise<void> {
-    try {
-      // Mark the node as running
-      this.context.markNodeRunning(this.id);
-      
-      // Process the input according to this node's specific logic
-      const result = await this.process(input);
-      
-      // Store the result in the execution context
-      this.context.storeOutput(this.id, result);
-      
-      // Mark node as successful
-      this.context.markNodeSuccess(this.id, result);
-      
-      // Get all child nodes and execute them with the result
-      const childNodes = this.getChildNodes();
-      
-      if (childNodes.length > 0) {
-        console.log(`OutputNode(${this.id}): Propagating result to ${childNodes.length} child nodes`);
-        
-        // Execute each child with the result
-        for (const child of childNodes) {
-          await child.execute(result);
-        }
-      } else {
-        console.log(`OutputNode(${this.id}): No child nodes to execute`);
-      }
-    } catch (error) {
-      console.error(`OutputNode(${this.id}): Execution failed: ${error}`);
-      this.context.markNodeError(this.id, String(error));
-      throw error;
-    }
-  }
-  
-  /**
-   * Process the input according to the output node's configuration
-   * Saves the input to the data field and formats it according to the format field
-   */
-  async process(input: any): Promise<any> {
-    // Mark the node as running
-    this.context.markNodeRunning(this.id);
-    
+  async execute(input: any): Promise<any> {    
     console.log(`OutputNode(${this.id}): Processing output with format ${this.property.format}`);
     
     try {
@@ -92,9 +52,6 @@ export class OutputNode extends Node {
         setNodeContent(this.id, contentUpdate, true);
         console.log(`OutputNode(${this.id}): Set fallback message in UI`);
         
-        // Mark node as successful with the fallback message
-        this.context.markNodeSuccess(this.id, fallbackMessage);
-        
         return fallbackMessage;
       }
       
@@ -111,9 +68,6 @@ export class OutputNode extends Node {
         
         setNodeContent(this.id, contentUpdate, true);
         console.log(`OutputNode(${this.id}): Set fallback message in UI`);
-        
-        // Mark node as successful with the fallback message
-        this.context.markNodeSuccess(this.id, fallbackMessage);
         
         return fallbackMessage;
       }
@@ -160,32 +114,10 @@ export class OutputNode extends Node {
       setNodeContent(this.id, contentUpdate, true);
       console.log(`OutputNode(${this.id}): Updated UI content (length: ${formattedOutput?.length || 0})`);
       
-      // Store the result in the execution context
-      this.context.storeOutput(this.id, formattedOutput);
-      
-      // Mark node as successful
-      this.context.markNodeSuccess(this.id, formattedOutput);
-      
-      // Get all child nodes and process them with the result
-      const childNodes = this.getChildNodes();
-      
-      if (childNodes.length > 0) {
-        console.log(`OutputNode(${this.id}): Propagating result to ${childNodes.length} child nodes`);
-        
-        // Process each child with the result
-        for (const child of childNodes) {
-          await child.process(formattedOutput);
-        }
-      } else {
-        console.log(`OutputNode(${this.id}): No child nodes to process`);
-      }
-      
-      // Return the formatted output for potential further processing
       return formattedOutput;
     } catch (error) {
-      // Mark node as error
+      // Log error but allow parent's process method to handle error marking
       console.error(`OutputNode(${this.id}): Error processing output: ${error}`);
-      this.context.markNodeError(this.id, String(error));
       throw error;
     }
   }

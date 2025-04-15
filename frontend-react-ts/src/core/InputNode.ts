@@ -19,6 +19,18 @@ export class InputNode extends Node {
   declare property: InputNodeProperty;
   
   /**
+   * Execute the node's specific logic
+   * Implements the abstract method from Node
+   * @param input The input to execute
+   * @returns The items from this input node
+   */
+  async execute(input: any): Promise<any> {
+    // For InputNode, we get the items but don't propagate to children
+    // The process method overrides the parent and handles propagation
+    return this.getItems();
+  }
+
+  /**
    * Retrieves the items from node data, content store, or text
    * @returns Array of items to process
    */
@@ -109,11 +121,14 @@ export class InputNode extends Node {
           this.context.log(`InputNode(${this.id}): Processing item ${i+1}/${items.length} in foreach mode`);
           
           // Create a separate execution context for each iteration
-          const iterContext = this.context.createIterationContext(i, items.length);
+          // Use setIterationContext directly
+          this.context.setIterationContext({
+            index: i,
+            total: items.length,
+            item: item
+          });
           
           for (const child of children) {
-            // Update child's context with the iteration context
-            child.context = iterContext;
             this.context.log(`InputNode(${this.id}): Executing child node ${child.id} with item ${i+1}`);
             await child.process(item);
           }
@@ -137,4 +152,4 @@ export class InputNode extends Node {
       throw error;
     }
   }
-} 
+}

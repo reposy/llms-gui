@@ -1,11 +1,11 @@
 import { NodeFactory } from './NodeFactory';
-import { ApiNode } from '../nodes/ApiNode';
-import { MergerNode } from '../nodes/MergerNode';
-import { GroupNode } from '../nodes/GroupNode';
-import { InputNode } from '../nodes/InputNode';
-import { OutputNode } from '../nodes/OutputNode';
-import { LlmNode } from '../nodes/LlmNode';
-import { ConditionalNode } from '../nodes/ConditionalNode';
+import { ApiNode } from './ApiNode';
+import { MergerNode } from './MergerNode';
+import { GroupNode } from './GroupNode';
+import { InputNode } from './InputNode';
+import { OutputNode } from './OutputNode';
+import { LlmNode } from './LlmNode';
+import { ConditionalNode } from './ConditionalNode';
 
 /**
  * Register all node types with the factory
