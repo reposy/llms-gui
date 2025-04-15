@@ -2,7 +2,7 @@ import { Node } from '../core/Node';
 import { getOutgoingConnections } from '../utils/flowUtils';
 
 interface ApiNodeProperty {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   url: string;
   headers: Record<string, string>;
   // Reference to flow structure (will be provided by FlowRunner)

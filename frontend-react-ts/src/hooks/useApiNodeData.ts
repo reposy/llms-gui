@@ -25,9 +25,8 @@ export const useApiNodeData = ({
   const url = content.url || '';
   const method = content.method || 'GET';
   const headers = content.headers || {};
-  const params = content.params || {};
-  const body = content.body || '';
   const queryParams = content.queryParams || {};
+  const body = content.body || '';
   const useInputAsBody = content.useInputAsBody || false;
   const contentType = content.contentType || 'application/json';
   const bodyFormat = content.bodyFormat || 'raw';
@@ -186,8 +185,8 @@ export const useApiNodeData = ({
     url,
     method,
     headers,
-    params,
     queryParams,
+    body,
     useInputAsBody,
     contentType,
     bodyFormat,
