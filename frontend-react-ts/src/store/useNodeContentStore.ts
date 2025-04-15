@@ -21,6 +21,7 @@ import { Node as ReactFlowNode } from 'reactflow';
 import { isEqual } from 'lodash';
 import { useFlowStructureStore } from './useFlowStructureStore';
 import { recentlyPastedNodes, explicitlyInitializedNodeIds } from '../utils/clipboardUtils';
+import { createIDBStorage } from '../utils/idbStorage';
 
 // Base content type for all nodes
 export interface BaseNodeContent {
@@ -728,9 +729,12 @@ export const useNodeContentStore = create<NodeContentStore>()(
     })),
     {
       name: 'node-content-storage',
-      partialize: (state) => ({
-        nodeContents: state.nodeContents
-      }),
+      storage: createIDBStorage<{ nodeContents: Record<string, NodeContent> }>(),
+      partialize: (state) => {
+        return {
+          nodeContents: state.nodeContents
+        };
+      },
       version: 1
     }
   )
