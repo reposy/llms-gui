@@ -1,26 +1,33 @@
 import React, { ChangeEvent } from 'react';
 
 interface InputFileUploaderProps {
-  onUpload: (e: ChangeEvent<HTMLInputElement>) => void;
+  onUpload: (files: FileList | null) => void;
   nodeId?: string;
   buttonLabel?: string;
+  acceptedFileTypes?: string;
 }
 
 export const InputFileUploader: React.FC<InputFileUploaderProps> = ({
   onUpload,
   nodeId,
-  buttonLabel = '+ Add Files'
+  buttonLabel = '+ Add Files',
+  acceptedFileTypes = "image/*,text/*,.txt,.csv,.md,.json,.js,.ts,.html,.css,.xml,.yml,.yaml"
 }) => {
   const inputId = nodeId ? `file-upload-${nodeId}` : 'file-upload';
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    onUpload(e.target.files);
+  };
 
   return (
     <div>
       <input
         type="file"
         id={inputId}
-        onChange={onUpload}
+        onChange={handleChange}
         className="hidden"
         multiple
+        accept={acceptedFileTypes}
       />
       
       <label

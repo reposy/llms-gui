@@ -17,6 +17,7 @@
     "idb": "^8.0.2",
     "jsonpath": "^1.1.1",
     "lodash": "^4.17.21",
+    "ollama": "^0.5.14",
     "re-resizable": "^6.11.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

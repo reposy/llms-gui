@@ -11,6 +11,7 @@ import { InputItemList } from './input/InputItemList';
 import { InputSummaryBar } from './input/InputSummaryBar';
 import { InputModeToggle } from './input/InputModeToggle';
 import { v4 as uuidv4 } from 'uuid';
+import { isImageFile, isTextFile, isUnsupportedFile, convertFileToBase64, readTextFile } from '../utils/files';
 
 // Inline type definitions
 interface InputNodeData {
@@ -25,6 +26,7 @@ interface InputItem {
   name?: string;
   content?: string;
   size?: number;
+  mime?: string;
 }
 
 interface NodeState {
@@ -92,30 +94,86 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isC
     );
   };
 
-  const handleFileChange = (files: FileList | null) => {
+  const handleFileChange = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    
+    // Create an array to collect processed items
+    const processedItems: InputItem[] = [];
+    
+    // Process each file asynchronously
+    const processPromises = Array.from(files).map(async (file) => {
+      try {
+        // Check if file type is unsupported
+        if (isUnsupportedFile(file)) {
+          console.warn(`[InputNode] Ignoring unsupported file: ${file.name} (${file.type})`);
+          return null; // Skip this file
+        }
+        
+        const newItem: InputItem = {
+          id: `item-${Date.now()}-${uuidv4()}`,
+          type: 'file',
+          name: file.name,
+          size: file.size,
+          mime: file.type,
+        };
+        
+        // Process based on file type
+        if (isImageFile(file)) {
+          // Handle image file - convert to base64 data URL
+          try {
+            const dataUrl = await convertFileToBase64(file, true); // true = return data URL
+            newItem.content = dataUrl;
+            console.log(`[InputNode] Added image: ${file.name} (${file.type})`);
+            return newItem;
+          } catch (error) {
+            console.warn(`[InputNode] Failed to convert image to base64: ${file.name}`, error);
+            return null;
+          }
+        } else if (isTextFile(file)) {
+          // Handle text file - extract text content
+          try {
+            const textContent = await readTextFile(file);
+            newItem.content = textContent;
+            console.log(`[InputNode] Added text file: ${file.name} (${file.type})`);
+            return newItem;
+          } catch (error) {
+            console.warn(`[InputNode] Failed to read text file: ${file.name}`, error);
+            return null;
+          }
+        } else {
+          // Unknown but not explicitly unsupported, we'll try to read as text
+          try {
+            console.warn(`[InputNode] Treating unknown file type as text: ${file.name} (${file.type})`);
+            const textContent = await readTextFile(file);
+            newItem.content = textContent;
+            return newItem;
+          } catch (error) {
+            console.warn(`[InputNode] Failed to read file: ${file.name}`, error);
+            return null;
+          }
+        }
+      } catch (error) {
+        console.warn(`[InputNode] Error processing file: ${file.name}`, error);
+        return null;
+      }
+    });
+    
+    // Wait for all file processing to complete
+    const results = await Promise.all(processPromises);
+    
+    // Filter out null results (files that were ignored or failed to process)
+    const validItems = results.filter((item): item is InputItem => item !== null);
     
     // Update node data with new file items
     setNodes((nodes) => 
       nodes.map((node) => {
         if (node.id === id) {
-          const newItems = [...(node.data.items || [])];
-          
-          for (let i = 0; i < files.length; i++) {
-            newItems.push({
-              id: `item-${Date.now()}-${i}`,
-              type: 'file',
-              name: files[i].name,
-              size: files[i].size,
-              // In a real implementation, file content would be handled differently
-            });
-          }
-          
+          const existingItems = node.data.items || [];
           return {
             ...node,
             data: { 
               ...node.data, 
-              items: newItems
+              items: [...existingItems, ...validItems]
             }
           };
         }
@@ -302,14 +360,12 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isC
           {/* File Input */}
           <div>
             <div className="mb-1 text-xs font-medium text-gray-500">Add Files</div>
-            <div className="flex flex-col space-y-2">
-              <input
-                type="file"
-                onChange={(e) => handleFileChange(e.target.files)}
-                className="text-xs"
-                multiple
-              />
-            </div>
+            <InputFileUploader
+              onUpload={handleFileChange}
+              nodeId={id}
+              buttonLabel="+ Add Files"
+              acceptedFileTypes="image/*,text/*,.txt,.csv,.md,.json,.js,.ts,.html,.css,.xml,.yml,.yaml"
+            />
           </div>
 
           {/* Items Summary */}
@@ -333,9 +389,22 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isC
             {items.length > 0 && (
               <div className="items-preview">
                 <InputItemList 
-                  items={items.map((item: InputItem) => 
-                    item.type === 'file' ? `📄 ${item.name || ''}` : (item.content || '')
-                  )} 
+                  items={items.map((item: InputItem) => {
+                    if (item.type === 'file') {
+                      // For image files
+                      if (item.mime?.startsWith('image/')) {
+                        return `🖼️ ${item.name || ''} (${item.mime})`;
+                      }
+                      // For text files
+                      if (item.mime?.startsWith('text/') || item.name?.match(/\.(txt|md|csv|json|js|ts|html|css|xml|yml|yaml)$/i)) {
+                        return `📄 ${item.name || ''} (${(item.content?.toString() || '').substring(0, 20)}${(item.content?.toString() || '').length > 20 ? '...' : ''})`;
+                      }
+                      // Default file display
+                      return `📄 ${item.name || ''} (${item.mime || 'unknown'})`;
+                    }
+                    // For text items
+                    return item.content || '';
+                  })} 
                   onDelete={(index: number) => handleDeleteItem(items[index].id)}
                   showClear={items.length > 0}
                   onClear={handleClearItems}
