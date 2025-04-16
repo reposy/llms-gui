@@ -2,28 +2,30 @@ import React from 'react';
 import clsx from 'clsx';
 
 interface InputModeToggleProps {
-  iterateEachRow: boolean;
+  isForeachMode: boolean;
   onToggle: () => void;
+  className?: string;
   disabled?: boolean;
 }
 
 export const InputModeToggle: React.FC<InputModeToggleProps> = ({
-  iterateEachRow,
+  isForeachMode,
   onToggle,
+  className,
   disabled = false
 }) => {
   return (
-    <div className="mb-4 border rounded-lg p-3 bg-gray-50">
+    <div className={clsx('mb-4 border rounded-lg p-3 bg-gray-50', className)}>
       <p className="text-sm font-medium mb-2">Execution Mode</p>
       
       <div className="flex">
         <button
           type="button"
           onClick={onToggle}
-          disabled={disabled || !iterateEachRow}
+          disabled={disabled || !isForeachMode}
           className={clsx(
             'flex-1 px-3 py-1.5 text-xs transition rounded-l-md',
-            !iterateEachRow 
+            !isForeachMode 
               ? 'bg-blue-500 text-white font-medium' 
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           )}
@@ -33,10 +35,10 @@ export const InputModeToggle: React.FC<InputModeToggleProps> = ({
         <button
           type="button"
           onClick={onToggle}
-          disabled={disabled || iterateEachRow}
+          disabled={disabled || isForeachMode}
           className={clsx(
             'flex-1 px-3 py-1.5 text-xs transition rounded-r-md',
-            iterateEachRow 
+            isForeachMode 
               ? 'bg-blue-500 text-white font-medium' 
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           )}
@@ -46,7 +48,7 @@ export const InputModeToggle: React.FC<InputModeToggleProps> = ({
       </div>
       
       <div className="mt-2 text-xs text-gray-600">
-        {iterateEachRow ? (
+        {isForeachMode ? (
           <div className="flex">
             <div className="w-5 text-blue-500 mr-1">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -73,7 +75,7 @@ export const InputModeToggle: React.FC<InputModeToggleProps> = ({
         )}
       </div>
       
-      {iterateEachRow && (
+      {isForeachMode && (
         <div className="mt-2 bg-blue-50 p-2 rounded text-xs">
           <div className="font-medium text-blue-700 mb-1">Execution Tracking</div>
           <p className="text-blue-600">

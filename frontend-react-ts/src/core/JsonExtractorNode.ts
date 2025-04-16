@@ -23,16 +23,29 @@ export class JsonExtractorNode extends Node {
   declare property: JsonExtractorNodeProperty;
 
   /**
+   * Constructor for JsonExtractorNode
+   */
+  constructor(
+    id: string,
+    property: Record<string, any> = {},
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'json-extractor', property, context);
+    // Ensure path has a default value
+    this.property.path = property.path || '';
+  }
+
+  /**
    * Execute the node's specific logic
    * @param input The input JSON to process
    * @returns The extracted value or null if not found
    */
   async execute(input: any): Promise<any> {
-    this.context.log(`JsonExtractorNode(${this.id}): Processing with path "${this.property.path}"`);
+    this.context?.log(`JsonExtractorNode(${this.id}): Processing with path "${this.property.path}"`);
     
     // Handle null or undefined input
     if (input === null || input === undefined) {
-      this.context.log(`JsonExtractorNode(${this.id}): Input is ${input}, cannot extract value`);
+      this.context?.log(`JsonExtractorNode(${this.id}): Input is ${input}, cannot extract value`);
       return null;
     }
 
@@ -44,14 +57,14 @@ export class JsonExtractorNode extends Node {
       const path = this.property.path || '';
       
       if (!path) {
-        this.context.log(`JsonExtractorNode(${this.id}): No path specified, returning input as-is`);
+        this.context?.log(`JsonExtractorNode(${this.id}): No path specified, returning input as-is`);
         return safeInput;
       }
 
       // Split the path by dots to get individual keys
       const pathParts = path.split('.');
       
-      this.context.log(`JsonExtractorNode(${this.id}): Extracting path ${pathParts.join(' → ')}`);
+      this.context?.log(`JsonExtractorNode(${this.id}): Extracting path ${pathParts.join(' → ')}`);
       
       // Extract the nested value by traversing the path
       let currentValue = safeInput;
@@ -69,7 +82,7 @@ export class JsonExtractorNode extends Node {
           
           // First access the array
           if (currentValue[arrayName] === undefined || currentValue[arrayName] === null) {
-            this.context.log(`JsonExtractorNode(${this.id}): Path part '${arrayName}' not found`);
+            this.context?.log(`JsonExtractorNode(${this.id}): Path part '${arrayName}' not found`);
             return null;
           }
           
@@ -77,30 +90,30 @@ export class JsonExtractorNode extends Node {
           
           // Then access the index if it's an array
           if (!Array.isArray(currentValue)) {
-            this.context.log(`JsonExtractorNode(${this.id}): '${arrayName}' is not an array`);
+            this.context?.log(`JsonExtractorNode(${this.id}): '${arrayName}' is not an array`);
             return null;
           }
           
           if (index >= currentValue.length) {
-            this.context.log(`JsonExtractorNode(${this.id}): Array index ${index} out of bounds`);
+            this.context?.log(`JsonExtractorNode(${this.id}): Array index ${index} out of bounds`);
             return null;
           }
           
           currentValue = currentValue[index];
-          this.context.log(`JsonExtractorNode(${this.id}): Accessed array element ${arrayName}[${index}]`);
+          this.context?.log(`JsonExtractorNode(${this.id}): Accessed array element ${arrayName}[${index}]`);
         } else {
           // Regular object property access
           if (currentValue[part] === undefined || currentValue[part] === null) {
-            this.context.log(`JsonExtractorNode(${this.id}): Path part '${part}' not found or null`);
+            this.context?.log(`JsonExtractorNode(${this.id}): Path part '${part}' not found or null`);
             return null;
           }
           
           currentValue = currentValue[part];
-          this.context.log(`JsonExtractorNode(${this.id}): Accessed property '${part}'`);
+          this.context?.log(`JsonExtractorNode(${this.id}): Accessed property '${part}'`);
         }
       }
       
-      this.context.log(`JsonExtractorNode(${this.id}): Successfully extracted value: ${
+      this.context?.log(`JsonExtractorNode(${this.id}): Successfully extracted value: ${
         typeof currentValue === 'object' 
           ? JSON.stringify(currentValue) 
           : currentValue
@@ -108,7 +121,7 @@ export class JsonExtractorNode extends Node {
       
       return currentValue;
     } catch (error) {
-      this.context.log(`JsonExtractorNode(${this.id}): Error extracting value - ${error}`);
+      this.context?.log(`JsonExtractorNode(${this.id}): Error extracting value - ${error}`);
       return null;
     }
   }

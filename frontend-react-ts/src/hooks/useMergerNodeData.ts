@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { useNodeContent, MergerNodeContent } from '../store/useNodeContentStore';
-import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage Merger node state and operations using Zustand store.
@@ -18,13 +17,13 @@ export const useMergerNodeData = ({
     isContentDirty
   } = useNodeContent(nodeId);
 
-  // Cast the general content to MergerNodeContent type
-  const content = generalContent as MergerNodeContent;
-
-  // Get accumulated items from content
-  const items = content.items || [];
+  // Cast the general content to MergerNodeContent type with safe fallbacks
+  const content = generalContent as MergerNodeContent || {};
+  
+  // Get accumulated items from content with safe defaults
+  const items = content?.items || [];
   const itemCount = items.length;
-  const label = content.label || 'Merger Node';
+  const label = content?.label || 'Merger Node';
 
   /**
    * Add a new item to the accumulated items
@@ -32,12 +31,6 @@ export const useMergerNodeData = ({
   const addItem = useCallback((item: any) => {
     const currentItems = items || [];
     const newItems = [...currentItems, item];
-    
-    // Skip update if no actual changes using deep equality
-    if (isEqual(newItems, currentItems)) {
-      console.log(`[MergerNode ${nodeId}] Skipping item add - no change (deep equal)`);
-      return;
-    }
     
     console.log(`[MergerNode ${nodeId}] Adding item to accumulator. New count: ${newItems.length}`);
     setContent({ items: newItems });
@@ -47,12 +40,6 @@ export const useMergerNodeData = ({
    * Reset all accumulated items
    */
   const resetItems = useCallback(() => {
-    // Skip update if already empty
-    if (items.length === 0) {
-      console.log(`[MergerNode ${nodeId}] Skipping reset - already empty`);
-      return;
-    }
-    
     console.log(`[MergerNode ${nodeId}] Resetting ${items.length} accumulated items`);
     setContent({ items: [] });
   }, [nodeId, items, setContent]);

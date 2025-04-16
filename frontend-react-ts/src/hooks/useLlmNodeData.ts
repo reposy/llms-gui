@@ -1,11 +1,9 @@
-import { useCallback, useMemo, ChangeEvent } from 'react';
+import { useCallback } from 'react';
 import { useNodeContent, LLMNodeContent } from '../store/useNodeContentStore';
-import { isEqual } from 'lodash';
 import { LLMMode } from '../api/llm';
 
 /**
- * Custom hook to manage LLM node state and operations using Zustand store.
- * Centralizes logic for both LLMNode and LLMConfig components
+ * Simplified hook for LLM node data - minimal implementation that just connects to the store
  */
 export const useLlmNodeData = ({ 
   nodeId
@@ -31,169 +29,79 @@ export const useLlmNodeData = ({
   const openaiApiKey = content.openaiApiKey || '';
   const mode = content.mode || 'text';
   const label = content.label || 'LLM Node';
-  const responseContent = content.content || '';  // Added to expose the LLM response
+  const responseContent = content.content || '';
 
   /**
-   * Handle prompt change with deep equality check
+   * Handle prompt change
    */
-  const handlePromptChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const newPrompt = event.target.value;
-    if (isEqual(newPrompt, prompt)) {
-      console.log(`[LLMNode ${nodeId}] Skipping prompt update - no change (deep equal)`);
-      return;
-    }
-    setContent({ prompt: newPrompt });
-  }, [nodeId, prompt, setContent]);
+  const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent({ prompt: event.target.value });
+  }, [setContent]);
 
   /**
-   * Handle model change with deep equality check
+   * Handle model change
    */
-  const handleModelChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newModel = event.target.value;
-    if (isEqual(newModel, model)) {
-      console.log(`[LLMNode ${nodeId}] Skipping model update - no change (deep equal)`);
-      return;
-    }
-    setContent({ model: newModel });
-  }, [nodeId, model, setContent]);
+  const handleModelChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setContent({ model: event.target.value });
+  }, [setContent]);
 
   /**
-   * Handle temperature change with deep equality check
+   * Handle temperature change
    */
-  const handleTemperatureChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newTemperature = parseFloat(event.target.value);
-    if (isEqual(newTemperature, temperature)) {
-      console.log(`[LLMNode ${nodeId}] Skipping temperature update - no change (deep equal)`);
-      return;
-    }
-    setContent({ temperature: newTemperature });
-  }, [nodeId, temperature, setContent]);
+  const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setContent({ temperature: parseFloat(event.target.value) });
+  }, [setContent]);
 
   /**
-   * Set temperature directly with deep equality check
+   * Set temperature directly
    */
   const setTemperature = useCallback((newTemperature: number) => {
-    if (isEqual(newTemperature, temperature)) {
-      console.log(`[LLMNode ${nodeId}] Skipping temperature update - no change (deep equal)`);
-      return;
-    }
     setContent({ temperature: newTemperature });
-  }, [nodeId, temperature, setContent]);
+  }, [setContent]);
 
   /**
-   * Handle provider change with deep equality check
+   * Handle provider change
    */
-  const handleProviderChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const newProvider = event.target.value as 'ollama' | 'openai';
-    if (isEqual(newProvider, provider)) {
-      console.log(`[LLMNode ${nodeId}] Skipping provider update - no change (deep equal)`);
-      return;
-    }
-    setContent({ provider: newProvider });
-  }, [nodeId, provider, setContent]);
+  const handleProviderChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    setContent({ provider: event.target.value as 'ollama' | 'openai' });
+  }, [setContent]);
 
   /**
-   * Set provider directly with deep equality check
+   * Set provider directly
    */
   const setProvider = useCallback((newProvider: 'ollama' | 'openai') => {
-    if (isEqual(newProvider, provider)) {
-      console.log(`[LLMNode ${nodeId}] Skipping provider update - no change (deep equal)`);
-      return;
-    }
     setContent({ provider: newProvider });
-  }, [nodeId, provider, setContent]);
+  }, [setContent]);
 
   /**
-   * Handle Ollama URL change with deep equality check
+   * Handle Ollama URL change
    */
-  const handleOllamaUrlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newUrl = event.target.value;
-    if (isEqual(newUrl, ollamaUrl)) {
-      console.log(`[LLMNode ${nodeId}] Skipping URL update - no change (deep equal)`);
-      return;
-    }
-    setContent({ ollamaUrl: newUrl });
-  }, [nodeId, ollamaUrl, setContent]);
+  const handleOllamaUrlChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setContent({ ollamaUrl: event.target.value });
+  }, [setContent]);
 
   /**
-   * Handle OpenAI API key change with deep equality check
+   * Handle OpenAI API key change
    */
-  const handleOpenaiApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const newApiKey = event.target.value;
-    if (isEqual(newApiKey, openaiApiKey)) {
-      console.log(`[LLMNode ${nodeId}] Skipping API key update - no change (deep equal)`);
-      return;
-    }
-    setContent({ openaiApiKey: newApiKey });
-  }, [nodeId, openaiApiKey, setContent]);
+  const handleOpenaiApiKeyChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setContent({ openaiApiKey: event.target.value });
+  }, [setContent]);
 
   /**
-   * Handle mode change with deep equality check
+   * Handle mode change
    */
-  const handleModeChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const newMode = event.target.value as LLMMode;
-    if (isEqual(newMode, mode)) {
-      console.log(`[LLMNode ${nodeId}] Skipping mode update - no change (deep equal)`);
-      return;
-    }
-    setContent({ mode: newMode });
-  }, [nodeId, mode, setContent]);
+  const handleModeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    setContent({ mode: event.target.value as LLMMode });
+  }, [setContent]);
 
   /**
-   * Set mode directly with deep equality check
+   * Set mode directly
    */
   const setMode = useCallback((newMode: LLMMode) => {
-    if (isEqual(newMode, mode)) {
-      console.log(`[LLMNode ${nodeId}] Skipping mode update - no change (deep equal)`);
-      return;
-    }
     setContent({ mode: newMode });
-  }, [nodeId, mode, setContent]);
-
-  /**
-   * Update multiple properties at once with deep equality check
-   */
-  const updateLlmContent = useCallback((updates: Partial<LLMNodeContent>) => {
-    // Special handling for content updates - always update content without equality checks
-    const hasContentUpdate = 'content' in updates;
-    
-    if (hasContentUpdate) {
-      console.log(`[LLMNode ${nodeId}] Content update detected - bypassing equality checks`);
-      setContent(updates);
-      return;
-    }
-    
-    // For non-content updates, proceed with normal equality checks
-    // Skip update if no actual changes using deep equality
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof LLMNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[LLMNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    // Create new content object with updates
-    const newContent = {
-      ...content,
-      ...updates
-    };
-
-    // Final deep equality check against current content
-    if (isEqual(newContent, content)) {
-      console.log(`[LLMNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
-      return;
-    }
-    
-    console.log(`[LLMNode ${nodeId}] Updating content with:`, updates);
-    setContent(updates);
-  }, [nodeId, content, setContent]);
+  }, [setContent]);
 
   return {
-    // Data
-    content,
     prompt,
     model,
     temperature,
@@ -203,9 +111,7 @@ export const useLlmNodeData = ({
     mode,
     label,
     responseContent,
-    isDirty: isContentDirty,
-    
-    // Event handlers
+    isContentDirty,
     handlePromptChange,
     handleModelChange,
     handleTemperatureChange,
@@ -216,6 +122,6 @@ export const useLlmNodeData = ({
     handleOpenaiApiKeyChange,
     handleModeChange,
     setMode,
-    updateLlmContent,
+    setContent
   };
 }; 

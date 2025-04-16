@@ -8,37 +8,47 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: ErrorInfo | null;
 }
 
+/**
+ * 노드 내부 에러를 처리하는 에러 바운더리 컴포넌트
+ * 노드 내부에서 오류가 발생해도 전체 플로우가 중단되지 않게 함
+ */
 class NodeErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null
-  };
-
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
+    };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Node Error:', error);
-    console.error('Error Info:', errorInfo);
+  static getDerivedStateFromError(error: Error): State {
+    return {
+      hasError: true,
+      error,
+      errorInfo: null
+    };
   }
 
-  public render() {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    this.setState({
+      error,
+      errorInfo
+    });
+    
+    console.error(`[NodeError] Error in node ${this.props.nodeId}:`, error, errorInfo);
+  }
+
+  render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="p-4 bg-red-50 border-2 border-red-200 rounded-md w-[350px]">
-          <div className="text-red-600 font-medium mb-2">Node Error</div>
-          <div className="text-sm text-red-500">
-            {this.state.error?.message || 'An unexpected error occurred'}
-          </div>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null })}
-            className="mt-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-          >
-            Try Again
-          </button>
+        <div className="p-4 rounded border border-red-500 bg-red-50 text-red-800">
+          <h3 className="text-lg font-bold">노드 오류 발생</h3>
+          <p className="text-sm">ID: {this.props.nodeId}</p>
+          <p className="text-sm mt-2">{this.state.error?.message}</p>
         </div>
       );
     }

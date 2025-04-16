@@ -2,226 +2,157 @@ import { findNodeById, getOutgoingConnections, getChildNodeIdsFromGraph, GraphNo
 import { FlowExecutionContext } from './FlowExecutionContext';
 
 /**
- * Abstract base class for all node types
- * Each node can process input and propagate results to child nodes
+ * Base Node class that all nodes extend
  */
 export abstract class Node {
-  id: string;
-  input: any;
-  property: any;
-  context: FlowExecutionContext;
+  /**
+   * Node ID
+   */
+  public readonly id: string;
+  
+  /**
+   * Node type (e.g., 'input', 'llm', 'api', 'output', etc.)
+   */
+  public readonly type: string;
 
-  constructor(id: string, property: any, context: FlowExecutionContext) {
+  /**
+   * Node properties (configuration) - to be overridden by subclasses
+   */
+  public property: Record<string, any> = {};
+
+  /**
+   * IDs of child nodes
+   */
+  private childIds: string[] = [];
+
+  /**
+   * Execution context for the node
+   */
+  protected context?: FlowExecutionContext;
+
+  /**
+   * Constructor for the base Node
+   * @param id Node ID
+   * @param type Node type
+   * @param property Node properties
+   * @param context Optional execution context
+   */
+  constructor(
+    id: string, 
+    type: string, 
+    property: Record<string, any> = {},
+    context?: FlowExecutionContext
+  ) {
     this.id = id;
+    this.type = type;
     this.property = property;
     this.context = context;
-    this.input = null;
   }
 
   /**
-   * Main entry point for node execution
-   * This method handles setup, execution, and propagation to child nodes
-   * All node implementations should use this as their primary entry point
-   * @param input The input value to process
-   * @returns The execution result
+   * Set child node IDs
+   * @param childIds Array of child node IDs
    */
-  async process(input: any): Promise<any> {
-    try {
-      // Mark the node as running
-      this.context.markNodeRunning(this.id);
-      
-      // Clone input to avoid side effects
-      this.input = structuredClone(input);
-      
-      // Execute the node's specific logic
-      const result = await this.execute(input);
-      
-      // Store the result in the execution context
-      if (result !== undefined) {
-        this.context.storeOutput(this.id, result);
-      }
-
-      // Mark node as successful
-      this.context.markNodeSuccess(this.id, result);
-      
-      // If result is null or undefined, don't propagate to children
-      if (result === null || result === undefined) {
-        this.context.log(`Node(${this.id}): Result is ${result === null ? 'null' : 'undefined'}, not propagating to children`);
-        return result;
-      }
-      
-      // Get all child nodes and propagate the result
-      const childNodes = this.getChildNodes();
-      
-      if (childNodes.length > 0) {
-        this.context.log(`Node(${this.id}): Propagating result to ${childNodes.length} child nodes`);
-        
-        // Process each child with the result
-        for (const child of childNodes) {
-          await child.process(result);
-        }
-      } else {
-        this.context.log(`Node(${this.id}): No child nodes to process`);
-      }
-      
-      return result;
-    } catch (error) {
-      // Mark this node as failed and log the error
-      this.context.log(`Node(${this.id}): Execution failed: ${error}`);
-      this.context.markNodeError(this.id, String(error));
-      
-      // Re-throw to allow parent nodes to handle the error
-      throw error;
-    }
+  setChildIds(childIds: string[]): void {
+    this.childIds = childIds;
+    this.context?.log(`${this.type}(${this.id}): Set ${childIds.length} child IDs: [${childIds.join(', ')}]`);
   }
 
   /**
-   * Executes the node's specific logic
-   * Each node type must implement this method with its specific functionality
-   * @param input The input value to execute
-   * @returns The execution result
+   * Get child node IDs
+   * @returns Array of child node IDs
    */
-  abstract execute(input: any): Promise<any>;
+  getChildIds(): string[] {
+    return this.childIds;
+  }
 
   /**
-   * Get child nodes that should be executed next
-   * This uses the current edge state to dynamically resolve child nodes
-   * @returns Array of child node objects
+   * Get array of child nodes using the node factory from property
+   * @returns Array of child Node instances
    */
   getChildNodes(): Node[] {
-    // Check if we have an execution graph available - if so, use it for faster child resolution
-    if (this.property.executionGraph && this.property.executionGraph instanceof Map) {
-      this.context.log(`Node(${this.id}): Using execution graph to resolve child nodes`);
-      return this.getChildNodesFromGraph();
-    }
-    
-    // Fallback to direct edge resolution if no graph is available
-    this.context.log(`Node(${this.id}): No execution graph found, using edges to resolve child nodes`);
-    return this.getChildNodesFromEdges();
-  }
-  
-  /**
-   * Get child nodes using the execution graph
-   * This is more efficient for complex flows
-   */
-  private getChildNodesFromGraph(): Node[] {
-    const executionGraph: Map<string, GraphNode> = this.property.executionGraph;
+    // Skip if no factory
     const nodeFactory = this.property.nodeFactory;
-    
-    if (!executionGraph || !nodeFactory) {
-      this.context.log(`Node(${this.id}): Missing execution graph or factory. Cannot resolve children.`);
+    if (!nodeFactory) {
+      this.context?.log(`${this.type}(${this.id}): No node factory found in property`);
       return [];
     }
     
-    // Get child IDs from the graph
-    const childIds = getChildNodeIdsFromGraph(this.id, executionGraph);
-    
-    if (childIds.length === 0) {
-      this.context.log(`Node(${this.id}): No child nodes found in execution graph.`);
-      return [];
+    // If we have nodes and edges in property, use those to determine childIds dynamically
+    if (this.property.nodes && this.property.edges) {
+      this.context?.log(`${this.type}(${this.id}): Using dynamic relationship resolution from edges`);
+      
+      // Get outgoing connections based on the edges
+      const childNodeIds = this.property.edges
+        .filter((edge: any) => edge.source === this.id)
+        .map((edge: any) => edge.target);
+      
+      this.context?.log(`${this.type}(${this.id}): Found ${childNodeIds.length} child nodes from edges: [${childNodeIds.join(', ')}]`);
+      
+      // Create child node instances
+      return childNodeIds
+        .map((childId: string) => {
+          const nodeData = this.property.nodes.find((n: any) => n.id === childId);
+          if (!nodeData) {
+            this.context?.log(`${this.type}(${this.id}): Child node data not found for ${childId}`);
+            return null;
+          }
+          
+          // Create the node instance with the same factory, nodes, edges
+          const node = nodeFactory.create(
+            nodeData.id,
+            nodeData.type,
+            nodeData.data,
+            this.context
+          );
+          
+          // Pass along graph structure to the child node
+          node.property = {
+            ...node.property,
+            nodes: this.property.nodes,
+            edges: this.property.edges,
+            nodeFactory: this.property.nodeFactory
+          };
+          
+          return node;
+        })
+        .filter(Boolean) as Node[];
     }
     
-    this.context.log(`Node(${this.id}): Resolving ${childIds.length} child nodes from graph: ${childIds.join(', ')}`);
-    
-    // Create node instances for all child IDs
-    const childNodes = childIds
+    // Fallback to stored childIds if edges aren't available
+    this.context?.log(`${this.type}(${this.id}): Using stored childIds: [${this.childIds.join(', ')}]`);
+    return this.childIds
       .map(childId => {
-        const childNode = executionGraph.get(childId);
-        if (!childNode) {
-          this.context.log(`Node(${this.id}): Child node ${childId} not found in execution graph`);
-          return null;
+        const node = nodeFactory.getNode(childId);
+        if (!node) {
+          this.context?.log(`${this.type}(${this.id}): Child node ${childId} not found`);
         }
-        
-        try {
-          // Create the node with the same context to maintain execution flow
-          const node = nodeFactory.create(
-            childId,
-            childNode.type,
-            childNode.data,
-            this.context
-          );
-          
-          // Pass along the execution graph to the child
-          node.property = {
-            ...node.property,
-            nodes: this.property.nodes,
-            edges: this.property.edges,
-            nodeFactory: this.property.nodeFactory,
-            executionGraph: this.property.executionGraph
-          };
-          
-          this.context.log(`Node(${this.id}): Successfully created child node ${childId} of type ${childNode.type}`);
-          return node;
-        } catch (error) {
-          this.context.log(`Node(${this.id}): Error creating child node ${childId}: ${error}`);
-          return null;
-        }
+        return node;
       })
-      .filter((node): node is Node => node !== null);
-
-    this.context.log(`Node(${this.id}): Returning ${childNodes.length} child nodes from graph`);
-    return childNodes;
+      .filter(Boolean) as Node[];
   }
-  
+
   /**
-   * Get child nodes directly from the edges
-   * Fallback method when no execution graph is available
+   * Process input through this node and chain through child nodes
+   * This provides common lifecycle management for all nodes
+   * 
+   * @param input The input to process
+   * @returns The final result after all processing
    */
-  private getChildNodesFromEdges(): Node[] {
-    const { nodes, edges, nodeFactory } = this.property;
-    
-    if (!nodes || !edges || !nodeFactory) {
-      this.context.log(`Node(${this.id}): Missing nodes, edges, or factory. Cannot resolve children.`);
-      return [];
+  async process(input: any) {
+    const result = await this.execute(input);
+    if (result === null) return; // null일 경우, 자식 노드 실행 중단
+    for (const child of this.getChildNodes()) {
+      await child.process(result);
     }
-    
-    // Get outgoing connections for this node
-    const outgoingConnections = getOutgoingConnections(this.id, edges);
-    
-    if (outgoingConnections.length === 0) {
-      this.context.log(`Node(${this.id}): No outgoing connections found in edges.`);
-      return [];
-    }
-    
-    this.context.log(`Node(${this.id}): Resolving ${outgoingConnections.length} child nodes from edges: ${outgoingConnections.map(c => c.targetNodeId).join(', ')}`);
-    
-    // Map connection targets to actual nodes
-    const childNodes = outgoingConnections
-      .map(connection => {
-        const targetNode = findNodeById(connection.targetNodeId, nodes);
-        if (!targetNode) {
-          this.context.log(`Node(${this.id}): Target node ${connection.targetNodeId} not found in nodes`);
-          return null;
-        }
-        
-        try {
-          // Create the node with the same context to maintain execution flow
-          const node = nodeFactory.create(
-            targetNode.id,
-            targetNode.type as string,
-            targetNode.data,
-            this.context
-          );
-          
-          // Pass along the structure to the child
-          node.property = {
-            ...node.property,
-            nodes: this.property.nodes,
-            edges: this.property.edges,
-            nodeFactory: this.property.nodeFactory,
-            executionGraph: this.property.executionGraph
-          };
-          
-          this.context.log(`Node(${this.id}): Successfully created child node ${targetNode.id} of type ${targetNode.type}`);
-          return node;
-        } catch (error) {
-          this.context.log(`Node(${this.id}): Error creating child node ${targetNode.id}: ${error}`);
-          return null;
-        }
-      })
-      .filter((node): node is Node => node !== null);
-
-    this.context.log(`Node(${this.id}): Returning ${childNodes.length} child nodes from edges`);
-    return childNodes;
   }
+
+  /**
+   * Execute the core functionality of the node
+   * To be implemented by subclasses
+   * 
+   * @param input The input to process
+   * @returns The processed result
+   */
+  abstract execute(input: any): Promise<any>;
 } 

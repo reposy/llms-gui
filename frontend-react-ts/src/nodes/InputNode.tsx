@@ -1,443 +1,261 @@
-import React from 'react';
-import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
-import clsx from 'clsx';
-import NodeErrorBoundary from './NodeErrorBoundary';
-import { NodeHeader } from './shared/NodeHeader';
-import { NodeBody } from './shared/NodeBody';
-import { NodeFooter } from './shared/NodeFooter';
-import { InputTextManager } from './input/InputTextManager';
-import { InputFileUploader } from './input/InputFileUploader';
+import { useState } from 'react';
+import { Handle, Position } from 'reactflow';
+import { InputFileManager } from './input/InputFileManager';
 import { InputItemList } from './input/InputItemList';
-import { InputSummaryBar } from './input/InputSummaryBar';
+import { InputTextManagerNode } from './input/InputTextManagerNode';
 import { InputModeToggle } from './input/InputModeToggle';
-import { v4 as uuidv4 } from 'uuid';
-import { isImageFile, isTextFile, isUnsupportedFile, convertFileToBase64, readTextFile } from '../utils/files';
+import { InputSummaryBar } from './input/InputSummaryBar';
+import { NodeProps } from '../types/NodeProps';
+import { Node } from '../core/Node';
+import { useNodeContent } from '../store/nodeContents';
+import { InputNodeContent } from '../store/nodeContents/common';
+import { FileLikeObject } from '../types/nodes';
+import { readTextFile, getImageFilePath } from '../utils/files';
+import { FlowExecutionContext } from '../core/FlowExecutionContext';
 
-// Inline type definitions
-interface InputNodeData {
-  label?: string;
-  items?: InputItem[];
-  iterateEachRow?: boolean;
+// InputNode property type
+interface InputNodeProperty {
+  items: string[];
+  iterateEachRow: boolean;
+  nodeFactory?: any;
+  [key: string]: any;
 }
 
-interface InputItem {
-  id: string;
-  type: 'file' | 'text';
-  name?: string;
-  content?: string;
-  size?: number;
-  mime?: string;
-}
+/**
+ * InputNode allows adding text and files as input for the flow
+ */
+export class InputNode extends Node {
+  declare property: InputNodeProperty;
 
-interface NodeState {
-  status?: 'idle' | 'running' | 'success' | 'error';
-  output?: any;
-}
+  constructor(
+    id: string, 
+    property: InputNodeProperty = { items: [], iterateEachRow: false },
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'input', property, context);
+  }
 
-interface ItemCounts {
-  total: number;
-  fileCount: number;
-  textCount: number;
-}
-
-const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isConnectable }) => {
-  // Simplified state management
-  const { setNodes } = useReactFlow();
-  const nodeState: NodeState = { status: 'idle' };
-  const isRunning = nodeState?.status === 'running';
-  
-  // Simplified data
-  const textBuffer = '';
-  const label = data.label || 'Input';
-  const iterateEachRow = data.iterateEachRow || false;
-  const items = data.items || [];
-  
-  // Calculate item counts
-  const itemCounts: ItemCounts = React.useMemo(() => {
-    const fileItems = items.filter(item => item.type === 'file').length;
-    const textItems = items.filter(item => item.type === 'text').length;
-    return {
-      total: items.length,
-      fileCount: fileItems,
-      textCount: textItems
-    };
-  }, [items]);
-
-  // Simplified handlers
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    // In a real implementation, this would update a local state
-  };
-
-  const handleAddText = () => {
-    if (!textBuffer.trim()) return;
+  /**
+   * Execute the input node, handling batch vs foreach logic internally
+   */
+  async execute(input: any): Promise<any> {
+    // Log execution if context is available
+    if (this.context) {
+      this.context.log(`InputNode (${this.id}) executing with ${this.property.items.length} items`);
+    }
     
-    // Update node data with new text item
-    setNodes((nodes) => 
-      nodes.map((node) => {
-        if (node.id === id) {
-          const newItems = [...(node.data.items || []), { 
-            id: `item-${Date.now()}`,
-            type: 'text',
-            content: textBuffer
-          }];
-          
-          return {
-            ...node,
-            data: { 
-              ...node.data, 
-              items: newItems
-            }
-          };
-        }
-        return node;
-      })
-    );
-  };
+    const childNodes = this.getChildNodes();
+    
+    // Add the input to items array
+    this.property.items.push(input);
+    
+    if (this.context) {
+      this.context.log(`InputNode (${this.id}) now has ${this.property.items.length} items after adding input`);
+    }
 
-  const handleFileChange = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    
-    // Create an array to collect processed items
-    const processedItems: InputItem[] = [];
-    
-    // Process each file asynchronously
-    const processPromises = Array.from(files).map(async (file) => {
-      try {
-        // Check if file type is unsupported
-        if (isUnsupportedFile(file)) {
-          console.warn(`[InputNode] Ignoring unsupported file: ${file.name} (${file.type})`);
-          return null; // Skip this file
-        }
-        
-        const newItem: InputItem = {
-          id: `item-${Date.now()}-${uuidv4()}`,
-          type: 'file',
-          name: file.name,
-          size: file.size,
-          mime: file.type,
-        };
-        
-        // Process based on file type
-        if (isImageFile(file)) {
-          // Handle image file - convert to base64 data URL
-          try {
-            const dataUrl = await convertFileToBase64(file, true); // true = return data URL
-            newItem.content = dataUrl;
-            console.log(`[InputNode] Added image: ${file.name} (${file.type})`);
-            return newItem;
-          } catch (error) {
-            console.warn(`[InputNode] Failed to convert image to base64: ${file.name}`, error);
-            return null;
-          }
-        } else if (isTextFile(file)) {
-          // Handle text file - extract text content
-          try {
-            const textContent = await readTextFile(file);
-            newItem.content = textContent;
-            console.log(`[InputNode] Added text file: ${file.name} (${file.type})`);
-            return newItem;
-          } catch (error) {
-            console.warn(`[InputNode] Failed to read text file: ${file.name}`, error);
-            return null;
-          }
-        } else {
-          // Unknown but not explicitly unsupported, we'll try to read as text
-          try {
-            console.warn(`[InputNode] Treating unknown file type as text: ${file.name} (${file.type})`);
-            const textContent = await readTextFile(file);
-            newItem.content = textContent;
-            return newItem;
-          } catch (error) {
-            console.warn(`[InputNode] Failed to read file: ${file.name}`, error);
-            return null;
-          }
-        }
-      } catch (error) {
-        console.warn(`[InputNode] Error processing file: ${file.name}`, error);
-        return null;
+    if (this.property.iterateEachRow) { // foreach mode
+      if (this.context) {
+        this.context.log(`InputNode (${this.id}) using foreach mode with ${childNodes.length} child nodes`);
       }
+      
+      for (const child of childNodes) {
+        await child.process(input); // Process each child with individual input
+      }
+      return null; // Always return null (execution stops in parent Node.process)
+    } else { // batch mode
+      if (this.context) {
+        this.context.log(`InputNode (${this.id}) using batch mode with all items`);
+      }
+      
+      return this.property.items; // Return all items for chaining to children
+    }
+  }
+}
+
+/**
+ * InputNodeComponent renders the UI for the InputNode
+ */
+export function InputNodeComponent({ id, data, selected }: NodeProps) {
+  const { content, setContent } = useNodeContent(id);
+  const inputContent = content as InputNodeContent;
+  const [textBuffer, setTextBuffer] = useState('');
+
+  // Get items from content store with fallback to empty array
+  const items = inputContent.items || [];
+  const isForeachMode = inputContent.iterateEachRow || false;
+  
+  // Count item types
+  const fileCount = items.filter((item) => {
+    if (typeof item === 'string') {
+      return /\.(jpg|jpeg|png|gif|webp|svg|bmp|txt|md|csv|json|js|ts|html|css|xml|yml|yaml)$/i.test(item);
+    }
+    return false;
+  }).length;
+  const textCount = items.length - fileCount;
+  
+  const itemCount = {
+    total: items.length,
+    fileCount,
+    textCount
+  };
+
+  /**
+   * Get file path information for image files
+   */
+  const saveFile = async (file: File): Promise<string> => {
+    try {
+      console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+      
+      // Use the getImageFilePath utility to create a virtual path for the image
+      const { path } = getImageFilePath(file);
+      
+      console.log(`Created path for file: ${path}`);
+      return path;
+    } catch (error) {
+      console.error('Error processing file:', error);
+      throw new Error(`Failed to process file: ${file.name} - ${error}`);
+    }
+  };
+
+  /**
+   * Handle text input
+   */
+  const handleAddText = (text: string) => {
+    if (!text.trim()) return;
+    
+    // Add text directly to items array
+    setContent({
+      items: [...items, text]
     });
     
-    // Wait for all file processing to complete
-    const results = await Promise.all(processPromises);
+    setTextBuffer('');
+  };
+
+  /**
+   * Handle file upload
+   */
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const newItems = [...items];
     
-    // Filter out null results (files that were ignored or failed to process)
-    const validItems = results.filter((item): item is InputItem => item !== null);
-    
-    // Update node data with new file items
-    setNodes((nodes) => 
-      nodes.map((node) => {
-        if (node.id === id) {
-          const existingItems = node.data.items || [];
-          return {
-            ...node,
-            data: { 
-              ...node.data, 
-              items: [...existingItems, ...validItems]
-            }
-          };
-        }
-        return node;
-      })
-    );
-  };
-
-  const handleDeleteItem = (itemId: string) => {
-    // Update node data by removing the item
-    setNodes((nodes) => 
-      nodes.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: { 
-              ...node.data, 
-              items: (node.data.items || []).filter((item: InputItem) => item.id !== itemId)
-            }
-          };
-        }
-        return node;
-      })
-    );
-  };
-
-  const handleClearItems = () => {
-    // Update node data by clearing all items
-    setNodes((nodes) => 
-      nodes.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: { 
-              ...node.data, 
-              items: []
-            }
-          };
-        }
-        return node;
-      })
-    );
-  };
-
-  const handleToggleProcessingMode = () => {
-    // Toggle between batch and foreach mode
-    setNodes((nodes) => 
-      nodes.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            data: { 
-              ...node.data, 
-              iterateEachRow: !(node.data.iterateEachRow || false)
-            }
-          };
-        }
-        return node;
-      })
-    );
-  };
-
-  // Simplified run handler
-  const handleRun = () => {
-    if (!isRunning) {
-      console.log(`[InputNode] Starting execution for node ${id}`);
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       
-      try {
-        console.log(`[InputNode] Executing node ${id}`);
-        // Input node execution logic would go here
-      } catch (error: unknown) {
-        console.error(`[InputNode] Error executing node ${id}:`, error);
+      // For image files, store the file path
+      if (file.type.startsWith('image/')) {
+        const filePath = await saveFile(file);
+        newItems.push(filePath);
+      } 
+      // For text files, extract and store the content
+      else if (
+        file.type.startsWith('text/') || 
+        /\.(txt|md|csv|json|js|ts|html|css|xml|yml|yaml)$/i.test(file.name)
+      ) {
+        try {
+          const content = await readTextFile(file);
+          newItems.push(content);
+        } catch (error) {
+          console.error('Error reading text file:', error);
+        }
       }
     }
+    
+    // Update the content store with new items
+    setContent({ 
+      items: newItems 
+    });
   };
 
-  // Footer summary
-  const footerSummary = React.useMemo(() => {
-    if (!itemCounts.total) return null;
-    
-    if (itemCounts.fileCount > 0 && itemCounts.textCount > 0) {
-      return `${itemCounts.fileCount} file${itemCounts.fileCount !== 1 ? 's' : ''} + ${itemCounts.textCount} text row${itemCounts.textCount !== 1 ? 's' : ''}`;
-    } else if (itemCounts.fileCount > 0) {
-      return `${itemCounts.fileCount} file${itemCounts.fileCount !== 1 ? 's' : ''}`;
-    } else if (itemCounts.textCount > 0) {
-      return `${itemCounts.textCount} text row${itemCounts.textCount !== 1 ? 's' : ''}`;
+  /**
+   * Handle deleting an item
+   */
+  const handleDeleteItem = (itemIndex: number) => {
+    setContent({
+      items: items.filter((_, idx: number) => idx !== itemIndex)
+    });
+  };
+
+  /**
+   * Clear all items
+   */
+  const handleClearItems = () => {
+    setContent({ 
+      items: [] 
+    });
+  };
+
+  /**
+   * Toggle between batch and foreach modes
+   */
+  const handleToggleMode = () => {
+    setContent({ 
+      iterateEachRow: !isForeachMode 
+    });
+  };
+
+  // Convert items to strings for display in UI
+  const stringItems = items.map(item => {
+    if (typeof item === 'string') {
+      return item;
+    } else if (typeof item === 'object' && item !== null) {
+      // Check if it matches FileLikeObject structure
+      if ('file' in item && 'type' in item) {
+        return `File: ${(item as FileLikeObject).file}`;
+      }
+      return `Object: ${JSON.stringify(item).substring(0, 30)}...`;
     }
-    
-    return null;
-  }, [itemCounts]);
+    return String(item);
+  });
 
   return (
-    <NodeErrorBoundary nodeId={id}>
-      <div
-        className={clsx(
-          'relative',
-          'bg-white shadow-lg rounded-lg border-2',
-          selected ? 'border-blue-500' : 'border-gray-200',
-          'transition-colors duration-200',
-          'w-72'
-        )}
-        data-testid={`input-node-${id}`}
-      >
-        {/* Header */}
-        <div
-          className={clsx(
-            'flex items-center justify-between',
-            'bg-gray-50 p-2 rounded-t-md',
-            'border-b border-gray-200'
-          )}
-        >
-          <div className="flex items-center">
-            <div
-              className={clsx(
-                'rounded-full w-2 h-2 mr-2',
-                nodeState?.status === 'success' && 'bg-green-500',
-                nodeState?.status === 'error' && 'bg-red-500',
-                nodeState?.status === 'running' && 'bg-yellow-500',
-                (!nodeState?.status || nodeState.status === 'idle') && 'bg-gray-300'
-              )}
+    <div className={`node ${selected ? 'node-selected' : ''} w-[320px]`}>
+      <div className="node-header">Input</div>
+      <div className="node-content p-3 space-y-4">
+        {/* File uploader */}
+        <InputFileManager 
+          onFileUpload={handleFileUpload}
+          nodeId={id}
+        />
+        
+        {/* Text input */}
+        <InputTextManagerNode 
+          onAddText={handleAddText}
+        />
+        
+        {/* Item list */}
+        <div>
+          <div className="text-xs font-medium text-gray-500 mb-1">Items</div>
+          {items.length === 0 ? (
+            <div className="text-xs text-gray-500 bg-gray-50 p-2 border border-dashed border-gray-200 rounded text-center">
+              Add text or files to begin
+            </div>
+          ) : (
+            <InputItemList 
+              items={stringItems}
+              onDelete={handleDeleteItem}
+              onClear={handleClearItems}
+              showClear={true}
+              limit={5}
             />
-            <span className="font-medium text-sm">{label}</span>
-          </div>
-          
-          <button
-            onClick={handleRun}
-            disabled={isRunning}
-            className={clsx(
-              'px-2 py-1 text-xs rounded transition-colors',
-              'bg-gray-100 text-gray-700 hover:bg-gray-200',
-              'disabled:opacity-50 disabled:cursor-not-allowed'
-            )}
-            title="Execute node"
-          >
-            {isRunning ? '⏳' : '▶'}
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-3 space-y-3">
-          {/* Processing Mode Toggle */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-gray-700">Processing Mode:</span>
-            <button
-              onClick={handleToggleProcessingMode}
-              className={clsx(
-                'px-2 py-1 rounded text-xs font-medium',
-                iterateEachRow 
-                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              )}
-            >
-              {iterateEachRow ? 'Process Each Item' : 'Process As Batch'}
-            </button>
-          </div>
-
-          {/* Text Input */}
-          <div>
-            <div className="mb-1 text-xs font-medium text-gray-500">Add Text</div>
-            <div className="flex flex-col space-y-2">
-              <textarea
-                value={textBuffer}
-                onChange={handleTextChange}
-                className={clsx(
-                  'w-full px-2 py-1 text-sm',
-                  'border rounded',
-                  'focus:outline-none focus:ring-1 focus:ring-gray-500',
-                  'min-h-[60px] resize-y'
-                )}
-                placeholder="Enter text here..."
-              />
-              <button
-                onClick={handleAddText}
-                className={clsx(
-                  'px-2 py-1 text-xs rounded transition-colors self-end',
-                  'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                Add Text
-              </button>
-            </div>
-          </div>
-
-          {/* File Input */}
-          <div>
-            <div className="mb-1 text-xs font-medium text-gray-500">Add Files</div>
-            <InputFileUploader
-              onUpload={handleFileChange}
-              nodeId={id}
-              buttonLabel="+ Add Files"
-              acceptedFileTypes="image/*,text/*,.txt,.csv,.md,.json,.js,.ts,.html,.css,.xml,.yml,.yaml"
-            />
-          </div>
-
-          {/* Items Summary */}
-          {items.length > 0 && (
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-medium text-gray-700">{items.length} item{items.length !== 1 ? 's' : ''}</span>
-              <button
-                onClick={handleClearItems}
-                className={clsx(
-                  'px-2 py-1 rounded transition-colors',
-                  'bg-red-50 text-red-600 hover:bg-red-100 text-xs'
-                )}
-              >
-                Clear All
-              </button>
-            </div>
           )}
-
-          {/* Item List (Preview) */}
-          <div className="items-container">
-            {items.length > 0 && (
-              <div className="items-preview">
-                <InputItemList 
-                  items={items.map((item: InputItem) => {
-                    if (item.type === 'file') {
-                      // For image files
-                      if (item.mime?.startsWith('image/')) {
-                        return `🖼️ ${item.name || ''} (${item.mime})`;
-                      }
-                      // For text files
-                      if (item.mime?.startsWith('text/') || item.name?.match(/\.(txt|md|csv|json|js|ts|html|css|xml|yml|yaml)$/i)) {
-                        return `📄 ${item.name || ''} (${(item.content?.toString() || '').substring(0, 20)}${(item.content?.toString() || '').length > 20 ? '...' : ''})`;
-                      }
-                      // Default file display
-                      return `📄 ${item.name || ''} (${item.mime || 'unknown'})`;
-                    }
-                    // For text items
-                    return item.content || '';
-                  })} 
-                  onDelete={(index: number) => handleDeleteItem(items[index].id)}
-                  showClear={items.length > 0}
-                  onClear={handleClearItems}
-                  limit={10}
-                />
-              </div>
-            )}
-          </div>
         </div>
-
-        {/* Footer */}
-        {footerSummary && (
-          <div className="p-2 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-            <div className="flex items-center justify-between w-full">
-              <span className="text-xs text-gray-500">{footerSummary}</span>
-              <span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-                {iterateEachRow ? 'Foreach mode' : 'Batch mode'}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Handle */}
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="output"
-          className="!w-3 !h-3 !bg-gray-400 !border-2 !border-white"
-          isConnectable={isConnectable}
+        
+        {/* Mode toggle */}
+        <InputModeToggle
+          isForeachMode={isForeachMode}
+          onToggle={handleToggleMode}
         />
       </div>
-    </NodeErrorBoundary>
+      
+      {/* Summary bar */}
+      <InputSummaryBar 
+        itemCount={itemCount}
+        processingMode={isForeachMode ? 'foreach' : 'batch'}
+      />
+      
+      {/* Output handle */}
+      <Handle type="source" position={Position.Bottom} id="output" />
+    </div>
   );
-};
-
-export default InputNode; 
+} 

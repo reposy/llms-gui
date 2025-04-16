@@ -1,4 +1,4 @@
-import { convertFileToBase64 } from '../files';
+import ollama from "ollama";
 
 /**
  * Ollama API client for text and vision models
@@ -67,527 +67,97 @@ export interface OllamaResponse {
 }
 
 /**
- * Call Ollama API with support for both text and vision models
+ * Simplified Ollama API call function
  * 
- * @param params Object containing model, prompt, optional images, and inputImage
+ * @param params Object containing model, prompt, optional images, and settings
  * @returns Promise with the response text
  */
 export async function callOllama(params: {
   model: string;
   prompt: string;
   images?: string[] | unknown;
-  inputImage?: File | Blob;
   temperature?: number;
   baseUrl?: string;
   logger?: (message: string) => void;
-  retryCount?: number;
-  maxRetries?: number;
-  mode?: 'text' | 'vision';
 }): Promise<string> {
   const { 
     model, 
     prompt, 
     images,
-    inputImage,
-    temperature,
+    temperature = 0.7,
     baseUrl = 'http://localhost:11434',
-    logger = console.log,
-    retryCount = 0,
-    maxRetries = 3,
-    mode = 'text'
+    logger = console.log
   } = params;
 
-  // Log the API call
-  logger(`Calling Ollama API with model: ${model}, mode: ${mode}, retry: ${retryCount}/${maxRetries}`);
-  
-  // Validate inputs
-  validateOllamaInputs(prompt, mode, inputImage, images, logger);
+  // Basic validation
+  if (!prompt || prompt.trim() === '') {
+    throw new Error('Cannot call Ollama API with empty prompt');
+  }
 
   try {
-    // Prepare request payload
-    const requestPayload = await prepareRequestPayload(
-      model, prompt, images, inputImage, temperature, mode, logger
-    );
+    logger(`Calling Ollama API with model: ${model}`);
     
-    // Log request details
-    logRequestDetails(requestPayload, prompt, logger);
-    
-    // Make the API call
-    const response = await makeOllamaApiRequest(baseUrl, requestPayload, logger);
-    
-    // Process the response
-    const data = await processOllamaResponse(response, logger);
-    
-    // Handle model loading case with retry
-    if (data.done_reason === 'load' && retryCount < maxRetries) {
-      logger(`Model is still loading (done_reason = "load")`);
-      logger(`Retrying in 1 second (attempt ${retryCount + 1}/${maxRetries})...`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return callOllama({
-        ...params,
-        retryCount: retryCount + 1
-      });
+    // Check if we have images - if so, use the chat API with images
+    if (images) {
+      // Ensure images is an array
+      const imageArray = Array.isArray(images) ? images : [images].filter(Boolean);
+      
+      if (imageArray.length > 0) {
+        logger(`Using Ollama chat API with ${imageArray.length} images`);
+        
+        // Use ollama SDK's chat method for vision models
+        const response = await ollama.chat({
+          model,
+          messages: [{
+            role: 'user',
+            content: prompt,
+            images: imageArray
+          }],
+          options: {
+            temperature
+          }
+        });
+        
+        logger(`Received vision response from Ollama`);
+        return response.message.content;
+      }
     }
     
-    // Format and return the result
-    return formatOllamaResult(data, model, logger);
+    // For text-only requests, use the generate API
+    logger(`Using Ollama generate API for text-only request`);
+    
+    const response = await fetch(`${baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false,
+        options: {
+          temperature
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Ollama API error: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data || typeof data.response !== 'string') {
+      throw new Error('Invalid response from Ollama API');
+    }
+    
+    logger(`Received text response from Ollama`);
+    return data.response;
   } catch (error) {
     logger(`Error calling Ollama API: ${error}`);
     throw error;
   }
-}
-
-/**
- * Validate inputs for Ollama API call
- */
-function validateOllamaInputs(
-  prompt: string, 
-  mode: string, 
-  inputImage?: File | Blob, 
-  images?: string[] | unknown,
-  logger: (message: string) => void = console.log
-): void {
-  // Validate input
-  if (!prompt || prompt.trim() === '') {
-    throw new Error('Cannot call Ollama API with empty prompt');
-  }
-  
-  // For vision mode, we need to check if we have valid image input
-  if (mode === 'vision') {
-    // Check if we have direct image input
-    if (inputImage) {
-      return; // Valid input image exists
-    }
-    
-    // Check images array
-    if (!images) {
-      const errorMsg = 'Vision mode requires image input. Please provide images or an input image.';
-      logger(`ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
-    
-    // If images is not an array but has some value, it might be a single image
-    if (!Array.isArray(images)) {
-      // If it's something that might be usable as an image, we'll process it later
-      if (images) {
-        // Special check for string paths to images
-        if (typeof images === 'string') {
-          const extension = (images as string).split('.').pop()?.toLowerCase();
-          if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(extension)) {
-            return; // Valid image path
-          }
-        }
-        return; // Some other value that might be processable
-      }
-      
-      // Otherwise it's invalid
-      const errorMsg = 'Vision mode requires valid image input. Images parameter is not an array or usable value.';
-      logger(`ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
-    
-    // It's an array but empty
-    if (images.length === 0) {
-      const errorMsg = 'Vision mode requires an image input. Images array is empty.';
-      logger(`ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
-    
-    // Check if any of the array items are file paths
-    const hasImagePaths = (images as any[]).some(img => {
-      if (typeof img === 'string') {
-        const extension = img.split('.').pop()?.toLowerCase();
-        return extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(extension);
-      }
-      return false;
-    });
-    
-    // If we have image paths, they'll be processed later
-    if (hasImagePaths) {
-      return;
-    }
-  }
-}
-
-/**
- * Prepare the request payload for Ollama API
- */
-async function prepareRequestPayload(
-  model: string,
-  prompt: string,
-  images?: string[] | unknown,
-  inputImage?: File | Blob,
-  temperature?: number,
-  mode: string = 'text',
-  logger: (message: string) => void = console.log
-): Promise<OllamaRequest> {
-  // Initialize the request payload
-  const requestPayload: OllamaRequest = {
-    model,
-    prompt,
-    stream: false,
-    ...(temperature !== undefined && {
-      options: {
-        temperature,
-      },
-    }),
-  };
-  
-  // Process images for vision models
-  let hasImages = false;
-  
-  // Handle images parameter
-  if (images) {
-    // Ensure images is an array
-    const imagesArray = Array.isArray(images) ? images : [images];
-    
-    if (imagesArray.length > 0) {
-      logger(`Processing ${imagesArray.length} images` + (!Array.isArray(images) ? ' (converted from single item)' : ''));
-      
-      // Process and validate each image
-      const processedImagesPromises = imagesArray.map(async (img: unknown) => {
-        if (!img) return null;
-        
-        // Data URL format image - remove prefix
-        if (typeof img === 'string' && img.startsWith('data:image/')) {
-          try {
-            // Extract base64 data using regex
-            const match = img.match(/^data:image\/[a-zA-Z]+;base64,(.+)$/);
-            if (match && match[1]) {
-              // Validate base64 data
-              if (isValidBase64String(match[1], logger)) {
-                return match[1]; // Return only the base64 data
-              }
-            }
-            logger(`Skipping invalid base64 image with data URL prefix`);
-            return null;
-          } catch (error) {
-            logger(`Error processing data URL image: ${error}`);
-            return null;
-          }
-        }
-        
-        // Direct base64 string processing
-        if (typeof img === 'string' && isValidBase64String(img, logger)) {
-          return img;
-        }
-        
-        // Check if it's an image file path (URL or local)
-        if (typeof img === 'string') {
-          const extension = img.split('.').pop()?.toLowerCase();
-          if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(extension)) {
-            try {
-              logger(`Attempting to load image from path: ${img}`);
-              
-              // Check if it's a URL
-              try {
-                const url = new URL(img);
-                // It's a valid URL
-                const response = await fetch(img);
-                if (!response.ok) {
-                  throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
-                }
-                
-                const blob = await response.blob();
-                // Convert to base64
-                const base64WithPrefix = await convertFileToBase64(blob);
-                // Remove data URL prefix and extract base64 content
-                const match = base64WithPrefix.match(/^data:[^;]+;base64,(.*)$/);
-                const base64Data = match ? match[1] : '';
-                
-                if (base64Data && isValidBase64String(base64Data, logger)) {
-                  logger(`Successfully loaded image from URL: ${img}`);
-                  return base64Data;
-                } else {
-                  logger(`Invalid base64 data from URL: ${img}`);
-                  return null;
-                }
-              } catch (urlError) {
-                // Not a valid URL, it might be a local file path
-                logger(`Not a valid URL, might be a local file path: ${img}`);
-                logger(`Warning: Browser environment cannot access local files directly`);
-                return null;
-              }
-            } catch (error) {
-              logger(`Error processing image path: ${error}`);
-              return null;
-            }
-          }
-        }
-        
-        logger(`Skipping invalid image data of type ${typeof img}`);
-        return null;
-      });
-      
-      // Wait for all image processing promises to resolve
-      const processedImages = (await Promise.all(processedImagesPromises)).filter(Boolean) as string[];
-      
-      if (processedImages.length > 0) {
-        (requestPayload as OllamaVisionRequest).images = processedImages;
-        logger(`Including ${processedImages.length} processed image(s) in request (from ${imagesArray.length} provided)`);
-        hasImages = true;
-      } else {
-        logger(`WARNING: All provided images (${imagesArray.length}) were invalid and filtered out`);
-      }
-    }
-  }
-  
-  // Process raw image file/blob if provided
-  if (inputImage) {
-    hasImages = await processInputImage(inputImage, requestPayload, prompt, logger);
-  }
-  
-  // Final check for vision mode
-  if (mode === 'vision' && !hasImages) {
-    const errorMsg = 'Failed to include any valid images in vision request';
-    logger(`ERROR: ${errorMsg}`);
-    throw new Error(errorMsg);
-  }
-  
-  return requestPayload;
-}
-
-/**
- * Validate base64 string
- */
-function isValidBase64String(str: string, logger: (message: string) => void): boolean {
-  if (typeof str !== 'string') {
-    logger(`Invalid base64: not a string`);
-    return false;
-  }
-  
-  if (!str || str.length < 10) {
-    logger(`Invalid base64: string too short (${str ? str.length : 0} chars)`);
-    return false;
-  }
-  
-  // Base64 should only contain valid characters
-  const base64Pattern = /^[A-Za-z0-9+/=]+$/;
-  if (!base64Pattern.test(str)) {
-    logger(`Invalid base64: contains invalid characters`);
-    return false;
-  }
-  
-  // Check padding
-  const paddingCheck = str.length % 4 === 0 || 
-                      (str.endsWith('=') && str.length % 4 === 1) ||
-                      (str.endsWith('==') && str.length % 4 === 2);
-  
-  if (!paddingCheck) {
-    logger(`Invalid base64: incorrect padding`);
-    return false;
-  }
-  
-  return true;
-}
-
-/**
- * Process a raw input image for the request
- */
-async function processInputImage(
-  inputImage: File | Blob,
-  requestPayload: OllamaRequest,
-  prompt: string,
-  logger: (message: string) => void
-): Promise<boolean> {
-  try {
-    // 파일을 base64로 변환 (데이터 URL 형식으로 변환됨)
-    const base64WithPrefix = await convertFileToBase64(inputImage);
-    
-    // 데이터 URL 접두사 제거
-    const base64Data = base64WithPrefix.split(',')[1];
-    
-    if (!base64Data || !isValidBase64String(base64Data, logger)) {
-      logger(`Invalid base64 data from converted file`);
-      return false;
-    }
-    
-    // Create images array if it doesn't exist
-    if (!requestPayload.hasOwnProperty('images')) {
-      (requestPayload as OllamaVisionRequest).images = [];
-    }
-    
-    // Add the pure base64 image to the request (without data URL prefix)
-    (requestPayload as OllamaVisionRequest).images?.push(base64Data);
-    
-    logger(`Converted input image to base64 (${base64Data.length} chars) and added to request`);
-    
-    // Replace {{input}} template with filename if available
-    if (prompt.includes('{{input}}') && inputImage instanceof File) {
-      requestPayload.prompt = prompt.replace(/\{\{\s*input\s*\}\}/g, inputImage.name);
-      logger(`Replaced {{input}} template with filename: ${inputImage.name}`);
-    }
-    
-    return true;
-  } catch (error) {
-    logger(`Failed to convert image to base64: ${error}`);
-    throw new Error(`Failed to process image for vision model: ${error}`);
-  }
-}
-
-/**
- * Log request details
- */
-function logRequestDetails(
-  requestPayload: OllamaRequest,
-  prompt: string,
-  logger: (message: string) => void
-): void {
-  // Log request details (excluding full images for brevity)
-  const logPayload = { ...requestPayload };
-  if ((logPayload as OllamaVisionRequest).images) {
-    (logPayload as any).images = `[${(logPayload as OllamaVisionRequest).images?.length} images]`;
-  }
-  logger(`Request payload: ${JSON.stringify(logPayload)}`);
-  logger(`Prompt length: ${prompt.length} characters`);
-}
-
-/**
- * Make the API request to Ollama
- */
-async function makeOllamaApiRequest(
-  baseUrl: string,
-  requestPayload: OllamaRequest,
-  logger: (message: string) => void
-): Promise<Response> {
-  const url = `${baseUrl}/api/generate`;
-  
-  // 로깅을 위해 이미지 데이터 마스킹 처리
-  let loggablePayload = { ...requestPayload };
-  if ((requestPayload as OllamaVisionRequest).images) {
-    const images = (requestPayload as OllamaVisionRequest).images;
-    (loggablePayload as any).images = `[${images?.length} images]`;
-    
-    // 이미지 길이 정보 추가 (디버깅용)
-    if (images && images.length > 0) {
-      const imageSizes = images.map(img => img.length);
-      logger(`Request contains ${images.length} images with lengths: ${imageSizes.join(', ')} characters`);
-      
-      // 첫 번째 이미지 시작 부분 확인 (데이터 URL 접두사 누락 확인 - 디버깅 목적)
-      if (images[0]) {
-        const firstChars = images[0].substring(0, Math.min(30, images[0].length));
-        logger(`First image starts with: ${firstChars}...`);
-        
-        // 데이터 URL 형식인지 확인 (오류 사전 검증)
-        if (images[0].startsWith('data:')) {
-          logger(`WARNING: Image contains data URL prefix which may cause Ollama to fail`);
-        }
-      }
-    }
-  }
-  
-  logger(`Request payload: ${JSON.stringify(loggablePayload)}`);
-  logger(`Prompt length: ${requestPayload.prompt.length} characters`);
-  
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Accept-Charset': 'utf-8'
-      },
-      body: JSON.stringify(requestPayload)
-    });
-    
-    // Handle HTTP errors
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger(`API error - status: ${response.status}, text: ${errorText}`);
-      
-      // 이미지 형식 관련 오류 검출
-      if (errorText.includes("image: unknown format") || errorText.includes("failed to process inputs")) {
-        logger(`ERROR: Ollama 비전 API에서 이미지 형식 오류가 발생했습니다. 이미지가 순수 base64 형식인지 확인하세요.`);
-        
-        // 이미지 배열 값 분석 (디버깅 목적)
-        const images = (requestPayload as OllamaVisionRequest).images;
-        if (images && images.length > 0) {
-          // 이미지 시작 부분이 base64인지 검사
-          const hasPrefixIssue = images.some(img => img.startsWith('data:'));
-          if (hasPrefixIssue) {
-            logger(`CRITICAL: 이미지에 data: 접두사가 포함되어 있습니다. Ollama는 순수 base64만 지원합니다.`);
-          }
-        }
-      }
-      
-      throw new Error(`Ollama API error: ${response.status}: ${errorText}`);
-    }
-    
-    return response;
-  } catch (error) {
-    // 네트워크 오류 추가 정보
-    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      logger(`네트워크 오류: Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인하세요.`);
-    }
-    throw error;
-  }
-}
-
-/**
- * Process Ollama API response
- */
-async function processOllamaResponse(
-  response: Response,
-  logger: (message: string) => void
-): Promise<OllamaResponse> {
-  // Get raw text response
-  const rawResponseText = await response.text();
-  logger(`Raw API response length: ${rawResponseText.length} characters`);
-  
-  // Parse the JSON
-  try {
-    const data = JSON.parse(rawResponseText);
-    logger(`Successfully parsed response JSON`);
-    return data;
-  } catch (parseError) {
-    logger(`Error parsing JSON response: ${parseError}`);
-    throw new Error(`Failed to parse Ollama API response: ${parseError}. Raw response: ${rawResponseText.substring(0, 200)}...`);
-  }
-}
-
-/**
- * Format the result from Ollama API
- */
-function formatOllamaResult(
-  data: OllamaResponse,
-  model: string,
-  logger: (message: string) => void
-): string {
-  // Log response structure
-  logger(`Response data contains keys: ${Object.keys(data).join(', ')}`);
-  if (data.response !== undefined) {
-    logger(`Response field type: ${typeof data.response}, length: ${typeof data.response === 'string' ? data.response.length : 'N/A'}`);
-  } else {
-    logger(`Response field missing from API response`);
-  }
-  
-  // Handle model loading case
-  if (data.done_reason === 'load') {
-    logger(`Warning: Empty response with "load" done_reason after max retries`);
-    return `[Model ${model} is still loading. Please try again in a moment.]`;
-  }
-  
-  // Handle the response
-  let result = '';
-  if (data.response !== undefined && data.response !== null) {
-    if (typeof data.response === 'string' && data.response.trim() === '') {
-      logger(`Warning: Empty response string from API, using full data object`);
-      result = JSON.stringify(data);
-    } else {
-      result = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
-    }
-  } else {
-    logger(`No 'response' field in API response, using full data object`);
-    result = JSON.stringify(data);
-  }
-  
-  // Final check to ensure we never return empty string
-  if (!result || result.trim() === '') {
-    logger(`Empty result after processing, falling back to placeholder`);
-    result = `[No content returned from Ollama model: ${model}]`;
-  }
-  
-  return result;
 }
 
 /**
@@ -605,11 +175,11 @@ export async function callOllamaVision(params: {
   baseUrl?: string;
   logger?: (message: string) => void;
 }): Promise<string> {
-  const {
-    model,
-    prompt,
+  const { 
+    model, 
+    prompt, 
     inputImage,
-    temperature,
+    temperature = 0.7,
     baseUrl = 'http://localhost:11434',
     logger = console.log
   } = params;
@@ -617,25 +187,84 @@ export async function callOllamaVision(params: {
   logger(`Processing image for vision model: ${model}`);
   
   try {
-    // Replace {{input}} in prompt with filename if present
-    let processedPrompt = prompt;
-    if (prompt.includes('{{input}}') && inputImage instanceof File) {
-      processedPrompt = prompt.replace(/\{\{\s*input\s*\}\}/g, inputImage.name);
-      logger(`Replaced {{input}} with filename: ${inputImage.name}`);
-    }
-    
-    // Call the API with the image
-    return callOllama({
-      model,
-      prompt: processedPrompt,
-      inputImage,
-      temperature,
-      baseUrl,
-      logger,
-      mode: 'vision'
+    // Convert the image to base64
+    const reader = new FileReader();
+    const imagePromise = new Promise<string>((resolve, reject) => {
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data URL prefix if present
+        const base64Data = result.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(inputImage);
     });
+
+    const base64Image = await imagePromise;
+    
+    // Use ollama chat API for vision
+    logger(`Sending prompt with image to model ${model}`);
+    const response = await ollama.chat({
+      model,
+      messages: [{
+        role: 'user',
+        content: prompt,
+        images: [base64Image]
+      }],
+      options: {
+        temperature
+      }
+    });
+    
+    logger(`Received vision response from Ollama`);
+    return response.message.content;
   } catch (error) {
     logger(`Error in callOllamaVision: ${error}`);
+    throw error;
+  }
+}
+
+/**
+ * Call Ollama vision API with image paths
+ * 
+ * @param params Object containing model, prompt, imagePaths and temperature 
+ * @returns Promise with the response text
+ */
+export async function callOllamaVisionWithPaths(params: {
+  model: string;
+  prompt: string;
+  imagePaths: string[];
+  temperature?: number;
+  logger?: (message: string) => void;
+}): Promise<string> {
+  const { 
+    model, 
+    prompt, 
+    imagePaths,
+    temperature = 0.7,
+    logger = console.log
+  } = params;
+
+  logger(`Calling Ollama API with model: ${model}, vision mode, ${imagePaths.length} image paths`);
+  
+  try {
+    // Use ollama SDK's chat method with direct paths
+    const response = await ollama.chat({
+      model,
+      messages: [{
+        role: 'user',
+        content: prompt,
+        images: imagePaths // Send image paths directly to Ollama
+      }],
+      options: {
+        temperature
+      }
+    });
+    
+    logger(`Received vision response from Ollama`);
+    return response.message.content;
+  } catch (error) {
+    logger(`Error in callOllamaVisionWithPaths: ${error}`);
     throw error;
   }
 }
@@ -858,19 +487,8 @@ export async function callOllamaChatVision(params: {
             }
             
             const blob = await response.blob();
-            // Convert to base64
-            const base64WithPrefix = await convertFileToBase64(blob);
-            // Remove data URL prefix
-            const match = base64WithPrefix.match(/^data:[^;]+;base64,(.*)$/);
-            const base64Data = match ? match[1] : '';
-            
-            if (base64Data && isLikelyBase64(base64Data)) {
-              logger(`Successfully loaded image from URL: ${img}`);
-              return base64Data;
-            } else {
-              logger(`Invalid base64 data from URL: ${img}`);
-              return null;
-            }
+            // Rather than converting to base64, just return the path directly
+            return img;
           } catch (urlError) {
             // Not a valid URL, it might be a local file path
             logger(`Not a valid URL, might be a local file path: ${img}`);
@@ -1030,19 +648,8 @@ export async function callOptimizedOllamaVision(params: {
           }
           
           const blob = await response.blob();
-          // Convert to base64
-          const base64WithPrefix = await convertFileToBase64(blob);
-          // Remove data URL prefix
-          const match = base64WithPrefix.match(/^data:[^;]+;base64,(.*)$/);
-          const base64Data = match ? match[1] : '';
-          
-          if (base64Data) {
-            logger(`Successfully loaded image from URL: ${img}`);
-            return base64Data;
-          } else {
-            logger(`Invalid base64 data from URL: ${img}`);
-            return null;
-          }
+          // Rather than converting to base64, just return the path directly
+          return img;
         } catch (urlError) {
           // Not a valid URL, it might be a local file path
           logger(`Not a valid URL, might be a local file path: ${img}`);
@@ -1096,7 +703,6 @@ export async function callOptimizedOllamaVision(params: {
           temperature,
           baseUrl,
           logger,
-          mode: 'vision'
         });
       } else {
         // 다른 오류는 그대로 전파
@@ -1114,7 +720,6 @@ export async function callOptimizedOllamaVision(params: {
         temperature,
         baseUrl,
         logger,
-        mode: 'vision'
       });
     } catch (error) {
       // Generate API 실패 시 특정 오류에만 Chat API 시도

@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState } from 'react';
+import React, { ChangeEvent, useState, useEffect } from 'react';
 
 interface InputTextManagerProps {
   textBuffer: string;
@@ -9,7 +9,7 @@ interface InputTextManagerProps {
   onKeyDown?: (e: React.KeyboardEvent) => void;
 }
 
-export const InputTextManager: React.FC<InputTextManagerProps> = ({
+export const InputTextManagerSidebar: React.FC<InputTextManagerProps> = ({
   textBuffer,
   onChange,
   onAdd,
@@ -18,22 +18,42 @@ export const InputTextManager: React.FC<InputTextManagerProps> = ({
   onKeyDown
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
-  const isDisabled = !textBuffer.trim();
+  const isDisabled = !textBuffer?.trim?.();
+  
+  // Debug: Log textBuffer changes
+  useEffect(() => {
+    console.log('InputTextManagerSidebar textBuffer:', textBuffer, 'isDisabled:', isDisabled);
+  }, [textBuffer, isDisabled]);
+
+  const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    console.log('TextArea change event:', e.target.value);
+    onChange(e);
+  };
+
+  const handleAddClick = () => {
+    console.log('Add button clicked, textBuffer:', textBuffer);
+    onAdd();
+  };
 
   return (
     <div>
       <textarea
-        value={textBuffer}
-        onChange={onChange}
+        value={textBuffer || ''}
+        onChange={handleChange}
         placeholder={placeholder}
         className={`w-full ${height} p-2 border border-gray-300 rounded-md bg-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
         onKeyDown={onKeyDown || ((e) => e.stopPropagation())} // Prevent keyboard shortcuts from triggering when editing text
       />
       
+      {/* Debug info */}
+      <div className="text-xs text-gray-500 mt-1">
+        Buffer: "{textBuffer}" (Length: {textBuffer?.length || 0}, Trimmed: {textBuffer?.trim?.()?.length || 0})
+      </div>
+      
       {/* Add Text button with tooltip */}
       <div className="flex justify-end mt-2 relative">
         <button
-          onClick={onAdd}
+          onClick={handleAddClick}
           disabled={isDisabled}
           className={`px-3 py-1 text-xs font-medium rounded ${
             !isDisabled

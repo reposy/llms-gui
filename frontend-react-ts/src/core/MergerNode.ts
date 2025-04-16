@@ -1,5 +1,5 @@
 import { Node } from '../core/Node';
-import { setNodeContent, getNodeContent, MergerNodeContent } from '../store/useNodeContentStore';
+import { FlowExecutionContext } from './FlowExecutionContext';
 
 interface MergerNodeProperty {
   strategy: 'array' | 'object';
@@ -12,12 +12,29 @@ interface MergerNodeProperty {
 /**
  * MergerNode accumulates inputs from multiple upstream nodes
  * and aggregates them according to a specified strategy.
- * 
- * This implementation is reactive and event-based, adding each
- * new input to the accumulated results immediately on arrival.
  */
 export class MergerNode extends Node {
   declare property: MergerNodeProperty;
+  
+  // 내부적으로 수집된 항목들을 저장
+  private items: any[] = [];
+
+  /**
+   * Constructor for MergerNode
+   */
+  constructor(
+    id: string, 
+    property: Record<string, any>, 
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'merger', property, context);
+    
+    // Initialize with defaults if not provided
+    this.property = {
+      ...property,
+      strategy: property.strategy || 'array'
+    };
+  }
 
   /**
    * Execute the node's specific logic
@@ -26,43 +43,41 @@ export class MergerNode extends Node {
    * @returns The merged result
    */
   async execute(input: any): Promise<any> {
-    // Get the current accumulated state from the store
-    const nodeContent = getNodeContent(this.id) as MergerNodeContent;
+    // 입력 항목을 배열에 추가
+    this.items.push(input);
     
-    // Initialize accumulated items if not present
-    const currentItems = nodeContent.items || [];
-    const iterIndex = this.context.iterationIndex;
-
-    // Log the input being processed
-    if (iterIndex !== undefined) {
-      this.context.log(`MergerNode(${this.id}): Adding iteration ${iterIndex + 1} input to accumulated results`);
+    this.context?.log(`MergerNode(${this.id}): 새 입력 추가, 현재 ${this.items.length}개 항목 수집됨`);
+    
+    // 선택된 전략에 따라 결과 병합
+    if (this.property.strategy === 'array') {
+      return this.items; // 배열 형태로 그대로 반환
     } else {
-      this.context.log(`MergerNode(${this.id}): Adding new input to accumulated results`);
+      return this.mergeAsObject(this.items); // 객체 형태로 병합하여 반환
     }
-    
-    // Add the new input to our accumulated items
-    const newItems = [...currentItems, input];
-    
-    // Update the node content store with the new accumulated state
-    setNodeContent(this.id, { items: newItems });
-    
-    // Log the current accumulated state
-    this.context.log(`MergerNode(${this.id}): Now have ${newItems.length} accumulated inputs`);
-    
-    // Merge based on the selected strategy
-    const result = this.property.strategy === 'array' 
-      ? this.mergeAsArray(newItems) 
-      : this.mergeAsObject(newItems);
-    
-    return result;
   }
 
   /**
-   * Resets the accumulated items to an empty array
+   * Reset accumulated items
    */
   resetItems(): void {
-    this.context.log(`MergerNode(${this.id}): Resetting accumulated items`);
-    setNodeContent(this.id, { items: [] });
+    this.context?.log(`MergerNode(${this.id}): 누적된 항목 초기화`);
+    this.items = [];
+  }
+
+  /**
+   * Merge all inputs as an object using item keys
+   */
+  private mergeAsObject(items: any[]): Record<string, any> {
+    const result: Record<string, any> = {};
+    
+    // Convert items to object with keys
+    items.forEach((item, index) => {
+      const key = this.getItemKey(item, index);
+      result[key] = item;
+    });
+    
+    this.context?.log(`MergerNode(${this.id}): ${Object.keys(result).length}개 항목을 객체로 병합`);
+    return result;
   }
 
   /**
@@ -85,29 +100,5 @@ export class MergerNode extends Node {
     
     // Use a sequential index as the default key
     return `item_${index}`;
-  }
-
-  /**
-   * Merge all inputs as an array
-   */
-  private mergeAsArray(items: any[]): any[] {
-    this.context.log(`MergerNode(${this.id}): Merged ${items.length} inputs as array`);
-    return items;
-  }
-
-  /**
-   * Merge all inputs as an object
-   */
-  private mergeAsObject(items: any[]): Record<string, any> {
-    const result: Record<string, any> = {};
-    
-    // Convert items to object with keys
-    items.forEach((item, index) => {
-      const key = this.getItemKey(item, index);
-      result[key] = item;
-    });
-    
-    this.context.log(`MergerNode(${this.id}): Merged ${Object.keys(result).length} inputs as object`);
-    return result;
   }
 } 

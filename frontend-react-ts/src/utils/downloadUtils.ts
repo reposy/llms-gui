@@ -1,27 +1,30 @@
 /**
- * Triggers a browser download for the given content.
- *
- * @param content The string content to download.
- * @param filename The desired name for the downloaded file.
- * @param mimeType The MIME type of the content (e.g., 'text/plain', 'application/json').
+ * 데이터를 파일로 다운로드하는 유틸리티 함수
+ * @param content 다운로드할 콘텐츠
+ * @param filename 파일 이름
+ * @param mimeType MIME 타입 (기본값: text/plain)
  */
-export const downloadFile = (content: string, filename: string, mimeType: string) => {
-  // Create a Blob from the content
+export const downloadFile = (
+  content: string,
+  filename: string,
+  mimeType: string = 'text/plain'
+): void => {
+  // Blob 객체 생성
   const blob = new Blob([content], { type: mimeType });
-
-  // Create an object URL for the Blob
+  
+  // URL 생성
   const url = URL.createObjectURL(blob);
-
-  // Create a temporary anchor element
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-
-  // Programmatically click the anchor to trigger the download
-  document.body.appendChild(a);
-  a.click();
-
-  // Clean up by removing the anchor and revoking the object URL
-  document.body.removeChild(a);
+  
+  // 다운로드 링크 생성
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  
+  // 링크 클릭 시뮬레이션
+  document.body.appendChild(link);
+  link.click();
+  
+  // 정리
+  document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }; 

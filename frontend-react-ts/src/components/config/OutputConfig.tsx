@@ -56,6 +56,52 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
+/**
+ * Format a result based on the selected format
+ * A local implementation since it was removed from the hook for simplification
+ */
+const formatResultBasedOnFormat = (result: any, format: 'json' | 'text'): string => {
+  try {
+    if (format === 'json') {
+      // If it's already a string but looks like JSON, try to parse and re-stringify for formatting
+      if (typeof result === 'string') {
+        try {
+          const parsed = JSON.parse(result);
+          return JSON.stringify(parsed, null, 2);
+        } catch {
+          // If it's not valid JSON, try to return as is
+          return result;
+        }
+      }
+      
+      // If it's an object, stringify it
+      if (result && typeof result === 'object') {
+        return JSON.stringify(result, null, 2);
+      }
+      
+      // Fall back to string representation
+      return String(result);
+    } else {
+      // For text format
+      if (typeof result === 'string') {
+        return result;
+      }
+      
+      // If it's an object, convert to string with some formatting
+      if (result && typeof result === 'object') {
+        // Simple formatting to make it readable, but not JSON-specific
+        return JSON.stringify(result, null, 2);
+      }
+      
+      // Fall back to string representation
+      return String(result);
+    }
+  } catch (error) {
+    console.error("Error formatting result:", error);
+    return String(result);
+  }
+};
+
 export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
   const executionState = useNodeState(nodeId);
   

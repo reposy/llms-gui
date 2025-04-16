@@ -15,8 +15,9 @@ export interface FileLikeObject {
 
 // LLM 응답 타입 정의
 export interface LLMResult {
-  content?: string;
   text?: string;
+  completion?: string;
+  response?: string;
   [key: string]: any;
 }
 
@@ -30,10 +31,8 @@ export interface FlowExecutionState {
 
 // 공통 노드 데이터 타입
 export interface BaseNodeData {
-  type: string;
-  isExecuting?: boolean;
-  error?: string;
-  result?: string | object;
+  label?: string;
+  [key: string]: any;
 }
 
 // LLM 노드 데이터
@@ -46,7 +45,6 @@ export interface LLMNodeData extends BaseNodeData {
   ollamaUrl?: string;
   openaiApiKey?: string;
   mode?: LLMMode;
-  label: string;
   viewMode?: NodeViewMode;
 }
 
@@ -62,14 +60,12 @@ export interface APINodeData extends BaseNodeData {
   contentType?: string;
   bodyFormat?: 'key-value' | 'raw';
   bodyParams?: Array<{ key: string; value: string; enabled: boolean }>;
-  label?: string;
   viewMode?: NodeViewMode;
 }
 
 // Output 노드 데이터
 export interface OutputNodeData extends BaseNodeData {
-  type: 'output';
-  format: 'json' | 'text';
+  format?: 'json' | 'text';
   content?: string;
   mode?: 'batch' | 'foreach';
   label?: string;
@@ -90,7 +86,7 @@ export interface InputNodeData extends BaseNodeData {
   inputType?: 'text' | 'file' | 'list'; // Type of input
   text?: string; // For single text input
   textBuffer?: string; // Buffer for in-progress text entry
-  items?: (string | FileLikeObject)[]; // For mixed array of text and file rows
+  items?: string[]; // For array of text and file paths
   iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
   executionMode?: 'batch' | 'foreach'; // Mode of execution, set by the UI
   iterationStatus?: {

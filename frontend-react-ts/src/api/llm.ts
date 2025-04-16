@@ -161,93 +161,44 @@ export const runLLM = async (request: LLMRequest): Promise<LLMResponse> => {
   }
   
   try {
-    // Vision mode requires an input image
-    if (mode === 'vision' && !inputImage) {
-      throw new Error('Vision mode requires an image input. Please connect an image input node or switch to text mode.');
-    }
-    
-    // Handle text mode across providers
-    if (mode === 'text') {
-      if (provider === 'ollama') {
-        const response = await callOllama({
-          model,
-          prompt,
-          temperature,
-          baseUrl: ollamaUrl,
-          logger: console.log
-        });
-        
-        return { 
-          response,
-          mode: 'text',
-          model
-        };
-      } else if (provider === 'openai') {
-        if (!openaiApiKey) {
-          throw new Error('OpenAI API key is required for OpenAI provider');
-        }
-        
-        const response = await callOpenAI({
-          model,
-          prompt,
-          temperature,
-          apiKey: openaiApiKey,
-          logger: console.log
-        });
-        
-        return { 
-          response,
-          mode: 'text',
-          model
-        };
-      }
-    }
-    // Handle vision mode across providers
-    else if (mode === 'vision') {
-      if (!inputImage) {
-        throw new Error('Vision mode requires an image input. Please connect an image input node or switch to text mode.');
+    // Text mode for all providers
+    if (provider === 'ollama') {
+      const response = await callOllama({
+        model,
+        prompt,
+        temperature,
+        baseUrl: ollamaUrl,
+        logger: console.log
+      });
+      
+      return { 
+        response,
+        mode: 'text',
+        model
+      };
+    } else if (provider === 'openai') {
+      if (!openaiApiKey) {
+        throw new Error('OpenAI API key is required for OpenAI provider');
       }
       
-      if (provider === 'ollama') {
-        const response = await callOllamaVision({
-          model,
-          prompt,
-          inputImage,
-          temperature,
-          baseUrl: ollamaUrl,
-          logger: console.log
-        });
-        
-        return { 
-          response,
-          mode: 'vision',
-          model
-        };
-      } else if (provider === 'openai') {
-        if (!openaiApiKey) {
-          throw new Error('OpenAI API key is required for OpenAI provider');
-        }
-        
-        const response = await callOpenAIVision({
-          model,
-          prompt,
-          inputImage,
-          temperature,
-          apiKey: openaiApiKey,
-          logger: console.log
-        });
-        
-        return { 
-          response,
-          mode: 'vision',
-          model
-        };
-      }
+      const response = await callOpenAI({
+        model,
+        prompt,
+        temperature,
+        apiKey: openaiApiKey,
+        logger: console.log
+      });
+      
+      return { 
+        response,
+        mode: 'text',
+        model
+      };
     }
     
-    throw new Error(`Unsupported provider (${provider}) or mode (${mode})`);
+    throw new Error(`Unsupported provider (${provider})`);
   } catch (error) {
     console.error(`${provider.toUpperCase()} API 호출 중 오류:`, error);
-    throw new Error(`LLM 처리 중 오류가 발생했습니다: ${error}`);
+    throw error;
   }
-}; 
+} 

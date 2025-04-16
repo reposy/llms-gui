@@ -1,22 +1,18 @@
 import { Node } from './Node';
 import { crawling } from '../utils/crawling';
+import { FlowExecutionContext } from './FlowExecutionContext';
 
 /**
  * Interface for Web Crawler node properties
  */
 export interface WebCrawlerNodeProperty {
-  url?: string;
-  label?: string;
+  url: string;
   waitForSelector?: string;
   extractSelectors?: Record<string, string>;
   timeout?: number;
-  headers?: Record<string, string>;
-  includeHtml?: boolean;
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
-  executionGraph?: Map<string, string[]>;
-  nodes?: any[];
-  edges?: any[];
   nodeFactory?: any;
+  [key: string]: any;
 }
 
 /**
@@ -29,106 +25,97 @@ export class WebCrawlerNode extends Node {
   declare property: WebCrawlerNodeProperty;
 
   /**
+   * Constructor for WebCrawlerNode
+   */
+  constructor(
+    id: string,
+    property: Record<string, any> = {},
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'web-crawler', property, context);
+    
+    // Initialize with defaults
+    this.property = {
+      ...property,
+      url: property.url || '',
+      waitForSelector: property.waitForSelector || 'body',
+      extractSelectors: property.extractSelectors || {},
+      outputFormat: property.outputFormat || 'full',
+      timeout: property.timeout || 3000
+    };
+  }
+
+  /**
    * Execute the node's specific logic
    * @param input The input data that may contain URL override
    * @returns The extracted web content
    */
   async execute(input: any): Promise<any> {
-    this.context.log(`WebCrawlerNode(${this.id}): Starting web crawling process`);
+    // URL 결정 (입력이 URL 문자열이면 우선 사용)
+    let url = this.property.url;
+    if (typeof input === 'string' && input.trim().startsWith('http')) {
+      url = input.trim();
+    } else if (input && typeof input === 'object' && input.url && typeof input.url === 'string') {
+      url = input.url;
+    }
     
-    try {
-      // Determine URL (from property or input)
-      let url = this.property.url;
-      
-      // If input is a string, use it as URL override
-      if (typeof input === 'string' && input.trim().startsWith('http')) {
-        url = input.trim();
-        this.context.log(`WebCrawlerNode(${this.id}): Using URL from input: ${url}`);
-      } 
-      // If input is an object with a url property, use that
-      else if (input && typeof input === 'object' && input.url && typeof input.url === 'string') {
-        url = input.url;
-        this.context.log(`WebCrawlerNode(${this.id}): Using URL from input object: ${url}`);
-      }
-      
-      // Validate URL
-      if (!url) {
-        throw new Error('No URL specified. Please provide a URL in the node configuration or input.');
-      }
-      
-      // Parse selectors
-      const extractSelectors = this.property.extractSelectors || {};
-      
-      // If no selectors defined, use waitForSelector as the main selector
-      const mainSelector = this.property.waitForSelector || 'body';
-      
-      // Prepare result object
-      const result: Record<string, any> = {
-        url,
-        timestamp: new Date().toISOString()
-      };
-      
-      // If we have specific extractors
-      if (Object.keys(extractSelectors).length > 0) {
-        this.context.log(`WebCrawlerNode(${this.id}): Extracting ${Object.keys(extractSelectors).length} selectors`);
+    // URL 검증
+    if (!url) {
+      throw new Error('URL이 지정되지 않았습니다. 노드 설정이나 입력에서 URL을 제공해주세요.');
+    }
+    
+    // 셀렉터 처리
+    const result: Record<string, any> = {
+      url,
+      timestamp: new Date().toISOString()
+    };
+    
+    // 추출 셀렉터가 있을 경우 각각 처리
+    const extractSelectors = this.property.extractSelectors || {};
+    if (Object.keys(extractSelectors).length > 0) {
+      // 각 셀렉터 처리
+      for (const [key, selectorInfo] of Object.entries(extractSelectors)) {
+        // "selector:attribute" 형식 파싱
+        const [selector, attribute] = selectorInfo.split(':');
         
-        // Process each extractor
-        for (const [key, selectorInfo] of Object.entries(extractSelectors)) {
-          // Parse selector string which might be in format "selector:attribute" or just "selector"
-          const [selector, attribute] = selectorInfo.split(':');
-          
-          this.context.log(`WebCrawlerNode(${this.id}): Extracting "${key}" with selector "${selector}"${attribute ? ` and attribute "${attribute}"` : ''}`);
-          
-          // Call the crawler utility
-          const extractedValue = await crawling({
-            url,
-            selector,
-            attribute,
-            waitBeforeLoad: this.property.timeout
-          });
-          
-          // Store the result
-          result[key] = extractedValue;
-        }
-      } else {
-        // Just extract the main selector
-        this.context.log(`WebCrawlerNode(${this.id}): Extracting content with selector "${mainSelector}"`);
-        
+        // 크롤링 수행
         const extractedValue = await crawling({
           url,
-          selector: mainSelector,
+          selector,
+          attribute,
           waitBeforeLoad: this.property.timeout
         });
         
-        // For simple extraction, set the content directly
-        result.content = extractedValue;
+        result[key] = extractedValue;
       }
-      
-      // Format output according to configuration
-      const outputFormat = this.property.outputFormat || 'full';
-      
-      if (outputFormat === 'text' && result.content) {
-        // Return just the text content
-        this.context.log(`WebCrawlerNode(${this.id}): Returning text content`);
-        return result.content;
-      } else if (outputFormat === 'extracted' && Object.keys(extractSelectors).length > 0) {
-        // Return just the extracted values without metadata
+    } else {
+      // 기본 셀렉터로 크롤링
+      const mainSelector = this.property.waitForSelector || 'body';
+      result.content = await crawling({
+        url,
+        selector: mainSelector,
+        waitBeforeLoad: this.property.timeout
+      });
+    }
+    
+    // 출력 형식에 따라 결과 반환
+    const outputFormat = this.property.outputFormat || 'full';
+    
+    switch (outputFormat) {
+      case 'text':
+        return result.content || '';
+      case 'extracted':
+        // 추출된 셀렉터 값만 반환
         const extractedData: Record<string, any> = {};
-        
         for (const key of Object.keys(extractSelectors)) {
           extractedData[key] = result[key];
         }
-        
-        this.context.log(`WebCrawlerNode(${this.id}): Returning extracted data object`);
         return extractedData;
-      } else {
-        // Return the full result object
-        this.context.log(`WebCrawlerNode(${this.id}): Returning full result object`);
+      case 'html':
+        return result.content || '';
+      default:
+        // 'full' - 전체 결과 객체 반환
         return result;
-      }
-    } catch (error) {
-      this.context.log(`WebCrawlerNode(${this.id}): Error during web crawling - ${error}`);
-      throw error;
     }
   }
 } 

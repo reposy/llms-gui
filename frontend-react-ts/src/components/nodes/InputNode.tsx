@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { InputNodeData } from '../../types/nodes';
 import clsx from 'clsx';
@@ -8,7 +8,7 @@ import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
-import { InputTextManager } from '../input/InputTextManager';
+import { InputTextManagerSidebar } from '../input/InputTextManagerSidebar';
 import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
@@ -20,7 +20,7 @@ import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 
-const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
+export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
   // Get node execution state
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
@@ -30,10 +30,8 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
 
   // Use shared input node hook for state and handlers
   const {
+    items,
     textBuffer,
-    itemCounts,
-    formattedItems,
-    showIterateOption,
     iterateEachRow,
     handleTextChange,
     handleAddText,
@@ -41,8 +39,18 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
-    handleConfigChange
+    setContent
   } = useInputNodeData({ nodeId: id });
+  
+  // Use the local hooks for the removed functionality
+  const itemCounts = useItemCounts(items);
+  const formattedItems = useFormattedItems(items);
+  const showIterateOption = true; // This was a constant value in the original
+  
+  // Add a simplified handleConfigChange function
+  const handleConfigChange = (updates: any) => {
+    setContent(updates);
+  };
 
   const handleLabelUpdate = useCallback((newLabel: string) => {
     handleConfigChange({ label: newLabel });
@@ -112,6 +120,13 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     return null;
   }, [itemCounts]);
 
+  // Fix the updateFlow function call that's causing the linter error
+  const updateFlow = useCallback(() => {
+    if (data.nodes && data.edges) {
+      buildExecutionGraphFromFlow(data.nodes, data.edges);
+    }
+  }, [data.nodes, data.edges]);
+
   return (
     <NodeErrorBoundary nodeId={id}>
       <div className={clsx("relative flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-blue-500' : 'border-gray-300', 'w-[350px]')}>
@@ -146,7 +161,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
           {/* Combined input section */}
           <div className="flex-grow space-y-3">
             {/* Text input */}
-            <InputTextManager
+            <InputTextManagerSidebar
               textBuffer={textBuffer}
               onChange={handleTextChange}
               onAdd={handleAddText}
@@ -187,6 +202,45 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
       </div>
     </NodeErrorBoundary>
   );
+};
+
+// Add these utility functions and hooks to replace the removed functionality
+
+/**
+ * Calculate item counts for display
+ */
+const useItemCounts = (items: string[]) => {
+  return useMemo(() => {
+    // File count is determined by file extensions
+    const fileCount = items.filter(item => {
+      return typeof item === 'string' && 
+        /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item);
+    }).length;
+    
+    const textCount = items.length - fileCount;
+    
+    return {
+      fileCount,
+      textCount,
+      total: items.length
+    };
+  }, [items]);
+};
+
+/**
+ * Format items for display
+ */
+const useFormattedItems = (items: string[]) => {
+  return useMemo(() => {
+    return items.map((item) => {
+      // Add file icon for file paths
+      if (typeof item === 'string' && 
+          /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item)) {
+        return `📄 ${item}`;
+      }
+      return item;
+    });
+  }, [items]);
 };
 
 export default InputNode; 

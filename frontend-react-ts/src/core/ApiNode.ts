@@ -1,5 +1,6 @@
 import { Node } from '../core/Node';
 import { getOutgoingConnections } from '../utils/flowUtils';
+import { FlowExecutionContext } from './FlowExecutionContext';
 
 interface ApiNodeProperty {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -13,8 +14,19 @@ interface ApiNodeProperty {
 export class ApiNode extends Node {
   declare property: ApiNodeProperty;
 
+  /**
+   * Constructor for ApiNode
+   */
+  constructor(
+    id: string, 
+    property: ApiNodeProperty, 
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'api', property, context);
+  }
+
   async execute(input: any): Promise<any> {
-    this.context.log(`ApiNode(${this.id}): Calling ${this.property.method} ${this.property.url}`);
+    this.context?.log(`ApiNode(${this.id}): Calling ${this.property.method} ${this.property.url}`);
 
     try {
       const response = await fetch(this.property.url, {
@@ -28,10 +40,10 @@ export class ApiNode extends Node {
         ? await response.json()
         : await response.text();
 
-      this.context.log(`ApiNode(${this.id}): Received response`);
+      this.context?.log(`ApiNode(${this.id}): Received response`);
       return result;
     } catch (error) {
-      this.context.log(`ApiNode(${this.id}): Error - ${error}`);
+      this.context?.log(`ApiNode(${this.id}): Error - ${error}`);
       throw error;
     }
   }

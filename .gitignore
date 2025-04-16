@@ -53,3 +53,8 @@ temp/
 *.bak
 *.backup
 *.old 
+frontend-react-ts/project-meta/project-overview.md
+
+frontend-react-ts/project-meta/code-architecture-overview.md
+
+frontend-react-ts/project-meta/cursor-guideline.md

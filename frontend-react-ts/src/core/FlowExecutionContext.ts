@@ -51,6 +51,11 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   private outputs: Map<string, any> = new Map();
 
+  private logs: string[] = [];
+  private nodeState: Map<string, { status: 'init' | 'running' | 'success' | 'error', result?: any, error?: Error }> = new Map();
+  private nodeOutputs: Map<string, any> = new Map();
+  private nodeErrors: Map<string, Error> = new Map();
+
   /**
    * Constructor
    * @param executionId Unique identifier for this execution
@@ -69,11 +74,18 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Log a message in the execution context
+   * Log a message to the execution log
    * @param message The message to log
    */
-  log(message: string) {
-    console.log(`[Exec ${this.executionId}] ${message}`);
+  log(message: string): void {
+    const timestamp = new Date().toISOString();
+    this.logs.push(`[${timestamp}] ${message}`);
+    
+    // Also log to console for debugging
+    console.log(`[ExecutionContext:${this.executionId}] ${message}`);
+    
+    // No need to update nodeState with logs, as it's not compatible with the type
+    console.debug(`Log history (${this.logs.length}):`, this.logs.slice(-10));
   }
 
   /**
@@ -156,15 +168,111 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Store an output value for a node
-   * @param nodeId ID of the node
-   * @param output The output value to store
+   * Store the output of a node in the context
+   * @param nodeId The node ID
+   * @param output The node output
    */
-  storeOutput(nodeId: string, output: any) {
-    // Store the output in context's memory
+  storeOutput(nodeId: string, output: any): void {
+    this.log(`Storing output for node ${nodeId}`);
+    
+    // If output is complex, provide a summary
+    let outputSummary = '';
+    if (Array.isArray(output)) {
+      outputSummary = `Array with ${output.length} items`;
+    } else if (output && typeof output === 'object') {
+      outputSummary = `Object with keys: ${Object.keys(output).join(', ')}`;
+    } else if (typeof output === 'string') {
+      outputSummary = output.length > 100 ? `String (${output.length} chars): "${output.substring(0, 100)}..."` : `String: "${output}"`;
+    } else {
+      outputSummary = String(output);
+    }
+    
+    this.log(`Node ${nodeId} output: ${outputSummary}`);
+    
     this.outputs.set(nodeId, output);
     
-    // Also update the node state
+    // Update node state in the store
     this.markNodeSuccess(nodeId, output);
+  }
+
+  /**
+   * Get all logs
+   * @returns Array of log messages
+   */
+  getLogs(): string[] {
+    return [...this.logs];
+  }
+
+  /**
+   * Set node output data
+   * @param nodeId ID of the node
+   * @param output Output data to store
+   */
+  setOutput(nodeId: string, output: any): void {
+    this.nodeOutputs.set(nodeId, output);
+  }
+
+  /**
+   * Set node error
+   * @param nodeId ID of the node
+   * @param error Error to store
+   */
+  setError(nodeId: string, error: Error): void {
+    this.nodeErrors.set(nodeId, error);
+  }
+
+  /**
+   * Get node error
+   * @param nodeId ID of the node
+   * @returns The stored error or undefined if not found
+   */
+  getError(nodeId: string): Error | undefined {
+    return this.nodeErrors.get(nodeId);
+  }
+
+  /**
+   * Set node state
+   * @param nodeId ID of the node
+   * @param status Node status
+   * @param result Optional result data
+   * @param error Optional error
+   */
+  setNodeState(nodeId: string, status: 'init' | 'running' | 'success' | 'error', result?: any, error?: Error): void {
+    this.nodeState.set(nodeId, { status, result, error });
+  }
+
+  /**
+   * Get all node states
+   * @returns Map of node states
+   */
+  getAllNodeStates(): Map<string, { status: 'init' | 'running' | 'success' | 'error', result?: any, error?: Error }> {
+    return new Map(this.nodeState);
+  }
+
+  /**
+   * Reset the execution context
+   */
+  reset(): void {
+    this.logs = [];
+    this.nodeState.clear();
+    this.nodeOutputs.clear();
+    this.nodeErrors.clear();
+  }
+
+  /**
+   * Store debug data for a node in the context
+   * Used for tracking key node properties during execution
+   * @param nodeId The node ID
+   * @param data The data to store
+   */
+  storeNodeData(nodeId: string, data: Record<string, any>): void {
+    this.log(`Debug data for node ${nodeId}: ${JSON.stringify(data)}`);
+    
+    // Store in node state for debugging purposes
+    const currentState = getNodeState(nodeId) || {};
+    setNodeState(nodeId, { 
+      ...currentState,
+      debugData: data
+    });
   }
 } 
