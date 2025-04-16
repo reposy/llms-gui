@@ -44,7 +44,7 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
     
     // Create node factory
     const nodeFactory = new NodeFactory();
-    registerAllNodeTypes(nodeFactory);
+    registerAllNodeTypes();
     
     // Find the node data
     const node = nodes.find(n => n.id === id);
@@ -66,7 +66,6 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
       ...nodeInstance.property,
       nodes,
       edges,
-      nodeFactory,
       executionGraph
     };
     

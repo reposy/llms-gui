@@ -140,8 +140,22 @@ export abstract class Node {
    * @returns The final result after all processing
    */
   async process(input: any) {
+    // Skip if this node has already been executed in this context
+    if (this.context?.hasExecutedNode(this.id)) {
+      this.context.log(`${this.type}(${this.id}): Node already executed in this context, skipping`);
+      return input; // Pass through the input to allow child nodes to continue
+    }
+    
+    // Execute the node
     const result = await this.execute(input);
-    if (result === null) return; // null일 경우, 자식 노드 실행 중단
+    
+    // Mark the node as executed to prevent re-execution in cycles
+    this.context?.markNodeExecuted(this.id);
+    
+    // If result is null, stop execution chain
+    if (result === null) return;
+    
+    // Process child nodes with the result
     for (const child of this.getChildNodes()) {
       await child.process(result);
     }

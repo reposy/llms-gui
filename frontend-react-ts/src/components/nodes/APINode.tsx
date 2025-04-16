@@ -222,7 +222,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     
     // Create node factory
     const nodeFactory = new NodeFactory();
-    registerAllNodeTypes(nodeFactory);
+    registerAllNodeTypes();
     
     // Find the node data
     const node = nodes.find(n => n.id === id);
@@ -262,7 +262,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
       const urlObj = new URL(url);
       if (queryParams) {
         Object.entries(queryParams).forEach(([key, value]) => {
-          urlObj.searchParams.append(key, value);
+          urlObj.searchParams.append(key, value as string);
         });
       }
 

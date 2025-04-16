@@ -1,10 +1,15 @@
 import React, { useCallback, useMemo } from 'react';
+import { shallow } from 'zustand/shallow';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { LLMNodeHeader } from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+
+// Debug configuration
+const DEBUG_LOGS = false;
 
 interface LLMNodeExpandedViewProps {
   id: string;
@@ -21,6 +26,12 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
   viewMode,
   onToggleView,
 }) => {
+  // Check if this node is selected to avoid unnecessary renders
+  const isSelected = useFlowStructureStore(
+    state => state.selectedNodeId === id,
+    shallow
+  );
+  
   const { 
     prompt,
     model,
@@ -37,26 +48,24 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     handleOllamaUrlChange
   } = useLlmNodeData({ nodeId: id });
   
-  // Debug logs for render and content state
-  console.log(`%c[LLMNodeExpandedView Render] Node: ${id}`, 'color: blue; font-weight: bold;', { 
-    prompt,
-    model,
-    temperature,
-    provider,
-    responseContent,
-    isDirty,
-    dataFromProps: data 
-  });
+  // Debug logs for render and content state - only when debugging
+  if (DEBUG_LOGS) {
+    console.log(`[LLMNodeExpandedView Render] Node: ${id}`, { 
+      prompt,
+      model,
+      temperature,
+      provider,
+      responseContent,
+      isDirty,
+      isSelected,
+      dataFromProps: data 
+    });
+  }
 
-  // Specific debug log for content changes
-  React.useEffect(() => {
-    if (responseContent) {
-      console.log(`%c[LLMNodeExpandedView] Content changed for ${id}:`, 'color: green; font-weight: bold;', {
-        contentLength: responseContent.length,
-        contentPreview: responseContent.substring(0, 50) + (responseContent.length > 50 ? '...' : '')
-      });
-    }
-  }, [id, responseContent]);
+  // If the node is not selected, we can return null to avoid rendering
+  if (!isSelected) {
+    return null;
+  }
 
   const nodeStatus = useMemo(() => {
     if (!nodeState) return 'idle';
@@ -172,5 +181,15 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
         )}
       </div>
     </>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  // Only re-render if any of these props change
+  return (
+    prevProps.id === nextProps.id &&
+    prevProps.viewMode === nextProps.viewMode &&
+    prevProps.data.label === nextProps.data.label &&
+    prevProps.data.isExecuting === nextProps.data.isExecuting &&
+    JSON.stringify(prevProps.nodeState) === JSON.stringify(nextProps.nodeState)
   );
 }); 

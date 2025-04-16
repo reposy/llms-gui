@@ -9,38 +9,43 @@ import type { Node } from 'reactflow';
 import { createNewNode } from '../utils/flowUtils';
 import { setNodeContent, getAllNodeContents } from '../store/useNodeContentStore';
 // Import from Zustand store
-import { useNodes, useEdges, useSelectedNodeId, useSelectedNodeIds, setNodes, setEdges, setSelectedNodeId } from '../store/useFlowStructureStore';
+import { useNodes, useEdges, setNodes } from '../store/useFlowStructureStore';
 // Import StoreInitializer
 import StoreInitializer from './StoreInitializer';
 // Import history and dirty tracking
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/historyUtils';
 import { StatusBar } from './StatusBar';
+import { runFlow } from '../core/FlowRunner';
 
 export const FlowEditor = () => {
   // Use Zustand hooks
   const nodes = useNodes();
   const edges = useEdges();
-  const selectedNodeId = useSelectedNodeId();
-  const selectedNodeIds = useSelectedNodeIds();
-  const [isExecuting, setIsExecuting] = useState(false);
 
   // Use dirty tracker
   const { isDirty } = useDirtyTracker();
 
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   
+  // 초기 스냅샷 생성 플래그
+  const initialSnapshotCreatedRef = useRef(false);
+  
   // Create initial snapshot when component mounts
   useEffect(() => {
-    if (nodes.length > 0 || edges.length > 0) {
+    // 이미 스냅샷이 생성되었는지 확인하여 중복 실행 방지
+    if (!initialSnapshotCreatedRef.current && (nodes.length > 0 || edges.length > 0)) {
       // Create a snapshot for the history on initial load
       pushCurrentSnapshot();
       
       if (isDirty) {
         console.log('[FlowEditor] Flow has been modified since last save');
       }
+      
+      // 스냅샷 생성 완료 표시
+      initialSnapshotCreatedRef.current = true;
     }
-  }, []); // Empty dependency array ensures this runs only once on mount
+  }, [nodes.length, edges.length, isDirty]); // 의존성 배열에 관련 상태 추가
 
   const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;
@@ -48,8 +53,8 @@ export const FlowEditor = () => {
   }, []);
 
   const handleAddNode = useCallback((type: NodeType) => {
-    if (!reactFlowApiRef.current?.addNodes) {
-      console.error("React Flow addNodes API not available yet.");
+    if (!reactFlowApiRef.current) {
+      console.error("React Flow API not available yet.");
       return;
     }
 
@@ -60,7 +65,7 @@ export const FlowEditor = () => {
     const newNode = createNewNode(type, position);
     
     // Check if a group node is currently selected
-    const selectedGroup = selectedNodeId ? nodes.find(n => n.id === selectedNodeId && n.type === 'group') : null;
+    const selectedGroup = nodes.find(n => n.type === 'group');
     
     // If a group is selected, make the new node a child of the group
     if (selectedGroup) {
@@ -73,24 +78,25 @@ export const FlowEditor = () => {
       console.log(`[FlowEditor] Adding node to group ${selectedGroup.id}`);
     }
 
-    console.log(`[FlowEditor] Calling reactFlowApi.addNodes with:`, newNode);
-    reactFlowApiRef.current.addNodes([newNode]);
+    console.log(`[FlowEditor] Adding new node:`, newNode);
     
-    // Update Zustand state with the exact same node that was added to React Flow
+    // 1. 먼저 Zustand 스토어 업데이트
     const updatedNodes = [...nodes, newNode];
     setNodes(updatedNodes);
     
-    // Add node data to Zustand nodeContentStore without triggering a snapshot
+    // 2. 노드 데이터를 노드 컨텐츠 스토어에 추가
     setNodeContent(newNode.id, { ...newNode.data, isDirty: false });
     console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, newNode.data);
     
-    // Create a single snapshot after all state updates
+    // 3. ReactFlow API를 통해 스토어에서 ReactFlow로 강제 동기화
+    if (reactFlowApiRef.current.forceSync) {
+      console.log(`[FlowEditor] Forcing sync from Zustand to React Flow`);
+      reactFlowApiRef.current.forceSync();
+    }
+    
+    // 4. 히스토리에 상태 저장
     pushCurrentSnapshot();
-  }, [nodes, edges, selectedNodeId]);
-
-  const handleNodeSelect = useCallback((node: Node<NodeData> | null) => {
-    setSelectedNodeId(node?.id || null);
-  }, []);
+  }, [nodes]);
 
   const handleRunFlow = useCallback(async () => {
     // Ensure the latest structure is committed before running
@@ -104,29 +110,22 @@ export const FlowEditor = () => {
     setIsExecuting(true);
 
     try {
-      const startNodes = nodes.filter(node => 
-        !edges.some(edge => edge.target === node.id)
-      );
-
-      for (const node of startNodes) {
-        const executeButton = document.querySelector(`[data-node-id="${node.id}"] button`) as HTMLButtonElement;
-        executeButton?.click();
-
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      // Use the direct FlowRunner instead of clicking buttons via DOM
+      console.log('[FlowEditor] Running flow directly through FlowRunner...');
+      await runFlow(nodes, edges);
     } catch (error) {
-      console.error('플로우 실행 중 오류:', error);
+      console.error('Flow execution error:', error);
     } finally {
       setIsExecuting(false);
     }
-  }, [nodes, edges, reactFlowApiRef]);
+  }, [nodes, edges]);
 
-  // Use the selected node from Zustand nodes state
-  const selectedNode = nodes.find(node => node.id === selectedNodeId);
+  const [isExecuting, setIsExecuting] = useState(false);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
-      <StoreInitializer />
+      {/* StoreInitializer 컴포넌트가 마운트 시에만 초기화하도록 조건부 렌더링 */}
+      {nodes.length === 0 && edges.length === 0 && <StoreInitializer />}
       
       <div className="flex-none h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between shadow-sm z-20">
         <div className="flex items-center gap-2">
@@ -244,42 +243,21 @@ export const FlowEditor = () => {
           <ReactFlowProvider>
             <FlowCanvas 
               registerReactFlowApi={handleRegisterApi}
-              onNodeSelect={handleNodeSelect}
+              onNodeSelect={() => {}}
             />
           </ReactFlowProvider>
         </div>
 
-        {selectedNodeIds.length === 1 && (
-          selectedNode?.type === 'group' ? (
+        {nodes.length === 1 && (
+          nodes[0].type === 'group' ? (
             <GroupDetailSidebar 
-              selectedNodeId={selectedNode.id} 
+              selectedNodeId={nodes[0].id} 
             />
           ) : (
             <NodeConfigSidebar 
-              selectedNodeId={selectedNode ? selectedNode.id : null}
+              selectedNodeId={nodes[0] ? nodes[0].id : null}
             />
           )
-        )}
-        {selectedNodeIds.length > 1 && (
-          <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto p-4">
-            <h3 className="text-lg font-semibold mb-4">Multiple Nodes Selected</h3>
-            <p className="text-sm text-gray-600">
-              {selectedNodeIds.length} nodes selected
-            </p>
-            <div className="mt-4">
-              <ul className="space-y-2">
-                {selectedNodeIds.map(id => {
-                  const node = nodes.find(n => n.id === id);
-                  return (
-                    <li key={id} className="p-2 bg-gray-50 rounded">
-                      <span className="font-medium">{node?.data?.label || node?.type}</span>
-                      <span className="text-xs text-gray-500 ml-2">({node?.type})</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </div>
         )}
       </div>
       

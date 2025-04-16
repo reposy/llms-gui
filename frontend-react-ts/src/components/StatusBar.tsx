@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useCanUndo, useCanRedo } from '../store/useHistoryStore';
 import { useIsDirty } from '../store/useDirtyTracker';
-import { useNodes, useEdges, useSelectedNodeId, useFlowStructureStore } from '../store/useFlowStructureStore';
+import { useNodes, useEdges, useFlowStructureStore } from '../store/useFlowStructureStore';
 
 /**
  * Status bar component to show undo/redo state and dirty flag
@@ -13,8 +13,8 @@ export const StatusBar: React.FC = () => {
   const isDirty = useIsDirty();
   const nodes = useNodes();
   const edges = useEdges();
-  const selectedNodeId = useSelectedNodeId();
-  const selectedNodeIds = useFlowStructureStore(state => state.selectedNodeIds);
+  const selectedNodeId = null;
+  const selectedNodeIds = [];
   
   const selectedNodes = nodes.filter(node => node.selected);
   
@@ -82,9 +82,7 @@ export const StatusBar: React.FC = () => {
         <span>Edges: {edges.length}</span>
       </div>
       <div className="flex items-center space-x-4">
-        <span>Selected node: {selectedNodeId || 'none'}</span>
-        <span>Selected nodes (Zustand): [{selectedNodeIds.join(', ')}]</span>
-        <span>Selected nodes (ReactFlow): {selectedNodes.length} ({selectedNodes.map(n => n.id).join(', ')})</span>
+        <span>Selected nodes: {selectedNodes.length} ({selectedNodes.map(n => n.id).join(', ')})</span>
       </div>
       <div className="flex items-center gap-2 ml-2">
         <span className={`${modifiers.shift ? 'text-green-400' : 'text-gray-500'}`}>

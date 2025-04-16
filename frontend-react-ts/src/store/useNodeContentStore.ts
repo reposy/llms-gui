@@ -6,6 +6,7 @@ import { persist } from 'zustand/middleware';
  * 모든 노드 컨텐츠는 이를 확장함
  */
 export interface NodeContent {
+  isDirty?: boolean;
   [key: string]: any;
 }
 
@@ -30,6 +31,15 @@ interface NodeContentStore {
   
   // 임포트된 컨텐츠를 로드하는 함수
   loadFromImportedContents: (contents: Record<string, NodeContent>) => void;
+  
+  // 모든 컨텐츠를 초기화하는 함수
+  resetAllContent: () => void;
+
+  // 노드의 dirty 상태를 설정하는 함수
+  markNodeDirty: (nodeId: string, isDirty: boolean) => void;
+  
+  // 노드의 dirty 상태를 확인하는 함수
+  isNodeDirty: (nodeId: string) => boolean;
 }
 
 /**
@@ -49,7 +59,8 @@ export const useNodeContentStore = create<NodeContentStore>()(
             ...state.content,
             [nodeId]: {
               ...state.content[nodeId],
-              ...content
+              ...content,
+              isDirty: true // 컨텐츠가 업데이트되면 자동으로 dirty로 표시
             }
           }
         }));
@@ -77,6 +88,30 @@ export const useNodeContentStore = create<NodeContentStore>()(
       // 임포트된 컨텐츠로부터 로드
       loadFromImportedContents: (contents) => {
         set({ content: contents });
+      },
+      
+      // 모든 컨텐츠 초기화
+      resetAllContent: () => {
+        set({ content: {} });
+      },
+
+      // 노드의 dirty 상태 설정
+      markNodeDirty: (nodeId, isDirty) => {
+        set((state) => ({
+          content: {
+            ...state.content,
+            [nodeId]: {
+              ...state.content[nodeId],
+              isDirty
+            }
+          }
+        }));
+      },
+
+      // 노드의 dirty 상태 확인
+      isNodeDirty: (nodeId) => {
+        const nodeContent = get().content[nodeId];
+        return nodeContent && !!nodeContent.isDirty;
       }
     }),
     {
@@ -95,8 +130,26 @@ export const {
   setNodeContent, 
   deleteNodeContent,
   getAllNodeContents,
-  loadFromImportedContents
+  loadFromImportedContents,
+  resetAllContent,
+  markNodeDirty,
+  isNodeDirty
 } = useNodeContentStore.getState();
+
+/**
+ * 특정 노드의 컨텐츠를 조회하고 업데이트하는 훅
+ * @param nodeId 노드 ID
+ * @returns 노드 컨텐츠와 업데이트 함수
+ */
+export const useNodeContent = (nodeId: string) => {
+  const content = useNodeContentStore((state) => state.content[nodeId] || {});
+  const updateContent = useNodeContentStore((state) => state.setNodeContent);
+  
+  return {
+    content,
+    updateContent: (newContent: NodeContent) => updateContent(nodeId, newContent)
+  };
+};
 
 /**
  * 특정 타입의 노드 컨텐츠를 위한 타입 별칭

@@ -47,15 +47,19 @@ export function throttle<T extends (...args: any[]) => any>(
  * Debounce function to delay execution until after a period of inactivity
  * @param fn The function to debounce
  * @param delay The wait time in milliseconds
- * @returns A debounced version of the function
+ * @returns A debounced version of the function with a cancel method
  */
 export function debounce<T extends (...args: any[]) => any>(
   fn: T,
   delay: number
-): (...args: Parameters<T>) => void {
+): {
+  (...args: Parameters<T>): void;
+  cancel: () => void;
+} {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return function debounced(...args: Parameters<T>) {
+  // 반환할 debounced 함수
+  function debounced(...args: Parameters<T>): void {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
@@ -64,5 +68,15 @@ export function debounce<T extends (...args: any[]) => any>(
       fn(...args);
       timeoutId = null;
     }, delay);
+  }
+
+  // cancel 메서드 추가
+  debounced.cancel = (): void => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
   };
+
+  return debounced;
 } 

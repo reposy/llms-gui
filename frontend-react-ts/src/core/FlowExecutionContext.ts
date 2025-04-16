@@ -57,6 +57,11 @@ export class FlowExecutionContext implements ExecutionContext {
   private nodeErrors: Map<string, Error> = new Map();
 
   /**
+   * Set of executed node IDs to prevent re-execution within the same execution context
+   */
+  private executedNodeIds = new Set<string>();
+
+  /**
    * Constructor
    * @param executionId Unique identifier for this execution
    */
@@ -83,9 +88,6 @@ export class FlowExecutionContext implements ExecutionContext {
     
     // Also log to console for debugging
     console.log(`[ExecutionContext:${this.executionId}] ${message}`);
-    
-    // No need to update nodeState with logs, as it's not compatible with the type
-    console.debug(`Log history (${this.logs.length}):`, this.logs.slice(-10));
   }
 
   /**
@@ -189,10 +191,34 @@ export class FlowExecutionContext implements ExecutionContext {
     
     this.log(`Node ${nodeId} output: ${outputSummary}`);
     
+    // Store in execution context outputs
     this.outputs.set(nodeId, output);
     
     // Update node state in the store
     this.markNodeSuccess(nodeId, output);
+    
+    // Also update the nodeContentStore to make the result visible in the UI
+    try {
+      // Use dynamic import to avoid circular dependencies
+      import('../store/useNodeContentStore').then(({ setNodeContent, getNodeContent }) => {
+        // Get existing content first
+        const existingContent = getNodeContent(nodeId);
+        
+        // Update content with result
+        setNodeContent(nodeId, { 
+          ...existingContent,
+          content: output, // Store the output in the content field
+          responseContent: output, // Also store in responseContent for backwards compatibility
+          outputTimestamp: Date.now() // Add timestamp to force UI updates
+        });
+        
+        this.log(`Updated node content store for node ${nodeId}`);
+      }).catch(err => {
+        console.error(`Failed to update node content store: ${err}`);
+      });
+    } catch (error) {
+      console.error(`Error updating node content store: ${error}`);
+    }
   }
 
   /**
@@ -274,5 +300,22 @@ export class FlowExecutionContext implements ExecutionContext {
       ...currentState,
       debugData: data
     });
+  }
+
+  /**
+   * Check if a node has already been executed in this context
+   * @param nodeId ID of the node to check
+   * @returns True if the node has already been executed
+   */
+  hasExecutedNode(nodeId: string): boolean {
+    return this.executedNodeIds.has(nodeId);
+  }
+
+  /**
+   * Mark a node as executed to prevent re-execution
+   * @param nodeId ID of the node to mark as executed
+   */
+  markNodeExecuted(nodeId: string): void {
+    this.executedNodeIds.add(nodeId);
   }
 } 

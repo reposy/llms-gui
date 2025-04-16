@@ -18,8 +18,6 @@ import { NodeData } from '../types/nodes';
 import { 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges, 
-  applyNodeSelection,
-  SelectionModifierKey,
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
 import { syncVisualSelectionToReactFlow } from '../utils/flowUtils';
@@ -348,16 +346,20 @@ export const useNodeHandlers = (
 
   // Handle selection change for sidebar update
   const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
-    // Skip if we're in the process of restoring history
     if (isRestoringHistory.current) return;
     
-    const { nodes } = params;
-    
+    const { nodes, edges } = params;
+    const selectedNodeIds = nodes.map(node => node.id);
+    const selectedEdgeIds = edges ? edges.map(edge => edge.id) : [];
+
+    // 엣지만 선택된 경우, 노드 selection 동기화는 건너뜀
+    if (selectedNodeIds.length === 0 && selectedEdgeIds.length > 0) {
+      // 필요하다면 엣지 selection 상태를 별도로 관리
+      return;
+    }
+
     // Determine which modifier key is active
     const modifierKey = getActiveModifierKey();
-    
-    // Extract the IDs of selected nodes from the event
-    const selectedNodeIds = nodes.map(node => node.id);
     
     // Get current selection from Zustand store
     const currentSelection = useFlowStructureStore.getState().selectedNodeIds;

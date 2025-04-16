@@ -1,47 +1,44 @@
 import React, { useEffect, useRef } from 'react';
-import { useReactFlow } from 'reactflow';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { recentlyPastedNodeIdsRef } from '../hooks/useClipboard';
 
 /**
- * StoreInitializer component initializes Zustand stores when the app loads
- * This is used to establish initial state and ensure persistence across renders
+ * StoreInitializer 컴포넌트
+ * 
+ * 앱 초기 로드 시 Zustand 스토어의 초기화를 담당하는 컴포넌트입니다.
+ * 이 컴포넌트는 마운트될 때 한 번만 실행되며, 이후 호출에서는 아무 작업도 수행하지 않습니다.
  */
 const StoreInitializer: React.FC = () => {
-  const reactFlowInstance = useReactFlow();
+  // 전역 정적 변수로 초기화 여부 추적 (컴포넌트 재렌더링에도 유지)
+  const hasInitializedRef = useRef<boolean>(false);
   const { nodes } = useFlowStructureStore();
-  const initializedNodeIdsRef = useRef<Set<string>>(new Set());
 
+  // 마운트 시 한 번만 실행되는 초기화 로직
   useEffect(() => {
-    const currentNodes = reactFlowInstance.getNodes();
-    const currentNodeIds = new Set(currentNodes.map(node => node.id));
+    // 이미 초기화되었으면 아무것도 하지 않음
+    if (hasInitializedRef.current) {
+      console.log('[StoreInitializer] Already initialized, skipping');
+      return;
+    }
 
-    nodes.forEach(node => {
-      // Skip initialization if node is recently pasted or already rendered
-      if (recentlyPastedNodeIdsRef.current.has(node.id) || currentNodeIds.has(node.id)) {
-        return;
-      }
+    console.log(`[StoreInitializer] Initializing store with ${nodes.length} nodes`);
 
-      // Initialize node if not already initialized
-      if (!initializedNodeIdsRef.current.has(node.id)) {
-        initializedNodeIdsRef.current.add(node.id);
-        // Perform initialization logic here
-        // TODO: Implement actual initialization logic if needed
-        console.log(`[StoreInitializer] Initializing node ${node.id}`);
-      }
-    });
-  }, [nodes, reactFlowInstance]);
+    // 여기서 필요한 초기화 로직 수행
+    // nodes가 존재하면 초기 상태 로깅
+    if (nodes.length > 0) {
+      console.log(`[StoreInitializer] Found ${nodes.length} nodes in initial state`);
+    }
 
-  // Log when component unmounts to track lifecycle
-  useEffect(() => {
+    // 초기화 완료 표시
+    hasInitializedRef.current = true;
+
+    // 컴포넌트 언마운트 시 로깅
     return () => {
-      console.log('[StoreInitializer] Component unmounting, initialized nodes:', 
-        Array.from(initializedNodeIdsRef.current)
-      );
+      console.log('[StoreInitializer] Component unmounted, initialization status:', 
+        hasInitializedRef.current ? 'completed' : 'not completed');
     };
-  }, []);
+  }, []); // 의존성 배열 비움 - 마운트 시 한 번만 실행
 
-  // This component doesn't render anything
+  // 이 컴포넌트는 UI를 렌더링하지 않음
   return null;
 };
 

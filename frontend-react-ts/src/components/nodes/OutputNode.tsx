@@ -20,16 +20,16 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
   const contentRef = useRef<HTMLPreElement>(null);
   const previousContentRef = useRef<string | undefined>(data.content);
   
-  const { setContent, content } = useNodeContent(id);
+  const { updateContent, content } = useNodeContent(id);
   const format = content?.format || 'text';
   
   const handleContentChange = useCallback((text: string) => {
-    setContent({ result: text });
-  }, [setContent]);
+    updateContent({ result: text });
+  }, [updateContent]);
   
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
-    setContent({ format: newFormat });
-  }, [setContent]);
+    updateContent({ format: newFormat });
+  }, [updateContent]);
   
   /**
    * Format a result based on the selected format
@@ -144,14 +144,16 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
 
   // This function now determines the *displayed* content in the node using the formatter
   const renderContentForDisplay = () => {
-    if (!nodeState || nodeState.status === 'idle') return '실행 대기 중...';
-    if (nodeState.status === 'running') return '처리 중...';
-    if (nodeState.status === 'error') return `오류: ${nodeState.error}`;
-    if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
-      // Use the single formatter, respecting data.format for display
+    if (nodeState?.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       return formatResultBasedOnFormat(nodeState.result, format);
     }
-    return '결과 없음';
+    // 실행이 끝났거나 idle일 때, store에 저장된 content가 있으면 그걸 표시
+    if (content?.content) {
+      return content.content;
+    }
+    if (nodeState?.status === 'running') return '처리 중...';
+    if (nodeState?.status === 'error') return `오류: ${nodeState.error}`;
+    return '실행 대기 중...';
   };
 
   // Handler for the download button

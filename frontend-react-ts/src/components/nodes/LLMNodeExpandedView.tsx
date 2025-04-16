@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
+import { shallow } from 'zustand/shallow';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
@@ -6,6 +7,10 @@ import { LLMNodeHeader } from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+
+// 디버깅 모드 설정
+const DEBUG_LOGS = false;
 
 interface LLMNodeExpandedViewProps {
   id: string;
@@ -40,36 +45,15 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     setMode
   } = useLlmNodeData({ nodeId: id });
   
-  // Check if there are input nodes that could provide images
   const { hasImageInputs } = useNodeConnections(id);
   
-  // Check if vision mode is possible
   const canEnableVisionMode = useMemo(() => {
     const hasInputs = hasImageInputs();
-    console.log(`[LLMNodeExpandedView] Node ${id} can${hasInputs ? '' : 'not'} use vision mode (has image inputs: ${hasInputs})`);
+    if (DEBUG_LOGS) {
+      console.log(`[LLMNodeExpandedView] Node ${id} can${hasInputs ? '' : 'not'} use vision mode (has image inputs: ${hasInputs})`);
+    }
     return hasInputs;
   }, [id, hasImageInputs]);
-  
-  // Debug logs for render and content state
-  console.log(`%c[LLMNodeExpandedView Render] Node: ${id}`, 'color: blue; font-weight: bold;', { 
-    prompt,
-    model,
-    temperature,
-    provider,
-    responseContent,
-    isDirty,
-    dataFromProps: data 
-  });
-
-  // Specific debug log for content changes
-  React.useEffect(() => {
-    if (responseContent) {
-      console.log(`%c[LLMNodeExpandedView] Content changed for ${id}:`, 'color: green; font-weight: bold;', {
-        contentLength: responseContent.length,
-        contentPreview: responseContent.substring(0, 50) + (responseContent.length > 50 ? '...' : '')
-      });
-    }
-  }, [id, responseContent]);
 
   const nodeStatus = useMemo(() => {
     if (!nodeState) return 'idle';
@@ -84,8 +68,9 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     }
   }, []);
 
+  // 실제 렌더링
   return (
-    <>
+    <div className="llm-node-container">
       <LLMNodeHeader
         id={id}
         data={{ ...data, label: label ?? data.label }}
@@ -93,7 +78,6 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
         onToggleView={onToggleView}
         isContentDirty={isDirty}
       />
-      
       <div className="absolute -top-2 -right-2">
         <NodeStatusIndicator status={nodeStatus} />
       </div>
@@ -172,71 +156,20 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               } ${!canEnableVisionMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}`}
-              onClick={() => {
-                if (!canEnableVisionMode) {
-                  alert('비전 모드는 이미지 입력이 필요합니다. 이미지 입력 노드를 연결하세요.');
-                  return;
-                }
-                setMode('vision');
-              }}
+              onClick={() => setMode('vision')}
             >
               Vision
             </button>
           </div>
-          {mode === 'vision' && (
-            <div className="text-xs text-gray-500 mt-1">
-              ℹ️ 이미지는 입력 노드로부터 제공되어야 합니다.
-            </div>
-          )}
         </div>
-        
-        {provider === 'ollama' && (
-          <div className="flex flex-col space-y-1">
-            <label className="text-xs font-medium text-gray-600">Ollama URL (Optional):</label>
-            <input
-              type="text"
-              name="ollamaUrl"
-              value={ollamaUrl}
-              onChange={handleOllamaUrlChange}
-              onKeyDown={handleKeyDown}
-              className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
-              placeholder="http://localhost:11434"
-            />
-          </div>
-        )}
-
-        {/* Result Display */}
-        {responseContent && (
-          <div className="w-full p-3 rounded-md bg-gray-100 text-sm whitespace-pre-wrap overflow-auto max-h-[200px] mt-3">
-            {/* Mode & Model Info Badge - 모드와 모델 정보가 응답에 포함된 경우 */}
-            {responseContent.includes('[Mode:') && responseContent.includes('[Model:') && (
-              <div className="flex flex-wrap gap-1 mb-2">
-                {/* Mode Badge */}
-                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  responseContent.includes('[Mode: vision]') 
-                    ? 'bg-purple-100 text-purple-800' 
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {responseContent.includes('[Mode: vision]') ? '🖼️ Vision' : '📝 Text'} Mode
-                </span>
-                
-                {/* Model Badge */}
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
-                  🤖 {responseContent.match(/\[Model: ([^\]]+)\]/)?.[1] || model}
-                </span>
-              </div>
-            )}
-            
-            {/* Actual content - 모드/모델 정보 제거 */}
-            {responseContent.replace(/\[Mode: [^\]]+\]\s*\[Model: [^\]]+\]\s*\n+/g, '')}
-          </div>
-        )}
-        {nodeState?.error && (
-          <div className="mt-2 p-2 border border-red-200 bg-red-50 rounded text-xs text-red-800">
-            <strong>Error:</strong> {nodeState.error}
-          </div>
-        )}
       </div>
-    </>
+      {/* Result 영역 추가 */}
+      <div className="mt-4">
+        <label className="text-xs font-medium text-gray-600">Result:</label>
+        <div className="llm-node-result border border-gray-200 rounded p-2 min-h-[40px] bg-gray-50 text-xs text-gray-800">
+          {responseContent ? responseContent : <span className="text-gray-400">No result yet.</span>}
+        </div>
+      </div>
+    </div>
   );
-}); 
+});

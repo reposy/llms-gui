@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { InputNodeData } from '../../types/nodes';
+import { InputNodeData, FileLikeObject } from '../../types/nodes';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
@@ -73,7 +73,7 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
     
     // Create node factory
     const nodeFactory = new NodeFactory();
-    registerAllNodeTypes(nodeFactory);
+    registerAllNodeTypes();
     
     // Find the node data
     const node = nodes.find(n => n.id === id);
@@ -209,16 +209,20 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
 /**
  * Calculate item counts for display
  */
-const useItemCounts = (items: string[]) => {
+const useItemCounts = (items: (string | FileLikeObject)[]) => {
   return useMemo(() => {
-    // File count is determined by file extensions
+    // File count is determined by file extensions (for string) or by FileLikeObject type
     const fileCount = items.filter(item => {
-      return typeof item === 'string' && 
-        /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item);
+      if (typeof item === 'string') {
+        return /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item);
+      }
+      // If FileLikeObject, treat as file
+      if (item && typeof item === 'object' && 'name' in item) {
+        return true;
+      }
+      return false;
     }).length;
-    
     const textCount = items.length - fileCount;
-    
     return {
       fileCount,
       textCount,
@@ -230,15 +234,19 @@ const useItemCounts = (items: string[]) => {
 /**
  * Format items for display
  */
-const useFormattedItems = (items: string[]) => {
+const useFormattedItems = (items: (string | FileLikeObject)[]) => {
   return useMemo(() => {
     return items.map((item) => {
-      // Add file icon for file paths
-      if (typeof item === 'string' && 
-          /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item)) {
-        return `📄 ${item}`;
+      if (typeof item === 'string') {
+        if (/\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item)) {
+          return `📄 ${item}`;
+        }
+        return item;
       }
-      return item;
+      if (item && typeof item === 'object' && 'name' in item) {
+        return `📄 ${(item as any).name}`;
+      }
+      return '';
     });
   }, [items]);
 };

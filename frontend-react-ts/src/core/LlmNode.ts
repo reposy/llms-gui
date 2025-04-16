@@ -78,7 +78,7 @@ export class LlmNode extends Node {
     }
     
     // 이미지 파일만 필터링
-    return input.filter(item => 
+    return input.filter((item: string | any) => 
       typeof item === 'string' && 
       /\.(jpg|jpeg|png|gif|bmp)$/i.test(item)
     );
@@ -90,35 +90,57 @@ export class LlmNode extends Node {
    * @returns The LLM response
    */
   async execute(input: any): Promise<any> {
-    const resolvedPrompt = this.resolvePrompt(input);
-    
-    // 비전 모드인 경우 이미지 파일만 필터링
-    if (this.property.mode === 'vision') {
-      const imagePaths = this.filterImagePaths(input);
+    try {
+      const resolvedPrompt = this.resolvePrompt(input);
       
-      if (imagePaths.length === 0) {
-        throw new Error('Vision mode requires at least one image file path.');
+      // Mark node as running
+      this.context?.markNodeRunning(this.id);
+      
+      let result;
+      
+      // 비전 모드인 경우 이미지 파일만 필터링
+      if (this.property.mode === 'vision') {
+        const imagePaths = this.filterImagePaths(input);
+        
+        if (imagePaths.length === 0) {
+          throw new Error('Vision mode requires at least one image file path.');
+        }
+        
+        // 이미지 경로 로깅
+        this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
+        
+        result = await callOllamaVisionWithPaths({ 
+          model: this.property.model, 
+          prompt: resolvedPrompt, 
+          imagePaths,
+          temperature: this.property.temperature
+        });
+      } else {
+        // 텍스트 모드 처리
+        this.context?.log(`LlmNode(${this.id}): Processing text with prompt: ${resolvedPrompt.substring(0, 100)}...`);
+        
+        const apiResponse = await runLLM({
+          provider: this.property.provider,
+          model: this.property.model,
+          prompt: resolvedPrompt,
+          temperature: this.property.temperature
+        });
+        
+        result = apiResponse.response;
       }
       
-      // 이미지 경로 로깅
-      this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
+      // Store the output in the context
+      this.context?.storeOutput(this.id, result);
       
-      return await callOllamaVisionWithPaths({ 
-        model: this.property.model, 
-        prompt: resolvedPrompt, 
-        imagePaths,
-        temperature: this.property.temperature
-      });
-    } else {
-      // 텍스트 모드 처리
-      this.context?.log(`LlmNode(${this.id}): Processing text with prompt: ${resolvedPrompt.substring(0, 100)}...`);
+      return result;
+    } catch (error) {
+      // Log and mark the node as failed
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.context?.log(`LlmNode(${this.id}): Execution failed: ${errorMessage}`);
+      this.context?.markNodeError(this.id, errorMessage);
       
-      return (await runLLM({
-        provider: this.property.provider,
-        model: this.property.model,
-        prompt: resolvedPrompt,
-        temperature: this.property.temperature
-      })).response;
+      // Re-throw to allow parent process method to handle
+      throw error;
     }
   }
 } 

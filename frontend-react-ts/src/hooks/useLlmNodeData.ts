@@ -1,5 +1,6 @@
-import { useCallback } from 'react';
-import { useNodeContent, LLMNodeContent } from '../store/useNodeContentStore';
+import { useCallback, useMemo } from 'react';
+import { shallow } from 'zustand/shallow';
+import { useNodeContent, LLMNodeContent, useNodeContentStore, isNodeDirty } from '../store/useNodeContentStore';
 import { LLMMode } from '../api/llm';
 
 /**
@@ -10,108 +11,110 @@ export const useLlmNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContentStore with LLMNodeContent type
-  const { 
-    content: generalContent, 
-    setContent,
-    isContentDirty
-  } = useNodeContent(nodeId);
+  // Use shallow comparison for content retrieval
+  const content = useNodeContentStore(
+    state => state.content[nodeId] || {},
+    shallow
+  ) as LLMNodeContent;
+  
+  // Get the update function
+  const updateContent = useNodeContentStore(
+    state => state.setNodeContent,
+    shallow
+  );
+  
+  // useNodeContentStore의 isNodeDirty 함수를 사용하여 dirty 상태 확인
+  const isContentDirty = useNodeContentStore(
+    state => state.isNodeDirty(nodeId),
+    shallow
+  );
 
-  // Cast the general content to LLMNodeContent type
-  const content = generalContent as LLMNodeContent;
-
-  // Destructure content for easier access
-  const prompt = content.prompt || '';
-  const model = content.model || '';
-  const temperature = content.temperature ?? 0.7;
-  const provider = content.provider || 'ollama';
-  const ollamaUrl = content.ollamaUrl || 'http://localhost:11434';
-  const openaiApiKey = content.openaiApiKey || '';
-  const mode = content.mode || 'text';
-  const label = content.label || 'LLM Node';
-  const responseContent = content.content || '';
+  // Memoize extracted values to prevent recreation
+  const values = useMemo(() => ({
+    prompt: content.prompt || '',
+    model: content.model || '',
+    temperature: content.temperature ?? 0.7,
+    provider: content.provider || 'ollama',
+    ollamaUrl: content.ollamaUrl || 'http://localhost:11434',
+    openaiApiKey: content.openaiApiKey || '',
+    mode: content.mode || 'text',
+    label: content.label || 'LLM Node',
+    responseContent: content.content || '',
+    isDirty: isContentDirty
+  }), [content, isContentDirty]);
 
   /**
    * Handle prompt change
    */
   const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent({ prompt: event.target.value });
-  }, [setContent]);
+    updateContent(nodeId, { prompt: event.target.value });
+  }, [updateContent, nodeId]);
 
   /**
    * Handle model change
    */
   const handleModelChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setContent({ model: event.target.value });
-  }, [setContent]);
+    updateContent(nodeId, { model: event.target.value });
+  }, [updateContent, nodeId]);
 
   /**
    * Handle temperature change
    */
   const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setContent({ temperature: parseFloat(event.target.value) });
-  }, [setContent]);
+    updateContent(nodeId, { temperature: parseFloat(event.target.value) });
+  }, [updateContent, nodeId]);
 
   /**
    * Set temperature directly
    */
   const setTemperature = useCallback((newTemperature: number) => {
-    setContent({ temperature: newTemperature });
-  }, [setContent]);
+    updateContent(nodeId, { temperature: newTemperature });
+  }, [updateContent, nodeId]);
 
   /**
    * Handle provider change
    */
   const handleProviderChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    setContent({ provider: event.target.value as 'ollama' | 'openai' });
-  }, [setContent]);
+    updateContent(nodeId, { provider: event.target.value as 'ollama' | 'openai' });
+  }, [updateContent, nodeId]);
 
   /**
    * Set provider directly
    */
   const setProvider = useCallback((newProvider: 'ollama' | 'openai') => {
-    setContent({ provider: newProvider });
-  }, [setContent]);
+    updateContent(nodeId, { provider: newProvider });
+  }, [updateContent, nodeId]);
 
   /**
    * Handle Ollama URL change
    */
   const handleOllamaUrlChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setContent({ ollamaUrl: event.target.value });
-  }, [setContent]);
+    updateContent(nodeId, { ollamaUrl: event.target.value });
+  }, [updateContent, nodeId]);
 
   /**
    * Handle OpenAI API key change
    */
   const handleOpenaiApiKeyChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setContent({ openaiApiKey: event.target.value });
-  }, [setContent]);
+    updateContent(nodeId, { openaiApiKey: event.target.value });
+  }, [updateContent, nodeId]);
 
   /**
    * Handle mode change
    */
   const handleModeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    setContent({ mode: event.target.value as LLMMode });
-  }, [setContent]);
+    updateContent(nodeId, { mode: event.target.value as LLMMode });
+  }, [updateContent, nodeId]);
 
   /**
    * Set mode directly
    */
   const setMode = useCallback((newMode: LLMMode) => {
-    setContent({ mode: newMode });
-  }, [setContent]);
+    updateContent(nodeId, { mode: newMode });
+  }, [updateContent, nodeId]);
 
-  return {
-    prompt,
-    model,
-    temperature,
-    provider,
-    ollamaUrl,
-    openaiApiKey,
-    mode,
-    label,
-    responseContent,
-    isContentDirty,
+  // Memoize the handlers
+  const handlers = useMemo(() => ({
     handlePromptChange,
     handleModelChange,
     handleTemperatureChange,
@@ -122,6 +125,17 @@ export const useLlmNodeData = ({
     handleOpenaiApiKeyChange,
     handleModeChange,
     setMode,
-    setContent
+    setContent: (newContent: Partial<LLMNodeContent>) => updateContent(nodeId, newContent)
+  }), [
+    handlePromptChange, handleModelChange, handleTemperatureChange, 
+    setTemperature, handleProviderChange, setProvider, 
+    handleOllamaUrlChange, handleOpenaiApiKeyChange, 
+    handleModeChange, setMode, updateContent, nodeId
+  ]);
+
+  // Return combined values and handlers with proper memoization
+  return {
+    ...values,
+    ...handlers
   };
 }; 

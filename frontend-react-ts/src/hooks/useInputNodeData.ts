@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useNodeContent, InputNodeContent } from '../store/useNodeContentStore';
+import { useInputNodeContent, InputNodeContent } from '../store/useInputNodeContentStore';
 
 /**
  * Simplified hook for InputNode data - minimal implementation that just connects to the store
@@ -9,11 +9,11 @@ export const useInputNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the NodeContentStore
+  // Use the InputNodeContentStore
   const { 
     content: generalContent, 
     setContent 
-  } = useNodeContent(nodeId);
+  } = useInputNodeContent(nodeId);
 
   // Cast the general content to InputNodeContent type
   const content = generalContent as InputNodeContent;
@@ -46,8 +46,7 @@ export const useInputNodeData = ({
    */
   const handleToggleProcessingMode = useCallback(() => {
     setContent({ 
-      iterateEachRow: !iterateEachRow, 
-      executionMode: !iterateEachRow ? 'foreach' : 'batch' 
+      iterateEachRow: !iterateEachRow
     });
   }, [iterateEachRow, setContent]);
 

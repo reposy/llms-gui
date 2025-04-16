@@ -13,7 +13,6 @@ import { setNodeContent } from '../store/useNodeContentStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { resetNodeStates } from '../store/useNodeStateStore';
 import { getAllNodeContents } from '../store/useNodeContentStore';
-import { applyNodeSelection, setSelectedNodeId, useSelectionLock } from '../store/useFlowStructureStore';
 import { cloneDeep } from 'lodash';
 
 // Global flag for paste operations (for debugging and coordination)
@@ -55,9 +54,6 @@ export const useClipboard = (): UseClipboardReturnType => {
   const { getViewport, fitView, getNodes, getEdges, setViewport, screenToFlowPosition } = reactFlowInstance;
   const reactFlowStore = useStoreApi();
   const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
-  
-  // Get selection lock functions (to prevent selection override)
-  const { lockSelection, unlockSelection } = useSelectionLock();
   
   // Paste version counter for forcing remounts
   const pasteVersionRef = useRef<number>(0);
@@ -301,12 +297,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     
     console.log(`[Clipboard] Synchronizing selection state for ${nodesToSelect.length} nodes`);
     
-    // Lock selection to prevent immediate override
-    lockSelection();
-    
     // 1. First update our Zustand store selection state
-    applyNodeSelection(nodesToSelect, 'none');
-    
     // 2. Force ReactFlow to sync with our updated store
     forceSyncReactFlow();
     
@@ -349,13 +340,12 @@ export const useClipboard = (): UseClipboardReturnType => {
     // Schedule selection unlock with delay to prevent immediate override
     const timeoutId = window.setTimeout(() => {
       console.log(`[Clipboard] Unlocking selection after paste`);
-      unlockSelection();
     }, MAX_SELECTION_LOCK_TIME);
     
     // Track the timeout
     activeTimeoutRefs.current.push(timeoutId);
     
-  }, [getNodes, reactFlowStore, forceSyncReactFlow, lockSelection, unlockSelection]);
+  }, [getNodes, reactFlowStore, forceSyncReactFlow]);
 
   const handleCopy = useCallback(() => {
     const nodeCount = copySelectedNodes();
@@ -483,7 +473,6 @@ export const useClipboard = (): UseClipboardReturnType => {
               // Release selection lock and clear paste flag after delay
               const releaseTimeout = window.setTimeout(() => {
                 console.log('[Clipboard] Releasing selection lock and clearing paste flag');
-                unlockSelection();
                 window._devFlags.hasJustPasted = false;
                 
                 isManualPasteInProgressRef.current = false;
@@ -508,7 +497,6 @@ export const useClipboard = (): UseClipboardReturnType => {
           // Release selection lock and clear paste flag after delay
           const releaseTimeout = window.setTimeout(() => {
             console.log('[Clipboard] Releasing selection lock and clearing paste flag');
-            unlockSelection();
             window._devFlags.hasJustPasted = false;
             
             isManualPasteInProgressRef.current = false;
@@ -537,7 +525,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     
     // Clear the reference after processing
     lastPasteOpRef.current = null;
-  }, [getNodes, getViewport, setViewport, forceSyncReactFlow, syncSelectionState, verifyReactFlowSync, focusViewportOnNodes, unlockSelection, setNodes, reactFlowStore, pasteVersionRef]);
+  }, [getNodes, getViewport, setViewport, forceSyncReactFlow, syncSelectionState, verifyReactFlowSync, focusViewportOnNodes]);
 
   /**
    * Find the highest z-index currently in use
@@ -592,9 +580,6 @@ export const useClipboard = (): UseClipboardReturnType => {
     const highestZIndex = getHighestZIndex();
     const zIndexBoost = highestZIndex + PASTE_Z_INDEX_BOOST;
     
-    // Preemptively lock selection to prevent any other component from changing it
-    lockSelection();
-    
     // Special group handling: identify parent-child relationships
     const groupNodes = newNodes.filter(node => node.type === 'group');
     const childrenByParentId: Record<string, string[]> = {};
@@ -634,15 +619,6 @@ export const useClipboard = (): UseClipboardReturnType => {
       setNodeContent(nodeId, content, true);
     }
     
-    // Apply selection
-    if (newNodeIds.length > 0) {
-      applyNodeSelection(newNodeIds, 'none');
-      setSelectedNodeId(newNodeIds[0]);
-    }
-    
-    // Reset execution state for pasted nodes
-    resetNodeStates(newNodeIds);
-    
     // Calculate the bounding box of pasted nodes for viewport focusing
     const boundingBox = calculateNodesBoundingBox(newNodeIds);
     
@@ -662,7 +638,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     focusViewportOnNodes(newNodeIds, false);
     
     console.log(`[Clipboard] Successfully pasted ${newNodes.length} nodes and ${newEdges.length} edges`);
-  }, [getViewport, nodes, edges, setNodes, setEdges, reactFlowInstance, getHighestZIndex, calculateNodesBoundingBox, focusViewportOnNodes, lockSelection]);
+  }, [getViewport, nodes, edges, setNodes, setEdges, reactFlowInstance, getHighestZIndex, calculateNodesBoundingBox, focusViewportOnNodes]);
 
   // Set up keyboard shortcuts
   useEffect(() => {
@@ -691,10 +667,8 @@ export const useClipboard = (): UseClipboardReturnType => {
       if (window._devFlags) {
         window._devFlags.hasJustPasted = false;
       }
-      // Ensure selection is unlocked
-      unlockSelection();
     };
-  }, [handleCopy, handlePaste, unlockSelection]);
+  }, [handleCopy, handlePaste]);
 
   // Check if we have data to paste
   const canPaste = hasClipboardData();

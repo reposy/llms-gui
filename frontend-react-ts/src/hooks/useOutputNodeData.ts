@@ -1,105 +1,112 @@
-import { useNodeContent, OutputNodeContent } from '../store/useNodeContentStore';
+import { OutputNodeContent, useNodeContent } from '../store/useNodeContentStore';
+import { OutputFormat } from '../types';
 import { useCallback } from 'react';
 
 /**
- * Simplified hook for OutputNode data - minimal implementation that just connects to the store
+ * OutputNode 데이터를 관리하는 단순화된 훅
+ * @param nodeId 노드 ID
  */
-export const useOutputNodeData = ({ 
-  nodeId 
-}: { 
-  nodeId: string 
-}) => {
-  // Get node content from store
-  const { content, setContent } = useNodeContent(nodeId);
-  
-  // Safely extract properties with default fallbacks
-  const outputContent = content as OutputNodeContent;
-  const format = outputContent?.format || 'text';
-  const outputText = outputContent?.content || '';
-  const mode = outputContent?.mode || 'batch';
-  
-  /**
-   * Update output format
-   */
-  const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
-    setContent({ format: newFormat });
-  }, [setContent]);
-  
-  /**
-   * Update output mode
-   */
-  const setMode = useCallback((newMode: 'batch' | 'foreach') => {
-    setContent({ mode: newMode });
-  }, [setContent]);
-  
-  /**
-   * Clear output content
-   */
+export const useOutputNodeData = (nodeId: string) => {
+  const { content, updateContent } = useNodeContent(nodeId);
+
+  // 출력 포맷 변경 핸들러
+  const handleFormatChange = useCallback(
+    (newFormat: OutputFormat) => {
+      updateContent({ format: newFormat });
+    },
+    [updateContent]
+  );
+
+  // 모드 설정 함수
+  const setMode = useCallback(
+    (mode: 'write' | 'read') => {
+      updateContent({ mode });
+    },
+    [updateContent]
+  );
+
+  // 출력 컨텐츠 초기화 함수
   const clearOutput = useCallback(() => {
-    setContent({ content: '' });
-  }, [setContent]);
-  
+    updateContent({ content: null });
+  }, [updateContent]);
+
+  // 컨텐츠 변경 핸들러
+  const handleContentChange = useCallback(
+    (newContent: any) => {
+      updateContent({ content: newContent });
+    },
+    [updateContent]
+  );
+
   /**
-   * Set output text content
+   * 선택된 포맷에 따라 결과를 형식화하는 함수
+   * @param data 형식화할 데이터
+   * @returns 형식화된 문자열
    */
-  const handleContentChange = useCallback((newContent: string) => {
-    setContent({ content: newContent });
-  }, [setContent]);
-  
-  /**
-   * Format a result based on the selected format
-   */
-  const formatResultBasedOnFormat = useCallback((result: any, format: 'json' | 'text'): string => {
-    try {
-      if (format === 'json') {
-        // If it's already a string but looks like JSON, try to parse and re-stringify for formatting
-        if (typeof result === 'string') {
-          try {
-            const parsed = JSON.parse(result);
-            return JSON.stringify(parsed, null, 2);
-          } catch {
-            // If it's not valid JSON, try to return as is
-            return result;
-          }
+  const formatResultBasedOnFormat = useCallback(
+    (data: any): string => {
+      if (!data) return '';
+
+      try {
+        // 포맷에 따라 다르게 처리
+        switch (content.format || 'text') {
+          case 'json':
+            // 데이터 타입에 따라 처리
+            if (typeof data === 'string') {
+              try {
+                // 문자열이 JSON인 경우 파싱 후 문자열화
+                const parsed = JSON.parse(data);
+                return JSON.stringify(parsed, null, 2);
+              } catch {
+                // JSON이 아닌 경우 객체로 변환 후 문자열화
+                return JSON.stringify({ content: data }, null, 2);
+              }
+            } else {
+              // 객체인 경우 바로 문자열화
+              return JSON.stringify(data, null, 2);
+            }
+
+          case 'yaml':
+            // YAML 변환 로직 (간소화됨)
+            if (typeof data === 'string') {
+              return data;
+            } else {
+              return JSON.stringify(data, null, 2); // 간소화를 위해 JSON 형식으로 반환
+            }
+
+          case 'html':
+            // HTML로 반환 (안전 처리 필요)
+            if (typeof data === 'string') {
+              return data;
+            } else {
+              return JSON.stringify(data, null, 2);
+            }
+
+          case 'text':
+          default:
+            // 기본 텍스트 형식으로 변환
+            if (typeof data === 'string') {
+              return data;
+            } else {
+              return JSON.stringify(data, null, 2);
+            }
         }
-        
-        // If it's an object, stringify it
-        if (result && typeof result === 'object') {
-          return JSON.stringify(result, null, 2);
-        }
-        
-        // Fall back to string representation
-        return String(result);
-      } else {
-        // For text format
-        if (typeof result === 'string') {
-          return result;
-        }
-        
-        // If it's an object, convert to string with some formatting
-        if (result && typeof result === 'object') {
-          // Simple formatting to make it readable, but not JSON-specific
-          return JSON.stringify(result, null, 2);
-        }
-        
-        // Fall back to string representation
-        return String(result);
+      } catch (error) {
+        console.error('Error formatting output:', error);
+        return String(data);
       }
-    } catch (error) {
-      console.error("Error formatting result:", error);
-      return String(result);
-    }
-  }, []);
-  
+    },
+    [content.format]
+  );
+
   return {
-    format,
-    outputText,
-    mode,
+    format: (content.format as OutputFormat) || 'text',
+    content: content.content,
+    mode: content.mode || 'read',
     handleFormatChange,
     setMode,
     clearOutput,
     handleContentChange,
     formatResultBasedOnFormat,
-    setContent
   };
 }; 

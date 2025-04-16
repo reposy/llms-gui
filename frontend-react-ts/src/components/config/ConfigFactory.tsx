@@ -1,3 +1,4 @@
+import React from 'react';
 import { Node } from 'reactflow';
 import { 
   NodeData, 
@@ -21,13 +22,16 @@ import { GroupNodeConfig } from './GroupNodeConfig';
 import { MergerNodeConfig } from './MergerNodeConfig';
 import { WebCrawlerNodeConfig } from './WebCrawlerNodeConfig';
 
+// 디버깅 모드 설정
+const DEBUG_LOGS = false;
+
 interface ConfigFactoryProps {
   selectedNode: Node<NodeData> | null;
 }
 
-export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) => {
+export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selectedNode }) => {
   if (!selectedNode) {
-    console.log('[ConfigFactory] No node selected');
+    if (DEBUG_LOGS) console.log('[ConfigFactory] No node selected');
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
         No node selected
@@ -36,24 +40,24 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
   }
 
   const { id, data, type } = selectedNode;
-  console.log(`[ConfigFactory] Rendering config for node: ${id}, type: ${type}`);
+  if (DEBUG_LOGS) console.log(`[ConfigFactory] Rendering config for node: ${id}, type: ${type}`);
 
   // Return the appropriate config component based on node type
   switch (type) {
     case 'llm':
-      console.log('[ConfigFactory] Rendering LLMConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering LLMConfig');
       return <LLMConfig nodeId={id} data={data as LLMNodeData} />;
     
     case 'api':
-      console.log('[ConfigFactory] Rendering APIConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering APIConfig');
       return <APIConfig nodeId={id} data={data as APINodeData} />;
     
     case 'output':
-      console.log('[ConfigFactory] Rendering OutputConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering OutputConfig');
       return <OutputConfig nodeId={id} data={data as OutputNodeData} />;
     
     case 'input':
-      console.log('[ConfigFactory] Rendering InputNodeConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering InputNodeConfig');
       try {
         return <InputNodeConfig nodeId={id} data={data as InputNodeData} />;
       } catch (error) {
@@ -69,23 +73,23 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
       }
     
     case 'conditional':
-      console.log('[ConfigFactory] Rendering ConditionalNodeConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering ConditionalNodeConfig');
       return <ConditionalNodeConfig nodeId={id} data={data as ConditionalNodeData} />;
     
     case 'group':
-      console.log('[ConfigFactory] Rendering GroupNodeConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering GroupNodeConfig');
       return <GroupNodeConfig nodeId={id} data={data as GroupNodeData} />;
     
     case 'merger':
-      console.log('[ConfigFactory] Rendering MergerNodeConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering MergerNodeConfig');
       return <MergerNodeConfig nodeId={id} data={data as MergerNodeData} />;
     
     case 'web-crawler':
-      console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');
       return <WebCrawlerNodeConfig nodeId={id} data={data as WebCrawlerNodeData} />;
     
     default:
-      console.log(`[ConfigFactory] No config for node type: ${type}`);
+      if (DEBUG_LOGS) console.log(`[ConfigFactory] No config for node type: ${type}`);
       return (
         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
           <h3 className="text-yellow-700 font-medium">Configuration not implemented</h3>
@@ -95,4 +99,12 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = ({ selectedNode }) =>
         </div>
       );
   }
-}; 
+}, (prevProps, nextProps) => {
+  // 선택된 노드가 없거나 이전과 동일한 노드 ID인 경우 리렌더링 방지
+  if (!prevProps.selectedNode && !nextProps.selectedNode) return true;
+  if (!prevProps.selectedNode || !nextProps.selectedNode) return false;
+  
+  return prevProps.selectedNode.id === nextProps.selectedNode.id &&
+    prevProps.selectedNode.type === nextProps.selectedNode.type &&
+    JSON.stringify(prevProps.selectedNode.data) === JSON.stringify(nextProps.selectedNode.data);
+}); 

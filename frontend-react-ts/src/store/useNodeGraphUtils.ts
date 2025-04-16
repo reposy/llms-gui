@@ -159,6 +159,19 @@ export const isNodeRoot = (nodeId: string): boolean => {
 };
 
 /**
+ * 노드가 루트 노드인지 확인하는 React Hook
+ * 컴포넌트에서 사용할 때는 이 훅을 사용해야 함
+ * @param nodeId 확인할 노드 ID
+ * @returns 루트 노드 여부
+ */
+export const useIsRootNode = (nodeId: string): boolean => {
+  return useFlowStructureStore((state) => {
+    const { nodes, edges } = state;
+    return isNodeRootUtil(nodeId, nodes, edges);
+  });
+};
+
+/**
  * useNodeGraphUtils
  * 노드 그래프에 관련된 유틸리티 함수들을 제공하는 모듈
  */

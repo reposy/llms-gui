@@ -3,7 +3,7 @@ import { Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { NodeContent, setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
 import { isEqual, cloneDeep } from 'lodash';
-import { setNodes, setEdges, applyNodeSelection, setSelectedNodeId } from './useFlowStructureStore';
+import { setNodes, setEdges } from './useFlowStructureStore';
 import { resetNodeStates } from './useNodeStateStore';
 
 // Define snapshot interface
@@ -103,22 +103,6 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setNodes(previous.nodes);
     setEdges(previous.edges);
     
-    // 4. Restore selection state - use a short timeout to ensure flow structure is updated first
-    const selectedNodes = previous.nodes.filter(node => node.selected).map(node => node.id);
-    setTimeout(() => {
-      if (selectedNodes.length > 0) {
-        console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
-        applyNodeSelection(selectedNodes, 'none');
-        
-        // Set the first selected node as the primary one for sidebar
-        setSelectedNodeId(selectedNodes[0]);
-      } else {
-        // If no nodes were selected, clear selection
-        applyNodeSelection([], 'none');
-        setSelectedNodeId(null);
-      }
-    }, 50);
-    
     set({
       past: newPast,
       future: [current, ...state.future],
@@ -151,22 +135,6 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     // 3. Restore flow structure
     setNodes(next.nodes);
     setEdges(next.edges);
-    
-    // 4. Restore selection state - use a short timeout to ensure flow structure is updated first
-    const selectedNodes = next.nodes.filter(node => node.selected).map(node => node.id);
-    setTimeout(() => {
-      if (selectedNodes.length > 0) {
-        console.log(`[HistoryStore] Restoring selection for ${selectedNodes.length} nodes`);
-        applyNodeSelection(selectedNodes, 'none');
-        
-        // Set the first selected node as the primary one for sidebar
-        setSelectedNodeId(selectedNodes[0]);
-      } else {
-        // If no nodes were selected, clear selection
-        applyNodeSelection([], 'none');
-        setSelectedNodeId(null);
-      }
-    }, 50);
     
     set({
       past: [...state.past, next],

@@ -61,7 +61,7 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
       
       // Create node factory
       const nodeFactory = new NodeFactory();
-      registerAllNodeTypes(nodeFactory);
+      registerAllNodeTypes();
       
       // Find the node data
       const node = nodes.find(n => n.id === id);

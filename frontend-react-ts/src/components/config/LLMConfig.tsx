@@ -17,6 +17,10 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
+// Debug logs for render and content state - Comment out in production
+// Only log when debugging specific issues
+const DEBUG_LOGS = false;
+
 export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
   const executionState = useNodeState(nodeId);
   
@@ -51,25 +55,29 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
   const canEnableVisionMode = useMemo(() => {
     const hasInputs = hasImageInputs();
     const canEnable = supportsVision && hasInputs;
-    console.log(`[LLMConfig] Node ${nodeId} vision mode status:`, {
-      supportsVision,
-      hasImageInputs: hasInputs,
-      canEnableVision: canEnable
-    });
+    if (DEBUG_LOGS) {
+      console.log(`[LLMConfig] Node ${nodeId} vision mode status:`, {
+        supportsVision,
+        hasImageInputs: hasInputs,
+        canEnableVision: canEnable
+      });
+    }
     return canEnable;
   }, [nodeId, supportsVision, hasImageInputs]);
   
   // Debug logs for render and content state
-  console.log(`%c[LLMConfig Render] Node: ${nodeId}`, 'color: green; font-weight: bold;', { 
-    prompt,
-    model,
-    temperature,
-    provider,
-    mode,
-    supportsVision,
-    isDirty,
-    dataFromProps: data 
-  });
+  if (DEBUG_LOGS) {
+    console.log(`[LLMConfig Render] Node: ${nodeId}`, { 
+      prompt,
+      model,
+      temperature,
+      provider,
+      mode,
+      supportsVision,
+      isDirty,
+      dataFromProps: data 
+    });
+  }
 
   // Event handler to stop propagation to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

@@ -64,8 +64,13 @@ export abstract class BaseNode implements ExecutableNode {
    * Gets the IDs of child nodes that should be executed next
    */
   getChildNodes(context: FlowExecutionContext): string[] {
-    const { flow } = context;
-    return getOutgoingConnections(flow.nodes, flow.edges, this.nodeId);
+    // context should have edges directly
+    // getOutgoingConnections returns array of { targetNodeId, ... }
+    if (!('edges' in context)) return [];
+    // @ts-ignore
+    const edges = context.edges;
+    // @ts-ignore
+    return getOutgoingConnections(this.nodeId, edges).map(conn => conn.targetNodeId);
   }
 
   /**
