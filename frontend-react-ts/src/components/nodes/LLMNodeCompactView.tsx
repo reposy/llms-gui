@@ -4,6 +4,7 @@ import { NodeState } from '../../types/execution';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
+import { isVisionModel } from '../../api/llm';
 
 interface LLMNodeCompactViewProps {
   id: string;
@@ -21,7 +22,10 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   onToggleView
 }) => {
   // Use the LLM data hook to get content
-  const { prompt, model, provider, label } = useLlmNodeData({ nodeId: id });
+  const { prompt, model, provider, mode, label } = useLlmNodeData({ nodeId: id });
+
+  // Check if model supports vision
+  const supportsVision = model && isVisionModel(provider as any, model);
 
   // Use compact display with truncated prompt
   const truncatedPrompt = prompt.length > 50
@@ -46,8 +50,14 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
       </div>
       
       <div className="flex items-center text-xs text-gray-600">
-        <div className="flex-1 truncate">
+        <div className="flex-1 truncate flex items-center gap-1">
           {model || data.model || 'No model set'}
+          {/* Vision badge */}
+          {supportsVision && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+              {mode === 'vision' ? '🖼️ Vision' : '🖼️'}
+            </span>
+          )}
         </div>
         <div className="text-xs text-gray-500">
           {provider || data.provider}
@@ -63,13 +73,10 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
       
       {/* Display a result preview when execution is successful */}
       {nodeState?.status === 'success' && nodeState.result && (
-        <div className="text-xs text-gray-700 mt-1 truncate bg-gray-100 p-1 rounded border border-gray-300">
-          <span className="font-semibold text-gray-600">Result: </span>
-          {typeof nodeState.result === 'string' 
-            ? (nodeState.result.length > 60 ? `${nodeState.result.substring(0, 60)}...` : nodeState.result)
-            : (JSON.stringify(nodeState.result).length > 60 
-              ? `${JSON.stringify(nodeState.result).substring(0, 60)}...` 
-              : JSON.stringify(nodeState.result))}
+        <div className="text-xs text-green-600 truncate">
+          Result: {typeof nodeState.result === 'string' 
+            ? nodeState.result.substring(0, 40) + (nodeState.result.length > 40 ? '...' : '')
+            : JSON.stringify(nodeState.result).substring(0, 40) + '...'}
         </div>
       )}
       

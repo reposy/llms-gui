@@ -1,15 +1,32 @@
 import axios from 'axios';
 import { LLMNodeData } from '../types/nodes';
+import { callOllama, callOllamaVision } from '../utils/llm/ollamaClient';
+import { callOpenAI, callOpenAIVision } from '../utils/llm/openaiClient';
 
 export type LLMProvider = 'ollama' | 'openai';
+export type LLMMode = 'text' | 'vision';
 
-interface LLMRequest {
+// Interface for LLM requests
+export interface LLMRequest {
   prompt: string;
   model: string;
-  provider?: LLMProvider;
-  config?: Record<string, any>;
+  provider: LLMProvider;
+  mode?: LLMMode;
+  inputImage?: File | Blob;
+  temperature?: number;
+  ollamaUrl?: string;
+  openaiApiKey?: string;
 }
 
+// Interface for LLM responses
+export interface LLMResponse {
+  response: string;
+  mode?: LLMMode;
+  model?: string;
+  raw?: any;
+}
+
+// Ollama response structure
 interface OllamaResponse {
   response: string;
   context?: number[];
@@ -21,6 +38,7 @@ interface OllamaResponse {
   eval_count?: number;
 }
 
+// OpenAI response structure
 interface OpenAIResponse {
   id: string;
   object: string;
@@ -41,6 +59,9 @@ interface OpenAIResponse {
   };
 }
 
+/**
+ * Execute an LLM node with the appropriate provider
+ */
 export async function executeNode(data: LLMNodeData): Promise<string> {
   if (!data.prompt) {
     throw new Error('프롬프트를 입력해주세요.');
@@ -50,85 +71,183 @@ export async function executeNode(data: LLMNodeData): Promise<string> {
     throw new Error('모델을 선택해주세요.');
   }
 
-  if (data.provider === 'ollama') {
-    const response = await axios.post<OllamaResponse>(
-      `${data.ollamaUrl || 'http://localhost:11434'}/api/generate`,
-      {
-        model: data.model,
-        prompt: data.prompt,
-        temperature: data.temperature,
-        stream: false,
-      }
-    );
-    return response.data.response;
-  } else if (data.provider === 'openai') {
-    const response = await axios.post<OpenAIResponse>(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: data.model,
-        messages: [
-          {
-            role: 'user',
-            content: data.prompt,
-          },
-        ],
-        temperature: data.temperature,
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    return response.data.choices[0].message.content;
+  try {
+    const result = await runLLM({
+      provider: data.provider,
+      model: data.model,
+      prompt: data.prompt,
+      temperature: data.temperature,
+      ollamaUrl: data.ollamaUrl,
+      // Add more parameters as needed
+    });
+    
+    return result.response;
+  } catch (error) {
+    console.error('LLM execution error:', error);
+    throw error;
   }
-
-  throw new Error('지원하지 않는 LLM 제공자입니다.');
 }
 
+/**
+ * Get available models for a given provider
+ */
 export async function getAvailableModels(provider: LLMProvider): Promise<string[]> {
   if (provider === 'openai') {
-    return ['gpt-4', 'gpt-3.5-turbo'];
+    return [
+      'gpt-4',
+      'gpt-4-turbo',
+      'gpt-4-vision-preview',
+      'gpt-3.5-turbo'
+    ];
+  } else if (provider === 'ollama') {
+    // For Ollama, get models from the API if possible
+    try {
+      const baseUrl = 'http://localhost:11434';
+      const response = await axios.get(`${baseUrl}/api/tags`);
+      if (response.data && Array.isArray(response.data.models)) {
+        return response.data.models.map((model: any) => model.name);
+      }
+    } catch (error) {
+      console.warn('Failed to fetch Ollama models:', error);
+    }
+    
+    // Default models if API call fails
+    return [
+      'llama3',
+      'mistral',
+      'gemma:7b', 
+      'llava'
+    ];
   }
 
-  // For Ollama, return an empty array as models should be manually input
   return [];
 }
 
+/**
+ * Check if a model supports vision/image input
+ */
+export function isVisionModel(provider: LLMProvider, model: string): boolean {
+  if (provider === 'openai') {
+    return model.includes('vision') || model.includes('gpt-4-turbo') || model.includes('gpt-4-vision');
+  } else if (provider === 'ollama') {
+    return model.toLowerCase().includes('llava') || 
+           model.toLowerCase().includes('vision') || 
+           model.toLowerCase().includes('bakllava') ||
+           model.toLowerCase().includes('gemma3') ||
+           model.toLowerCase().includes('gemma:3');
+  }
+  
+  return false;
+}
+
+/**
+ * Main LLM processing function that handles both text and vision models
+ * across different providers
+ */
 export const runLLM = async (request: LLMRequest): Promise<LLMResponse> => {
-  // OpenAI API 키는 환경 변수에서 가져와야 합니다
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+  const { 
+    provider, 
+    model, 
+    prompt, 
+    mode = 'text',
+    inputImage,
+    temperature = 0.7,
+    ollamaUrl = 'http://localhost:11434',
+    openaiApiKey
+  } = request;
+
+  if (!prompt || !model || !provider) {
+    throw new Error('Required parameters (prompt, model, provider) are missing');
+  }
   
   try {
-    // OpenAI API 엔드포인트
-    const endpoint = 'https://api.openai.com/v1/chat/completions';
+    // Vision mode requires an input image
+    if (mode === 'vision' && !inputImage) {
+      throw new Error('Vision mode requires an image input. Please connect an image input node or switch to text mode.');
+    }
     
-    const response = await axios.post(
-      endpoint,
-      {
-        model: request.model === 'gpt-4' ? 'gpt-4' : 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'user',
-            content: request.prompt,
-          },
-        ],
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+    // Handle text mode across providers
+    if (mode === 'text') {
+      if (provider === 'ollama') {
+        const response = await callOllama({
+          model,
+          prompt,
+          temperature,
+          baseUrl: ollamaUrl,
+          logger: console.log
+        });
+        
+        return { 
+          response,
+          mode: 'text',
+          model
+        };
+      } else if (provider === 'openai') {
+        if (!openaiApiKey) {
+          throw new Error('OpenAI API key is required for OpenAI provider');
+        }
+        
+        const response = await callOpenAI({
+          model,
+          prompt,
+          temperature,
+          apiKey: openaiApiKey,
+          logger: console.log
+        });
+        
+        return { 
+          response,
+          mode: 'text',
+          model
+        };
       }
-    );
-
-    return {
-      response: response.data.choices[0].message.content,
-    };
+    }
+    // Handle vision mode across providers
+    else if (mode === 'vision') {
+      if (!inputImage) {
+        throw new Error('Vision mode requires an image input. Please connect an image input node or switch to text mode.');
+      }
+      
+      if (provider === 'ollama') {
+        const response = await callOllamaVision({
+          model,
+          prompt,
+          inputImage,
+          temperature,
+          baseUrl: ollamaUrl,
+          logger: console.log
+        });
+        
+        return { 
+          response,
+          mode: 'vision',
+          model
+        };
+      } else if (provider === 'openai') {
+        if (!openaiApiKey) {
+          throw new Error('OpenAI API key is required for OpenAI provider');
+        }
+        
+        const response = await callOpenAIVision({
+          model,
+          prompt,
+          inputImage,
+          temperature,
+          apiKey: openaiApiKey,
+          logger: console.log
+        });
+        
+        return { 
+          response,
+          mode: 'vision',
+          model
+        };
+      }
+    }
+    
+    throw new Error(`Unsupported provider (${provider}) or mode (${mode})`);
   } catch (error) {
-    console.error('OpenAI API 호출 중 오류:', error);
-    throw new Error('LLM 처리 중 오류가 발생했습니다.');
+    console.error(`${provider.toUpperCase()} API 호출 중 오류:`, error);
+    throw new Error(`LLM 처리 중 오류가 발생했습니다: ${error}`);
   }
 }; 

@@ -1,28 +1,25 @@
 import { LLMNodeData, LLMResult } from '../types/nodes';
+import { callOllama } from './llm/ollamaClient';
 
 export async function executeOllamaNode(data: LLMNodeData): Promise<LLMResult> {
-  const { ollamaUrl = 'http://localhost:11434', model, prompt } = data;
+  const { ollamaUrl = 'http://localhost:11434', model, prompt, temperature } = data;
   
-  const response = await fetch(`${ollamaUrl}/api/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  try {
+    // Use the new Ollama client
+    const response = await callOllama({
       model,
       prompt,
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.statusText}`);
+      temperature,
+      baseUrl: ollamaUrl
+    });
+    
+    return {
+      content: response,
+      text: response,
+      raw: { response }
+    };
+  } catch (error) {
+    console.error(`Ollama API error: ${error}`);
+    throw new Error(`Ollama API error: ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  const result = await response.json();
-  return {
-    content: result.response,
-    text: result.response,
-    raw: result,
-  };
 } 

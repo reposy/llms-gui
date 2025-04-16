@@ -5,6 +5,7 @@ import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { LLMNodeHeader } from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
+import { useNodeConnections } from '../../hooks/useNodeConnections';
 
 interface LLMNodeExpandedViewProps {
   id: string;
@@ -27,6 +28,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     temperature,
     provider,
     ollamaUrl,
+    mode,
     label,
     responseContent,
     isDirty,
@@ -34,8 +36,19 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     handleModelChange,
     handleTemperatureChange,
     handleProviderChange,
-    handleOllamaUrlChange
+    handleOllamaUrlChange,
+    setMode
   } = useLlmNodeData({ nodeId: id });
+  
+  // Check if there are input nodes that could provide images
+  const { hasImageInputs } = useNodeConnections(id);
+  
+  // Check if vision mode is possible
+  const canEnableVisionMode = useMemo(() => {
+    const hasInputs = hasImageInputs();
+    console.log(`[LLMNodeExpandedView] Node ${id} can${hasInputs ? '' : 'not'} use vision mode (has image inputs: ${hasInputs})`);
+    return hasInputs;
+  }, [id, hasImageInputs]);
   
   // Debug logs for render and content state
   console.log(`%c[LLMNodeExpandedView Render] Node: ${id}`, 'color: blue; font-weight: bold;', { 
@@ -138,6 +151,45 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
           </select>
         </div>
         
+        {/* Mode Selection */}
+        <div className="flex flex-col space-y-1">
+          <label className="text-xs font-medium text-gray-600">Mode:</label>
+          <div className="flex space-x-2">
+            <button
+              className={`nodrag nopan flex-1 px-2 py-1 text-xs rounded ${
+                mode === 'text' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+              onClick={() => setMode('text')}
+            >
+              Text
+            </button>
+            <button
+              title={!canEnableVisionMode ? '이미지 입력이 필요합니다. 입력 노드를 연결하세요.' : '비전 모드 사용'}
+              className={`nodrag nopan flex-1 px-2 py-1 text-xs rounded ${
+                mode === 'vision' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              } ${!canEnableVisionMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}`}
+              onClick={() => {
+                if (!canEnableVisionMode) {
+                  alert('비전 모드는 이미지 입력이 필요합니다. 이미지 입력 노드를 연결하세요.');
+                  return;
+                }
+                setMode('vision');
+              }}
+            >
+              Vision
+            </button>
+          </div>
+          {mode === 'vision' && (
+            <div className="text-xs text-gray-500 mt-1">
+              ℹ️ 이미지는 입력 노드로부터 제공되어야 합니다.
+            </div>
+          )}
+        </div>
+        
         {provider === 'ollama' && (
           <div className="flex flex-col space-y-1">
             <label className="text-xs font-medium text-gray-600">Ollama URL (Optional):</label>
@@ -153,16 +205,30 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
           </div>
         )}
 
-        {nodeState?.result && (
-          <div className="mt-2 p-2 border border-green-200 bg-green-50 rounded text-xs text-green-800">
-            <strong>Result:</strong>
-            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(nodeState.result, null, 2)}</pre>
-          </div>
-        )}
+        {/* Result Display */}
         {responseContent && (
-          <div className="mt-2 p-2 border border-blue-200 bg-blue-50 rounded text-xs text-blue-800">
-            <strong>Response Content:</strong>
-            <pre className="whitespace-pre-wrap break-all">{responseContent}</pre>
+          <div className="w-full p-3 rounded-md bg-gray-100 text-sm whitespace-pre-wrap overflow-auto max-h-[200px] mt-3">
+            {/* Mode & Model Info Badge - 모드와 모델 정보가 응답에 포함된 경우 */}
+            {responseContent.includes('[Mode:') && responseContent.includes('[Model:') && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {/* Mode Badge */}
+                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                  responseContent.includes('[Mode: vision]') 
+                    ? 'bg-purple-100 text-purple-800' 
+                    : 'bg-blue-100 text-blue-800'
+                }`}>
+                  {responseContent.includes('[Mode: vision]') ? '🖼️ Vision' : '📝 Text'} Mode
+                </span>
+                
+                {/* Model Badge */}
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
+                  🤖 {responseContent.match(/\[Model: ([^\]]+)\]/)?.[1] || model}
+                </span>
+              </div>
+            )}
+            
+            {/* Actual content - 모드/모델 정보 제거 */}
+            {responseContent.replace(/\[Mode: [^\]]+\]\s*\[Model: [^\]]+\]\s*\n+/g, '')}
           </div>
         )}
         {nodeState?.error && (

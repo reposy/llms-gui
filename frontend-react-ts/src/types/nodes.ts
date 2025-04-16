@@ -1,5 +1,6 @@
 import { Node, Edge } from 'reactflow';
 import { NodeViewMode } from '../store/viewModeStore';
+import { LLMMode } from '../api/llm';
 
 export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger' | 'web-crawler';
 export type OutputFormat = 'json' | 'text';
@@ -43,6 +44,8 @@ export interface LLMNodeData extends BaseNodeData {
   prompt: string;
   temperature: number;
   ollamaUrl?: string;
+  openaiApiKey?: string;
+  mode?: LLMMode;
   label: string;
   viewMode?: NodeViewMode;
 }

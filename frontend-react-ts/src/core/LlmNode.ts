@@ -1,5 +1,7 @@
 import { Node } from '../core/Node';
 import { setNodeContent, getNodeContent } from '../store/useNodeContentStore';
+import { callOllama } from '../utils/llm/ollamaClient';
+import { runLLM, isVisionModel, LLMMode } from '../api/llm';
 
 /**
  * LLM node properties
@@ -10,6 +12,8 @@ interface LlmNodeProperty {
   model: string;
   provider: string;
   ollamaUrl?: string;
+  openaiApiKey?: string;
+  mode?: LLMMode;
   // Runtime properties for node execution and graph traversal
   executionGraph?: Map<string, any>;
   nodes?: any[];
@@ -26,6 +30,8 @@ interface LlmNodeContent {
   model?: string;
   provider?: string;
   ollamaUrl?: string;
+  openaiApiKey?: string;
+  mode?: LLMMode;
   content?: string;
   responseContent?: string;
   _forceUpdate?: number;
@@ -59,8 +65,67 @@ export class LlmNode extends Node {
       this.property.temperature = latestContent.temperature ?? this.property.temperature ?? 0.7;
       this.property.provider = latestContent.provider ?? this.property.provider ?? 'ollama';
       this.property.ollamaUrl = latestContent.ollamaUrl ?? this.property.ollamaUrl;
+      this.property.openaiApiKey = latestContent.openaiApiKey ?? this.property.openaiApiKey;
+      this.property.mode = latestContent.mode ?? this.property.mode ?? 'text';
       
-      this.context.log(`LlmNode(${this.id}): Properties after sync - provider: ${this.property.provider}, model: ${this.property.model}`);
+      this.context.log(`LlmNode(${this.id}): Properties after sync - provider: ${this.property.provider}, model: ${this.property.model}, mode: ${this.property.mode}`);
+      
+      // Check if model supports vision mode
+      const supportsVision = isVisionModel(this.property.provider as any, this.property.model);
+      this.context.log(`LlmNode(${this.id}): Model ${this.property.model} ${supportsVision ? 'supports' : 'does not support'} vision features`);
+      
+      // Use the mode set by the user but validate it first
+      let mode = this.property.mode || 'text';
+      let imageInput: File | Blob | null = null;
+      
+      // If vision mode is selected, verify it's supported and extract image
+      if (mode === 'vision') {
+        // First check if the model supports vision
+        if (!supportsVision) {
+          this.context.log(`LlmNode(${this.id}): ERROR - Vision mode selected but model ${this.property.model} doesn't support vision features`);
+          
+          // Update the content store to set text mode
+          setNodeContent(this.id, { mode: 'text' }, true);
+          
+          throw new Error(`모델 "${this.property.model}"은(는) 비전 기능을 지원하지 않습니다. 비전을 지원하는 모델로 변경하거나 텍스트 모드를 사용하세요.`);
+        }
+        
+        // Try to extract an image from the input
+        if (input instanceof File || input instanceof Blob) {
+          imageInput = input;
+          this.context.log(`LlmNode(${this.id}): Found File/Blob input for vision mode`);
+        } 
+        else if (input && typeof input === 'object' && 'file' in input && input.file instanceof File) {
+          imageInput = input.file;
+          this.context.log(`LlmNode(${this.id}): Found wrapped File object for vision mode`);
+        }
+        else if (Array.isArray(input) && input.length > 0) {
+          const firstItem = input[0];
+          if (firstItem instanceof File || firstItem instanceof Blob) {
+            imageInput = firstItem;
+            this.context.log(`LlmNode(${this.id}): Found File/Blob in array for vision mode`);
+          } 
+          else if (firstItem && typeof firstItem === 'object' && 'file' in firstItem && firstItem.file instanceof File) {
+            imageInput = firstItem.file;
+            this.context.log(`LlmNode(${this.id}): Found wrapped File in array for vision mode`);
+          }
+        }
+        
+        // If no image is found in vision mode, throw a clear error
+        if (!imageInput) {
+          this.context.log(`LlmNode(${this.id}): ERROR - Vision mode selected but no image found in input`);
+          
+          // For better UX, automatically fall back to text mode in the UI
+          setNodeContent(this.id, { mode: 'text' }, true);
+          
+          throw new Error('비전 모드는 이미지 입력이 필요합니다. 이미지 노드를 연결하거나 텍스트 모드로 전환해주세요.');
+        }
+      }
+      
+      // For text mode, just log that we're using it
+      if (mode === 'text') {
+        this.context.log(`LlmNode(${this.id}): Using text mode`);
+      }
       
       // Log the raw prompt from properties before any processing
       this.context.log(`LlmNode(${this.id}): Raw prompt from property: "${this.property.prompt}"`);
@@ -73,7 +138,10 @@ export class LlmNode extends Node {
       }
       
       // Resolve the template with the input
-      const resolvedPrompt = this.resolveTemplate(this.property.prompt, input);
+      // For vision mode with File/Blob input, we'll handle template substitution in the API layer
+      const resolvedPrompt = mode === 'vision' && imageInput 
+        ? this.property.prompt 
+        : this.resolveTemplate(this.property.prompt, input);
       
       // More detailed logging of the prompt
       this.context.log(`LlmNode(${this.id}): Resolved prompt: "${resolvedPrompt}"`);
@@ -97,7 +165,7 @@ export class LlmNode extends Node {
       }
       
       // Call the LLM endpoint with the provider/model from node property
-      const response = await this.callLlmApi(resolvedPrompt);
+      const response = await this.callLlmApi(resolvedPrompt, imageInput);
       
       // Verify response is valid
       if (!response) {
@@ -157,122 +225,37 @@ export class LlmNode extends Node {
   /**
    * Call the LLM API with the given prompt
    */
-  private async callLlmApi(prompt: string, retryCount = 0): Promise<string> {
-    const { provider, model, temperature, ollamaUrl } = this.property;
-    const MAX_RETRIES = 3;
+  private async callLlmApi(prompt: string, imageInput: File | Blob | null = null): Promise<string> {
+    const { provider, model, temperature, ollamaUrl, openaiApiKey, mode } = this.property;
     
-    this.context.log(`LlmNode(${this.id}): Calling LLM API with provider: ${provider}, model: ${model}, retry: ${retryCount}/${MAX_RETRIES}`);
+    this.context.log(`LlmNode(${this.id}): Calling LLM API with provider: ${provider}, model: ${model}, mode: ${mode}`);
     
     // Defensive check - never send empty prompts to API
     if (!prompt || prompt.trim() === '') {
       throw new Error(`Cannot call LLM API with empty prompt`);
     }
     
-    if (provider === 'ollama') {
-      try {
-        const url = (ollamaUrl ?? 'http://localhost:11434') + '/api/generate';
-        
-        // Create request payload and log it for debugging
-        const requestPayload = {
-          model,
-          prompt,
-          stream: false,
-          temperature: temperature ?? 0.7
-        };
-        
-        // Log the complete request payload including the prompt
-        this.context.log(`LlmNode(${this.id}): Full request payload: ${JSON.stringify(requestPayload)}`);
-        this.context.log(`LlmNode(${this.id}): Prompt in payload: "${prompt}"`);
-        this.context.log(`LlmNode(${this.id}): Prompt length in payload: ${prompt.length} characters`);
-        
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Accept-Charset': 'utf-8'
-          },
-          body: JSON.stringify(requestPayload)
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          this.context.log(`LlmNode(${this.id}): API error - status: ${response.status}, text: ${errorText}`);
-          throw new Error(`LLM API error: ${response.status}: ${errorText}`);
-        }
-
-        // Get raw text instead of directly parsing as JSON - only read once!
-        const rawResponseText = await response.text();
-        
-        // Log the raw response text length for debugging (not full content for privacy)
-        this.context.log(`LlmNode(${this.id}): Raw API response length: ${rawResponseText.length} characters`);
-        
-        // Try to parse the JSON
-        let data;
-        try {
-          data = JSON.parse(rawResponseText);
-          this.context.log(`LlmNode(${this.id}): Successfully parsed response JSON`);
-        } catch (parseError) {
-          this.context.log(`LlmNode(${this.id}): Error parsing JSON response: ${parseError}`);
-          throw new Error(`Failed to parse LLM API response: ${parseError}. Raw response: ${rawResponseText.substring(0, 200)}...`);
-        }
-        
-        // Handle model loading case with retry limit
-        if (data.done_reason === 'load') {
-          this.context.log(`LlmNode(${this.id}): Model is still loading (done_reason = "load")`);
-          
-          if (retryCount < MAX_RETRIES) {
-            this.context.log(`LlmNode(${this.id}): Retrying in 1 second (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return await this.callLlmApi(prompt, retryCount + 1); // Retry with incremented counter
-          } else {
-            this.context.log(`LlmNode(${this.id}): Max retries (${MAX_RETRIES}) reached for model loading`);
-            // Fall through to normal response handling, which will provide a fallback message
-          }
-        }
-        
-        // Log response data structure
-        if (data) {
-          this.context.log(`LlmNode(${this.id}): Response data contains keys: ${Object.keys(data).join(', ')}`);
-          if (data.response !== undefined) {
-            this.context.log(`LlmNode(${this.id}): Response field type: ${typeof data.response}, length: ${typeof data.response === 'string' ? data.response.length : 'N/A'}`);
-          } else {
-            this.context.log(`LlmNode(${this.id}): Response field missing from API response`);
-          }
-        }
-        
-        // Handle the response more robustly
-        let result = '';
-        if (data.response !== undefined && data.response !== null) {
-          if (typeof data.response === 'string' && data.response.trim() === '') {
-            if (data.done_reason === 'load') {
-              this.context.log(`LlmNode(${this.id}): Warning: Empty response with "load" done_reason after max retries`);
-              result = `[Model ${model} is still loading. Please try again in a moment.]`;
-            } else {
-              this.context.log(`LlmNode(${this.id}): Warning: Empty response string from API, using full data object`);
-              result = JSON.stringify(data);
-            }
-          } else {
-            result = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
-          }
-        } else {
-          this.context.log(`LlmNode(${this.id}): No 'response' field in API response, using full data object`);
-          result = JSON.stringify(data);
-        }
-        
-        // Final check to ensure we never return empty string
-        if (!result || result.trim() === '') {
-          this.context.log(`LlmNode(${this.id}): Empty result after processing, falling back to placeholder`);
-          result = `[No content returned from ${provider}/${model}]`;
-        }
-        
-        return result;
-      } catch (error) {
-        this.context.log(`LlmNode(${this.id}): Error calling LLM API: ${error}`);
-        throw error;
-      }
-    } else {
-      throw new Error(`Unsupported provider: ${provider}`);
+    try {
+      // Use the unified LLM API
+      const result = await runLLM({
+        provider: provider as any,
+        model,
+        prompt,
+        mode: imageInput ? 'vision' : (mode as any || 'text'),
+        inputImage: imageInput || undefined,
+        temperature,
+        ollamaUrl,
+        openaiApiKey
+      });
+      
+      // 모드 정보를 응답에 추가
+      const actualMode = result.mode || (imageInput ? 'vision' : 'text');
+      const responseWithModeInfo = `[Mode: ${actualMode}] [Model: ${model}]\n\n${result.response}`;
+      
+      return responseWithModeInfo;
+    } catch (error) {
+      this.context.log(`LlmNode(${this.id}): Error calling LLM API: ${error}`);
+      throw error;
     }
   }
   
@@ -340,8 +323,9 @@ export class LlmNode extends Node {
       return result;
     } catch (error) {
       this.context.log(`LlmNode(${this.id}): Error resolving template: ${error}`);
-      // On error, return the original template to ensure we don't lose the prompt
-      return template;
+      
+      // Fallback - return template as is with error note
+      return `${template} [TEMPLATE_ERROR: ${error}]`;
     }
   }
 } 

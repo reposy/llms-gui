@@ -1,6 +1,7 @@
 import { useCallback, useMemo, ChangeEvent } from 'react';
 import { useNodeContent, LLMNodeContent } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
+import { LLMMode } from '../api/llm';
 
 /**
  * Custom hook to manage LLM node state and operations using Zustand store.
@@ -27,6 +28,8 @@ export const useLlmNodeData = ({
   const temperature = content.temperature ?? 0.7;
   const provider = content.provider || 'ollama';
   const ollamaUrl = content.ollamaUrl || 'http://localhost:11434';
+  const openaiApiKey = content.openaiApiKey || '';
+  const mode = content.mode || 'text';
   const label = content.label || 'LLM Node';
   const responseContent = content.content || '';  // Added to expose the LLM response
 
@@ -113,6 +116,41 @@ export const useLlmNodeData = ({
   }, [nodeId, ollamaUrl, setContent]);
 
   /**
+   * Handle OpenAI API key change with deep equality check
+   */
+  const handleOpenaiApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const newApiKey = event.target.value;
+    if (isEqual(newApiKey, openaiApiKey)) {
+      console.log(`[LLMNode ${nodeId}] Skipping API key update - no change (deep equal)`);
+      return;
+    }
+    setContent({ openaiApiKey: newApiKey });
+  }, [nodeId, openaiApiKey, setContent]);
+
+  /**
+   * Handle mode change with deep equality check
+   */
+  const handleModeChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const newMode = event.target.value as LLMMode;
+    if (isEqual(newMode, mode)) {
+      console.log(`[LLMNode ${nodeId}] Skipping mode update - no change (deep equal)`);
+      return;
+    }
+    setContent({ mode: newMode });
+  }, [nodeId, mode, setContent]);
+
+  /**
+   * Set mode directly with deep equality check
+   */
+  const setMode = useCallback((newMode: LLMMode) => {
+    if (isEqual(newMode, mode)) {
+      console.log(`[LLMNode ${nodeId}] Skipping mode update - no change (deep equal)`);
+      return;
+    }
+    setContent({ mode: newMode });
+  }, [nodeId, mode, setContent]);
+
+  /**
    * Update multiple properties at once with deep equality check
    */
   const updateLlmContent = useCallback((updates: Partial<LLMNodeContent>) => {
@@ -161,6 +199,8 @@ export const useLlmNodeData = ({
     temperature,
     provider,
     ollamaUrl,
+    openaiApiKey,
+    mode,
     label,
     responseContent,
     isDirty: isContentDirty,
@@ -173,6 +213,9 @@ export const useLlmNodeData = ({
     handleProviderChange,
     setProvider,
     handleOllamaUrlChange,
+    handleOpenaiApiKeyChange,
+    handleModeChange,
+    setMode,
     updateLlmContent,
   };
 }; 

@@ -37,6 +37,8 @@ export interface LLMNodeContent extends BaseNodeContent {
   temperature?: number;
   provider?: 'ollama' | 'openai';
   ollamaUrl?: string;
+  openaiApiKey?: string;
+  mode?: 'text' | 'vision';
   content?: string;
 }
 
@@ -199,7 +201,10 @@ const createDefaultContent = (nodeType?: string): NodeContent => {
         prompt: '',
         model: 'llama3',
         temperature: 0.7,
-        provider: 'ollama'
+        provider: 'ollama',
+        ollamaUrl: 'http://localhost:11434',
+        openaiApiKey: '',
+        mode: 'text'
       };
     
     case 'api':
@@ -560,16 +565,18 @@ export const useNodeContentStore = create<NodeContentStore>()(
                 
                 content = {
                   ...content,
-                  items: sanitizeInputItems(inputData.items || []), // Sanitize during load
+                  items: sanitizeInputItems(inputData.items || []),
                   textBuffer: inputData.textBuffer || '',
                   iterateEachRow: !!inputData.iterateEachRow,
                   label: inputData.label
-                };
+                } as NodeContent;
                 
                 // Log sanitized content (only if not a bulk operation)
                 if (nodes.length < 5) {
+                  // Type guard to ensure TypeScript knows we're dealing with InputNodeContent
+                  const inputContent = content as InputNodeContent;
                   console.log(`[NodeContentStore] Sanitized input node ${nodeId}:`, {
-                    sanitizedItems: content.items?.map(item => ({
+                    sanitizedItems: inputContent.items?.map((item: string | FileLikeObject) => ({
                       value: item,
                       type: typeof item
                     }))
@@ -585,8 +592,10 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   temperature: llmData.temperature,
                   provider: llmData.provider,
                   ollamaUrl: llmData.ollamaUrl,
+                  openaiApiKey: llmData.openaiApiKey,
+                  mode: llmData.mode,
                   label: llmData.label
-                };
+                } as NodeContent;
                 break;
                 
               case 'api':
@@ -603,7 +612,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   bodyFormat: apiData.bodyFormat,
                   bodyParams: apiData.bodyParams,
                   label: apiData.label
-                };
+                } as NodeContent;
                 break;
                 
               case 'output':
@@ -614,7 +623,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   content: outputData.content,
                   mode: outputData.mode,
                   label: outputData.label
-                };
+                } as NodeContent;
                 break;
                 
               case 'json-extractor':
@@ -623,7 +632,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   ...content,
                   path: extractorData.path,
                   label: extractorData.label
-                };
+                } as NodeContent;
                 break;
                 
               case 'group':
@@ -632,7 +641,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   ...content,
                   isCollapsed: groupData.isCollapsed,
                   label: groupData.label
-                };
+                } as NodeContent;
                 break;
                 
               case 'conditional':
@@ -642,7 +651,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   conditionType: conditionalData.conditionType,
                   conditionValue: conditionalData.conditionValue,
                   label: conditionalData.label
-                };
+                } as NodeContent;
                 break;
                 
               case 'merger':
@@ -651,7 +660,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
                   ...content,
                   items: mergerData.items,
                   label: mergerData.label
-                };
+                } as NodeContent;
                 break;
             }
             
