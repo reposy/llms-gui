@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { NodeState as ExecutionNodeState } from '../types/execution';
+import { isEqual } from 'lodash';
 
 // Use the NodeState from types/execution.ts to ensure consistency
 type NodeState = ExecutionNodeState;
@@ -18,17 +19,44 @@ export const useNodeStateStore = create<NodeStateStore>((set, get) => ({
     return get().states[nodeId] || { status: 'idle', result: null };
   },
   
-  setNodeState: (nodeId, state) => {
-    set((store) => ({
-      states: {
-        ...store.states,
-        [nodeId]: {
-          ...get().getNodeState(nodeId),
-          ...state,
-          _lastUpdate: Date.now() // Add timestamp for reactivity
-        }
+  setNodeState: (nodeId, newStateUpdate) => {
+    set((store) => {
+      const currentState = get().getNodeState(nodeId);
+      
+      // Merge the update with the current state
+      const potentialNewState: NodeState = {
+        ...currentState,
+        ...newStateUpdate,
+      };
+      
+      // Check if the relevant parts of the state actually changed
+      const relevantCurrentState = { 
+        status: currentState.status, 
+        result: currentState.result, 
+        error: currentState.error 
+      };
+      const relevantPotentialNewState = { 
+        status: potentialNewState.status, 
+        result: potentialNewState.result, 
+        error: potentialNewState.error 
+      };
+      
+      if (isEqual(relevantCurrentState, relevantPotentialNewState)) {
+        // console.log(`[NodeStateStore] Skipping state update for ${nodeId} - no change.`);
+        return {}; // No actual change, return empty object to skip update
       }
-    }));
+      
+      // Add timestamp only if state actually changes
+      potentialNewState._lastUpdate = Date.now();
+      console.log(`[NodeStateStore] Updating state for ${nodeId}:`, potentialNewState);
+      
+      return {
+        states: {
+          ...store.states,
+          [nodeId]: potentialNewState
+        }
+      };
+    });
   },
 
   resetNodeState: (nodeId) => {

@@ -6,7 +6,7 @@ import {
   useEdges, 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges,
-  setSelectedNodeId,
+  setSelectedNodeIds,
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
@@ -40,6 +40,9 @@ declare global {
 // 글로벌 플래그 추가 (파일 상단)
 // 노드를 완전히 초기화하는 중임을 나타내는 플래그
 let isForceClearing = false;
+
+// 선택 상태 변경만 처리하는 플래그 추가
+let isSelectionSyncInProgress = false;
 
 // 전역 객체 초기화
 if (typeof window !== 'undefined') {
@@ -78,6 +81,9 @@ export const useFlowSync = ({
   // For debugging only
   const syncLogCount = useRef(0);
   
+  // 마지막으로 처리한 선택 상태 추적
+  const lastProcessedSelection = useRef<string[]>([]);
+  
   // localNodes가 비워졌을 때 store-to-local sync가 무한 반복되지 않도록 보호 플래그
   const hasJustSyncedFromStore = useRef(false);
   
@@ -101,7 +107,21 @@ export const useFlowSync = ({
       // Log positions being applied from store
       const positionsFromStore = zustandNodes.map(n => ({ id: n.id, position: n.position }));
       console.log(`[FlowSync][SyncFromStore] Syncing ${zustandNodes.length} nodes from Zustand. Positions:`, positionsFromStore);
-      setLocalNodes(zustandNodes);
+      
+      // Get current selection state from Zustand
+      const { selectedNodeIds } = useFlowStructureStore.getState();
+      
+      // 선택 상태 처리 최적화: 마지막 처리한 선택과 동일하면 불필요한 업데이트 방지
+      lastProcessedSelection.current = [...selectedNodeIds].sort();
+      
+      // Apply selection state to nodes being synced
+      const nodesWithSelection = zustandNodes.map(node => ({
+        ...node,
+        selected: selectedNodeIds.includes(node.id)
+      }));
+      
+      // Set local nodes with proper selection state
+      setLocalNodes(nodesWithSelection);
       setLocalEdges(zustandEdges);
     } finally {
       isStoreToLocalSyncInProgress.current = false;
@@ -134,39 +154,34 @@ export const useFlowSync = ({
   const onLocalNodesChange = useCallback((changes: NodeChange[]) => {
     // Strict check for force clearing
     if (isForceClearing || isStoreToLocalSyncInProgress.current || isRestoringHistory.current) return;
+    
+    // Filter out selection changes, as they are handled by onSelectionChange in FlowCanvas
+    const nonSelectionChanges = changes.filter(change => change.type !== 'select');
 
-    // Apply changes to local React Flow state
-    const updatedNodes = applyNodeChanges(changes, localNodes);
-    setLocalNodes(updatedNodes);
-
-    // Update selectedNodeId in Zustand based on the changes
-    // Check if any of the changes were selection changes
-    const selectionChanged = changes.some(change => change.type === 'select');
-    if (selectionChanged) {
-      const selectedNodes = updatedNodes.filter(node => node.selected);
-      if (selectedNodes.length === 1) {
-        console.log(`[FlowSync][onLocalNodesChange] Setting selected node: ${selectedNodes[0].id}`);
-        setSelectedNodeId(selectedNodes[0].id);
-      } else {
-        console.log(`[FlowSync][onLocalNodesChange] Clearing selected node (count: ${selectedNodes.length})`);
-        setSelectedNodeId(null);
-      }
+    // If only selection changes occurred, do nothing here
+    if (nonSelectionChanges.length === 0) {
+      // Apply selection changes locally *only* to keep React Flow happy
+      // This does NOT commit to Zustand selection state.
+      setLocalNodes(applyNodeChanges(changes, localNodes));
+      return; 
     }
 
-    // 디버그 로그 유지
-    changes.forEach(change => {
+    // Apply non-selection changes to local React Flow state
+    const updatedNodes = applyNodeChanges(nonSelectionChanges, localNodes);
+    setLocalNodes(updatedNodes);
+
+    // Debug logs for position changes
+    nonSelectionChanges.forEach(change => {
       if (change.type === 'position' && change.position) {
         console.log(`[onLocalNodesChange] Node ${change.id} position changed to`, change.position);
       }
     });
 
     // Immediately update Zustand store for non-selection changes
-    // Now also includes position changes, dimensions, etc.
-    if (!changes.every(change => change.type === 'select')) {
-      console.log(`[FlowSync][onLocalNodesChange] Committing node changes to store (nodes: ${updatedNodes.length})`);
-      setZustandNodes([...updatedNodes]); // Use spread to ensure a new reference
-    }
-  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes, setSelectedNodeId]);
+    console.log(`[FlowSync][onLocalNodesChange] Committing node changes (non-select) to store (nodes: ${updatedNodes.length})`);
+    setZustandNodes([...updatedNodes]); // Use spread to ensure a new reference
+    
+  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes]);
   
   // Handler for React Flow edge changes
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -220,7 +235,50 @@ export const useFlowSync = ({
   // Hydration is the key dependency here
   }, [hydrated, zustandNodes, zustandEdges, setLocalNodes, setLocalEdges, forceClearLocalState]); 
   
-  // Detect and respond to Zustand store changes
+  // 선택 상태만 동기화하는 함수 - 불필요한 리렌더링 최소화
+  const syncSelectionOnly = useCallback(() => {
+    if (isSelectionSyncInProgress) return;
+    
+    isSelectionSyncInProgress = true;
+    try {
+      const zustandSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
+      const sortedZustandSelectedIds = [...zustandSelectedIds].sort();
+      
+      // 이미 처리한 동일한 선택 상태면 건너뜀
+      if (isEqual(sortedZustandSelectedIds, lastProcessedSelection.current)) {
+        return;
+      }
+      
+      console.log('[FlowSync] Syncing selection only:', sortedZustandSelectedIds);
+      lastProcessedSelection.current = sortedZustandSelectedIds;
+      
+      // 선택 상태만 효율적으로 업데이트
+      const updatedLocalNodes = localNodes.map(node => {
+        const shouldBeSelected = zustandSelectedIds.includes(node.id);
+        if (node.selected === shouldBeSelected) return node;
+        return { ...node, selected: shouldBeSelected };
+      });
+      
+      setLocalNodes(updatedLocalNodes);
+    } finally {
+      isSelectionSyncInProgress = false;
+    }
+  }, [localNodes, setLocalNodes]);
+  
+  // 선택 상태 변경 구독 효과 - 별도 효과로 분리하여 렌더링 최적화
+  useEffect(() => {
+    const unsub = useFlowStructureStore.subscribe(
+      state => state.selectedNodeIds,
+      (selectedNodeIds) => {
+        if (!isForceClearing && !isFirstRender.current && !isRestoringHistory.current && !isStoreToLocalSyncInProgress.current) {
+          syncSelectionOnly();
+        }
+      }
+    );
+    return unsub;
+  }, [syncSelectionOnly, isRestoringHistory]);
+  
+  // Detect and respond to Zustand store node/edge changes (selection 제외)
   useEffect(() => {
     // Strict check for force clearing
     if (isForceClearing || isFirstRender.current || isRestoringHistory.current) return;
@@ -230,16 +288,21 @@ export const useFlowSync = ({
       return;
     }
     
-    // Check if the store state *actually* differs from the local state
-    // This prevents unnecessary syncs if Zustand updates but local state already matches
-    if (!isEqual(zustandNodes, localNodes) || !isEqual(zustandEdges, localEdges)) {
-        console.log(`[FlowSync] Store changed and differs from local, syncing to React Flow`);
-        forceSyncFromStore();
-    } else {
-        console.log(`[FlowSync] Store changed but matches local state, skipping sync.`);
+    // nodes와 edges 구조 변경만 체크 (selection 제외)
+    const nodesChanged = !isEqual(
+      zustandNodes.map(n => ({ ...n, selected: undefined })), 
+      localNodes.map(n => ({ ...n, selected: undefined }))
+    );
+    
+    const edgesChanged = !isEqual(zustandEdges, localEdges);
+
+    if (nodesChanged || edgesChanged) {
+      // nodes/edges가 바뀐 경우: 전체 동기화
+      console.log(`[FlowSync] Store changed meaningfully, syncing to React Flow. Changes: nodes=${nodesChanged}, edges=${edgesChanged}`);
+      forceSyncFromStore();
     }
     
-  // Depend on the Zustand state itself for triggering
+  // Depend only on the structure, not selection state
   }, [zustandNodes, zustandEdges, localNodes, localEdges, forceSyncFromStore, isRestoringHistory]);
   
   // Effect to handle local becoming empty while store has data (anti-entropy)

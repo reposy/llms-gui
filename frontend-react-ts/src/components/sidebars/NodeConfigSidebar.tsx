@@ -3,42 +3,60 @@ import { shallow } from 'zustand/shallow';
 import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
 
-// 디버깅 모드 설정
-const DEBUG_LOGS = false;
+// Enable debugging logs
+const DEBUG_LOGS = true;
 
 interface NodeConfigSidebarProps {
-  selectedNodeId: string | null;
+  selectedNodeIds: string[];
 }
 
-export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = React.memo(({ selectedNodeId }) => {
-  // shallow 비교로 최적화
+export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNodeIds }) => {
   const nodes = useNodes();
   const [isOpen, setIsOpen] = useState(false);
-  
-  // useMemo로 선택된 노드 계산을 최적화
-  const selectedNode = useMemo(() => {
-    return nodes.find(node => node.id === selectedNodeId);
-  }, [nodes, selectedNodeId]);
-  
-  // 사이드바 열림 상태만 업데이트
-  useEffect(() => {
-    setIsOpen(!!selectedNode);
-    
-    // 디버깅 로그는 개발 모드에서만 출력
-    if (DEBUG_LOGS && selectedNode) {
-      console.log('[NodeConfigSidebar] Selected node:', selectedNode);
-      console.log('[NodeConfigSidebar] Node type:', selectedNode.type);
-      console.log('[NodeConfigSidebar] Node data:', selectedNode.data);
-    }
-  }, [selectedNode]);
 
-  if (!isOpen) {
+  // 단일 선택 노드
+  const selectedNode = useMemo(() => {
+    if (selectedNodeIds.length === 1) {
+      const foundNode = nodes.find(node => node.id === selectedNodeIds[0]);
+      if (DEBUG_LOGS) {
+        console.log(`[NodeConfigSidebar] Found node:`, foundNode);
+      }
+      return foundNode;
+    }
     return null;
+  }, [nodes, selectedNodeIds]);
+
+  // 사이드바 열림 상태 업데이트
+  useEffect(() => {
+    setIsOpen(selectedNodeIds.length === 1 && !!selectedNode);
+    if (DEBUG_LOGS) {
+      console.log('[NodeConfigSidebar] Selection changed:', {
+        selectedNodeIds,
+        hasNode: !!selectedNode,
+        nodeType: selectedNode?.type
+      });
+    }
+  }, [selectedNode, selectedNodeIds]);
+
+  // 무선택 또는 다중 선택 시 사이드바 비움/안내
+  if (selectedNodeIds.length === 0) return null;
+  if (selectedNodeIds.length > 1) {
+    return (
+      <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-4 border-l flex flex-col items-center justify-center">
+        <div className="text-lg font-semibold text-gray-700 mb-2">여러 노드가 선택되었습니다.</div>
+        <div className="text-gray-500 text-sm">그룹화, 삭제 등 다중 선택 액션을 사용할 수 있습니다.</div>
+      </div>
+    );
   }
 
-  // 디버깅 로그는 개발 모드에서만 출력
+  // 단일 노드 선택 시 상세
+  if (!isOpen) return null;
   if (DEBUG_LOGS) {
-    console.log('[NodeConfigSidebar] Rendering sidebar for node type:', selectedNode?.type);
+    console.log('[NodeConfigSidebar] Rendering sidebar for node:', {
+      id: selectedNode?.id,
+      type: selectedNode?.type,
+      label: selectedNode?.data?.label
+    });
   }
 
   return (
@@ -48,13 +66,9 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = React.memo(({
           <h2 className="text-xl font-semibold text-gray-800 mb-4">
             {selectedNode.data.label || (selectedNode.type ? selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1) : 'Node')}
           </h2>
-          
           <ConfigFactory selectedNode={selectedNode} />
         </>
       )}
     </div>
   );
-}, (prevProps, nextProps) => {
-  // 이전 props와 현재 props의 selectedNodeId가 같으면 리렌더링 방지
-  return prevProps.selectedNodeId === nextProps.selectedNodeId;
-}); 
+}; 

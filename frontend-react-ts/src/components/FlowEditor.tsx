@@ -9,7 +9,7 @@ import type { Node } from 'reactflow';
 import { createNewNode, calculateNodePosition } from '../utils/flowUtils';
 import { setNodeContent, getAllNodeContents } from '../store/useNodeContentStore';
 // Import from Zustand store
-import { useNodes, useEdges, setNodes, useFlowStructureStore } from '../store/useFlowStructureStore';
+import { useNodes, useEdges, setNodes, useFlowStructureStore, useSelectedNodeIds } from '../store/useFlowStructureStore';
 // Import history and dirty tracking
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/historyUtils';
@@ -20,8 +20,8 @@ export const FlowEditor = () => {
   // Use Zustand hooks
   const nodes = useNodes();
   const edges = useEdges();
-  // Get selectedNodeId directly from the store
-  const selectedNodeId = useFlowStructureStore(state => state.selectedNodeId);
+  // Get selectedNodeIds directly from the store
+  const selectedNodeIds = useSelectedNodeIds();
 
   // Use dirty tracker
   const { isDirty } = useDirtyTracker();
@@ -100,8 +100,11 @@ export const FlowEditor = () => {
 
   // Find the selected node data for the sidebar
   const selectedNode = useMemo(() => {
-    return nodes.find(n => n.id === selectedNodeId);
-  }, [nodes, selectedNodeId]);
+    if (selectedNodeIds.length === 1) {
+      return nodes.find(n => n.id === selectedNodeIds[0]);
+    }
+    return null;
+  }, [nodes, selectedNodeIds]);
 
   const isGroupSelected = selectedNode?.type === 'group';
 
@@ -255,14 +258,12 @@ export const FlowEditor = () => {
           </ReactFlowProvider>
         </div>
 
-        {/* Right Sidebar Area */}
-        <div className="flex-none w-80 bg-white border-l border-gray-200 shadow-lg z-10 overflow-y-auto">
-          {isGroupSelected ? (
-            <GroupDetailSidebar selectedNodeId={selectedNodeId} />
-          ) : (
-            <NodeConfigSidebar selectedNodeId={selectedNodeId} />
-          )}
-        </div>
+        {/* 오른쪽 사이드바: 그룹/노드 상세/다중선택 안내 */}
+        {isGroupSelected ? (
+          <GroupDetailSidebar selectedNodeIds={selectedNodeIds} />
+        ) : (
+          <NodeConfigSidebar selectedNodeIds={selectedNodeIds} />
+        )}
       </div>
       <StatusBar />
     </div>

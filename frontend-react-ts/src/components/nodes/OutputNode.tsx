@@ -93,47 +93,82 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     }
   }, [format, nodeState?.result, data.content, handleFormatChange, handleContentChange, formatResultBasedOnFormat]);
 
+  // useRef 훅을 컴포넌트 바디 최상위에서 선언
+  const prevResultRef = useRef<any>();
+  const prevFormatRef = useRef<string>();
+  const prevErrorRef = useRef<any>();
+
   // Update data.content when node result or format changes
   useEffect(() => {
     // Skip effect if node state hasn't changed or if we're not in a valid state
     if (!nodeState) return;
 
+    // nodeState.result, format, error가 모두 이전과 같으면 아무것도 하지 않음
+    if (
+      isEqual(nodeState.result, prevResultRef.current) &&
+      format === prevFormatRef.current &&
+      isEqual(nodeState.error, prevErrorRef.current)
+    ) {
+      return;
+    }
+    prevResultRef.current = nodeState.result;
+    prevFormatRef.current = format;
+    prevErrorRef.current = nodeState.error;
+
     console.log(`[OutputNode ${id}] Node state changed: ${nodeState.status}, result:`, nodeState.result);
 
     let newContent: string | undefined;
+    let shouldUpdate = false;
 
     if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       newContent = formatResultBasedOnFormat(nodeState.result, format);
-      
-      // Only update if content has actually changed - prevents infinite updates
       if (!isEqual(newContent, data.content)) {
-        console.log(`[OutputNode ${id}] Setting success content: "${newContent}"`);
-        handleContentChange(newContent);
+        console.log(`[OutputNode ${id}] Needs update: success content`);
+        shouldUpdate = true;
       } else {
-        console.log(`[OutputNode ${id}] Skipping success content update - content unchanged: "${newContent}"`);
+        console.log(`[OutputNode ${id}] Skipping success content update - content unchanged.`);
       }
-      
-      // Don't continue with the normal deep equality check as we've already handled it
-      return;
     } else if (nodeState.status === 'running') {
       newContent = '처리 중...';
+      if (!isEqual(newContent, data.content)) {
+         console.log(`[OutputNode ${id}] Needs update: running state`);
+        shouldUpdate = true;
+      }
     } else if (nodeState.status === 'error') {
       newContent = `오류: ${nodeState.error}`;
+       if (!isEqual(newContent, data.content)) {
+         console.log(`[OutputNode ${id}] Needs update: error state`);
+        shouldUpdate = true;
+      }
     } else if (nodeState.status === 'idle') {
-      newContent = '실행 대기 중...';
-    } else {
+      // Explicitly check if the current content is *already* the idle message
+      // or if the result is already null/undefined. Only update if necessary.
+      const idleMessage = '실행 대기 중...';
+      if (!isEqual(idleMessage, data.content) || nodeState.result !== null) {
+        newContent = idleMessage;
+        console.log(`[OutputNode ${id}] Needs update: idle state (content diff or result exists)`);
+        shouldUpdate = true;
+      } else {
+         console.log(`[OutputNode ${id}] Skipping idle content update - already idle.`);
+      }
+    } else { // Fallback for unknown status or cleared result
       newContent = '결과 없음';
+      if (!isEqual(newContent, data.content)) {
+        console.log(`[OutputNode ${id}] Needs update: fallback state`);
+        shouldUpdate = true;
+      }
     }
 
-    // Only update if content has actually changed using deep equality
-    if (newContent !== undefined && 
-        !isEqual(newContent, data.content) && 
+    // Only update if content has actually changed AND it differs from the ref
+    if (shouldUpdate && newContent !== undefined && 
         !isEqual(newContent, previousContentRef.current)) {
-      console.log(`[OutputNode ${id}] Updating content from "${data.content}" to "${newContent}" (prev: "${previousContentRef.current}")`);
+      console.log(`[OutputNode ${id}] Applying update: "${newContent}" (prev ref: "${previousContentRef.current}")`);
       previousContentRef.current = newContent;
-      handleContentChange(newContent);
+      handleContentChange(newContent); // This updates useNodeContentStore
+    } else if (shouldUpdate) {
+        console.log(`[OutputNode ${id}] Skipping update: content matches previous ref (${previousContentRef.current})`);
     }
-  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, data.content, handleContentChange, formatResultBasedOnFormat, id]);
+  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, handleContentChange, formatResultBasedOnFormat, id]);
 
   // Update previousContentRef when data.content changes externally
   useEffect(() => {

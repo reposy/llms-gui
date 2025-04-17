@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { isEqual } from 'lodash';
+import { useCallback } from 'react';
 
 /**
  * 노드 컨텐츠 기본 인터페이스
@@ -53,17 +55,50 @@ export const useNodeContentStore = create<NodeContentStore>()(
       content: {},
       
       // 노드 컨텐츠 설정 (기존 컨텐츠와 병합)
-      setNodeContent: (nodeId, content) => {
-        set((state) => ({
-          content: {
-            ...state.content,
-            [nodeId]: {
-              ...state.content[nodeId],
-              ...content,
-              isDirty: true // 컨텐츠가 업데이트되면 자동으로 dirty로 표시
+      setNodeContent: (nodeId, newContentUpdate) => {
+        set((state) => {
+          const currentContent = state.content[nodeId] || {};
+          
+          // Merge update with current content, excluding isDirty temporarily
+          const { isDirty: currentDirty, ...currentContentWithoutDirty } = currentContent;
+          const { isDirty: newDirtyUpdate, ...newContentUpdateWithoutDirty } = newContentUpdate;
+          
+          const potentialNewContent = {
+            ...currentContentWithoutDirty,
+            ...newContentUpdateWithoutDirty
+          };
+
+          // Check if the content actually changed (excluding isDirty)
+          if (isEqual(currentContentWithoutDirty, potentialNewContent)) {
+            // If only isDirty changed, handle that separately
+            const finalIsDirty = newDirtyUpdate !== undefined ? newDirtyUpdate : true;
+            if (currentDirty !== finalIsDirty) {
+              console.log(`[NodeContentStore] Updating only isDirty for ${nodeId} to ${finalIsDirty}`);
+              return {
+                content: {
+                  ...state.content,
+                  [nodeId]: { ...currentContent, isDirty: finalIsDirty }
+                }
+              };
+            } else {
+              // console.log(`[NodeContentStore] Skipping content update for ${nodeId} - no change.`);
+              return {}; // No actual change
             }
           }
-        }));
+          
+          // Content changed, determine final isDirty state
+          // If newContentUpdate specified isDirty, use it, otherwise default to true
+          const finalIsDirty = newDirtyUpdate !== undefined ? newDirtyUpdate : true;
+          
+          console.log(`[NodeContentStore] Updating content for ${nodeId}:`, { ...potentialNewContent, isDirty: finalIsDirty });
+          
+          return {
+            content: {
+              ...state.content,
+              [nodeId]: { ...potentialNewContent, isDirty: finalIsDirty }
+            }
+          };
+        });
       },
       
       // 노드 컨텐츠 삭제
@@ -97,15 +132,8 @@ export const useNodeContentStore = create<NodeContentStore>()(
 
       // 노드의 dirty 상태 설정
       markNodeDirty: (nodeId, isDirty) => {
-        set((state) => ({
-          content: {
-            ...state.content,
-            [nodeId]: {
-              ...state.content[nodeId],
-              isDirty
-            }
-          }
-        }));
+        // Use setNodeContent to handle the update, ensuring consistency
+        get().setNodeContent(nodeId, { isDirty }); 
       },
 
       // 노드의 dirty 상태 확인
@@ -143,11 +171,17 @@ export const {
  */
 export const useNodeContent = (nodeId: string) => {
   const content = useNodeContentStore((state) => state.content[nodeId] || {});
-  const updateContent = useNodeContentStore((state) => state.setNodeContent);
+  // Important: Get the setNodeContent function directly from the store instance
+  const updateContentFunc = useNodeContentStore((state) => state.setNodeContent);
   
+  // Wrap the update function to automatically pass the nodeId
+  const updateContentForNode = useCallback((newContent: Partial<NodeContent>) => {
+    updateContentFunc(nodeId, newContent);
+  }, [nodeId, updateContentFunc]);
+
   return {
     content,
-    updateContent: (newContent: NodeContent) => updateContent(nodeId, newContent)
+    updateContent: updateContentForNode
   };
 };
 

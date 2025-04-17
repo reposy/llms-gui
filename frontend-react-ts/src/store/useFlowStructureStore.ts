@@ -1,97 +1,116 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage, StorageValue } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { Node, Edge } from 'reactflow';
-import { createIDBStorage } from '../utils/idbStorage';
 import { NodeData } from '../types/nodes';
-import { subscribeWithSelector } from 'zustand/middleware';
+import { createIDBStorage } from '../utils/idbStorage';
 
-// Define the state structure
-export interface FlowStructureState {
+// Type for the store
+interface FlowStructureState {
   nodes: Node<NodeData>[];
   edges: Edge[];
-  selectedNodeId: string | null;
+  selectedNodeIds: string[];
+  
+  // Actions
   setNodes: (nodes: Node<NodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
-  setSelectedNodeId: (nodeId: string | null) => void;
+  setSelectedNodeIds: (nodeIds: string[]) => void;
 }
 
-// Custom storage wrapper for IndexedDB
-const idbStorage = createIDBStorage();
-
-// Create the Zustand store with persistence
+// Create the store with persist middleware
 export const useFlowStructureStore = create<FlowStructureState>()(
-  subscribeWithSelector( // Wrap with subscribeWithSelector for granular subscriptions
-    persist(
-      (set, get) => ({ 
-        nodes: [],
-        edges: [],
-        selectedNodeId: null, // Initialize selectedNodeId
+  persist(
+    (set, get) => ({
+      nodes: [],
+      edges: [],
+      selectedNodeIds: [],
+      
+      setNodes: (nodes) => {
+        // Only update if nodes have actually changed
+        if (nodesEqual(get().nodes, nodes)) {
+          console.log('setNodes: Nodes unchanged, skipping update');
+          return;
+        }
         
-        setNodes: (nodes) => set((state) => {
-          console.log('[Zustand] Setting nodes:', nodes.length);
-          // Ensure immutability
-          return { nodes: [...nodes] }; 
-        }),
+        console.log(`Setting ${nodes.length} nodes in Zustand store`);
+        set({ nodes });
+      },
+      
+      setEdges: (edges) => {
+        // Only update if edges have actually changed
+        if (edgesEqual(get().edges, edges)) {
+          console.log('setEdges: Edges unchanged, skipping update');
+          return;
+        }
         
-        setEdges: (edges) => set((state) => {
-          console.log('[Zustand] Setting edges:', edges.length);
-          // Ensure immutability
-          return { edges: [...edges] }; 
-        }),
+        console.log(`Setting ${edges.length} edges in Zustand store`);
+        set({ edges });
+      },
+      
+      setSelectedNodeIds: (nodeIds) => {
+        // Check if selection has actually changed
+        const currentIds = get().selectedNodeIds;
+        const isSameSelection = 
+          currentIds.length === nodeIds.length && 
+          currentIds.every(id => nodeIds.includes(id));
         
-        setSelectedNodeId: (nodeId) => set((state) => {
-          if (state.selectedNodeId !== nodeId) {
-            console.log(`[Zustand] Setting selectedNodeId: ${nodeId}`);
-            // Return new state object
-            return { 
-              selectedNodeId: nodeId,
-              // Update node selection immutably
-              nodes: state.nodes.map(n => ({ 
-                ...n, 
-                selected: n.id === nodeId 
-              }))
-            };
-          }
-          return {}; // No change if ID is the same
-        }),
+        if (isSameSelection) {
+          console.log('setSelectedNodeIds: Selection unchanged, skipping update');
+          return;
+        }
+        
+        console.log(`Setting selectedNodeIds in Zustand store:`, nodeIds);
+        set({ selectedNodeIds: nodeIds });
+      },
+    }),
+    {
+      name: 'flow-structure-storage',
+      storage: createJSONStorage(() => createIDBStorage()),
+      partialize: (state) => ({ 
+        nodes: state.nodes,
+        edges: state.edges,
+        // Don't persist selection state across sessions
+        // selectedNodeIds: state.selectedNodeIds
       }),
-      {
-        name: 'flow-structure-storage', // Unique name for the storage
-        storage: createJSONStorage(() => idbStorage), // Use wrapped IndexedDB storage
-        partialize: (state) => ({ 
-            nodes: state.nodes, 
-            edges: state.edges, 
-            selectedNodeId: state.selectedNodeId // Persist selectedNodeId too
-        }), 
-        onRehydrateStorage: (state) => {
-          console.log('[Zustand] Hydration process starting...');
-          // Return value is not used according to docs, just for side-effects
-          return (_state, error) => {
-            if (error) {
-              console.error('[Zustand] Hydration failed:', error);
-            } else {
-              console.log('[Zustand] Hydration finished successfully.');
-              // Ensure nodes have correct selection state after hydration
-              // Use timeout to ensure this runs after initial state is set
-              setTimeout(() => {
-                 useFlowStructureStore.setState(s => ({ 
-                    nodes: s.nodes.map(n => ({ ...n, selected: n.id === s.selectedNodeId }))
-                 }));
-              }, 0);
-            }
-          };
-        },
+      onRehydrateStorage: () => (state) => {
+        console.log('Flow structure hydrated:', state);
       }
-    )
+    }
   )
 );
 
-// Export hooks for easy access
-export const useNodes = () => useFlowStructureStore((state) => state.nodes);
-export const useEdges = () => useFlowStructureStore((state) => state.edges);
-export const useSelectedNodeId = () => useFlowStructureStore((state) => state.selectedNodeId);
+// Helper function to check if two Node arrays are equal
+function nodesEqual(a: Node<NodeData>[], b: Node<NodeData>[]): boolean {
+  if (a.length !== b.length) return false;
+  
+  // Simple comparison - might need to be more sophisticated depending on use case
+  return a.every((nodeA, i) => {
+    const nodeB = b[i];
+    return nodeA.id === nodeB.id && 
+           nodeA.type === nodeB.type &&
+           nodeA.position.x === nodeB.position.x &&
+           nodeA.position.y === nodeB.position.y;
+  });
+}
 
-// Export actions for direct use (using getState)
+// Helper function to check if two Edge arrays are equal
+function edgesEqual(a: Edge[], b: Edge[]): boolean {
+  if (a.length !== b.length) return false;
+  
+  // Simple comparison - might need to be more sophisticated depending on use case
+  return a.every((edgeA, i) => {
+    const edgeB = b[i];
+    return edgeA.id === edgeB.id && 
+           edgeA.source === edgeB.source &&
+           edgeA.target === edgeB.target;
+  });
+}
+
+// Export action creators for convenience
 export const setNodes = (nodes: Node<NodeData>[]) => useFlowStructureStore.getState().setNodes(nodes);
 export const setEdges = (edges: Edge[]) => useFlowStructureStore.getState().setEdges(edges);
-export const setSelectedNodeId = (nodeId: string | null) => useFlowStructureStore.getState().setSelectedNodeId(nodeId);
+export const setSelectedNodeIds = (nodeIds: string[]) => useFlowStructureStore.getState().setSelectedNodeIds(nodeIds);
+
+// Export selectors for convenience
+export const useNodes = () => useFlowStructureStore(state => state.nodes);
+export const useEdges = () => useFlowStructureStore(state => state.edges);
+export const useSelectedNodeIds = () => useFlowStructureStore(state => state.selectedNodeIds);

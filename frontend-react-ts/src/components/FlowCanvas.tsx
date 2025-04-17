@@ -18,6 +18,7 @@ import ReactFlow, {
   ReactFlowInstance
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import isEqual from 'lodash/isEqual';
 
 // Import custom hooks
 import { useHistory } from '../hooks/useHistory';
@@ -27,8 +28,12 @@ import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flowUtils';
 // Import Zustand store
-import { setNodes, setEdges, useFlowStructureStore } from '../store/useFlowStructureStore';
-import { isEqual } from 'lodash';
+import { 
+  setNodes, 
+  setEdges, 
+  useFlowStructureStore,
+  setSelectedNodeIds
+} from '../store/useFlowStructureStore';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -151,7 +156,12 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     setLocalEdges,
     { 
       onNodeSelect: (node) => {
-        onNodeSelect(node);
+        // Selection logic is now handled by onSelectionChange callback
+        if (node) {
+          console.log(`[FlowCanvas] Node selected: ${node.id}`);
+        } else {
+          console.log(`[FlowCanvas] Node selection cleared`);
+        }
       }, 
       pushToHistory, 
       isRestoringHistory: isRestoringHistoryRef
@@ -212,6 +222,19 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     }, 300);
   }, [setNodes, setLocalNodes, setLocalEdges, setEdges]);
   
+  // 선택 변경을 처리하는 핸들러 최적화
+  const handleSelectionChange = useCallback(({ nodes = [] }: { nodes: Node[] }) => {
+    if (isRestoringHistoryRef.current) return;
+
+    const selectedIds = nodes.map(node => node.id);
+    const currentSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
+    
+    if (!isEqual(currentSelectedIds, selectedIds)) {
+      console.log('Selection changed:', selectedIds);
+      setSelectedNodeIds(selectedIds);
+    }
+  }, [isRestoringHistoryRef]);
+  
   // 메모이제이션된 FlowCanvas 렌더링 프롭스
   const flowProps = useMemo(() => {
     // 디버그: ReactFlow에 전달되는 nodes의 position 로그
@@ -224,14 +247,16 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       onNodesChange: onLocalNodesChange,
       onEdgesChange: onLocalEdgesChange,
       onConnect: handleConnect,
-      nodeTypes
+      nodeTypes,
+      onSelectionChange: handleSelectionChange
     };
   }, [
     memoizedNodes, 
     memoizedEdges, 
     onLocalNodesChange, 
     onLocalEdgesChange, 
-    handleConnect
+    handleConnect,
+    handleSelectionChange
   ]);
 
   // Detect if we're in a paste operation using global flags
