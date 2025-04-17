@@ -7,6 +7,8 @@ import { importFlowFromJson, exportFlowAsJson, FlowData } from '../utils/importE
 import { useDirtyTracker, useMarkClean } from '../store/useDirtyTracker';
 import { undo, redo, useCanUndo, useCanRedo } from '../store/useHistoryStore';
 import { pushCurrentSnapshot } from '../utils/historyUtils';
+import { createIDBStorage } from '../utils/idbStorage';
+import { useFlowStructureStore } from '../store/useFlowStructureStore';
 
 interface FlowManagerProps {
   flowApi: React.MutableRefObject<FlowCanvasApi | null>;
@@ -25,13 +27,10 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
 
-  // Create an initial snapshot when flow loads
+  // Removed initial snapshot logic here, handled in FlowEditor now
   useEffect(() => {
-    if (nodesFromState.length > 0) {
-      pushCurrentSnapshot();
-      markClean();
-    }
-  }, []); // Run only on initial mount
+    // No initial snapshot logic needed here
+  }, []); 
 
   const createNewFlow = () => {
     const confirmMessage = isDirty 
@@ -39,11 +38,65 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
       : '현재 플로우를 지우고 새로 시작하시겠습니까?';
       
     if (window.confirm(confirmMessage)) {
-      setNodes([]);
-      setEdges([]);
-      resetAllContent();
-      markClean();
-      console.log('[FlowManager] Reset node content store for new flow');
+      console.log('[FlowManager] Creating new flow - starting clear process');
+      
+      try {
+        // 1. Enable force clearing flag FIRST
+        if (window.flowSyncUtils) {
+          window.flowSyncUtils.enableForceClear(true);
+          console.log('[FlowManager] Step 1: Force clearing enabled');
+        }
+        
+        // 2. Reset node contents
+        resetAllContent();
+        console.log('[FlowManager] Step 2: Reset all node contents');
+        
+        // 3. Clear Zustand store
+        console.log('[FlowManager] Step 3: Clearing Zustand store (setNodes/setEdges)');
+        setNodes([]);
+        setEdges([]);
+        
+        // Step 4 Removed: Manual IndexedDB clear. Zustand persist middleware will handle saving the empty state triggered by setNodes/setEdges.
+        // const idbStorage = createIDBStorage();
+        // const emptyState = {
+        //   state: { nodes: [], edges: [], selectedNodeId: null }, // Include selectedNodeId
+        //   version: 0
+        // };
+        // idbStorage.setItem('flow-structure-storage', JSON.stringify(emptyState));
+        // console.log('[FlowManager] Step 4: Cleared indexedDB storage with stringified empty state');
+        console.log('[FlowManager] Step 4: Manual IndexedDB clear removed. Relying on Zustand persist.');
+        
+        // 5. Directly clear React Flow's internal state using the new API function
+        if (flowApi.current?.forceClearLocalState) {
+          flowApi.current.forceClearLocalState();
+          console.log('[FlowManager] Step 5: Directly cleared React Flow local state via API');
+        } else {
+           console.warn('[FlowManager] Warning: flowApi.current.forceClearLocalState is not available.');
+           // Fallback: Try to trigger sync (less reliable)
+           flowApi.current?.forceSync?.();
+        }
+        
+        // 6. Push empty state to history and mark clean
+        pushCurrentSnapshot(); // Push the cleared state
+        markClean();
+        console.log('[FlowManager] Step 6: Pushed empty snapshot to history and marked clean');
+        
+        // 7. Disable force clearing AFTER all steps are done
+        // Use setTimeout to ensure it runs after the current execution context
+        setTimeout(() => {
+          if (window.flowSyncUtils) {
+            window.flowSyncUtils.enableForceClear(false);
+            console.log('[FlowManager] Step 7: Force clearing disabled. New flow creation complete.');
+          }
+        }, 0); 
+
+      } catch (err) {
+        console.error('[FlowManager] Error creating new flow:', err);
+        // Ensure flag is disabled even on error
+        if (window.flowSyncUtils) {
+          window.flowSyncUtils.enableForceClear(false);
+        }
+      }
     }
   };
 
@@ -80,7 +133,7 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
         // Parse the JSON data from the file
         const flowData: FlowData = JSON.parse(e.target?.result as string);
         
-        // Use the utility function to import the flow data
+        // Use the utility function to import the flow data into Zustand
         importFlowFromJson(flowData);
         
         // Force UI sync after import with a small delay to ensure React Flow has updated
@@ -89,6 +142,20 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
           if (flowApi.current) {
             flowApi.current.forceSync();
           }
+          
+          // Save the newly imported state (read from Zustand) to IndexedDB - Stringify the value
+          const currentState = useFlowStructureStore.getState();
+          const stateToSave = {
+            state: {
+              nodes: currentState.nodes,
+              edges: currentState.edges,
+              selectedNodeId: currentState.selectedNodeId
+            },
+            version: 0 // Or use a proper versioning mechanism if implemented
+          };
+          const idbStorage = createIDBStorage();
+          idbStorage.setItem('flow-structure-storage', JSON.stringify(stateToSave));
+          console.log(`[FlowManager] Saved imported flow to indexedDB (nodes: ${currentState.nodes.length}, edges: ${currentState.edges.length})`);
           
           // Take a snapshot of the imported flow
           pushCurrentSnapshot();

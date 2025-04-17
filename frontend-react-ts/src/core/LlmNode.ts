@@ -56,10 +56,8 @@ export class LlmNode extends Node {
     if (typeof input === 'string') {
       prompt = prompt.replace(/\{\{input\}\}/g, input);
     } else if (Array.isArray(input)) {
-      // Join array elements with newlines for text input
-      const textInput = input
-        .filter(item => typeof item === 'string' && !/\.(jpg|jpeg|png|gif|bmp)$/i.test(item))
-        .join('\n');
+      // 모든 요소를 문자열로 변환해서 합침
+      const textInput = input.map(item => String(item)).join('\n');
       prompt = prompt.replace(/\{\{input\}\}/g, textInput);
     } else if (input && typeof input === 'object') {
       prompt = prompt.replace(/\{\{input\}\}/g, JSON.stringify(input));
@@ -91,6 +89,22 @@ export class LlmNode extends Node {
    */
   async execute(input: any): Promise<any> {
     try {
+      // 디버그: 실행 시점 property 전체 로그
+      this.context?.log(`[디버그] LLMNode(${this.id}) property: ` + JSON.stringify(this.property));
+
+      // 필수 property 체크 (prompt, model, provider)
+      if (!this.property.prompt || !this.property.model || !this.property.provider) {
+        const missing = [
+          !this.property.prompt ? 'prompt' : null,
+          !this.property.model ? 'model' : null,
+          !this.property.provider ? 'provider' : null
+        ].filter(Boolean).join(', ');
+        const errorMsg = `LLMNode(${this.id}): Required property missing: ${missing}`;
+        this.context?.log(errorMsg);
+        this.context?.markNodeError(this.id, errorMsg);
+        throw new Error(errorMsg);
+      }
+
       const resolvedPrompt = this.resolvePrompt(input);
       
       // Mark node as running

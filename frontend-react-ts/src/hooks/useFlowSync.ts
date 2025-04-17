@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { Node, Edge, useNodesState, useEdgesState, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { 
@@ -9,7 +9,6 @@ import {
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
-import { debounce } from '../utils/throttleUtils';
 
 interface UseFlowSyncOptions {
   isRestoringHistory: React.MutableRefObject<boolean>;
@@ -24,7 +23,34 @@ interface UseFlowSyncReturn {
   onLocalEdgesChange: (changes: EdgeChange[]) => void;
   forceSyncFromStore: () => void;
   commitStructureToStore: () => void;
+  forceClearLocalState: () => void;
   flowResetKey: number;
+}
+
+// 전역 선언 추가
+declare global {
+  interface Window {
+    flowSyncUtils: {
+      enableForceClear: (enable: boolean) => void;
+      isForceClearing: boolean;
+    };
+  }
+}
+
+// 글로벌 플래그 추가 (파일 상단)
+// 노드를 완전히 초기화하는 중임을 나타내는 플래그
+let isForceClearing = false;
+
+// 전역 객체 초기화
+if (typeof window !== 'undefined') {
+  window.flowSyncUtils = {
+    enableForceClear: (enable: boolean) => {
+      isForceClearing = enable;
+      window.flowSyncUtils.isForceClearing = enable;
+      console.log(`[FlowSync] Force clearing ${enable ? 'enabled' : 'disabled'}`);
+    },
+    isForceClearing: false
+  };
 }
 
 /**
@@ -44,7 +70,6 @@ export const useFlowSync = ({
   const [localEdges, setLocalEdges, onLocalEdgesChangeInternal] = useEdgesState([]);
   
   // Track sync status and prevent infinite loops
-  const hasPendingLocalChanges = useRef(false);
   const isFirstRender = useRef(true);
   const isStoreToLocalSyncInProgress = useRef(false);
   const flowResetKeyRef = useRef<number>(Date.now());
@@ -53,277 +78,191 @@ export const useFlowSync = ({
   // For debugging only
   const syncLogCount = useRef(0);
   
-  // Debounced store sync to prevent rapid consecutive updates
-  const debouncedCommitToStore = useRef(debounce(() => {
-    if (!hasPendingLocalChanges.current || isRestoringHistory.current) return;
-    
-    // 로컬 상태가 비어있고 스토어에 노드가 있는 경우, 업데이트를 건너뛰어 실수로 노드를 삭제하지 않도록 함
-    if (localNodes.length === 0 && zustandNodes.length > 0) {
-      console.log(`[FlowSync] Local nodes array is empty but store has ${zustandNodes.length} nodes. This might be a synchronization error. Skipping commit.`);
-      hasPendingLocalChanges.current = false;
-      return;
-    }
-    
-    // Only update if there are actual changes
-    if (!isEqual(localNodes, zustandNodes) || !isEqual(localEdges, zustandEdges)) {
-      console.log(`[FlowSync] Committing local changes to store (nodes: ${localNodes.length}, edges: ${localEdges.length})`);
-      setZustandNodes([...localNodes]);
-      setZustandEdges([...localEdges]);
-    }
-    
-    hasPendingLocalChanges.current = false;
-  }, 100)).current;
+  // localNodes가 비워졌을 때 store-to-local sync가 무한 반복되지 않도록 보호 플래그
+  const hasJustSyncedFromStore = useRef(false);
   
-  // Clear React Flow canvas (for empty flows)
-  const forceVisualClear = useCallback(() => {
-    const now = Date.now();
-    
-    // 로컬 상태와 스토어 상태 모두 비어있으면 초기화 불필요
-    if (localNodes.length === 0 && localEdges.length === 0 && 
-        zustandNodes.length === 0 && zustandEdges.length === 0) {
-      console.log(`[FlowSync] Both local and store states are empty, skipping clear`);
-      return;
-    }
-    
-    // 스토어에 데이터가 있는데 로컬 상태가 비어있는 경우 초기화 불필요 
-    if (localNodes.length === 0 && localEdges.length === 0 && 
-        (zustandNodes.length > 0 || zustandEdges.length > 0)) {
-      console.log(`[FlowSync] Local state is already empty but store has data, skipping clear. Should sync from store instead.`);
-      return;
-    }
-    
-    // Prevent multiple clears within short time period
-    if (now - lastEmptyFlowTimestamp.current < 500) {
-      console.log(`[FlowSync] Skipping redundant clear - already cleared ${now - lastEmptyFlowTimestamp.current}ms ago`);
-      return;
-    }
-    
-    console.log('[FlowSync] Clearing React Flow canvas');
+  // New function to directly clear local state
+  const forceClearLocalState = useCallback(() => {
+    console.log('[FlowSync] Directly clearing local React Flow state');
     setLocalNodes([]);
     setLocalEdges([]);
-    
-    // Update timestamp
-    lastEmptyFlowTimestamp.current = now;
-    // Update ReactFlow component key to force complete re-render
-    flowResetKeyRef.current = now;
-    
-    // Reset sync flags
-    hasPendingLocalChanges.current = false;
-  }, [setLocalNodes, setLocalEdges, localNodes, localEdges, zustandNodes, zustandEdges]);
+    flowResetKeyRef.current = Date.now(); // Force re-render if needed
+  }, [setLocalNodes, setLocalEdges]);
   
   // Force sync from Zustand store to React Flow
   const forceSyncFromStore = useCallback(() => {
-    // 이미 동기화 중이면 조기 종료
-    if (isStoreToLocalSyncInProgress.current) {
-      console.log(`[FlowSync] Already syncing, skipping recursive call`);
-      return;
+    // Strict check for force clearing
+    if (isForceClearing) {
+        console.log('[FlowSync] Skipping forceSyncFromStore during force clear');
+        return;
     }
-    
-    // Set flag to prevent store-to-local-to-store cycle
     isStoreToLocalSyncInProgress.current = true;
-    
     try {
-      // Get current store state
-      const storeNodes = zustandNodes;
-      const storeEdges = zustandEdges;
-      
-      syncLogCount.current++;
-      const logId = syncLogCount.current;
-      console.log(`[FlowSync:${logId}] Syncing from store to React Flow (nodes: ${storeNodes.length}, edges: ${storeEdges.length})`);
-      
-      // Handle empty flow case
-      if (storeNodes.length === 0 && storeEdges.length === 0) {
-        if (localNodes.length === 0 && localEdges.length === 0) {
-          console.log(`[FlowSync:${logId}] Both store and local are empty, no changes needed`);
-        } else {
-          // 로컬 변경사항이 커밋되기 전인 경우 (노드 추가 중일 수 있음)
-          if (hasPendingLocalChanges.current) {
-            console.log(`[FlowSync:${logId}] Store is empty but local has content with pending changes. This might be a node that's being added. Skipping canvas clear.`);
-            return;
-          }
-          
-          // 최근에 노드를 추가했다가 제거한 경우 (노드가 추가 후 사라지는 상황 방지)
-          const now = Date.now();
-          if (now - lastEmptyFlowTimestamp.current < 1000) {
-            console.log(`[FlowSync:${logId}] Detected possible node creation/deletion race condition, skipping canvas clear`);
-            return;
-          }
-          
-          console.log(`[FlowSync:${logId}] Store is empty but local has content, clearing canvas`);
-          forceVisualClear();
-        }
-        return;
-      }
-      
-      // 현재 로컬 상태와 스토어 상태가 동일한지 확인
-      const isNodesEqual = isEqual(localNodes.map(node => ({...node, selected: false})), 
-                                  storeNodes.map(node => ({...node, selected: false})));
-      const isEdgesEqual = isEqual(localEdges, storeEdges);
-      
-      // 모든 상태가 동일하면 업데이트 건너뛰기
-      if (isNodesEqual && isEdgesEqual) {
-        console.log(`[FlowSync:${logId}] Store and local states are already in sync, skipping update`);
-        return;
-      }
-      
-      // 실제 변경된 부분 체크 - 단순히 참조만 다른 경우에는 업데이트 건너뛰기
-      let nodesChanged = false;
-      let edgesChanged = false;
-      
-      // 노드 배열 길이 다르면 변경 있음
-      if (storeNodes.length !== localNodes.length) {
-        nodesChanged = true;
-      } else {
-        // 각 노드를 비교하여 실제 차이가 있는지 확인
-        nodesChanged = storeNodes.some((node, index) => {
-          const localNode = localNodes[index];
-          // 다른 ID가 있거나 선택 상태가 다르면 변경됨
-          return node.id !== localNode.id || node.selected !== localNode.selected;
-        });
-      }
-      
-      // 엣지 배열 길이 다르면 변경 있음
-      if (storeEdges.length !== localEdges.length) {
-        edgesChanged = true;
-      } else {
-        // 각 엣지를 비교하여 실제 차이가 있는지 확인
-        edgesChanged = storeEdges.some((edge, index) => {
-          const localEdge = localEdges[index];
-          // 다른 ID나 소스/타겟이 있으면 변경됨
-          return edge.id !== localEdge.id || 
-                 edge.source !== localEdge.source || 
-                 edge.target !== localEdge.target;
-        });
-      }
-      
-      // 변경된 부분이 있을 때만 업데이트
-      if (nodesChanged) {
-        console.log(`[FlowSync:${logId}] Nodes changed, updating local state`);
-        setLocalNodes([...storeNodes]);
-      }
-      
-      if (edgesChanged) {
-        console.log(`[FlowSync:${logId}] Edges changed, updating local state`);
-        setLocalEdges([...storeEdges]);
-      }
-      
-      if (!nodesChanged && !edgesChanged) {
-        console.log(`[FlowSync:${logId}] No actual changes detected, skipping update`);
-      } else {
-        console.log(`[FlowSync:${logId}] Successfully synced ${storeNodes.length} nodes and ${storeEdges.length} edges from store`);
-      }
+      // Log positions being applied from store
+      const positionsFromStore = zustandNodes.map(n => ({ id: n.id, position: n.position }));
+      console.log(`[FlowSync][SyncFromStore] Syncing ${zustandNodes.length} nodes from Zustand. Positions:`, positionsFromStore);
+      setLocalNodes(zustandNodes);
+      setLocalEdges(zustandEdges);
     } finally {
-      // Clear flag after sync completes
       isStoreToLocalSyncInProgress.current = false;
     }
-  }, [zustandNodes, zustandEdges, localNodes, localEdges, setLocalNodes, setLocalEdges, forceVisualClear]);
+  }, [setLocalNodes, setLocalEdges, zustandNodes, zustandEdges]);
+  
+  // Clear React Flow canvas (for empty flows) - This might be less needed now
+  const forceVisualClear = useCallback(() => {
+    // Strict check for force clearing
+    if (isForceClearing) {
+        console.log('[FlowSync] Skipping forceVisualClear during force clear');
+        return;
+    }
+    const now = Date.now();
+    // store에도 데이터가 없을 때만 localNodes/Edges를 비움
+    if (zustandNodes.length === 0 && zustandEdges.length === 0) {
+      setLocalNodes([]);
+      setLocalEdges([]);
+      lastEmptyFlowTimestamp.current = now;
+      flowResetKeyRef.current = now;
+      console.log('[FlowSync] Cleared React Flow canvas (store and local both empty)');
+    } else {
+      // store에 데이터가 있으면 무조건 store-to-local sync만 함
+      console.log('[FlowSync] Store has data, skipping clear and syncing from store');
+      forceSyncFromStore();
+    }
+  }, [setLocalNodes, setLocalEdges, zustandNodes, zustandEdges, forceSyncFromStore]);
   
   // Handler for React Flow node changes
   const onLocalNodesChange = useCallback((changes: NodeChange[]) => {
-    // Skip if store-to-local sync is in progress to prevent cycles
-    if (isStoreToLocalSyncInProgress.current || isRestoringHistory.current) return;
-    
+    // Strict check for force clearing
+    if (isForceClearing || isStoreToLocalSyncInProgress.current || isRestoringHistory.current) return;
+
     // Apply changes to local React Flow state
     const updatedNodes = applyNodeChanges(changes, localNodes);
     setLocalNodes(updatedNodes);
-    
-    // Mark as having pending changes that need to be committed to store
-    // But only for non-selection-only changes
+
+    // 디버그 로그 유지
+    changes.forEach(change => {
+      if (change.type === 'position' && change.position) {
+        console.log(`[onLocalNodesChange] Node ${change.id} position changed to`, change.position);
+      }
+    });
+
+    // Immediately update Zustand store for non-selection changes
     if (!changes.every(change => change.type === 'select')) {
-      hasPendingLocalChanges.current = true;
-      debouncedCommitToStore();
+      console.log(`[FlowSync][onLocalNodesChange] Committing node changes to store (nodes: ${updatedNodes.length})`);
+      setZustandNodes([...updatedNodes]); // Use spread to ensure a new reference
     }
-  }, [localNodes, setLocalNodes, debouncedCommitToStore, isRestoringHistory]);
+  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes]);
   
   // Handler for React Flow edge changes
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
-    // Skip if store-to-local sync is in progress
-    if (isStoreToLocalSyncInProgress.current || isRestoringHistory.current) return;
-    
-    // Apply changes to local React Flow state
-    setLocalEdges(eds => applyEdgeChanges(changes, eds));
-    
-    // Mark as having pending changes
-    hasPendingLocalChanges.current = true;
-    debouncedCommitToStore();
-  }, [setLocalEdges, debouncedCommitToStore, isRestoringHistory]);
+    // Strict check for force clearing
+    if (isForceClearing || isStoreToLocalSyncInProgress.current || isRestoringHistory.current) return;
+
+    // Apply changes to local React Flow state and get updated edges
+    const updatedEdges = applyEdgeChanges(changes, localEdges);
+    setLocalEdges(updatedEdges);
+
+    // Immediately update Zustand store
+    console.log(`[FlowSync][onLocalEdgesChange] Committing edge changes to store (edges: ${updatedEdges.length})`);
+    setZustandEdges([...updatedEdges]); // Use spread to ensure a new reference
+  }, [localEdges, setLocalEdges, isRestoringHistory, setZustandEdges]);
   
   // Explicit function to commit changes to store (for external calls)
+  // This function might now be less necessary for auto-sync, but useful for manual triggers like paste
   const commitStructureToStore = useCallback(() => {
-    // Skip if we're currently restoring history
+    // Strict check for force clearing - Allow commit *during* force clear only if it's the empty state
+    if (isForceClearing && (localNodes.length > 0 || localEdges.length > 0)) {
+        console.log('[FlowSync] Skipping commitStructureToStore during force clear because local state is not empty');
+        return;
+    }
     if (isRestoringHistory.current) return;
     
-    // Cancel any pending debounced commits and commit now
-    debouncedCommitToStore.cancel();
-    
-    // 로컬 상태가 비어있고 스토어에 노드가 있는 경우, 잠재적인 데이터 손실을 방지
-    if (localNodes.length === 0 && zustandNodes.length > 0) {
-      console.log(`[FlowSync] Warning: Local nodes are empty but store has ${zustandNodes.length} nodes. This might cause data loss. Skipping commit.`);
-      return;
+    if (!isEqual(localNodes, zustandNodes) || !isEqual(localEdges, zustandEdges)) {
+        const positionsToCommit = localNodes.map(n => ({ id: n.id, position: n.position }));
+        console.log(`[FlowSync][CommitImmediate] Committing local changes to store (nodes: ${localNodes.length}). Positions:`, positionsToCommit);
+        // Directly set the current local state to Zustand
+        setZustandNodes([...localNodes]);
+        setZustandEdges([...localEdges]);
     }
-    
-    if (hasPendingLocalChanges.current) {
-      setZustandNodes([...localNodes]);
-      setZustandEdges([...localEdges]);
-    }
-    
-    hasPendingLocalChanges.current = false;
-  }, [localNodes, localEdges, zustandNodes, zustandEdges, debouncedCommitToStore]);
+  }, [localNodes, localEdges, zustandNodes, zustandEdges, setZustandNodes, setZustandEdges, isRestoringHistory]);
   
-  // Initial sync on first render
+  // Hydration 완료 여부
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
+    // Check if Zustand has finished hydrating
+    const unsub = useFlowStructureStore.persist.onFinishHydration(() => {
+      console.log('[FlowSync] Zustand hydration finished.');
+      setHydrated(true);
+    });
+    // Also set hydrated if it's already done
+    if (useFlowStructureStore.persist.hasHydrated()) {
+      console.log('[FlowSync] Zustand already hydrated.');
+      setHydrated(true);
+    }
+    return unsub;
+  }, []);
+  
+  // Initial sync on first render (hydration 완료 후에만 동작)
+  useEffect(() => {
+    // Strict check for force clearing
+    if (isForceClearing || !hydrated) return;
     if (isFirstRender.current) {
-      // We only need zustandNodes check here because this only runs once
       console.log(`[FlowSync] Initial sync from store to React Flow (${zustandNodes.length} nodes, ${zustandEdges.length} edges)`);
-      
+      zustandNodes.forEach((node, idx) => {
+        console.log(`[FlowSync] Node[${idx}] id=${node.id} position=`, node.position);
+      });
       if (zustandNodes.length === 0 && zustandEdges.length === 0) {
         console.log(`[FlowSync] Initial state is empty, ensuring clean canvas`);
-        forceVisualClear();
+        // Use direct clear here too for consistency
+        forceClearLocalState(); 
       } else {
-        // Set local state
         setLocalNodes([...zustandNodes]);
         setLocalEdges([...zustandEdges]);
       }
-      
       isFirstRender.current = false;
     }
-  }, []); // Empty dependency array - this only runs once on mount
+  // Hydration is the key dependency here
+  }, [hydrated, zustandNodes, zustandEdges, setLocalNodes, setLocalEdges, forceClearLocalState]); 
   
   // Detect and respond to Zustand store changes
   useEffect(() => {
-    // Skip on first render and during history restoration
-    if (isFirstRender.current || isRestoringHistory.current) return;
+    // Strict check for force clearing
+    if (isForceClearing || isFirstRender.current || isRestoringHistory.current) return;
     
-    // Skip if changes are pending from local (React Flow) to store
-    if (hasPendingLocalChanges.current || isStoreToLocalSyncInProgress.current) {
-      console.log(`[FlowSync] Skipping store-to-local sync due to pending changes`);
+    if (isStoreToLocalSyncInProgress.current) {
+      console.log(`[FlowSync] Skipping store-to-local sync due to ongoing sync`);
       return;
     }
     
-    // 메모리 누수와 중복 처리 방지를 위한 메모이제이션
-    const memoizedZustandNodes = zustandNodes;
-    const memoizedZustandEdges = zustandEdges;
-    
-    // 구조적 변경이 있는지 확인 - 선택 상태 제외 (비교 단순화)
-    const structureChanged = 
-      memoizedZustandNodes.length !== localNodes.length ||
-      memoizedZustandEdges.length !== localEdges.length;
-      
-    // 구조나 선택이 변경된 경우에만 동기화
-    if (structureChanged) {
-      console.log(`[FlowSync] Store changed, syncing to React Flow (structure: ${structureChanged})`);
-      forceSyncFromStore();
+    // Check if the store state *actually* differs from the local state
+    // This prevents unnecessary syncs if Zustand updates but local state already matches
+    if (!isEqual(zustandNodes, localNodes) || !isEqual(zustandEdges, localEdges)) {
+        console.log(`[FlowSync] Store changed and differs from local, syncing to React Flow`);
+        forceSyncFromStore();
+    } else {
+        console.log(`[FlowSync] Store changed but matches local state, skipping sync.`);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    zustandNodes.length,
-    zustandEdges.length,
-    localNodes.length,
-    localEdges.length,
-    // localNodes 자체는 제거 - 매번 재렌더링 방지
-    forceSyncFromStore,
-    isRestoringHistory,
-  ]);
+    
+  // Depend on the Zustand state itself for triggering
+  }, [zustandNodes, zustandEdges, localNodes, localEdges, forceSyncFromStore, isRestoringHistory]);
+  
+  // Effect to handle local becoming empty while store has data (anti-entropy)
+  useEffect(() => {
+    // Strict check for force clearing
+    if (isForceClearing || isFirstRender.current || isRestoringHistory.current) return;
+    
+    const localEmpty = localNodes.length === 0 && localEdges.length === 0;
+    const storeHasData = zustandNodes.length > 0 || zustandEdges.length > 0;
+    
+    // If local is empty but store has data, and we didn't just sync from store
+    if (localEmpty && storeHasData && !isStoreToLocalSyncInProgress.current && !hasJustSyncedFromStore.current) {
+      console.log('[FlowSync] Anti-entropy: Local empty but store has data. Forcing store-to-local sync.');
+      hasJustSyncedFromStore.current = true; // Prevent immediate loop
+      forceSyncFromStore();
+      setTimeout(() => { hasJustSyncedFromStore.current = false; }, 100); // Reset flag after a delay
+    }
+    
+  }, [localNodes.length, localEdges.length, zustandNodes.length, zustandEdges.length, forceSyncFromStore, isRestoringHistory]);
   
   return {
     localNodes,
@@ -334,6 +273,7 @@ export const useFlowSync = ({
     onLocalEdgesChange,
     commitStructureToStore,
     forceSyncFromStore,
-    flowResetKey: flowResetKeyRef.current,
+    forceClearLocalState,
+    flowResetKey: flowResetKeyRef.current
   };
 };

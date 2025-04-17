@@ -70,6 +70,9 @@ export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
   forceSync: () => void;
   commitStructure: () => void;
+  clearNodes: () => void;
+  reactFlowInstance?: ReactFlowInstance;
+  forceClearLocalState: () => void;
 }
 
 interface FlowCanvasProps {
@@ -107,7 +110,9 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     onLocalNodesChange, 
     onLocalEdgesChange,
     forceSyncFromStore,
-    commitStructureToStore
+    commitStructureToStore,
+    forceClearLocalState,
+    flowResetKey
   } = useFlowSync({ isRestoringHistory: isRestoringHistoryRef });
   
   useConsoleErrorOverride();
@@ -169,18 +174,59 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   }, [redo]);
   
   const handleClearAll = useCallback(() => {
+    console.log('[FlowCanvas] Clear All button clicked');
+    
+    // 강제 초기화 모드 활성화
+    if ('enableForceClear' in window.flowSyncUtils) {
+      window.flowSyncUtils.enableForceClear(true);
+    }
+    
+    // React Flow 인스턴스에 접근하여 직접 노드/엣지 초기화
+    if (reactFlowInstanceRef.current) {
+      reactFlowInstanceRef.current.setNodes([]);
+      reactFlowInstanceRef.current.setEdges([]);
+      console.log('[FlowCanvas] Cleared nodes/edges in React Flow instance');
+    }
+    
+    // 로컬 상태 초기화
+    setLocalNodes([]);
+    setLocalEdges([]);
+    console.log('[FlowCanvas] Cleared local nodes/edges state');
+    
+    // zustand 전역 상태 초기화
     setNodes([]);
-  }, [setNodes]);
+    setEdges([]);
+    console.log('[FlowCanvas] Cleared global zustand state');
+    
+    // 변경사항 커밋 (지연 실행)
+    setTimeout(() => {
+      if (commitStructureToStore) {
+        commitStructureToStore();
+        console.log('[FlowCanvas] Committed empty state to store');
+      }
+      
+      // 일정 시간 후 강제 초기화 모드 비활성화
+      if ('enableForceClear' in window.flowSyncUtils) {
+        window.flowSyncUtils.enableForceClear(false);
+      }
+    }, 300);
+  }, [setNodes, setLocalNodes, setLocalEdges, setEdges, commitStructureToStore]);
   
   // 메모이제이션된 FlowCanvas 렌더링 프롭스
-  const flowProps = useMemo(() => ({
-    nodes: memoizedNodes,
-    edges: memoizedEdges,
-    onNodesChange: onLocalNodesChange,
-    onEdgesChange: onLocalEdgesChange,
-    onConnect: handleConnect,
-    nodeTypes
-  }), [
+  const flowProps = useMemo(() => {
+    // 디버그: ReactFlow에 전달되는 nodes의 position 로그
+    memoizedNodes.forEach((node, idx) => {
+      console.log(`[FlowCanvas] ReactFlow nodes[${idx}] id=${node.id} position=`, node.position);
+    });
+    return {
+      nodes: memoizedNodes,
+      edges: memoizedEdges,
+      onNodesChange: onLocalNodesChange,
+      onEdgesChange: onLocalEdgesChange,
+      onConnect: handleConnect,
+      nodeTypes
+    };
+  }, [
     memoizedNodes, 
     memoizedEdges, 
     onLocalNodesChange, 
@@ -283,7 +329,48 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       commitStructure: () => {
         console.log('[FlowCanvas] API.commitStructure called, saving state to Zustand store');
         commitStructureToStore();
-      }
+      },
+      
+      // 새로운 메소드: React Flow의 모든 노드를 완전히 지움
+      clearNodes: () => {
+        console.log('[FlowCanvas] API.clearNodes called, removing all nodes from React Flow');
+        
+        // 강제 초기화 모드 활성화
+        if ('enableForceClear' in window.flowSyncUtils) {
+          window.flowSyncUtils.enableForceClear(true);
+        }
+        
+        if (api) {
+          // React Flow 인스턴스에 직접 빈 배열 설정
+          api.setNodes([]);
+          api.setEdges([]);
+          
+          // 로컬 상태도 초기화
+          setLocalNodes([]);
+          setLocalEdges([]);
+          
+          // zustand 상태도 초기화
+          setNodes([]);
+          setEdges([]);
+          
+          // 강제로 상태 커밋
+          commitStructureToStore();
+          
+          console.log('[FlowCanvas] All nodes and edges cleared from React Flow');
+          
+          // 일정 시간 후 강제 초기화 모드 비활성화
+          setTimeout(() => {
+            if ('enableForceClear' in window.flowSyncUtils) {
+              window.flowSyncUtils.enableForceClear(false);
+            }
+          }, 500);
+        }
+      },
+      
+      // React Flow 인스턴스 직접 노출
+      reactFlowInstance: api,
+      
+      forceClearLocalState: forceClearLocalState
     };
     
     // Set the API reference for external components
@@ -293,7 +380,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     if (registerReactFlowApi) {
       registerReactFlowApi(enhancedApi);
     }
-  }, [forceSyncFromStore, commitStructureToStore, registerReactFlowApi]);
+  }, [forceSyncFromStore, commitStructureToStore, registerReactFlowApi, setLocalNodes, setLocalEdges, setNodes, setEdges, forceClearLocalState]);
   
   // useEffect to handle sync from URL parameters
   useEffect(() => {
@@ -331,7 +418,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       <ReactFlow
         // 메모이제이션된 프롭스 사용
         {...flowProps}
-        key="flow-canvas"
+        key={flowResetKey}
         fitView
         defaultViewport={defaultViewport}
         attributionPosition="bottom-right"

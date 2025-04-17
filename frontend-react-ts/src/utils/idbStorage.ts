@@ -1,5 +1,5 @@
 import { openDB, DBSchema } from 'idb';
-import { PersistStorage } from 'zustand/middleware';
+import { StateStorage, StorageValue } from 'zustand/middleware';
 
 /**
  * Interface defining our database schema
@@ -7,7 +7,7 @@ import { PersistStorage } from 'zustand/middleware';
 interface LlmsGuiDBSchema extends DBSchema {
   'zustand-store': {
     key: string;
-    value: string;
+    value: string; // Store values as strings
   };
 }
 
@@ -15,9 +15,11 @@ interface LlmsGuiDBSchema extends DBSchema {
  * Creates a storage object compatible with Zustand's persist middleware
  * that uses IndexedDB as the underlying storage mechanism.
  * 
- * @returns A storage object compatible with Zustand's PersistStorage interface
+ * This version aligns with the `StateStorage` type expected by `persist`.
+ * 
+ * @returns A storage object compatible with Zustand's StateStorage interface
  */
-export const createIDBStorage = <T>(): PersistStorage<T> => {
+export const createIDBStorage = (): StateStorage => {
   // Database connection variables
   const DB_NAME = 'llms-gui-db';
   const STORE_NAME = 'zustand-store';
@@ -27,28 +29,26 @@ export const createIDBStorage = <T>(): PersistStorage<T> => {
   const dbPromise = openDB<LlmsGuiDBSchema>(DB_NAME, DB_VERSION, {
     upgrade(db) {
       console.log(`[idbStorage] Creating object store: ${STORE_NAME}`);
-      db.createObjectStore(STORE_NAME);
+      // Ensure the store exists
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
     },
   });
 
   // Return a storage object that's compatible with Zustand's persistence API
   return {
     /**
-     * Gets an item from IndexedDB
+     * Gets an item from IndexedDB, returning it as a string or null.
      * @param key The key to retrieve
-     * @returns A promise that resolves to the stored value or null
+     * @returns A promise that resolves to the stored string value or null
      */
-    getItem: async (key: string): Promise<T | null> => {
+    getItem: async (key: string): Promise<string | null> => {
       try {
         console.log(`[idbStorage] Getting item: ${key}`);
         const db = await dbPromise;
         const value = await db.get(STORE_NAME, key);
-        
-        if (value === undefined || value === null) {
-          return null;
-        }
-        
-        return JSON.parse(value) as T;
+        return value === undefined ? null : value;
       } catch (error) {
         console.error(`[idbStorage] Error getting item ${key}:`, error);
         return null;
@@ -56,17 +56,22 @@ export const createIDBStorage = <T>(): PersistStorage<T> => {
     },
 
     /**
-     * Sets an item in IndexedDB
+     * Sets an item in IndexedDB. The value must be a string.
      * @param key The key to set
-     * @param value The value to store
+     * @param value The string value to store
      * @returns A promise that resolves when the operation is complete
      */
-    setItem: async (key: string, value: T): Promise<void> => {
+    setItem: async (key: string, value: string): Promise<void> => {
+      // Runtime check: Ensure the value is a string before attempting to store.
+      if (typeof value !== 'string') {
+        console.error(`[idbStorage] setItem error: Value for key "${key}" must be a string, but received type ${typeof value}. Value:`, value);
+        // Throw an error to prevent storing invalid data
+        throw new TypeError(`[idbStorage] Value for key "${key}" must be a string.`);
+      }
       try {
-        const valueString = JSON.stringify(value);
-        console.log(`[idbStorage] Setting item: ${key} (${Math.round(valueString.length / 1024)} KB)`);
+        console.log(`[idbStorage] Setting item: ${key} (${Math.round(value.length / 1024)} KB)`);
         const db = await dbPromise;
-        await db.put(STORE_NAME, valueString, key);
+        await db.put(STORE_NAME, value, key);
       } catch (error) {
         console.error(`[idbStorage] Error setting item ${key}:`, error);
       }
