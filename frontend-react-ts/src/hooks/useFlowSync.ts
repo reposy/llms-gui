@@ -104,9 +104,8 @@ export const useFlowSync = ({
     }
     isStoreToLocalSyncInProgress.current = true;
     try {
-      // Log positions being applied from store
-      const positionsFromStore = zustandNodes.map(n => ({ id: n.id, position: n.position }));
-      console.log(`[FlowSync][SyncFromStore] Syncing ${zustandNodes.length} nodes from Zustand. Positions:`, positionsFromStore);
+      // 로그 간소화
+      console.log(`[FlowSync][SyncFromStore] Syncing ${zustandNodes.length} nodes from Zustand`);
       
       // Get current selection state from Zustand
       const { selectedNodeIds } = useFlowStructureStore.getState();
@@ -170,18 +169,23 @@ export const useFlowSync = ({
     const updatedNodes = applyNodeChanges(nonSelectionChanges, localNodes);
     setLocalNodes(updatedNodes);
 
-    // Debug logs for position changes
-    nonSelectionChanges.forEach(change => {
-      if (change.type === 'position' && change.position) {
-        console.log(`[onLocalNodesChange] Node ${change.id} position changed to`, change.position);
-      }
-    });
+    // Debug logs for position changes - 최소화
+    if (nonSelectionChanges.some(change => change.type === 'position')) {
+      console.log(`[FlowSync] Position changes detected for ${nonSelectionChanges.length} nodes`);
+    }
 
     // Immediately update Zustand store for non-selection changes
-    console.log(`[FlowSync][onLocalNodesChange] Committing node changes (non-select) to store (nodes: ${updatedNodes.length})`);
-    setZustandNodes([...updatedNodes]); // Use spread to ensure a new reference
-    
-  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes]);
+    // 불필요한 업데이트 방지를 위한 isEqual 체크 추가
+    const hasStructuralChanges = !isEqual(
+      updatedNodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+      zustandNodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data }))
+    );
+
+    if (hasStructuralChanges) {
+      console.log(`[FlowSync] Committing node structural changes to store`);
+      setZustandNodes([...updatedNodes]);
+    }
+  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes, zustandNodes]);
   
   // Handler for React Flow edge changes
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -267,15 +271,15 @@ export const useFlowSync = ({
   
   // 선택 상태 변경 구독 효과 - 별도 효과로 분리하여 렌더링 최적화
   useEffect(() => {
-    const unsub = useFlowStructureStore.subscribe(
-      state => state.selectedNodeIds,
-      (selectedNodeIds) => {
+    // 간소화된 구독 로직: useFlowStructureStore가 표준 Zustand 스토어임
+    const unsubscribe = useFlowStructureStore.subscribe(
+      state => {
         if (!isForceClearing && !isFirstRender.current && !isRestoringHistory.current && !isStoreToLocalSyncInProgress.current) {
           syncSelectionOnly();
         }
       }
     );
-    return unsub;
+    return () => unsubscribe();
   }, [syncSelectionOnly, isRestoringHistory]);
   
   // Detect and respond to Zustand store node/edge changes (selection 제외)
@@ -284,21 +288,32 @@ export const useFlowSync = ({
     if (isForceClearing || isFirstRender.current || isRestoringHistory.current) return;
     
     if (isStoreToLocalSyncInProgress.current) {
-      console.log(`[FlowSync] Skipping store-to-local sync due to ongoing sync`);
+      // console.log(`[FlowSync] Skipping store-to-local sync due to ongoing sync`);
       return;
     }
     
     // nodes와 edges 구조 변경만 체크 (selection 제외)
+    // Deep comparison 방식으로 변경하여 position, data 등만 비교
     const nodesChanged = !isEqual(
-      zustandNodes.map(n => ({ ...n, selected: undefined })), 
-      localNodes.map(n => ({ ...n, selected: undefined }))
+      zustandNodes.map(n => ({ 
+        id: n.id, 
+        type: n.type, 
+        position: n.position,
+        data: n.data 
+      })), 
+      localNodes.map(n => ({ 
+        id: n.id, 
+        type: n.type, 
+        position: n.position,
+        data: n.data
+      }))
     );
     
     const edgesChanged = !isEqual(zustandEdges, localEdges);
 
     if (nodesChanged || edgesChanged) {
-      // nodes/edges가 바뀐 경우: 전체 동기화
-      console.log(`[FlowSync] Store changed meaningfully, syncing to React Flow. Changes: nodes=${nodesChanged}, edges=${edgesChanged}`);
+      // nodes/edges가 바뀐 경우: 전체 동기화 (로그 간략화)
+      console.log(`[FlowSync] Store changed meaningfully, syncing to React Flow.`);
       forceSyncFromStore();
     }
     

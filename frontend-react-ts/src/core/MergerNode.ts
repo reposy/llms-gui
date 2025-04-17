@@ -43,10 +43,40 @@ export class MergerNode extends Node {
    * @returns The merged result
    */
   async execute(input: any): Promise<any> {
-    // 입력 항목을 배열에 추가
-    this.items.push(input);
+    // 입력 받은 항목 처리
+    this.context?.log(`MergerNode(${this.id}): 새 입력 수신: ${typeof input} 타입`);
     
-    this.context?.log(`MergerNode(${this.id}): 새 입력 추가, 현재 ${this.items.length}개 항목 수집됨`);
+    // 입력 데이터 상세 정보 로깅
+    if (input === null || input === undefined) {
+      this.context?.log(`MergerNode(${this.id}): 입력이 null 또는 undefined, 무시됨`);
+    } else if (Array.isArray(input)) {
+      this.context?.log(`MergerNode(${this.id}): 배열 입력 (${input.length}개 항목) - 타입: [${
+        input.map(item => typeof item).join(', ')
+      }]`);
+    } else if (typeof input === 'object') {
+      this.context?.log(`MergerNode(${this.id}): 객체 입력 - 키: ${Object.keys(input).join(', ')}`);
+    }
+    
+    // 입력을 배열에 추가
+    if (input !== undefined && input !== null) {
+      if (Array.isArray(input)) {
+        this.context?.log(`MergerNode(${this.id}): 배열 입력 (${input.length}개 항목) 추가`);
+        // 배열 입력을 각각 별도 항목으로 추가
+        for (const item of input) {
+          this.items.push(item);
+        }
+      } else {
+        this.context?.log(`MergerNode(${this.id}): 단일 입력 추가: ${
+          typeof input === 'object' ? JSON.stringify(input).substring(0, 50) + '...' : String(input)
+        }`);
+        this.items.push(input);
+      }
+    }
+    
+    // 항목 요약 로깅
+    this.context?.log(`MergerNode(${this.id}): 현재 ${this.items.length}개 항목 보유 중 - 타입: [${
+      this.items.slice(0, 5).map(item => typeof item).join(', ')
+    }${this.items.length > 5 ? ', ...' : ''}]`);
     
     // 선택된 전략에 따라 결과 병합
     if (this.property.strategy === 'array') {

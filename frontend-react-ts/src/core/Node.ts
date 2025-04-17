@@ -1,4 +1,3 @@
-import { findNodeById, getOutgoingConnections, getChildNodeIdsFromGraph, GraphNode } from '../utils/flowUtils';
 import { FlowExecutionContext } from './FlowExecutionContext';
 
 /**
@@ -137,25 +136,13 @@ export abstract class Node {
    * This provides common lifecycle management for all nodes
    * 
    * @param input The input to process
+   * @param execKey Optional execution key
    * @returns The final result after all processing
    */
-  async process(input: any) {
-    // Skip if this node has already been executed in this context
-    if (this.context?.hasExecutedNode(this.id)) {
-      this.context.log(`${this.type}(${this.id}): Node already executed in this context, skipping`);
-      return input; // Pass through the input to allow child nodes to continue
-    }
-    
-    // Execute the node
+  async process(input: any, execKey?: string) {
     const result = await this.execute(input);
-    
-    // Mark the node as executed to prevent re-execution in cycles
-    this.context?.markNodeExecuted(this.id);
-    
-    // If result is null, stop execution chain
+
     if (result === null) return;
-    
-    // Process child nodes with the result
     for (const child of this.getChildNodes()) {
       await child.process(result);
     }

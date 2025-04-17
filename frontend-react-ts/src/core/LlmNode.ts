@@ -56,11 +56,23 @@ export class LlmNode extends Node {
     if (typeof input === 'string') {
       prompt = prompt.replace(/\{\{input\}\}/g, input);
     } else if (Array.isArray(input)) {
-      // 모든 요소를 문자열로 변환해서 합침
-      const textInput = input.map(item => String(item)).join('\n');
+      // 배열의 각 요소를 적절히 문자열로 변환
+      const textInput = input.map(item => {
+        if (item === null || item === undefined) {
+          return 'null';
+        } else if (typeof item === 'object') {
+          // 객체는 JSON으로 변환
+          return JSON.stringify(item, null, 2);
+        } else {
+          return String(item);
+        }
+      }).join('\n');
+      
+      this.context?.log(`LlmNode(${this.id}): 배열 입력 변환 결과 (일부): ${textInput.substring(0, 100)}...`);
       prompt = prompt.replace(/\{\{input\}\}/g, textInput);
     } else if (input && typeof input === 'object') {
-      prompt = prompt.replace(/\{\{input\}\}/g, JSON.stringify(input));
+      // 단일 객체인 경우 예쁘게 포맷팅된 JSON으로 변환
+      prompt = prompt.replace(/\{\{input\}\}/g, JSON.stringify(input, null, 2));
     }
     
     return prompt;
@@ -117,18 +129,23 @@ export class LlmNode extends Node {
         const imagePaths = this.filterImagePaths(input);
         
         if (imagePaths.length === 0) {
-          throw new Error('Vision mode requires at least one image file path.');
+          const errorMsg = "비전 모드인데, 이미지가 입력되지 않았습니다.";
+          this.context?.log(`LlmNode(${this.id}): ${errorMsg}`);
+          this.context?.markNodeError(this.id, errorMsg);
+          
+          // 에러를 던지는 대신 에러 메시지를 결과로 반환하고 계속 체이닝
+          result = errorMsg;
+        } else {
+          // 이미지 경로 로깅
+          this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
+          
+          result = await callOllamaVisionWithPaths({ 
+            model: this.property.model, 
+            prompt: resolvedPrompt, 
+            imagePaths,
+            temperature: this.property.temperature
+          });
         }
-        
-        // 이미지 경로 로깅
-        this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
-        
-        result = await callOllamaVisionWithPaths({ 
-          model: this.property.model, 
-          prompt: resolvedPrompt, 
-          imagePaths,
-          temperature: this.property.temperature
-        });
       } else {
         // 텍스트 모드 처리
         this.context?.log(`LlmNode(${this.id}): Processing text with prompt: ${resolvedPrompt.substring(0, 100)}...`);
@@ -153,8 +170,8 @@ export class LlmNode extends Node {
       this.context?.log(`LlmNode(${this.id}): Execution failed: ${errorMessage}`);
       this.context?.markNodeError(this.id, errorMessage);
       
-      // Re-throw to allow parent process method to handle
-      throw error;
+      // 에러를 던지는 대신 에러 메시지를 결과로 반환 (체이닝 유지)
+      return `에러 발생: ${errorMessage}`;
     }
   }
 } 
