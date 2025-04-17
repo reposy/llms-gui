@@ -6,6 +6,7 @@ import {
   useEdges, 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges,
+  setSelectedNodeId,
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
@@ -22,7 +23,6 @@ interface UseFlowSyncReturn {
   onLocalNodesChange: (changes: NodeChange[]) => void;
   onLocalEdgesChange: (changes: EdgeChange[]) => void;
   forceSyncFromStore: () => void;
-  commitStructureToStore: () => void;
   forceClearLocalState: () => void;
   flowResetKey: number;
 }
@@ -139,6 +139,20 @@ export const useFlowSync = ({
     const updatedNodes = applyNodeChanges(changes, localNodes);
     setLocalNodes(updatedNodes);
 
+    // Update selectedNodeId in Zustand based on the changes
+    // Check if any of the changes were selection changes
+    const selectionChanged = changes.some(change => change.type === 'select');
+    if (selectionChanged) {
+      const selectedNodes = updatedNodes.filter(node => node.selected);
+      if (selectedNodes.length === 1) {
+        console.log(`[FlowSync][onLocalNodesChange] Setting selected node: ${selectedNodes[0].id}`);
+        setSelectedNodeId(selectedNodes[0].id);
+      } else {
+        console.log(`[FlowSync][onLocalNodesChange] Clearing selected node (count: ${selectedNodes.length})`);
+        setSelectedNodeId(null);
+      }
+    }
+
     // 디버그 로그 유지
     changes.forEach(change => {
       if (change.type === 'position' && change.position) {
@@ -147,11 +161,12 @@ export const useFlowSync = ({
     });
 
     // Immediately update Zustand store for non-selection changes
+    // Now also includes position changes, dimensions, etc.
     if (!changes.every(change => change.type === 'select')) {
       console.log(`[FlowSync][onLocalNodesChange] Committing node changes to store (nodes: ${updatedNodes.length})`);
       setZustandNodes([...updatedNodes]); // Use spread to ensure a new reference
     }
-  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes]);
+  }, [localNodes, setLocalNodes, isRestoringHistory, setZustandNodes, setSelectedNodeId]);
   
   // Handler for React Flow edge changes
   const onLocalEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -166,25 +181,6 @@ export const useFlowSync = ({
     console.log(`[FlowSync][onLocalEdgesChange] Committing edge changes to store (edges: ${updatedEdges.length})`);
     setZustandEdges([...updatedEdges]); // Use spread to ensure a new reference
   }, [localEdges, setLocalEdges, isRestoringHistory, setZustandEdges]);
-  
-  // Explicit function to commit changes to store (for external calls)
-  // This function might now be less necessary for auto-sync, but useful for manual triggers like paste
-  const commitStructureToStore = useCallback(() => {
-    // Strict check for force clearing - Allow commit *during* force clear only if it's the empty state
-    if (isForceClearing && (localNodes.length > 0 || localEdges.length > 0)) {
-        console.log('[FlowSync] Skipping commitStructureToStore during force clear because local state is not empty');
-        return;
-    }
-    if (isRestoringHistory.current) return;
-    
-    if (!isEqual(localNodes, zustandNodes) || !isEqual(localEdges, zustandEdges)) {
-        const positionsToCommit = localNodes.map(n => ({ id: n.id, position: n.position }));
-        console.log(`[FlowSync][CommitImmediate] Committing local changes to store (nodes: ${localNodes.length}). Positions:`, positionsToCommit);
-        // Directly set the current local state to Zustand
-        setZustandNodes([...localNodes]);
-        setZustandEdges([...localEdges]);
-    }
-  }, [localNodes, localEdges, zustandNodes, zustandEdges, setZustandNodes, setZustandEdges, isRestoringHistory]);
   
   // Hydration 완료 여부
   const [hydrated, setHydrated] = useState(false);
@@ -271,7 +267,6 @@ export const useFlowSync = ({
     setLocalEdges,
     onLocalNodesChange,
     onLocalEdgesChange,
-    commitStructureToStore,
     forceSyncFromStore,
     forceClearLocalState,
     flowResetKey: flowResetKeyRef.current

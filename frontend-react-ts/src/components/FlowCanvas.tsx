@@ -69,7 +69,6 @@ const defaultViewport = { x: 0, y: 0, zoom: 1 };
 export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
   forceSync: () => void;
-  commitStructure: () => void;
   clearNodes: () => void;
   reactFlowInstance?: ReactFlowInstance;
   forceClearLocalState: () => void;
@@ -110,7 +109,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     onLocalNodesChange, 
     onLocalEdgesChange,
     forceSyncFromStore,
-    commitStructureToStore,
     forceClearLocalState,
     flowResetKey
   } = useFlowSync({ isRestoringHistory: isRestoringHistoryRef });
@@ -193,24 +191,26 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     setLocalEdges([]);
     console.log('[FlowCanvas] Cleared local nodes/edges state');
     
-    // zustand 전역 상태 초기화
-    setNodes([]);
-    setEdges([]);
-    console.log('[FlowCanvas] Cleared global zustand state');
+    // zustand 전역 상태 초기화 (이미 실행됨)
+    // setNodes([]);
+    // setEdges([]);
+    // console.log('[FlowCanvas] Cleared global zustand state');
     
     // 변경사항 커밋 (지연 실행)
     setTimeout(() => {
-      if (commitStructureToStore) {
-        commitStructureToStore();
-        console.log('[FlowCanvas] Committed empty state to store');
-      }
+      // Replace commitStructureToStore() with direct Zustand updates
+      // Note: This might be redundant if clearing already updates Zustand immediately
+      // Consider if this timeout logic is still necessary
+      console.log('[FlowCanvas] Committing empty state to store (post-clear)');
+      setNodes([]); // Explicitly ensure Zustand is empty
+      setEdges([]);
       
       // 일정 시간 후 강제 초기화 모드 비활성화
       if ('enableForceClear' in window.flowSyncUtils) {
         window.flowSyncUtils.enableForceClear(false);
       }
     }, 300);
-  }, [setNodes, setLocalNodes, setLocalEdges, setEdges, commitStructureToStore]);
+  }, [setNodes, setLocalNodes, setLocalEdges, setEdges]);
   
   // 메모이제이션된 FlowCanvas 렌더링 프롭스
   const flowProps = useMemo(() => {
@@ -325,12 +325,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         forceSyncFromStore();
       },
       
-      // Commit current ReactFlow structure to Zustand store
-      commitStructure: () => {
-        console.log('[FlowCanvas] API.commitStructure called, saving state to Zustand store');
-        commitStructureToStore();
-      },
-      
       // 새로운 메소드: React Flow의 모든 노드를 완전히 지움
       clearNodes: () => {
         console.log('[FlowCanvas] API.clearNodes called, removing all nodes from React Flow');
@@ -354,8 +348,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
           setEdges([]);
           
           // 강제로 상태 커밋
-          commitStructureToStore();
-          
           console.log('[FlowCanvas] All nodes and edges cleared from React Flow');
           
           // 일정 시간 후 강제 초기화 모드 비활성화
@@ -380,7 +372,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     if (registerReactFlowApi) {
       registerReactFlowApi(enhancedApi);
     }
-  }, [forceSyncFromStore, commitStructureToStore, registerReactFlowApi, setLocalNodes, setLocalEdges, setNodes, setEdges, forceClearLocalState]);
+  }, [forceSyncFromStore, registerReactFlowApi, setLocalNodes, setLocalEdges, setNodes, setEdges, forceClearLocalState]);
   
   // useEffect to handle sync from URL parameters
   useEffect(() => {
@@ -407,6 +399,48 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       }
     }
   }, [setLocalNodes, setLocalEdges]);
+
+  // Handle Paste action
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return; // Don't interfere with text input pasting
+      }
+      const text = event.clipboardData?.getData('text/plain');
+      if (!text) return;
+
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.nodes && parsed.edges) {
+          event.preventDefault();
+          const { nodes: pastedNodes, edges: pastedEdges } = parsed;
+
+          // Set local state first
+          setLocalNodes((nds) => [...nds, ...pastedNodes]);
+          setLocalEdges((eds) => [...eds, ...pastedEdges]);
+          
+          // Immediately update Zustand store after paste
+          console.log('[FlowCanvas][Paste] Committing pasted structure to store');
+          setNodes([...localNodes, ...pastedNodes]);
+          setEdges([...localEdges, ...pastedEdges]);
+
+          // Mark that a paste happened for debugging/potential coordination
+          if (!(window as any)._devFlags) (window as any)._devFlags = {};
+          (window as any)._devFlags.hasJustPasted = true;
+          (window as any)._devFlags.pasteVersion = ((window as any)._devFlags.pasteVersion || 0) + 1;
+          setTimeout(() => { (window as any)._devFlags.hasJustPasted = false; }, 100); // Reset flag
+        }
+      } catch (e) {
+        // Not valid JSON or not the expected format, ignore
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => {
+      document.removeEventListener('paste', handlePaste);
+    };
+  // Update dependencies: add localNodes, localEdges, setNodes, setEdges
+  }, [setLocalNodes, setLocalEdges, localNodes, localEdges, setNodes, setEdges]);
 
   return (
     <div 
