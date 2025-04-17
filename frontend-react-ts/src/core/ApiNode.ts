@@ -1,6 +1,7 @@
 import { Node } from '../core/Node';
-import { getOutgoingConnections } from '../utils/flowUtils';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { getNodeContent } from '../store/useNodeContentStore';
+import { APINodeContent } from '../store/useNodeContentStore';
 
 interface ApiNodeProperty {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -23,6 +24,20 @@ export class ApiNode extends Node {
     context?: FlowExecutionContext
   ) {
     super(id, 'api', property, context);
+  }
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as APINodeContent;
+    if (content) {
+      if (typeof content.url === 'string') this.property.url = content.url;
+      if (typeof content.method === 'string') this.property.method = content.method as ApiNodeProperty['method'];
+      if (typeof content.headers === 'object' && content.headers !== null) this.property.headers = { ...content.headers };
+      if (content.nodes) this.property.nodes = content.nodes;
+      if (content.edges) this.property.edges = content.edges;
+    }
   }
 
   async execute(input: any): Promise<any> {

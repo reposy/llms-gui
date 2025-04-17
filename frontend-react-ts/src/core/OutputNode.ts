@@ -2,6 +2,7 @@ import { Node } from '../core/Node';
 import { setNodeContent, getNodeContent } from '../store/useNodeContentStore';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { isEqual } from 'lodash';
+import { OutputNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Output node properties
@@ -15,10 +16,10 @@ interface OutputNodeProperty {
 /**
  * Interface for Output node content in the store
  */
-interface OutputNodeContent {
-  content?: string;
-  _forceUpdate?: number;
-}
+// interface OutputNodeContent {
+//   content?: string;
+//   _forceUpdate?: number;
+// }
 
 // Debounce helper to prevent too many updates
 const debounce = (func: Function, wait: number) => {
@@ -58,6 +59,18 @@ export class OutputNode extends Node {
     
     // Initialize debounced content setter
     this.debouncedSetContent = debounce(setNodeContent, 100);
+  }
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as OutputNodeContent;
+    if (content) {
+      if (typeof content.format === 'string') this.property.format = content.format as 'json' | 'text';
+      if (content.data !== undefined) this.property.data = content.data;
+      if (typeof content.content === 'string') this.property.lastContent = content.content;
+    }
   }
   
   /**

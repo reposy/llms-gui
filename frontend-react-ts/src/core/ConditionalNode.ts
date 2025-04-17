@@ -1,6 +1,8 @@
 import { Node } from '../core/Node';
 import { findNodeById, getOutgoingConnections } from '../utils/flowUtils';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { getNodeContent } from '../store/useNodeContentStore';
+import { ConditionalNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Available condition types
@@ -51,7 +53,25 @@ export class ConditionalNode extends Node {
     this.property.conditionType = this.property.conditionType || 'equalTo';
     this.property.conditionValue = this.property.conditionValue || '';
   }
-  
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as ConditionalNodeContent;
+    if (content) {
+      if (typeof content.conditionType === 'string') this.property.conditionType = content.conditionType as ConditionType;
+      if (content.conditionValue !== undefined) this.property.conditionValue = content.conditionValue;
+      if (content.value !== undefined) this.property.value = content.value;
+      if (content.condition !== undefined) this.property.condition = content.condition;
+      if (content.data !== undefined) this.property.data = content.data;
+      if (content.nodes) this.property.nodes = content.nodes;
+      if (content.edges) this.property.edges = content.edges;
+      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
+      if (content.executionGraph) this.property.executionGraph = content.executionGraph;
+    }
+  }
+
   /**
    * Execute the input according to the conditional node's configuration
    * Evaluates the condition and returns the appropriate path information

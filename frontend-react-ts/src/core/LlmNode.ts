@@ -2,6 +2,8 @@ import { Node } from './Node';
 import { runLLM, LLMProvider } from '../api/llm';
 import { callOllamaVisionWithPaths } from '../utils/llm/ollamaClient';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { getNodeContent } from '../store/useNodeContentStore';
+import { LLMNodeContent } from '../store/useNodeContentStore';
 
 /**
  * LLM Node properties
@@ -44,6 +46,23 @@ export class LlmNode extends Node {
       // Preserve any other properties
       ...property
     };
+  }
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as LLMNodeContent;
+    if (content) {
+      if (typeof content.prompt === 'string') this.property.prompt = content.prompt;
+      if (typeof content.temperature === 'number') this.property.temperature = content.temperature;
+      if (typeof content.model === 'string') this.property.model = content.model;
+      if (typeof content.provider === 'string') this.property.provider = content.provider as LLMProvider;
+      if (typeof content.ollamaUrl === 'string') this.property.ollamaUrl = content.ollamaUrl;
+      if (typeof content.openaiApiKey === 'string') this.property.openaiApiKey = content.openaiApiKey;
+      if (typeof content.mode === 'string') this.property.mode = content.mode as 'text' | 'vision';
+      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
+    }
   }
 
   /**

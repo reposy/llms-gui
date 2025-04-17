@@ -1,6 +1,8 @@
 import { Node } from './Node';
 import { crawling } from '../utils/crawling';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { getNodeContent } from '../store/useNodeContentStore';
+import { WebCrawlerNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Interface for Web Crawler node properties
@@ -43,6 +45,21 @@ export class WebCrawlerNode extends Node {
       outputFormat: property.outputFormat || 'full',
       timeout: property.timeout || 3000
     };
+  }
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as WebCrawlerNodeContent;
+    if (content) {
+      if (typeof content.url === 'string') this.property.url = content.url;
+      if (typeof content.waitForSelector === 'string') this.property.waitForSelector = content.waitForSelector;
+      if (typeof content.extractSelectors === 'object' && content.extractSelectors !== null) this.property.extractSelectors = { ...content.extractSelectors };
+      if (typeof content.timeout === 'number') this.property.timeout = content.timeout;
+      if (typeof content.outputFormat === 'string') this.property.outputFormat = content.outputFormat as 'full' | 'text' | 'extracted' | 'html';
+      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
+    }
   }
 
   /**

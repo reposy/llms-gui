@@ -1,7 +1,8 @@
 import { Node } from '../core/Node';
 import { getRootNodesFromSubset } from '../utils/executionUtils';
-import { NodeFactory } from '../core/NodeFactory';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { getNodeContent } from '../store/useNodeContentStore';
+import { GroupNodeContent } from '../store/useNodeContentStore';
 
 interface GroupNodeProperty {
   label: string;
@@ -26,6 +27,20 @@ export class GroupNode extends Node {
     super(id, 'group', property, context);
     // Ensure label has a default value
     this.property.label = property.label || 'Group';
+  }
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as GroupNodeContent;
+    if (content) {
+      if (typeof content.label === 'string') this.property.label = content.label;
+      if (content.nodes) this.property.nodes = content.nodes;
+      if (content.edges) this.property.edges = content.edges;
+      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
+      if (content.executionGraph) this.property.executionGraph = content.executionGraph;
+    }
   }
 
   /**

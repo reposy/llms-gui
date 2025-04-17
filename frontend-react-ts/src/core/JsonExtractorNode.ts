@@ -1,5 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { getNodeContent } from '../store/useNodeContentStore';
+import { JSONExtractorNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Interface for JSON Extractor node properties
@@ -33,6 +35,21 @@ export class JsonExtractorNode extends Node {
     super(id, 'json-extractor', property, context);
     // Ensure path has a default value
     this.property.path = property.path || '';
+  }
+
+  /**
+   * Synchronize property from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as JSONExtractorNodeContent;
+    if (content) {
+      if (typeof content.path === 'string') this.property.path = content.path;
+      if (typeof content.label === 'string') this.property.label = content.label;
+      if (content.executionGraph) this.property.executionGraph = content.executionGraph;
+      if (content.nodes) this.property.nodes = content.nodes;
+      if (content.edges) this.property.edges = content.edges;
+      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
+    }
   }
 
   /**
@@ -73,7 +90,7 @@ export class JsonExtractorNode extends Node {
         const part = pathParts[i];
         
         // Handle array indices (e.g., items[0])
-        const arrayMatch = part.match(/^([^\[]+)\[(\d+)\]$/);
+        const arrayMatch = part.match(/^([^"]+)\[(\d+)\]$/);
         
         if (arrayMatch) {
           // Extract array name and index

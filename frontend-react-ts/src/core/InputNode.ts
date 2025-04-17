@@ -43,7 +43,7 @@ export class InputNode extends Node {
   /**
    * Store에서 items, iterateEachRow를 동기화
    */
-  private syncPropertyFromStore() {
+  syncPropertyFromStore() {
     const storeContent = getNodeContent(this.id) as InputNodeContent;
     if (storeContent && Array.isArray(storeContent.items)) {
       this.property.items = [...storeContent.items];

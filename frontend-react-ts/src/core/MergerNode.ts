@@ -9,6 +9,7 @@ interface MergerNodeProperty {
   // Reference to flow structure (will be provided by FlowRunner)
   nodes?: any[];
   edges?: any[];
+  items?: any[]; // Ensure items is always present
 }
 
 /**
@@ -30,8 +31,21 @@ export class MergerNode extends Node {
     // Initialize with defaults if not provided
     this.property = {
       ...property,
-      strategy: property.strategy || 'array'
+      strategy: property.strategy || 'array',
+      items: property.items || [],
     };
+  }
+
+  /**
+   * Synchronize property.items from Zustand store before execution
+   */
+  syncPropertyFromStore(): void {
+    const content = getNodeContent(this.id) as MergerNodeContent;
+    if (content && Array.isArray(content.items)) {
+      this.property.items = [...content.items];
+    } else {
+      this.property.items = [];
+    }
   }
 
   /**
@@ -43,9 +57,8 @@ export class MergerNode extends Node {
   async execute(input: any): Promise<any> {
     this.context?.log(`MergerNode(${this.id}): execute() called with input: ${JSON.stringify(input)}`);
 
-    // Get current items from Zustand (NodeContentStore), cast to MergerNodeContent
-    const content = getNodeContent(this.id) as MergerNodeContent || {};
-    let items = Array.isArray(content.items) ? [...content.items] : [];
+    // Use property.items (already synced)
+    let items = Array.isArray(this.property.items) ? [...this.property.items] : [];
 
     // If input is not undefined/null, always push (including empty objects/arrays)
     if (input !== undefined && input !== null) {
@@ -58,6 +71,7 @@ export class MergerNode extends Node {
 
     // Update Zustand store with new items array, cast as Partial<MergerNodeContent>
     setNodeContent(this.id, { items } as Partial<MergerNodeContent>);
+    this.property.items = items;
 
     this.context?.log(`MergerNode(${this.id}): items updated in Zustand, count: ${items.length}`);
 
