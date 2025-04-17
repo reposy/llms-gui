@@ -66,7 +66,7 @@ export const useExecutionController = create<ExecutionControllerState>()(
           
           // Create node factory
           const nodeFactory = new NodeFactory();
-          registerAllNodeTypes(nodeFactory);
+          registerAllNodeTypes();
           
           // Find the node data
           const node = nodes.find(n => n.id === groupNodeId);

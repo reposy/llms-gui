@@ -132,6 +132,12 @@ export abstract class Node {
   }
 
   /**
+   * Synchronize node properties from store/state before execution.
+   * Subclasses should implement this to ensure property is up-to-date.
+   */
+  abstract syncPropertyFromStore(): void;
+
+  /**
    * Process input through this node and chain through child nodes
    * This provides common lifecycle management for all nodes
    * 
@@ -139,7 +145,8 @@ export abstract class Node {
    * @param execKey Optional execution key
    * @returns The final result after all processing
    */
-  async process(input: any, execKey?: string) {
+  async process(input: any) {
+    this.syncPropertyFromStore();
     const result = await this.execute(input);
 
     if (result === null) return;
