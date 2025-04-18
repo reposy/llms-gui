@@ -1,9 +1,10 @@
-import { LLMResponse } from './llmService'; // Assuming LLMResponse stays in llmService for now
+import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
 
 /**
  * Ollama API 호출 함수 (fetch 사용)
+ * @deprecated Prefer OllamaService class implementation.
  */
-export async function callOllama({
+async function callOllamaFunc({
   model,
   prompt,
   temperature,
@@ -12,15 +13,18 @@ export async function callOllama({
 }: {
   model: string;
   prompt: string;
-  temperature: number;
+  temperature?: number; // Made temperature optional to match interface
   ollamaUrl?: string; 
   images?: string[]; // Expecting array of Base64 strings (data only)
-}): Promise<LLMResponse> {
+}): Promise<LLMServiceResponse> {
   const isVisionMode = Array.isArray(images) && images.length > 0;
   const endpoint = isVisionMode ? `${ollamaUrl}/api/chat` : `${ollamaUrl}/api/generate`;
   let body: string;
 
   console.log(`Ollama API 호출 (${isVisionMode ? 'Vision' : 'Text'}): ${model}, Endpoint: ${endpoint}`);
+
+  // Ensure temperature has a default value if not provided
+  const effectiveTemperature = temperature ?? 0.7;
 
   if (isVisionMode) {
     body = JSON.stringify({ 
@@ -34,7 +38,7 @@ export async function callOllama({
       ],
       stream: false, 
       options: {
-        temperature
+        temperature: effectiveTemperature // Use effective temperature
       }
     }); 
   } else {
@@ -43,7 +47,7 @@ export async function callOllama({
       prompt,
       stream: false, 
       options: {
-        temperature
+        temperature: effectiveTemperature // Use effective temperature
       }
     });
   }
@@ -85,9 +89,10 @@ export async function callOllama({
     }
     
     console.log('Ollama API 호출 성공');
+    // Return using the new LLMServiceResponse interface
     return {
       response: responseText,
-      raw: result // Store the full response object
+      // raw: result // Optionally keep raw response if needed later
     };
 
   } catch (error) {
@@ -98,3 +103,34 @@ export async function callOllama({
     throw new Error(`Ollama API 호출 실패: ${error instanceof Error ? error.message : String(error)}`);
   }
 } 
+
+/**
+ * Implements the LLMProviderService interface for the Ollama provider.
+ */
+class OllamaService implements LLMProviderService {
+  async generate(params: LLMRequestParams): Promise<LLMServiceResponse> {
+    const { 
+      model,
+      prompt,
+      temperature,
+      images,
+      ollamaUrl // Get ollamaUrl from params
+      // other params if needed...
+    } = params;
+
+    // Call the existing fetch logic (or incorporate it here)
+    // Note: We pass undefined for temperature if not provided, letting the function handle the default.
+    const result = await callOllamaFunc({
+      model,
+      prompt,
+      temperature,
+      images,
+      ollamaUrl
+    });
+
+    return result; // Already conforms to LLMServiceResponse
+  }
+}
+
+// Export an instance of the service
+export const ollamaService = new OllamaService(); 

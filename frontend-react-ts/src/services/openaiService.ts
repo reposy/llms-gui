@@ -1,24 +1,28 @@
-import { LLMResponse } from './llmService'; // Assuming LLMResponse stays in llmService for now
+import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
 
 /**
  * OpenAI API 호출 함수
+ * @deprecated Prefer OpenAIService class implementation.
  */
-export async function callOpenAI({
+async function callOpenAIFunc({
   model,
   prompt,
   temperature,
-  apiKey
+  apiKey // Renamed from openaiApiKey to match internal logic
 }: {
   model: string;
   prompt: string;
-  temperature: number;
+  temperature?: number; // Made temperature optional
   apiKey: string;
-}): Promise<LLMResponse> {
+}): Promise<LLMServiceResponse> {
   console.log(`OpenAI API 호출: ${model}`);
   
   if (!apiKey) {
     throw new Error('OpenAI API key is required.');
   }
+
+  // Ensure temperature has a default value if not provided
+  const effectiveTemperature = temperature ?? 0.7;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -32,7 +36,7 @@ export async function callOpenAI({
         messages: [
           { role: 'user', content: prompt }
         ],
-        temperature,
+        temperature: effectiveTemperature, // Use effective temperature
         // stream: false // Consider adding if needed, default is non-streaming
       })
     });
@@ -53,7 +57,7 @@ export async function callOpenAI({
     console.log('OpenAI API 호출 성공');
     return {
       response: result.choices[0].message.content,
-      raw: result
+      // raw: result // Optionally keep raw response if needed later
     };
 
   } catch (error) {
@@ -65,3 +69,35 @@ export async function callOpenAI({
     throw new Error(`OpenAI API 호출 실패: ${error instanceof Error ? error.message : String(error)}`);
   }
 } 
+
+/**
+ * Implements the LLMProviderService interface for the OpenAI provider.
+ */
+class OpenAIService implements LLMProviderService {
+  async generate(params: LLMRequestParams): Promise<LLMServiceResponse> {
+    const { 
+      model,
+      prompt,
+      temperature,
+      openaiApiKey // Get openaiApiKey from params
+      // ignore images for now, OpenAI vision might need different handling
+    } = params;
+
+    if (!openaiApiKey) {
+      throw new Error('OpenAI API key is required but was not provided in request params.');
+    }
+
+    // Call the existing fetch logic
+    const result = await callOpenAIFunc({
+      model,
+      prompt,
+      temperature,
+      apiKey: openaiApiKey
+    });
+
+    return result; // Already conforms to LLMServiceResponse
+  }
+}
+
+// Export an instance of the service
+export const openaiService = new OpenAIService(); 
