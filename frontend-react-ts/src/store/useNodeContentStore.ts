@@ -43,6 +43,7 @@ export interface LLMNodeContent extends BaseNodeContent {
 export interface OutputNodeContent extends BaseNodeContent {
   format: 'json' | 'text';
   content?: string;
+  mode?: 'read' | 'write';
 }
 
 /**
@@ -148,6 +149,7 @@ export function createDefaultNodeContent(type: string): NodeContent {
       return {
         format: 'text',
         content: '',
+        mode: 'read',
         isDirty: false,
         label: 'Output'
       } as OutputNodeContent;

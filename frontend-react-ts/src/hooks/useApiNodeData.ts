@@ -160,15 +160,15 @@ export const useApiNodeData = ({
       });
       console.log(`[APINode ${nodeId}] API call successful.`);
 
-      // Trigger visual update/feedback if needed (e.g., flash effect)
-      setNodes((nds: Node<APINodeContent>[]) => nds.map((n: Node<APINodeContent>) => {
-        if (n.id === nodeId) {
-          // Ensure data merging preserves existing data
-          const updatedData = { ...n.data, _flash: Date.now() };
-          return { ...n, data: updatedData }; // Add flash trigger
-        }
-        return n;
-      }));
+      // Trigger visual update/feedback if needed (REMOVED _flash logic)
+      // setNodes((nds: Node<APINodeContent>[]) => nds.map((n: Node<APINodeContent>) => {
+      //   if (n.id === nodeId) {
+      //     // Ensure data merging preserves existing data
+      //     const updatedData = { ...n.data, _flash: Date.now() };
+      //     return { ...n, data: updatedData }; // Add flash trigger
+      //   }
+      //   return n;
+      // }));
 
     } catch (error) {
       console.error(`[APINode ${nodeId}] API call failed:`, error);

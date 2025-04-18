@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { shallow } from 'zustand/shallow';
 import { useNodeContent, LLMNodeContent, useNodeContentStore, isNodeDirty } from '../store/useNodeContentStore';
-import { LLMMode } from '../api/llm';
+import { LLMMode } from '../types/nodes';
 
 /**
  * Simplified hook for LLM node data - minimal implementation that just connects to the store
