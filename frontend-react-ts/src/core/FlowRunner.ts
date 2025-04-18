@@ -2,7 +2,7 @@ import { Node as ReactFlowNode, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { NodeFactory } from './NodeFactory';
-import { getRootNodeIds } from '../utils/flowUtils';
+import { getRootNodeIds } from '../utils/flow/flowUtils';
 import { registerAllNodeTypes } from './NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
 

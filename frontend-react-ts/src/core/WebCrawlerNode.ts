@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { crawling } from '../utils/crawling.ts';
+import { crawling } from '../utils/web/crawling.ts';
 import { WebCrawlerNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 
 /**

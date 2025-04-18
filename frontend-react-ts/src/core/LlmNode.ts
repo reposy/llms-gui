@@ -3,7 +3,7 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
-import { readFileAsBase64 } from '../utils/files.ts';
+import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
 
 /**
  * LLM node for generating text via LLM providers

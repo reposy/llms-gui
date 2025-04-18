@@ -8,7 +8,11 @@ import {
   markNodeDirty,
   isNodeDirty
 } from '../store/useNodeContentStore';
-import { pushCurrentSnapshot } from '../utils/historyUtils';
+import { useNodeStateStore } from '../store/useNodeStateStore';
+import { useHistoryStore } from '../store/useHistoryStore';
+import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
+import { useThrottledCallback } from 'use-debounce';
+import { useEffect } from 'react';
 
 interface UseManagedNodeContentResult {
   content: NodeContent; // The current content for the node

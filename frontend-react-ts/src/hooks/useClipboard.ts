@@ -6,12 +6,13 @@ import {
   copySelectedNodes, 
   pasteClipboardContents, 
   hasClipboardData,
-  PasteResult
-} from '../utils/clipboardUtils';
+  clearClipboard
+} from '../utils/ui/clipboardUtils';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { setNodeContent, NodeContent, getAllNodeContents as getAllNodeContentsFromStore } from '../store/useNodeContentStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { cloneDeep } from 'lodash';
+import { pushSnapshotAfterNodeOperation } from '../utils/ui/historyUtils';
 
 // Adjust _devFlags type to match global declaration
 declare global {

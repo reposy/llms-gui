@@ -3,7 +3,7 @@ import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from '@xyflow/
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { getRootNodesFromSubset } from '../../utils/executionUtils';
+import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
 import { useNodes, useEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';

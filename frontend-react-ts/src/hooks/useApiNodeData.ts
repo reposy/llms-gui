@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useNodeContent, APINodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 import { HTTPMethod, RequestBodyType, APIResponse } from '../types/nodes';
-import { isValidUrl } from '../utils/urlUtils';
+import { isValidUrl } from '../utils/web/urlUtils';
 import { useReactFlow, Node } from '@xyflow/react';
 
 /**

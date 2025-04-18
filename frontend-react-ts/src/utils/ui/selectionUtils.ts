@@ -1,6 +1,5 @@
 import { Node } from '@xyflow/react';
-import { NodeData } from '../types/nodes';
-import { isEqual } from 'lodash';
+import { NodeData } from '../../types/nodes';
 
 /**
  * Ensures ReactFlow nodes' visual selection state matches Zustand's selectedNodeIds

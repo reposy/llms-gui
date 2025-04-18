@@ -3,7 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import { persist } from 'zustand/middleware';
 import { shallow } from 'zustand/shallow';
 import { isEqual } from 'lodash';
-import { createIDBStorage } from '../../utils/idbStorage';
+import { createIDBStorage } from '../../utils/storage/idbStorage';
 import { NodeData } from '../../types/nodes';
 import { Node as ReactFlowNode } from '@xyflow/react';
 

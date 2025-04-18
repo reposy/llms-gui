@@ -1,6 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData } from '../types/nodes';
-import { ExecutableNode } from '../core/ExecutableNode';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData } from '../../types/nodes';
+import { ExecutableNode } from '../../core/ExecutableNode';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])

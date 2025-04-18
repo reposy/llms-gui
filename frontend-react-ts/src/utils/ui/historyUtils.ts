@@ -1,8 +1,8 @@
 import { Node, Edge } from '@xyflow/react';
-import { NodeData } from '../types/nodes';
-import { FlowSnapshot, pushSnapshot } from '../store/useHistoryStore';
-import { getAllNodeContents } from '../store/useNodeContentStore';
-import { useFlowStructureStore } from '../store/useFlowStructureStore';
+import { NodeData } from '../../types/nodes';
+import { FlowSnapshot, pushSnapshot } from '../../store/useHistoryStore';
+import { getAllNodeContents } from '../../store/useNodeContentStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 /**
  * Creates a snapshot of the current flow state and pushes it to the history store

@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { extractValue } from '../utils/executionUtils.ts';
+import { extractValue } from '../utils/flow/executionUtils.ts';
 import { JSONExtractorNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 
 /**

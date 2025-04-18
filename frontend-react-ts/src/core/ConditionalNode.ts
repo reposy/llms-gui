@@ -1,9 +1,9 @@
 import { Node } from '../core/Node';
-import { findNodeById, getOutgoingConnections } from '../utils/flowUtils.ts';
+import { findNodeById, getOutgoingConnections } from '../utils/flow/flowUtils.ts';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent } from '../store/useNodeContentStore.ts';
 import { ConditionalNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
-import { evaluateCondition } from '../utils/executionUtils.ts';
+import { evaluateCondition } from '../utils/flow/executionUtils.ts';
 
 /**
  * Available condition types

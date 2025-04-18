@@ -3,11 +3,11 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import { FlowCanvasApi } from './FlowCanvas';
 import { resetAllContent } from '../store/useNodeContentStore';
 import { useNodes, useEdges, setNodes, setEdges, useFlowStructureStore } from '../store/useFlowStructureStore';
-import { importFlowFromJson, exportFlowAsJson, FlowData } from '../utils/importExportUtils';
+import { importFlowFromJson, exportFlowAsJson, FlowData } from '../utils/data/importExportUtils';
 import { useDirtyTracker, useMarkClean } from '../store/useDirtyTracker';
 import { undo, redo, useCanUndo, useCanRedo } from '../store/useHistoryStore';
-import { pushCurrentSnapshot } from '../utils/historyUtils';
-import { createIDBStorage } from '../utils/idbStorage';
+import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
+import { createIDBStorage } from '../utils/storage/idbStorage';
 
 interface FlowManagerProps {
   flowApi: React.MutableRefObject<FlowCanvasApi | null>;

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { shallow } from 'zustand/shallow';
 import { Edge, Node } from '@xyflow/react';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { getIncomingConnections } from '../utils/flowUtils';
+import { getIncomingConnections } from '../utils/flow/flowUtils';
 
 // 로그를 완전히 비활성화
 const DEBUG_LOGS = false;

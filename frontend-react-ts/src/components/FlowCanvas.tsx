@@ -28,7 +28,7 @@ import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
-import { createNewNode } from '../utils/flowUtils';
+import { createNewNode } from '../utils/flow/flowUtils';
 // Import Zustand store
 import { 
   setNodes, 

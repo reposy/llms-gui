@@ -1,8 +1,8 @@
 import { Node, Edge } from '@xyflow/react';
 import { cloneDeep } from 'lodash';
-import { NodeData, NodeType } from '../types/nodes';
-import { loadFromImportedContents, NodeContent, getAllNodeContents } from '../store/useNodeContentStore';
-import { setNodes, setEdges, useFlowStructureStore } from '../store/useFlowStructureStore';
+import { NodeData, NodeType } from '../../types/nodes';
+import { loadFromImportedContents, NodeContent, getAllNodeContents } from '../../store/useNodeContentStore';
+import { setNodes, setEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 export interface FlowData {
   name?: string;

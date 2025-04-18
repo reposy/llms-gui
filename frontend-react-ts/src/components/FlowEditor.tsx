@@ -6,13 +6,13 @@ import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager'; // Re-added import
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
-import { createNewNode, calculateNodePosition } from '../utils/flowUtils';
+import { createNewNode, calculateNodePosition } from '../utils/flow/flowUtils';
 // Import specific node content types and the generic setter
 import { setNodeContent, NodeContent } from '../store/nodeContentStore'; 
 // Import Zustand store hooks and actions
 import { useNodes, useEdges, setNodes as setStructureNodes, useSelectedNodeIds, useFlowStructureStore } from '../store/useFlowStructureStore';
 import { useDirtyTracker } from '../store/useDirtyTracker';
-import { pushCurrentSnapshot } from '../utils/historyUtils';
+import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
 import { runFlow } from '../core/FlowRunner';
 

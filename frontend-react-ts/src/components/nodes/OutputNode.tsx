@@ -4,7 +4,7 @@ import { OutputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
-import { downloadFile } from '../../utils/downloadUtils';
+import { downloadFile } from '../../utils/data/downloadUtils';
 import { useNodeContent } from '../../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 

@@ -1,8 +1,8 @@
 import { Node, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeData } from '../types/nodes';
-import { getNodeContent, NodeContent } from '../store/useNodeContentStore';
-import { useFlowStructureStore } from '../store/useFlowStructureStore';
+import { NodeData } from '../../types/nodes';
+import { getNodeContent, NodeContent } from '../../store/useNodeContentStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 // Interface for copied data
 export interface ClipboardData {
@@ -152,20 +152,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
       newNode.data.type = newNode.type;
     }
     
-    // Update positionAbsolute if it exists
-    if (newNode.positionAbsolute) {
-      newNode.positionAbsolute = {
-        x: (copiedNode.positionAbsolute?.x || copiedNode.position.x) + offsetX,
-        y: (copiedNode.positionAbsolute?.y || copiedNode.position.y) + offsetY,
-      };
-    } else {
-      // Ensure positionAbsolute is set (required by ReactFlow)
-      newNode.positionAbsolute = {
-        x: copiedNode.position.x + offsetX,
-        y: copiedNode.position.y + offsetY,
-      };
-    }
-    
     // Special handling for group nodes
     if (newNode.type === 'group') {
       // Ensure group nodes have required properties
@@ -178,26 +164,21 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
       }
     }
     
-    // Update parentNode reference if this node belongs to a copied group
-    if (newNode.parentNode) {
-      if (oldToNewIdMap[newNode.parentNode]) {
+    // Update parentId reference if this node belongs to a copied group
+    if (newNode.parentId) {
+      if (oldToNewIdMap[newNode.parentId]) {
         // Parent was also copied, update the reference
-        newNode.parentNode = oldToNewIdMap[newNode.parentNode];
-        console.log(`[Clipboard] Updated parentNode reference for ${newId} to ${newNode.parentNode}`);
+        newNode.parentId = oldToNewIdMap[newNode.parentId];
+        console.log(`[Clipboard] Updated parentId reference for ${newId} to ${newNode.parentId}`);
         
-        // For nodes within groups, we need to ensure the position is relative to the group
-        if (typeof copiedNode.parentNode === 'string' && groupNodeIds.has(copiedNode.parentNode)) {
-          // Position should already be relative, no need to adjust
-          console.log(`[Clipboard] Node ${newId} is within copied group ${newNode.parentNode}, preserving relative position`);
+        // For nodes within groups, position is already relative
+        if (typeof copiedNode.parentId === 'string' && groupNodeIds.has(copiedNode.parentId)) {
+          console.log(`[Clipboard] Node ${newId} is within copied group ${newNode.parentId}, preserving relative position`);
         }
       } else {
-        // If the parent wasn't copied, remove the parentNode reference
-        // to avoid invalid references to nodes that don't exist
-        console.log(`[Clipboard] Removing parentNode reference for ${newId} as parent wasn't copied`);
-        delete newNode.parentNode;
-        
-        // Since the parent is gone, ensure the position is now absolute
-        // This was already handled above when setting position and positionAbsolute
+        // If the parent wasn't copied, remove the parentId reference
+        console.log(`[Clipboard] Removing parentId reference for ${newId} as parent wasn't copied`);
+        delete newNode.parentId;
       }
     }
     

@@ -1,6 +1,6 @@
 import { Node } from '@xyflow/react';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getOutgoingConnections, findNodeById } from '../utils/flowUtils';
+import { getOutgoingConnections, findNodeById } from '../utils/flow/flowUtils';
 
 /**
  * Interface for nodes that can be executed in a flow

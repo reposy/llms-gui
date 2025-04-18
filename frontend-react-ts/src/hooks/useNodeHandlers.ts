@@ -11,6 +11,7 @@ import {
   useReactFlow,
   getConnectedEdges,
   OnSelectionChangeParams,
+  XYPosition
 } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { 
@@ -19,7 +20,10 @@ import {
   useFlowStructureStore,
   setSelectedNodeIds as setZustandSelectedNodeIds
 } from '../store/useFlowStructureStore';
-import { hasEqualSelection } from '../utils/selectionUtils';
+import { hasEqualSelection } from '../utils/ui/selectionUtils';
+import { pushSnapshotAfterNodeOperation } from '../utils/ui/historyUtils';
+import { logSelectionChange } from '../utils/ui/selectionUtils';
+import { useNodeContentStore } from '../store/useNodeContentStore';
 
 // Define SelectionModifierKey type directly
 type SelectionModifierKey = 'ctrl' | 'shift' | 'none';

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
-import { createIDBStorage } from '../utils/idbStorage';
+import { createIDBStorage } from '../utils/storage/idbStorage';
 
 // Type for the store
 interface FlowStructureState {

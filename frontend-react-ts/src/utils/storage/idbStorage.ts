@@ -1,5 +1,5 @@
 import { openDB, DBSchema } from 'idb';
-import { StateStorage, StorageValue } from 'zustand/middleware';
+import { StateStorage } from 'zustand/middleware';
 
 /**
  * Interface defining our database schema

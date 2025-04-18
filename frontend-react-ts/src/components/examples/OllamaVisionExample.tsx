@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import ollama from 'ollama';
-import { fileToBase64 } from '../../utils/vision';
+import { fileToBase64 } from '../../utils/llm/vision';
 
 const OllamaVisionExample: React.FC = () => {
   const [loading, setLoading] = useState(false);

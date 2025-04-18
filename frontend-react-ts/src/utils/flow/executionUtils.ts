@@ -1,6 +1,6 @@
 import { Edge, Node } from '@xyflow/react';
 import jsonpath from 'jsonpath';
-import { ConditionType, NodeData } from '../types/nodes';
+import { ConditionType, NodeData } from '../../types/nodes';
 
 // Utility to safely extract a value from an object using a JSONPath query
 export const extractValue = (obj: any, path: string): any => {
@@ -212,12 +212,12 @@ export const isNodeRoot = (nodeId: string, nodes: Node<NodeData>[], edges: Edge[
   if (!node) return false; // Node not found
 
   // Filter edges relevant to the node's context (either global or within its parent group)
-  const relevantEdges = node.parentNode
+  const relevantEdges = node.parentId
     ? edges.filter(e => {
         const sourceNode = nodes.find(n => n.id === e.source);
         const targetNode = nodes.find(n => n.id === e.target);
         // Edge is relevant if both source and target are in the same group as the node
-        return sourceNode?.parentNode === node.parentNode && targetNode?.parentNode === node.parentNode;
+        return sourceNode?.parentId === node.parentId && targetNode?.parentId === node.parentId;
       })
     : edges; // Global context if no parent node
 
