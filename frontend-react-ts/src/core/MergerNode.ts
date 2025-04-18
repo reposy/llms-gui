@@ -1,6 +1,7 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, MergerNodeContent } from '../store/nodeContentStore';
+import { syncNodeProperties, mergerNodeSyncConfig } from '../utils/nodePropertySync';
 
 interface MergerNodeProperty {
   strategy: 'array' | 'object';
@@ -39,20 +40,8 @@ export class MergerNode extends Node {
    * Synchronize property.items from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    const content = getNodeContent<MergerNodeContent>(this.id, 'merger');
-    if (content && Array.isArray(content.items)) {
-      this.property.items = [...content.items];
-    } else {
-      this.property.items = [];
-    }
-    
-    if (content && typeof content.strategy === 'string') {
-      this.property.strategy = content.strategy as 'array' | 'object';
-    }
-    
-    if (content && Array.isArray(content.keys)) {
-      this.property.keys = [...content.keys];
-    }
+    // 공통 유틸리티 사용하여 속성 동기화
+    syncNodeProperties(this, mergerNodeSyncConfig, 'merger');
   }
 
   /**

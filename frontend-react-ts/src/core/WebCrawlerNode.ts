@@ -2,6 +2,7 @@ import { Node } from './Node';
 import { crawling } from '../utils/crawling';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, WebCrawlerNodeContent } from '../store/nodeContentStore';
+import { syncNodeProperties, webCrawlerNodeSyncConfig } from '../utils/nodePropertySync';
 
 /**
  * Interface for Web Crawler node properties
@@ -50,15 +51,8 @@ export class WebCrawlerNode extends Node {
    * Synchronize property from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    const content = getNodeContent<WebCrawlerNodeContent>(this.id, 'web-crawler');
-    if (content) {
-      if (typeof content.url === 'string') this.property.url = content.url;
-      if (typeof content.waitForSelector === 'string') this.property.waitForSelector = content.waitForSelector;
-      if (typeof content.extractSelectors === 'object' && content.extractSelectors !== null) this.property.extractSelectors = { ...content.extractSelectors };
-      if (typeof content.timeout === 'number') this.property.timeout = content.timeout;
-      if (typeof content.outputFormat === 'string') this.property.outputFormat = content.outputFormat as 'full' | 'text' | 'extracted' | 'html';
-      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
-    }
+    // 공통 유틸리티 사용하여 속성 동기화
+    syncNodeProperties(this, webCrawlerNodeSyncConfig, 'web-crawler');
   }
 
   /**

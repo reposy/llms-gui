@@ -3,6 +3,7 @@ import { runLLM, LLMProvider } from '../api/llm';
 import { callOllamaVisionWithPaths } from '../utils/llm/ollamaClient';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, LLMNodeContent } from '../store/nodeContentStore';
+import { syncNodeProperties, llmNodeSyncConfig } from '../utils/nodePropertySync';
 
 /**
  * LLM Node properties
@@ -51,17 +52,8 @@ export class LlmNode extends Node {
    * Synchronize property from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    const content = getNodeContent<LLMNodeContent>(this.id, 'llm');
-    if (content) {
-      if (typeof content.prompt === 'string') this.property.prompt = content.prompt;
-      if (typeof content.temperature === 'number') this.property.temperature = content.temperature;
-      if (typeof content.model === 'string') this.property.model = content.model;
-      if (typeof content.provider === 'string') this.property.provider = content.provider as LLMProvider;
-      if (typeof content.ollamaUrl === 'string') this.property.ollamaUrl = content.ollamaUrl;
-      if (typeof content.openaiApiKey === 'string') this.property.openaiApiKey = content.openaiApiKey;
-      if (typeof content.mode === 'string') this.property.mode = content.mode as 'text' | 'vision';
-      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
-    }
+    // 공통 유틸리티 사용하여 속성 동기화
+    syncNodeProperties(this, llmNodeSyncConfig, 'llm');
   }
 
   /**

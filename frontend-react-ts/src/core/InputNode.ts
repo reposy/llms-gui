@@ -1,6 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, InputNodeContent } from '../store/nodeContentStore';
+import { syncNodeProperties, inputNodeSyncConfig } from '../utils/nodePropertySync';
 
 /**
  * Input node properties
@@ -43,15 +44,8 @@ export class InputNode extends Node {
    * Store에서 items, iterateEachRow를 동기화
    */
   syncPropertyFromStore() {
-    const storeContent = getNodeContent<InputNodeContent>(this.id, 'input');
-    if (storeContent) {
-      if (Array.isArray(storeContent.items)) {
-        this.property.items = [...storeContent.items];
-      }
-      if (typeof storeContent.iterateEachRow === 'boolean') {
-        this.property.iterateEachRow = storeContent.iterateEachRow;
-      }
-    }
+    // 공통 유틸리티 사용하여 속성 동기화
+    syncNodeProperties(this, inputNodeSyncConfig, 'input');
   }
 
   /**
