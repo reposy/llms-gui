@@ -19,6 +19,48 @@ import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
+import { useNodeContentStore } from '../../store/useNodeContentStore';
+
+// Utility function to calculate item counts (moved from deleted hook)
+const calculateItemCounts = (items: (string | FileLikeObject)[]) => {
+  if (!items) return { fileCount: 0, textCount: 0, total: 0 };
+  
+  const fileCount = items.filter(item => typeof item !== 'string').length;
+  const textCount = items.filter(item => typeof item === 'string').length;
+  
+  return {
+    fileCount,
+    textCount,
+    total: items.length
+  };
+};
+
+// Utility function to format items for display (moved from deleted hook)
+const formatItemsForDisplay = (items: (string | FileLikeObject)[]) => {
+  if (!items) return [];
+  
+  return items.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        id: `item-${index}`,
+        index,
+        display: item,
+        type: 'text',
+        isFile: false,
+        originalItem: item
+      };
+    } else {
+      return {
+        id: `file-${index}`,
+        index,
+        display: item.file || 'Unnamed file',
+        type: item.type,
+        isFile: true,
+        originalItem: item
+      };
+    }
+  });
+};
 
 export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isConnectable = true }) => {
   // Get node execution state
@@ -27,8 +69,9 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
   
   // Get flow structure
   const { nodes, edges } = useFlowStructureStore();
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Use shared input node hook for state and handlers
+  // Use the consolidated input node hook
   const {
     items,
     textBuffer,
@@ -39,24 +82,20 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
-    setContent
   } = useInputNodeData({ nodeId: id });
   
-  // Use the local hooks for the removed functionality
-  const itemCounts = useItemCounts(items);
-  const formattedItems = useFormattedItems(items);
-  const showIterateOption = true; // This was a constant value in the original
-  
-  // Add a simplified handleConfigChange function
-  const handleConfigChange = (updates: any) => {
-    setContent(updates);
-  };
+  // Calculate derived UI state using useMemo
+  const itemCounts = useMemo(() => calculateItemCounts(items), [items]);
+  const formattedItems = useMemo(() => formatItemsForDisplay(items), [items]);
+  const showIterateOption = items.length > 1;
 
+  // Handle label update via NodeHeader (or similar component)
   const handleLabelUpdate = useCallback((newLabel: string) => {
-    handleConfigChange({ label: newLabel });
-  }, [handleConfigChange]);
+    // Use setNodeContent directly as the consolidated hook doesn't expose it by default
+    setNodeContent(id, { label: newLabel }); 
+  }, [id, setNodeContent]);
 
-  // Add handler for running the input node
+  // Handle running the input node
   const handleRun = useCallback(() => {
     // Create execution context
     const executionId = `exec-${uuidv4()}`;
@@ -106,7 +145,7 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
   }, [id, nodes, edges]);
   
   // Create a footer summary for display
-  const footerSummary = React.useMemo(() => {
+  const footerSummary = useMemo(() => {
     if (!itemCounts.total) return null;
     
     if (itemCounts.fileCount > 0 && itemCounts.textCount > 0) {
@@ -119,13 +158,6 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
     
     return null;
   }, [itemCounts]);
-
-  // Fix the updateFlow function call that's causing the linter error
-  const updateFlow = useCallback(() => {
-    if (data.nodes && data.edges) {
-      buildExecutionGraphFromFlow(data.nodes, data.edges);
-    }
-  }, [data.nodes, data.edges]);
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -157,33 +189,25 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
             : 'border-gray-200 shadow-sm'
         )}>
           {/* Node Header */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRun}
-                className={clsx(
-                  'relative shrink-0 px-2 py-1 text-xs font-medium rounded transition-colors',
-                  'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-                title="Run input node"
-              >
-                {isRunning ? '⏳' : '▶'} Run
-              </button>
-              <span className="font-bold text-gray-700">
-                {data.label || 'Input'}
-              </span>
-            </div>
-          </div>
+          <NodeHeader 
+             nodeId={id} 
+             label={data.label || 'Input'} 
+             isRunning={isRunning}
+             onRun={handleRun}
+             onLabelUpdate={handleLabelUpdate} 
+          />
 
           {/* Node Content */}
           <div className="flex flex-col space-y-3">
             {/* Processing Mode toggle button */}
-            <div className="mb-1">
-              <InputModeToggle 
-                iterateEachRow={iterateEachRow}
-                onToggle={handleToggleProcessingMode}
-              />
-            </div>
+            {showIterateOption && (
+              <div className="mb-1">
+                <InputModeToggle 
+                  iterateEachRow={iterateEachRow}
+                  onToggle={handleToggleProcessingMode}
+                />
+              </div>
+            )}
             
             {/* Text input */}
             <InputTextManagerSidebar
@@ -210,7 +234,7 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
               onDelete={handleDeleteItem}
               onClear={handleClearItems}
               limit={3}
-              totalCount={data.items?.length || 0}
+              totalCount={itemCounts.total}
             />
           </div>
 
@@ -227,53 +251,6 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
       </div>
     </NodeErrorBoundary>
   );
-};
-
-// Add these utility functions and hooks to replace the removed functionality
-
-/**
- * Calculate item counts for display
- */
-const useItemCounts = (items: (string | FileLikeObject)[]) => {
-  return useMemo(() => {
-    // File count is determined by file extensions (for string) or by FileLikeObject type
-    const fileCount = items.filter(item => {
-      if (typeof item === 'string') {
-        return /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item);
-      }
-      // If FileLikeObject, treat as file
-      if (item && typeof item === 'object' && 'name' in item) {
-        return true;
-      }
-      return false;
-    }).length;
-    const textCount = items.length - fileCount;
-    return {
-      fileCount,
-      textCount,
-      total: items.length
-    };
-  }, [items]);
-};
-
-/**
- * Format items for display
- */
-const useFormattedItems = (items: (string | FileLikeObject)[]) => {
-  return useMemo(() => {
-    return items.map((item) => {
-      if (typeof item === 'string') {
-        if (/\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item)) {
-          return `📄 ${item}`;
-        }
-        return item;
-      }
-      if (item && typeof item === 'object' && 'name' in item) {
-        return `📄 ${(item as any).name}`;
-      }
-      return '';
-    });
-  }, [items]);
 };
 
 export default InputNode; 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { InputNodeData } from '../../types/nodes';
+import { InputNodeData, FileLikeObject } from '../../types/nodes';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { InputTextManagerSidebar } from '../input/InputTextManagerSidebar';
 import { InputFileUploader } from '../input/InputFileUploader';
@@ -19,44 +19,49 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
-/**
- * Calculate item counts for display
- */
-const useItemCounts = (items: string[]) => {
-  return useMemo(() => {
-    // File count is determined by file extensions
-    const fileCount = items.filter(item => {
-      return typeof item === 'string' && 
-        /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item);
-    }).length;
-    
-    const textCount = items.length - fileCount;
-    
-    return {
-      fileCount,
-      textCount,
-      total: items.length
-    };
-  }, [items]);
+// Utility function to calculate item counts (consistent with InputNode.tsx)
+const calculateItemCounts = (items: (string | FileLikeObject)[]) => {
+  if (!items) return { fileCount: 0, textCount: 0, total: 0 };
+  
+  const fileCount = items.filter(item => typeof item !== 'string').length;
+  const textCount = items.filter(item => typeof item === 'string').length;
+  
+  return {
+    fileCount,
+    textCount,
+    total: items.length
+  };
 };
 
-/**
- * Format items for display
- */
-const useFormattedItems = (items: string[]) => {
-  return useMemo(() => {
-    return items.map((item) => {
-      // Add file icon for file paths
-      if (typeof item === 'string' && 
-          /\.(jpg|jpeg|png|gif|bmp|txt|pdf|doc|docx)$/i.test(item)) {
-        return `📄 ${item}`;
-      }
-      return item;
-    });
-  }, [items]);
+// Utility function to format items for display (consistent with InputNode.tsx)
+const formatItemsForDisplay = (items: (string | FileLikeObject)[]) => {
+  if (!items) return [];
+  
+  return items.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        id: `item-${index}`,
+        index,
+        display: item,
+        type: 'text',
+        isFile: false,
+        originalItem: item
+      };
+    } else {
+      // Assumes item is FileLikeObject
+      return {
+        id: `file-${index}`,
+        index,
+        display: item.file || 'Unnamed file',
+        type: item.type,
+        isFile: true,
+        originalItem: item
+      };
+    }
+  });
 };
 
-export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }) => {
+export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
   const {
     items,
     textBuffer,
@@ -69,54 +74,52 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }
     handleToggleProcessingMode
   } = useInputNodeData({ nodeId });
   
-  // Use the local hooks for the removed functionality
-  const itemCounts = useItemCounts(items);
-  const formattedItems = useFormattedItems(items);
-  const showIterateOption = true; // This was a constant value in the original
+  // Calculate derived state using useMemo and utility functions
+  const itemCounts = useMemo(() => calculateItemCounts(items), [items]);
+  const formattedItems = useMemo(() => formatItemsForDisplay(items), [items]);
+  const showIterateOption = items.length > 1; // Determine if toggle should be shown
 
-  // Debug: Log what's happening with textBuffer
+  // Debug: Log textBuffer changes (kept from original)
   useEffect(() => {
     console.log(`[InputNodeConfig] TextBuffer updated: "${textBuffer}" (length: ${textBuffer?.length || 0})`);
   }, [textBuffer]);
 
-  // Debug wrapper for handleTextChange
+  // Debug wrapper for handleTextChange (kept from original)
   const debugHandleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     console.log('[InputNodeConfig] handleTextChange called with:', e.target.value);
     handleTextChange(e);
-    // Double-check if textBuffer is actually updated after the handleTextChange call
-    setTimeout(() => {
-      console.log('[InputNodeConfig] After handleTextChange, textBuffer is now:', textBuffer);
-    }, 0);
-  }, [handleTextChange, textBuffer]);
+  }, [handleTextChange]);
 
-  // Prevent keydown events from bubbling to parent components
+  // Prevent keydown events from bubbling (kept from original)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     e.stopPropagation();
   }, []);
 
   return (
     <div className="space-y-4">
-      {/* Debug info */}
-      <div className="text-xs p-2 bg-gray-50 border border-gray-200 rounded">
+      {/* Debug info (kept from original) */}
+      {/* <div className="text-xs p-2 bg-gray-50 border border-gray-200 rounded">
         Debug: TextBuffer: "{textBuffer}" (Length: {textBuffer?.length || 0})
-      </div>
+      </div> */}
 
-      {/* Processing Mode toggle */}
-      <div>
-        <ConfigLabel>Processing Mode</ConfigLabel>
-        <InputModeToggle 
-          iterateEachRow={iterateEachRow}
-          onToggle={handleToggleProcessingMode}
-        />
-      </div>
+      {/* Processing Mode toggle - Conditionally render based on item count */}
+      {showIterateOption && (
+        <div>
+          <ConfigLabel>Processing Mode</ConfigLabel>
+          <InputModeToggle 
+            iterateEachRow={iterateEachRow}
+            onToggle={handleToggleProcessingMode}
+          />
+        </div>
+      )}
 
-      {/* Item Count Summary */}
+      {/* Item Count Summary - Uses calculated counts */}
       <InputSummaryBar
         itemCounts={itemCounts}
         iterateEachRow={iterateEachRow}
       />
 
-      {/* Text Input */}
+      {/* Text Input (no changes) */}
       <div>
         <ConfigLabel>Add Text</ConfigLabel>
         <InputTextManagerSidebar
@@ -128,7 +131,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }
         />
       </div>
       
-      {/* File Upload */}
+      {/* File Upload (no changes) */}
       <div>
         <ConfigLabel>Add Files</ConfigLabel>
         <InputFileUploader
@@ -137,10 +140,10 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId, data }
         />
       </div>
       
-      {/* Items List */}
+      {/* Items List - Use calculated counts and formatted items */}
       {formattedItems.length > 0 && (
         <div>
-          <ConfigLabel>Input Items ({formattedItems.length})</ConfigLabel>
+          <ConfigLabel>Input Items ({itemCounts.total})</ConfigLabel>
           <InputItemList 
             items={formattedItems}
             onDelete={handleDeleteItem}
