@@ -1,8 +1,8 @@
 import { Node } from './Node';
-import { runLLM, LLMProvider } from '../api/llm';
-import { callOllamaVisionWithPaths } from '../utils/llm/ollamaClient';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent, LLMNodeContent } from '../store/nodeContentStore';
+import { LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { runLLM, LLMResponse } from '../services/llmService.ts';
+import { getImageFilePath } from '../utils/files.ts';
 
 /**
  * LLM Node properties
@@ -11,7 +11,7 @@ export interface LlmNodeProperty {
   prompt: string;
   temperature: number;
   model: string;
-  provider: LLMProvider;
+  provider: string;
   ollamaUrl?: string;
   openaiApiKey?: string;
   mode?: 'text' | 'vision';
@@ -23,55 +23,10 @@ export interface LlmNodeProperty {
  * LLM node for generating text via LLM providers
  */
 export class LlmNode extends Node {
-  property: LlmNodeProperty;
+  declare property: LLMNodeContent;
 
-  constructor(
-    id: string,
-    property: Record<string, any> = {},
-    context?: FlowExecutionContext
-  ) {
+  constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'llm', property, context);
-
-    // Initialize with default properties if not provided
-    this.property = {
-      // Handle empty string values correctly by using 'in' operator
-      prompt: 'prompt' in property ? property.prompt : '',
-      temperature: 'temperature' in property ? property.temperature : 0.7,
-      model: 'model' in property ? property.model : 'openhermes',
-      provider: 'provider' in property ? property.provider : 'ollama',
-      ollamaUrl: 'ollamaUrl' in property ? property.ollamaUrl : 'http://localhost:11434',
-      openaiApiKey: 'openaiApiKey' in property ? property.openaiApiKey : '',
-      mode: 'mode' in property ? property.mode : 'text',
-      // Preserve any other properties
-      ...property
-    };
-  }
-
-  /**
-   * Synchronize property from Zustand store before execution
-   */
-  syncPropertyFromStore(): void {
-    try {
-      // Get the node content from store
-      const content = getNodeContent<LLMNodeContent>(this.id, 'llm');
-      
-      if (content) {
-        // Update properties if they exist in the store
-        this.property.prompt = content.prompt || this.property.prompt;
-        this.property.temperature = content.temperature ?? this.property.temperature;
-        this.property.model = content.model || this.property.model;
-        this.property.provider = content.provider || this.property.provider;
-        this.property.ollamaUrl = content.ollamaUrl || this.property.ollamaUrl;
-        this.property.openaiApiKey = content.openaiApiKey || this.property.openaiApiKey;
-        this.property.mode = content.mode || this.property.mode;
-        
-        this.context?.log(`LlmNode(${this.id}): Successfully synced properties from store`);
-      } else {
-        this.context?.log(`LlmNode(${this.id}): No content found in store`);
-      }
-    } catch (error) {
-      this.context?.log(`LlmNode(${this.id}): Error syncing properties: ${error}`);
-    }
   }
 
   /**
@@ -79,47 +34,33 @@ export class LlmNode extends Node {
    */
   private resolvePrompt(input: any): string {
     let prompt = this.property.prompt;
+    const nodeContent = useNodeContentStore.getState().getNodeContent<LLMNodeContent>(this.id, this.type);
+    if (nodeContent.prompt) {
+      prompt = nodeContent.prompt;
+    }
     
     // Replace {{input}} with the actual input
     if (typeof input === 'string') {
-      prompt = prompt.replace(/\{\{input\}\}/g, input);
+      return prompt.replace(/\{\{input\}\}/g, input);
     } else if (Array.isArray(input)) {
-      // 배열의 각 요소를 적절히 문자열로 변환
       const textInput = input.map(item => {
-        if (item === null || item === undefined) {
-          return 'null';
-        } else if (typeof item === 'object') {
-          // 객체는 JSON으로 변환
-          return JSON.stringify(item, null, 2);
-        } else {
-          return String(item);
-        }
+        if (item === null || item === undefined) return 'null';
+        if (typeof item === 'object') return JSON.stringify(item, null, 2);
+        return String(item);
       }).join('\n');
-      
-      this.context?.log(`LlmNode(${this.id}): 배열 입력 변환 결과 (일부): ${textInput.substring(0, 100)}...`);
-      prompt = prompt.replace(/\{\{input\}\}/g, textInput);
+      this.context?.log(`LlmNode(${this.id}): Array input converted to text: ${textInput.substring(0, 100)}...`);
+      return prompt.replace(/\{\{input\}\}/g, textInput);
     } else if (input && typeof input === 'object') {
-      // 단일 객체인 경우 예쁘게 포맷팅된 JSON으로 변환
-      prompt = prompt.replace(/\{\{input\}\}/g, JSON.stringify(input, null, 2));
+       try {
+         return prompt.replace(/\{\{input\}\}/g, JSON.stringify(input, null, 2));
+       } catch (e) {
+         this.context?.log(`LlmNode(${this.id}): Failed to stringify object input, using placeholder.`);
+         return prompt.replace(/\{\{input\}\}/g, '[Object Input]');
+       }
+    } else {
+      // Handle null, undefined, numbers, booleans etc.
+      return prompt.replace(/\{\{input\}\}/g, String(input ?? ''));
     }
-    
-    return prompt;
-  }
-
-  /**
-   * 이미지 파일 경로만 필터링
-   */
-  private filterImagePaths(input: any): string[] {
-    if (!Array.isArray(input)) {
-      // 단일 항목을 배열로 변환
-      input = [input];
-    }
-    
-    // 이미지 파일만 필터링
-    return input.filter((item: string | any) => 
-      typeof item === 'string' && 
-      /\.(jpg|jpeg|png|gif|bmp)$/i.test(item)
-    );
   }
 
   /**
@@ -127,82 +68,103 @@ export class LlmNode extends Node {
    * @param input The input to process
    * @returns The LLM response
    */
-  async execute(input: any): Promise<any> {
+  async execute(input: any): Promise<string | null> {
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+    
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<LLMNodeContent>(this.id, this.type);
+
+    // Validate necessary properties are present from the store
+    if (!nodeContent.provider || !nodeContent.model || !nodeContent.prompt) {
+      const errorMsg = "Missing required properties: provider, model, or prompt.";
+      this.context?.markNodeError(this.id, errorMsg);
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      return null;
+    }
+
+    const { 
+      provider, 
+      model, 
+      temperature = 0.7,
+      prompt,
+      ollamaUrl, 
+      openaiApiKey, 
+      mode 
+    } = nodeContent;
+    
+    this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
+
     try {
-      // 실행 시작 표시
-      this.context?.markNodeRunning(this.id);
-      
-      // Ensure properties are synced from store before execution
-      this.syncPropertyFromStore();
-      
-      // 디버그: 실행 시점 property 전체 로그
-      this.context?.log(`[디버그] LLMNode(${this.id}) property: ` + JSON.stringify(this.property));
+      let llmResult: LLMResponse | null = null;
+      const filledPrompt = this.resolvePrompt(input);
+      this.context?.log(`${this.type}(${this.id}): Resolved prompt: ${filledPrompt.substring(0, 100)}...`);
 
-      // 필수 property 체크 (prompt, model, provider)
-      if (!this.property.prompt || !this.property.model || !this.property.provider) {
-        const missing = [
-          !this.property.prompt ? 'prompt' : null,
-          !this.property.model ? 'model' : null,
-          !this.property.provider ? 'provider' : null
-        ].filter(Boolean).join(', ');
-        const errorMsg = `LLMNode(${this.id}): Required property missing: ${missing}`;
-        this.context?.log(errorMsg);
-        this.context?.markNodeError(this.id, errorMsg);
-        throw new Error(errorMsg);
-      }
+      if (mode === 'vision' && Array.isArray(input)) {
+        const imageItems = input
+          .map(item => {
+            // Handle both string paths and FileLikeObjects
+            if (typeof item === 'string') {
+              // Assume string is a path
+              return { path: item, name: item.split('/').pop() || item }; 
+            } else if (item && typeof item === 'object' && 'path' in item && 'name' in item) {
+              return item as { path: string; name: string };
+            } else if (item instanceof File) { // Handle actual File objects if they appear
+              // Need a way to get the persistent path if it's just a File object
+              // For now, use the name, assuming it's in the upload dir.
+              // This might need adjustment based on how File objects are stored/referenced.
+              console.warn(`LlmNode(${this.id}): Received File object, using name to construct path.`);
+              const filePathInfo = getImageFilePath(item); // Use the function for File objects
+              return filePathInfo;
+            }
+            return null;
+          })
+          .filter((item): item is { path: string; name: string } => item !== null && !!item.path && item.path.length > 0);
+          
+        // Get just the paths for the API call (assuming API needs paths)
+        const imagePaths = imageItems.map(item => item.path);
 
-      const resolvedPrompt = this.resolvePrompt(input);
-      
-      let result;
-      
-      // 비전 모드인 경우 이미지 파일만 필터링
-      if (this.property.mode === 'vision') {
-        const imagePaths = this.filterImagePaths(input);
-        
         if (imagePaths.length === 0) {
-          const errorMsg = "비전 모드인데, 이미지가 입력되지 않았습니다.";
-          this.context?.log(`LlmNode(${this.id}): ${errorMsg}`);
-          this.context?.markNodeError(this.id, errorMsg);
-          throw new Error(errorMsg);
+          throw new Error("Vision mode requires at least one valid image path or FileLikeObject in the input array.");
         }
         
-        // 이미지 경로 로깅
-        this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
+        this.context?.log(`${this.type}(${this.id}): Vision mode with ${imagePaths.length} images: [${imagePaths.join(', ')}]`);
         
-        result = await callOllamaVisionWithPaths({ 
-          model: this.property.model, 
-          prompt: resolvedPrompt, 
-          imagePaths,
-          temperature: this.property.temperature
-        });
+        // TODO: Implement vision call using appropriate service/function when available
+        const errorMsg = `Vision mode for provider '${provider}' is not currently implemented or service function is missing.`;
+        this.context?.markNodeError(this.id, errorMsg);
+        this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+        return null;
+
       } else {
-        // 텍스트 모드 처리
-        this.context?.log(`LlmNode(${this.id}): Processing text with prompt: ${resolvedPrompt.substring(0, 100)}...`);
-        
-        const apiResponse = await runLLM({
-          provider: this.property.provider,
-          model: this.property.model,
-          prompt: resolvedPrompt,
-          temperature: this.property.temperature
+        // Text mode
+        if (mode === 'vision') {
+          this.context?.log(`${this.type}(${this.id}): Warning - Vision mode expects an array input, but received non-array. Treating as text mode.`);
+        }
+        this.context?.log(`${this.type}(${this.id}): Text mode execution using runLLM`);
+
+        llmResult = await runLLM({
+          provider,
+          model,
+          prompt: filledPrompt,
+          temperature,
+          ollamaUrl, 
+          openaiApiKey 
         });
-        
-        result = apiResponse.response;
       }
-      
-      // Store the output in the context
-      this.context?.storeOutput(this.id, result);
-      
-      // Mark the node as successful
-      this.context?.markNodeSuccess(this.id, result);
-      
-      return result;
+
+      if (!llmResult) {
+         throw new Error('LLM call returned null or failed unexpectedly.');
+      }
+
+      const resultText = llmResult.response;
+      this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
+      this.context?.storeOutput(this.id, resultText);
+      return resultText;
+
     } catch (error) {
-      // Log and mark the node as failed
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.log(`LlmNode(${this.id}): Execution failed: ${errorMessage}`);
       this.context?.markNodeError(this.id, errorMessage);
-      
-      // 에러 발생 시 null 반환으로 체이닝 중단
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
       return null;
     }
   }

@@ -1,8 +1,7 @@
-import { Node } from '../core/Node';
-import { getRootNodesFromSubset } from '../utils/executionUtils';
+import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent } from '../store/useNodeContentStore';
-import { GroupNodeContent } from '../store/useNodeContentStore';
+import { GroupNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
+import { getRootNodeIds } from '../utils/flowUtils';
 
 interface GroupNodeProperty {
   label: string;
@@ -30,101 +29,87 @@ export class GroupNode extends Node {
   }
 
   /**
-   * Synchronize property from Zustand store before execution
-   */
-  syncPropertyFromStore(): void {
-    const content = getNodeContent(this.id) as GroupNodeContent;
-    if (content) {
-      if (typeof content.label === 'string') this.property.label = content.label;
-      if (content.nodes) this.property.nodes = content.nodes;
-      if (content.edges) this.property.edges = content.edges;
-      if (content.nodeFactory) this.property.nodeFactory = content.nodeFactory;
-      if (content.executionGraph) this.property.executionGraph = content.executionGraph;
-    }
-  }
-
-  /**
    * Execute logic for a group node by finding and executing root nodes within the group
    * @param input The input to process
    * @returns The processed result
    */
   async execute(input: any): Promise<any> {
-    this.context?.log(`GroupNode(${this.id}): Processing group with label "${this.property.label}"`);
+    this.context?.log(`${this.type}(${this.id}): Executing group node`);
+
+    // Get the latest content (mainly childNodes) directly from the store
+    const nodeContent = useNodeContentStore.getState().getNodeContent<GroupNodeContent>(this.id, this.type);
     
-    // Find all nodes that are children of this group
-    const childNodes = this.getInternalNodes();
-    if (childNodes.length === 0) {
-      this.context?.log(`GroupNode(${this.id}): No child nodes found in group.`);
-      return input; // Just pass through the input
+    // For Group node, the primary property is the structure within it.
+    // The `property` field passed during construction likely contains 
+    // the nodes and edges *within* this group from the main flow structure.
+    const groupNodes = this.property.nodes || []; // Assuming nodes within group are passed in property
+    const groupEdges = this.property.edges || []; // Assuming edges within group are passed in property
+    const nodeFactory = this.property.nodeFactory; // Need factory to create instances
+
+    if (!nodeFactory || groupNodes.length === 0) {
+      this.context?.log(`${this.type}(${this.id}): No node factory or nodes found within the group property. Cannot execute.`);
+      return null; // Cannot proceed without factory or nodes
     }
-    
-    // Find internal edges (edges where both source and target are inside the group)
-    const childNodeIds = new Set(childNodes.map(n => n.id));
-    const internalEdges = this.property.edges?.filter(edge => 
-      childNodeIds.has(edge.source) && childNodeIds.has(edge.target)
-    ) || [];
-    
-    // Find root nodes within the group (nodes with no incoming edges within the group)
-    const rootNodeIds = getRootNodesFromSubset(childNodes, internalEdges);
-    this.context?.log(`GroupNode(${this.id}): Found ${rootNodeIds.length} root nodes inside group: [${rootNodeIds.join(', ')}]`);
-    
-    if (rootNodeIds.length === 0) {
-      this.context?.log(`GroupNode(${this.id}): No root nodes found inside group, nothing to execute.`);
-      return input; // Just pass through the input
+
+    // Identify root nodes *within* the group
+    const groupRootNodeIds = getRootNodeIds(groupNodes, groupEdges);
+    this.context?.log(`${this.type}(${this.id}): Found ${groupRootNodeIds.length} root nodes within group: ${groupRootNodeIds.join(', ')}`);
+
+    if (groupRootNodeIds.length === 0) {
+        this.context?.log(`${this.type}(${this.id}): No root nodes found inside the group. Group execution stopped.`);
+        return null; // No entry point for the group's internal flow
     }
-    
-    // Execute each root node within the group
-    const results = [];
-    for (const rootNodeId of rootNodeIds) {
+
+    // Execute each root node within the group, passing the group's input
+    for (const rootNodeId of groupRootNodeIds) {
+      // Prevent infinite loops if a group somehow contains itself or similar issues
+      if (this.context?.hasExecutedNode(rootNodeId)) {
+        this.context?.log(`${this.type}(${this.id}): Skipping already executed node within group: ${rootNodeId}`);
+        continue;
+      }
+      
+      const nodeData = groupNodes.find((n: any) => n.id === rootNodeId);
+      if (!nodeData) {
+        this.context?.log(`${this.type}(${this.id}): Root node ${rootNodeId} data not found within group. Skipping.`);
+        continue;
+      }
+
       try {
-        // Find the node data
-        const nodeData = this.property.nodes?.find(n => n.id === rootNodeId);
-        if (!nodeData) {
-          this.context?.log(`GroupNode(${this.id}): Root node ${rootNodeId} not found. Skipping.`);
-          continue;
-        }
-        
-        // Create the node instance
-        const rootNode = this.property.nodeFactory.create(
+        this.context?.log(`${this.type}(${this.id}): Executing group root node: ${rootNodeId}`);
+        const nodeInstance = nodeFactory.create(
           nodeData.id,
-          nodeData.type,
+          nodeData.type as string,
           nodeData.data,
-          this.context
+          this.context // Pass the same context down
         );
         
-        // Attach graph structure reference to the node property
-        rootNode.property = {
-          ...rootNode.property,
-          nodes: this.property.nodes,
-          edges: this.property.edges,
-          nodeFactory: this.property.nodeFactory,
-          executionGraph: this.property.executionGraph
+        // IMPORTANT: Provide the group's internal structure to the node instance
+        // so its getChildNodes can resolve correctly within the group context.
+        nodeInstance.property = {
+          ...nodeInstance.property,
+          nodes: groupNodes,
+          edges: groupEdges,
+          nodeFactory: nodeFactory
         };
+
+        await nodeInstance.process(input); // Start processing with the group's input
         
-        // Execute the root node with the input
-        this.context?.log(`GroupNode(${this.id}): Executing root node ${rootNodeId}`);
+        // Mark as executed within this context to prevent re-execution in this run
+        this.context?.markNodeExecuted(rootNodeId);
         
-        // Process each root node with the input, which will trigger execute and propagate to its children
-        await rootNode.process(input);
-        
-        // Get the result from the context
-        const nodeState = this.context?.getNodeState(rootNodeId);
-        if (nodeState?.status === 'success') {
-          results.push({
-            nodeId: rootNodeId,
-            result: nodeState.result
-          });
-        }
       } catch (error) {
-        this.context?.log(`GroupNode(${this.id}): Error executing root node ${rootNodeId}: ${error}`);
-        // Continue with other roots even if one fails
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.context?.log(`${this.type}(${this.id}): Error executing node ${rootNodeId} within group: ${errorMessage}`);
+        // Optionally mark the group itself as error? Or just the internal node?
+        // For now, just log and continue with other roots if they exist.
       }
     }
-    
-    this.context?.log(`GroupNode(${this.id}): Finished executing ${results.length} root nodes`);
-    
-    // Return the results
-    return results;
+
+    this.context?.log(`${this.type}(${this.id}): Finished executing group`);
+    // What should a group node return? Usually, it might return the result of its designated 
+    // "output" node, or perhaps null if it just orchestrates internal flow.
+    // For now, return the original input, assuming it doesn't modify the main flow data directly.
+    return input; 
   }
   
   /**

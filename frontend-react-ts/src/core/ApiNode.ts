@@ -1,8 +1,8 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent, APINodeContent } from '../store/nodeContentStore';
-import { syncNodeProperties, apiNodeSyncConfig } from '../utils/nodePropertySync';
-import axios, { AxiosRequestConfig, Method, AxiosError } from 'axios';
+import { callApi } from '../services/apiService.ts';
+import { ApiNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { HTTPMethod } from '../types/nodes.ts';
 
 /**
  * API node properties
@@ -25,106 +25,91 @@ export interface ApiNodeProperty {
  * ApiNode for making API requests
  */
 export class ApiNode extends Node {
-  declare property: ApiNodeProperty;
+  declare property: ApiNodeContent;
 
-  constructor(
-    id: string,
-    property: Record<string, any> = {},
-    context?: FlowExecutionContext
-  ) {
+  constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'api', property, context);
-    
-    // Initialize with default property if not provided
-    this.property = {
-      url: property.url || '',
-      method: property.method || 'GET',
-      headers: property.headers || {},
-      queryParams: property.queryParams || {},
-      bodyFormat: property.bodyFormat || 'raw',
-      body: property.body || '',
-      useInputAsBody: property.useInputAsBody || false,
-      ...property
-    };
-  }
-
-  /**
-   * Synchronize property from Zustand store before execution
-   */
-  syncPropertyFromStore(): void {
-    // 공통 유틸리티 사용하여 속성 동기화
-    syncNodeProperties(this, apiNodeSyncConfig, 'api');
   }
 
   /**
    * Execute the API request
    */
   async execute(input: any): Promise<any> {
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<ApiNodeContent>(this.id, this.type);
+    
+    const { 
+      url,
+      method = 'GET', // Default method
+      headers = {},
+      bodyFormat = 'raw', // Default body format
+      body: rawBody, // Renamed from body to avoid conflict with constructed body
+      bodyParams,
+      queryParams = {},
+      useInputAsBody = false,
+      contentType = 'application/json' // Default content type
+    } = nodeContent;
+
+    // Determine the actual URL to use
+    let targetUrl = url;
+    if (!targetUrl && typeof input === 'string' && input.startsWith('http')) {
+      targetUrl = input;
+      this.context?.log(`${this.type}(${this.id}): Using input as URL: ${targetUrl}`);
+    } else if (!targetUrl) {
+      const errorMsg = "URL is required for ApiNode.";
+      this.context?.markNodeError(this.id, errorMsg);
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      return null;
+    }
+    
+    // Determine the request body
+    let requestBody: any = null;
+    if (useInputAsBody) {
+      requestBody = input;
+      this.context?.log(`${this.type}(${this.id}): Using input as request body.`);
+    } else if (method !== 'GET' && method !== 'DELETE') { // Only consider body for relevant methods
+      if (bodyFormat === 'key-value' && Array.isArray(bodyParams)) {
+        requestBody = bodyParams
+          .filter(param => param.enabled && param.key)
+          .reduce((obj, param) => {
+            obj[param.key] = param.value;
+            return obj;
+          }, {} as Record<string, string>);
+        this.context?.log(`${this.type}(${this.id}): Using key-value body format.`);
+      } else { // Default to raw body
+        requestBody = rawBody;
+        this.context?.log(`${this.type}(${this.id}): Using raw body format.`);
+      }
+    }
+
+    // Prepare headers, ensuring Content-Type is set if there's a body
+    const finalHeaders = { ...headers };
+    if (requestBody && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
+      finalHeaders['Content-Type'] = contentType;
+      this.context?.log(`${this.type}(${this.id}): Setting Content-Type header to ${contentType}`);
+    }
+
+    this.context?.log(`${this.type}(${this.id}): Calling API: ${method} ${targetUrl}`);
+
     try {
-      this.context?.markNodeRunning(this.id);
+      const result = await callApi({
+        url: targetUrl,
+        method: method as HTTPMethod,
+        headers: finalHeaders,
+        body: requestBody,
+        queryParams
+      });
       
-      // Get the URL and method
-      const url = this.property.url;
-      const method = this.property.method as Method;
-      
-      // URL is required
-      if (!url) {
-        const errorMsg = 'URL is required for API node';
-        this.context?.log(`ApiNode(${this.id}): ${errorMsg}`);
-        this.context?.markNodeError(this.id, errorMsg);
-        throw new Error(errorMsg);
-      }
-      
-      // Build request config
-      const config: AxiosRequestConfig = {
-        url,
-        method,
-        headers: this.property.headers || {},
-        params: this.property.queryParams || {}
-      };
-      
-      // Handle request body based on settings
-      if (method !== 'GET') {
-        if (this.property.useInputAsBody && input !== undefined) {
-          // Use input directly as the request body
-          config.data = input;
-        } else if (this.property.bodyFormat === 'key-value' && Array.isArray(this.property.bodyParams)) {
-          // Build body from key-value pairs
-          const bodyObj: Record<string, string> = {};
-          for (const param of this.property.bodyParams) {
-            if (param.enabled) {
-              bodyObj[param.key] = param.value;
-            }
-          }
-          config.data = bodyObj;
-        } else {
-          // Use raw body
-          config.data = this.property.body || '';
-        }
-      }
-      
-      // Make the API request
-      this.context?.log(`ApiNode(${this.id}): Making ${method} request to ${url}`);
-      const response = await axios(config);
-      
-      // Log the response status
-      this.context?.log(`ApiNode(${this.id}): Received response with status ${response.status}`);
-      
-      // Store the response data in the context
-      this.context?.storeOutput(this.id, response.data);
-      
-      // Return the response data
-      return response.data;
-    } catch (error: unknown) {
-      // Handle errors
-      const axiosError = error as AxiosError;
-      const errorMessage = axiosError.response 
-        ? `API error (${axiosError.response.status}): ${JSON.stringify(axiosError.response.data)}`
-        : `Request error: ${axiosError.message}`;
-      
-      this.context?.log(`ApiNode(${this.id}): ${errorMessage}`);
+      this.context?.log(`${this.type}(${this.id}): API call successful, result type: ${typeof result}`);
+      this.context?.storeOutput(this.id, result);
+      return result;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       this.context?.markNodeError(this.id, errorMessage);
-      
-      // Return null to indicate failure
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
       return null;
     }
   }

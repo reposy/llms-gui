@@ -1,8 +1,6 @@
 import { Node } from '../core/Node';
-import { setNodeContent, getNodeContent } from '../store/useNodeContentStore';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { isEqual } from 'lodash';
-import { OutputNodeContent } from '../store/useNodeContentStore';
+import { OutputNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
  * Output node properties
@@ -58,152 +56,49 @@ export class OutputNode extends Node {
     super(id, 'output', property, context);
     
     // Initialize debounced content setter
-    this.debouncedSetContent = debounce(setNodeContent, 100);
+    this.debouncedSetContent = debounce(useNodeContentStore.getState().setNodeContent, 100);
   }
 
-  /**
-   * Synchronize property from Zustand store before execution
-   */
-  syncPropertyFromStore(): void {
-    const content = getNodeContent<OutputNodeContent>(this.id, 'output');
-    if (content && content.format) {
-        this.property.format = content.format;
-        this.context?.log(`OutputNode(${this.id}): Synced format property from store: ${this.property.format}`);
-    } else {
-        // If not found in store, ensure the node has a default format
-        if (!this.property.format) {
-            this.property.format = 'text'; // Default format
-        }
-        this.context?.log(`OutputNode(${this.id}): Using existing/default format: ${this.property.format}`);
-    }
-    // Remove syncing for data and lastContent, as they are runtime values
-  }
-  
   /**
    * Execute the node's specific logic
    * Formats the input according to the output node's configuration
    * @param input The input to execute
    * @returns The formatted output
    */
-  async execute(input: any): Promise<any> {    
-    this.context?.log(`OutputNode(${this.id}): Processing output with format ${this.property.format}`);
+  async execute(input: any): Promise<any> {
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<OutputNodeContent>(this.id, this.type);
+    const format = nodeContent.format || 'text'; // Default to text if not set
+
+    let outputData = input;
     
-    try {
-      // Get current content from store to compare
-      const currentContent = getNodeContent(this.id) as OutputNodeContent;
-      
-      // Check for null or undefined input
-      if (input === null || input === undefined) {
-        this.context?.log(`OutputNode(${this.id}): Received null or undefined input`);
-        const fallbackMessage = "[No input provided to OutputNode]";
-        
-        // Only update if content has changed
-        if (currentContent.content !== fallbackMessage) {
-          // Update the node content with the fallback message
-          this.updateContentIfChanged(fallbackMessage);
-        }
-        
-        return fallbackMessage;
-      }
-      
-      // Check for empty string input
-      if (typeof input === 'string' && input.trim() === '') {
-        this.context?.log(`OutputNode(${this.id}): Received empty string input`);
-        const fallbackMessage = "[Empty string received by OutputNode]";
-        
-        // Only update if content has changed
-        if (currentContent.content !== fallbackMessage) {
-          this.updateContentIfChanged(fallbackMessage);
-        }
-        
-        return fallbackMessage;
-      }
-      
-      // Log the actual input we received
-      this.context?.log(`OutputNode(${this.id}): Received input: ${JSON.stringify(input).substring(0, 200)}`);
-      
-      // Save the input to the data field (don't trigger updates yet)
-      this.property.data = input;
-      
-      // Format the output according to the format field
-      let formattedOutput: string;
-      
-      if (this.property.format === 'json') {
-        try {
-          formattedOutput = typeof input === 'string' 
-            ? input 
-            : JSON.stringify(input, null, 2);
-        } catch (error) {
-          formattedOutput = `Error formatting as JSON: ${error}`;
-          this.context?.log(`OutputNode(${this.id}): ${formattedOutput}`);
-        }
-      } else {
-        // Format as text
-        formattedOutput = typeof input === 'string' 
-          ? input 
-          : JSON.stringify(input);
-      }
-      
-      // Check if we still have an empty formatted output after processing
-      if (!formattedOutput || formattedOutput.trim() === '') {
-        formattedOutput = "[LLM generated empty response]";
-        this.context?.log(`OutputNode(${this.id}): Formatted output was empty, using fallback message`);
-      }
-      
-      this.context?.log(`OutputNode(${this.id}): Output formatted (${formattedOutput.length} chars)`);
-      
-      // Only update content if it has changed to prevent infinite updates
-      this.updateContentIfChanged(formattedOutput);
-      
-      return formattedOutput;
-    } catch (error) {
-      // Log error but allow parent's process method to handle error marking
-      this.context?.log(`OutputNode(${this.id}): Error processing output: ${error}`);
-      console.error(`OutputNode(${this.id}): Error processing output: ${error}`);
-      throw error;
-    }
-  }
-  
-  /**
-   * Helper to update content only if it's changed from previous value
-   * This prevents infinite update loops
-   */
-  private updateContentIfChanged(newContent: string): void {
-    // Skip update if content hasn't changed (simple string comparison)
-    if (this.property.lastContent === newContent) {
-      this.context?.log(`OutputNode(${this.id}): Content unchanged (simple), skipping update`);
-      return;
-    }
-    
-    // Deeper comparison for JSON strings
-    if (this.property.lastContent && 
-        (this.property.lastContent.startsWith('[') || this.property.lastContent.startsWith('{')) &&
-        (newContent.startsWith('[') || newContent.startsWith('{'))) {
+    if (format === 'json' && typeof input !== 'string') {
       try {
-        const lastObj = JSON.parse(this.property.lastContent);
-        const newObj = JSON.parse(newContent);
-        if (isEqual(lastObj, newObj)) {
-          this.context?.log(`OutputNode(${this.id}): Content unchanged (deep), skipping update`);
-          return;
-        }
-      } catch (e) {
-        // If parsing fails, fall back to string comparison (already handled above)
-        this.context?.log(`OutputNode(${this.id}): JSON parsing failed during deep compare, relying on string compare.`);
+        // Attempt to stringify non-string input as JSON
+        outputData = JSON.stringify(input, null, 2);
+        this.context?.log(`${this.type}(${this.id}): Formatted input as JSON`);
+      } catch (error) {
+        // If stringify fails, fallback to string conversion
+        outputData = String(input);
+        this.context?.log(`${this.type}(${this.id}): Failed to format as JSON, using string representation`);
       }
+    } else {
+      // For text format or if input is already a string, ensure it's a string
+      outputData = String(input);
+      this.context?.log(`${this.type}(${this.id}): Using string representation (format: ${format})`);
     }
+
+    // Store the formatted output in the node's content in the store
+    useNodeContentStore.getState().setNodeContent(this.id, { content: outputData });
+    this.context?.log(`${this.type}(${this.id}): Stored output in node content`);
     
-    // Update the last content tracker in memory
-    this.property.lastContent = newContent;
-    
-    // Update the node content in the store
-    const contentUpdate: Partial<OutputNodeContent> = { 
-      content: newContent,
-      format: this.property.format // Include the format property
-      // _forceUpdate removed
-    };
-    
-    // Use the debounced version
-    this.debouncedSetContent(this.id, contentUpdate as OutputNodeContent);
-    this.context?.log(`OutputNode(${this.id}): Updated UI content via debouncedSetContent`);
+    // Store the output in the execution context as well
+    this.context?.storeOutput(this.id, outputData);
+
+    // Output node should pass the input through, so return the original input
+    // The formatted output is stored in the node content for display purposes.
+    return input;
   }
 } 

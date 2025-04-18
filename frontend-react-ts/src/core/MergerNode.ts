@@ -1,6 +1,6 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent, MergerNodeContent } from '../store/nodeContentStore';
+import { MergerNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { syncNodeProperties, mergerNodeSyncConfig } from '../utils/nodePropertySync';
 
 interface MergerNodeProperty {
@@ -17,31 +17,22 @@ interface MergerNodeProperty {
  * and aggregates them according to a specified strategy.
  */
 export class MergerNode extends Node {
-  declare property: MergerNodeProperty;
+  declare property: MergerNodeContent;
+  private collectedItems: any[] = []; // Store items in memory during execution
 
   /**
    * Constructor for MergerNode
    */
   constructor(
     id: string, 
-    property: Record<string, any>, 
+    property: Record<string, any> = {}, 
     context?: FlowExecutionContext
   ) {
     super(id, 'merger', property, context);
-    // Initialize with defaults if not provided
-    this.property = {
-      ...property,
-      strategy: property.strategy || 'array',
-      items: property.items || [],
-    };
-  }
-
-  /**
-   * Synchronize property.items from Zustand store before execution
-   */
-  syncPropertyFromStore(): void {
-    // 공통 유틸리티 사용하여 속성 동기화
-    syncNodeProperties(this, mergerNodeSyncConfig, 'merger');
+    // Initialize collectedItems from the store if needed, or ensure it starts empty
+    const initialContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
+    this.collectedItems = initialContent?.items || [];
+    this.context?.log(`${this.type}(${this.id}): Initialized with ${this.collectedItems.length} items from store/default.`);
   }
 
   /**
@@ -50,51 +41,51 @@ export class MergerNode extends Node {
    * @param input The input to execute
    * @returns The merged result
    */
-  async execute(input: any): Promise<any> {
-    try {
-      // 실행 시작 표시
-      this.context?.markNodeRunning(this.id);
-      
-      this.context?.log(`MergerNode(${this.id}): execute() called with input: ${JSON.stringify(input)}`);
+  async execute(input: any): Promise<any[] | null> {
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+    
+    // Get the latest content (strategy, keys) directly from the store
+    const nodeContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
+    const strategy = nodeContent.strategy || 'array'; // Default strategy
+    const keys = nodeContent.keys || [];
 
-      // Use property.items (already synced)
-      let items = Array.isArray(this.property.items) ? [...this.property.items] : [];
+    this.context?.log(`${this.type}(${this.id}): Strategy: ${strategy}, Input type: ${typeof input}`);
 
-      // If input is not undefined/null, always push (including empty objects/arrays)
-      if (input !== undefined && input !== null) {
-        if (Array.isArray(input)) {
-          items.push(...input);
-        } else {
-          items.push(input);
-        }
-      }
-
-      // 결과를 property에 반영
-      this.property.items = items;
-      
-      // 디버깅 정보 저장
-      this.context?.storeNodeData(this.id, {
-        itemCount: items.length,
-        strategy: this.property.strategy
-      });
-      
-      // 컨텍스트에 결과 저장
-      const result = this.property.strategy === 'array' ? items : this.mergeAsObject(items);
-      this.context?.storeOutput(this.id, result);
-
-      this.context?.log(`MergerNode(${this.id}): items count: ${items.length}`);
-
-      // Return merged result according to strategy
-      return result;
-    } catch (error) {
-      // 오류 발생 시 로그 및 노드 상태 업데이트
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.log(`MergerNode(${this.id}): 실행 중 오류 발생: ${errorMessage}`);
-      this.context?.markNodeError(this.id, errorMessage);
-      
-      // null 반환하여 실행 중단
-      return null;
+    // Add the received input to the internal collection
+    if (input !== null && input !== undefined) {
+      this.collectedItems.push(input);
+      this.context?.log(`${this.type}(${this.id}): Added input. Total items: ${this.collectedItems.length}`);
+    } else {
+      this.context?.log(`${this.type}(${this.id}): Received null/undefined input, not adding.`);
     }
+
+    // Update the store with the current collected items
+    // This allows the UI to reflect the merged items progressively
+    useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
+    
+    // Store the current collection in the execution context output as well
+    this.context?.storeOutput(this.id, [...this.collectedItems]);
+
+    // Merger node inherently collects inputs. It doesn't immediately pass data onwards
+    // unless specifically designed to do so based on some condition (e.g., number of inputs).
+    // For now, we assume it collects all inputs until the flow completes
+    // and the final collected array might be used by subsequent nodes if the flow
+    // triggers them AFTER all inputs have potentially arrived at the merger.
+    // A common pattern is for Merger to be followed by a node triggered manually or by a final event.
+    
+    // For simplicity in this pass, let's make it return the *current* collection.
+    // This means downstream nodes will execute multiple times as items merge.
+    // A more robust implementation might require knowing when *all* potential inputs
+    // have arrived before propagating.
+    this.context?.log(`${this.type}(${this.id}): Returning current collection (${this.collectedItems.length} items)`);
+    return [...this.collectedItems]; // Return a copy of the array
+
+    // --- Alternative: Return null to prevent immediate downstream execution --- 
+    // this.context?.log(`${this.type}(${this.id}): Returning null to await more inputs.`);
+    // return null; 
+    // If returning null, a mechanism (e.g., a button on the Merger node UI, or 
+    // a separate "trigger" node) would be needed to push the final merged 
+    // result ([...this.collectedItems]) to the *actual* next node in the logical flow.
   }
 
   /**

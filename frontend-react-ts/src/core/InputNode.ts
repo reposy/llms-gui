@@ -1,7 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent, InputNodeContent } from '../store/nodeContentStore';
-import { syncNodeProperties, inputNodeSyncConfig } from '../utils/nodePropertySync';
+import { InputNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
  * Input node properties
@@ -20,7 +19,7 @@ export class InputNode extends Node {
   /**
    * Type assertion for the property
    */
-  property: InputNodeProperty;
+  declare property: InputNodeContent;
   
   /**
    * Constructor for InputNode
@@ -31,21 +30,6 @@ export class InputNode extends Node {
     context?: FlowExecutionContext
   ) {
     super(id, 'input', property, context);
-    
-    // Initialize with default property if not provided
-    this.property = {
-      items: property.items || [],
-      iterateEachRow: property.iterateEachRow || false,
-      ...property,
-    };
-  }
-  
-  /**
-   * Store에서 items, iterateEachRow를 동기화
-   */
-  syncPropertyFromStore() {
-    // 공통 유틸리티 사용하여 속성 동기화
-    syncNodeProperties(this, inputNodeSyncConfig, 'input');
   }
 
   /**
@@ -55,66 +39,53 @@ export class InputNode extends Node {
    * @returns The items from this input node or null in foreach mode
    */
   async execute(input: any): Promise<any> {
-    try {
-      // 1. store에서 최신 items, iterateEachRow 동기화
-      this.syncPropertyFromStore();
-      this.context?.markNodeRunning(this.id);
+    this.context?.log(`${this.type}(${this.id}): Executing`);
 
-      // 2. input이 undefined/null이 아니면 items에 추가 (배열이면 하나씩 push)
-      if (input !== undefined && input !== null) {
-        if (Array.isArray(input)) {
-          for (const item of input) {
-            this.property.items.push(item);
-          }
-        } else {
-          this.property.items.push(input);
-        }
-      }
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<InputNodeContent>(this.id, this.type);
 
-      // 3. Zustand store에 items 동기화
-      // 통합 스토어의 setNodeContent 함수 대신 직접 import해서 사용해야하지만,
-      // 이 파일에서는 Node가 처리하고 UI에서 업데이트 하므로 생략
+    // Use nodeContent for logic instead of this.property
+    const items = nodeContent.items || [];
+    const iterateEachRow = nodeContent.iterateEachRow;
+    
+    this.context?.log(`${this.type}(${this.id}): Found ${items.length} items, iterateEachRow: ${iterateEachRow}`);
 
-      this.context?.log(`InputNode(${this.id}): 현재 items 배열 (${this.property.items.length}개): ${
-        this.property.items.map((item, idx) => `[${idx}]:${JSON.stringify(item)}`).join(', ')
-      }`);
-      this.context?.log(`InputNode(${this.id}): iterateEachRow = ${this.property.iterateEachRow}`);
-
-      // 결과를 컨텍스트에 저장
-      this.context?.storeOutput(this.id, this.property.items);
-
-      if (this.property.iterateEachRow) {
-        this.context?.log(`InputNode(${this.id}): ForEach 모드로 ${this.property.items.length}개 항목 개별 처리`);
-        for (const [idx, item] of this.property.items.entries()) {
-          // 현재 반복 상태 설정
-          if (this.context) {
-            this.context.setIterationContext({
-              item,
-              index: idx,
-              total: this.property.items.length
-            });
-          }
-          
-          // 각 아이템을 자식 노드에게 전달
-          for (const child of this.getChildNodes()) {
-            await child.process(item);
-          }
-        }
-        // foreach 모드에서는 null 반환하여 추가 process 호출 방지
-        return null;
+    // Append the input to the items if it's not null/undefined
+    // This allows chaining into an Input node
+    if (input !== null && input !== undefined) {
+      if (Array.isArray(input)) {
+        items.push(...input);
       } else {
-        this.context?.log(`InputNode(${this.id}): Batch 모드로 ${this.property.items.length}개 항목 일괄 처리`);
-        // 배열을 리턴하여 자식 노드로의 체이닝 계속
-        return this.property.items;
+        items.push(input);
       }
-    } catch (error) {
-      // 오류 발생시 로그 및 노드 상태 업데이트
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.log(`InputNode(${this.id}): 실행 중 오류 발생: ${errorMessage}`);
-      this.context?.markNodeError(this.id, errorMessage);
-      
-      // null 반환하여 추가 실행 중단
+      this.context?.log(`${this.type}(${this.id}): Added input to items. New count: ${items.length}`);
+      // Update the store content immediately if input was added
+      // Note: This might trigger UI updates if the store is reactive
+      useNodeContentStore.getState().setNodeContent(this.id, { items });
+    }
+
+    // If iterateEachRow is true (ForEach mode)
+    if (iterateEachRow) {
+      this.context?.log(`${this.type}(${this.id}): Running in ForEach mode`);
+      // Process each item individually
+      for (const item of items) {
+        const childNodes = this.getChildNodes();
+        for (const child of childNodes) {
+          // Use a deep copy of the context for parallel execution? 
+          // Need to consider if context needs to be isolated per branch.
+          await child.process(item);
+        }
+      }
+      this.context?.log(`${this.type}(${this.id}): Finished ForEach mode processing`);
+      // Return null to stop chaining from this node after foreach completes
       return null;
+    } else {
+      // If iterateEachRow is false (Batch mode)
+      this.context?.log(`${this.type}(${this.id}): Running in Batch mode, returning all items`);
+      // Return the whole items array for the next node to process
+      // Note: We are returning the items array directly, which might be mutated by downstream nodes.
+      // Consider returning a copy if mutation is a concern: return [...items];
+      return items;
     }
   }
 }
