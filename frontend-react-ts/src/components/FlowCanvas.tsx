@@ -23,7 +23,6 @@ import '@xyflow/react/dist/style.css';
 import isEqual from 'lodash/isEqual';
 
 // Import custom hooks
-import { useHistory } from '../hooks/useHistory';
 import { useClipboard } from '../hooks/useClipboard';
 import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
@@ -36,6 +35,7 @@ import {
   useFlowStructureStore,
   setSelectedNodeIds
 } from '../store/useFlowStructureStore';
+import { undo, redo } from '../store/useHistoryStore';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -85,21 +85,19 @@ interface FlowCanvasProps {
   onNodeSelect: (node: Node<NodeData> | null) => void;
   registerReactFlowApi?: (api: FlowCanvasApi) => void;
   children?: React.ReactNode;
-  isRestoringHistory?: boolean;
 }
 
 // Component implementation
 export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   onNodeSelect,
   registerReactFlowApi,
-  children,
-  isRestoringHistory = false
+  children
 }) => {
   const reactFlowRef = useRef<HTMLDivElement>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance<Node<NodeData>, Edge> | null>(null);
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   const didNormalizeRef = useRef<boolean>(false);
-  const isRestoringHistoryRef = useRef<boolean>(isRestoringHistory);
+  const isRestoringHistoryRef = useRef<boolean>(false);
   
   // ReactFlow hooks
   const { screenToFlowPosition } = useReactFlow();
@@ -128,17 +126,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     setLocalNodes(nds => [...nds, ...nodes]);
   }, [setLocalNodes]);
   
-  // History hook now uses Zustand setters
-  const { 
-    pushToHistory, 
-    undo, 
-    redo 
-  } = useHistory(
-    { initialNodes: localNodes, initialEdges: localEdges }, // Pass local state
-    setNodes, // Now uses Zustand setter
-    setEdges // Now uses Zustand setter
-  );
-  
   // Clipboard hook now interacts with Zustand
   const { 
     handleCopy 
@@ -164,9 +151,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         } else {
           console.log(`[FlowCanvas] Node selection cleared`);
         }
-      }, 
-      pushToHistory, 
-      isRestoringHistory: isRestoringHistoryRef
+      }
     }
   );
 
@@ -177,11 +162,11 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   // 패널 버튼 핸들러를 메모이제이션
   const handleUndo = useCallback(() => {
     undo();
-  }, [undo]);
+  }, []);
   
   const handleRedo = useCallback(() => {
     redo();
-  }, [redo]);
+  }, []);
   
   const handleClearAll = useCallback(() => {
     console.log('[FlowCanvas] Clear All button clicked');

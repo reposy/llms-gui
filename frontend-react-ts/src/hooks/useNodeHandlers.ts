@@ -30,8 +30,6 @@ type SelectionModifierKey = 'ctrl' | 'shift' | 'none';
 
 interface UseNodeHandlersOptions {
   onNodeSelect: (node: Node | null) => void;
-  pushToHistory: (nodes: Node<NodeData>[], edges: Edge[]) => void;
-  isRestoringHistory: React.MutableRefObject<boolean>;
 }
 
 interface UseNodeHandlersReturn {
@@ -52,7 +50,7 @@ export const useNodeHandlers = (
   setLocalEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
   options: UseNodeHandlersOptions
 ): UseNodeHandlersReturn => {
-  const { onNodeSelect, pushToHistory, isRestoringHistory } = options;
+  const { onNodeSelect } = options;
   const { getNodes, getEdges } = useReactFlow();
   
   // Add refs to track modifier key states
@@ -123,10 +121,7 @@ export const useNodeHandlers = (
   const syncDraggedNodesToZustand = (
     draggedNodes: Node<NodeData>[], 
     allNodes: Node<NodeData>[],
-    isRestoringHistory: React.MutableRefObject<boolean>
   ) => {
-    if (isRestoringHistory.current) return;
-    
     // Skip empty sets of nodes
     if (draggedNodes.length === 0) return;
     
@@ -206,9 +201,6 @@ export const useNodeHandlers = (
 
   // Handle nodes change (selection, position, etc)
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    // Skip if we're currently restoring history to avoid feedback loops
-    if (isRestoringHistory.current) return;
-    
     // Use the modifier key state
     const modifierKey = getActiveModifierKey();
     
@@ -314,13 +306,10 @@ export const useNodeHandlers = (
         }
       }
     }
-  }, [localNodes, setLocalNodes, onNodeSelect, isRestoringHistory, applyNodeSelection]);
+  }, [localNodes, setLocalNodes, onNodeSelect, applyNodeSelection]);
 
   // Handle edges change
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
-    // Skip if we're currently restoring history
-    if (isRestoringHistory.current) return;
-    
     // Apply the changes to get the new state
     const nextEdges = applyEdgeChanges(changes, localEdges);
     
@@ -329,13 +318,10 @@ export const useNodeHandlers = (
     
     // Update Zustand
     setZustandEdges(nextEdges);
-  }, [localEdges, setLocalEdges, isRestoringHistory]);
+  }, [localEdges, setLocalEdges]);
 
   // Handle new connections
   const handleConnect = useCallback((connection: Connection) => {
-    // Skip if we're currently restoring history
-    if (isRestoringHistory.current) return;
-    
     // Ensure connection has required properties
     if (!connection.source || !connection.target) {
       console.warn("[handleConnect] Invalid connection: missing source or target");
@@ -386,67 +372,30 @@ export const useNodeHandlers = (
     // Update Zustand
     setZustandEdges(nextEdges);
     
-    // Add to history
-    pushToHistory(localNodes, nextEdges);
-  }, [localNodes, localEdges, setLocalEdges, pushToHistory, isRestoringHistory]);
+    // Use timeout to ensure state updates settle before snapshot
+    setTimeout(() => {
+      const { nodes: currentNodes } = useFlowStructureStore.getState();
+      setZustandNodes(currentNodes); // Sync nodes (might not be necessary but safer)
+      setZustandEdges(nextEdges); // Sync the newly added edge
+      pushSnapshotAfterNodeOperation('Connect Edge');
+    }, 0);
+  }, [localNodes, localEdges, setLocalEdges]);
 
   // Handle selection change for sidebar update
   const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
-    if (isRestoringHistory.current) return;
+    const { nodes: selectedNodes } = params;
+    const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
     
-    const { nodes, edges } = params;
-    const selectedNodeIds = nodes.map(node => node.id);
-    const selectedEdgeIds = edges ? edges.map(edge => edge.id) : [];
+    // Call the passed onNodeSelect callback
+    onNodeSelect(selectedNode);
 
-    // 엣지만 선택된 경우, 노드 selection 동기화는 건너뜀
-    if (selectedNodeIds.length === 0 && selectedEdgeIds.length > 0) {
-      // 필요하다면 엣지 selection 상태를 별도로 관리
-      return;
+    // Update Zustand selection state
+    const selectedIds = selectedNodes.map(n => n.id);
+    if (!hasEqualSelection(useFlowStructureStore.getState().selectedNodeIds, selectedIds)) {
+      logSelectionChange(selectedIds); // Log the selection change
+      setZustandSelectedNodeIds(selectedIds);
     }
-
-    // Determine which modifier key is active
-    const modifierKey = getActiveModifierKey();
-    
-    // Get current selection from Zustand store
-    const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
-    
-    // Check if the selection is actually changing
-    // For selection operations, order matters so we use regular array equality
-    // But we do need to handle the case where the arrays have the same elements in different order
-    const selectionHasSameElements = hasEqualSelection(selectedNodeIds, currentSelection);
-      
-    // Only update if selection actually changed or if we have multiple selected nodes
-    // (multi-node drag operations need consistent selection state)
-    if (!selectionHasSameElements || selectedNodeIds.length > 1) {
-      console.log('[handleSelectionChange] Selection changed or multi-selection active', {
-        selectedNodeIds,
-        currentSelection,
-        hasSameElements: selectionHasSameElements,
-        multiSelection: selectedNodeIds.length > 1,
-        modifierKey
-      });
-      
-      // Apply the selection change to Zustand - this is the SINGLE SOURCE OF TRUTH for selection
-      // This will update both Zustand's selectedNodeIds array and also set the node.selected flags
-      applyNodeSelection(selectedNodeIds, modifierKey);
-    } else {
-      console.log('[handleSelectionChange] Selection unchanged, skipping update', {
-        selectedNodeIds,
-        currentSelection
-      });
-    }
-    
-    // Update sidebar selection based on selection count
-    // We do this separately from applyNodeSelection to keep concerns separated
-    if (nodes.length === 1) {
-      onNodeSelect(nodes[0]);
-    } else if (nodes.length > 1) {
-      // Multiple nodes selected - show multi-selection UI
-      onNodeSelect(null);
-    } else {
-      onNodeSelect(null);
-    }
-  }, [onNodeSelect, isRestoringHistory, applyNodeSelection]);
+  }, [onNodeSelect]);
 
   // Helper function to detect group intersections
   const checkNodeGroupIntersection = useCallback((node: Node<NodeData>, allNodes: Node<NodeData>[]) => {
@@ -497,9 +446,6 @@ export const useNodeHandlers = (
   // Handle node drag stop to update history
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, node: Node<NodeData>) => {
-      // If we're in the middle of a history restoration, don't register these changes
-      if (isRestoringHistory.current) return;
-      
       let updatedNodes = [...localNodes];
       let needsUpdate = false;
       
@@ -585,18 +531,21 @@ export const useNodeHandlers = (
 
       // Sync the final node positions to Zustand (either modified nodes or current nodes)
       const nodesToSync = needsUpdate ? updatedNodes : localNodes;
-      syncDraggedNodesToZustand([node], nodesToSync, isRestoringHistory);
+      syncDraggedNodesToZustand([node], nodesToSync);
       
-      // Always push to history to capture position changes
-      pushToHistory(nodesToSync, localEdges);
+      // Use timeout to ensure state updates settle before snapshot
+      setTimeout(() => {
+        const { nodes: currentNodes } = useFlowStructureStore.getState();
+        setZustandNodes(currentNodes); // Sync nodes (might not be necessary but safer)
+        setZustandEdges(localEdges); // Sync the updated edges
+        pushSnapshotAfterNodeOperation('Drag Node');
+      }, 0);
     },
-    [localNodes, setLocalNodes, localEdges, pushToHistory, isRestoringHistory, checkNodeGroupIntersection, syncDraggedNodesToZustand]
+    [localNodes, setLocalNodes, localEdges, syncDraggedNodesToZustand]
   );
 
   // Handle selection drag stop to update history
   const handleSelectionDragStop = useCallback((event: React.MouseEvent, nodes: Node<NodeData>[]) => {
-    if (isRestoringHistory.current) return;
-    
     console.log(`[SelectionDragStop] Multi-selection drag completed for ${nodes.length} nodes`);
     
     // Get the current nodes with their updated positions after drag
@@ -604,16 +553,19 @@ export const useNodeHandlers = (
     const currentEdges = getEdges();
     
     // Sync dragged node positions to Zustand using the shared helper
-    syncDraggedNodesToZustand(nodes, currentNodes, isRestoringHistory);
+    syncDraggedNodesToZustand(nodes, currentNodes);
     
-    // Push current state to history with the updated positions
-    pushToHistory(currentNodes, currentEdges);
-  }, [getNodes, getEdges, pushToHistory, isRestoringHistory, syncDraggedNodesToZustand]);
+    // Use timeout to ensure state updates settle before snapshot
+    setTimeout(() => {
+      const { nodes: currentNodes } = useFlowStructureStore.getState();
+      setZustandNodes(currentNodes); // Sync nodes (might not be necessary but safer)
+      setZustandEdges(currentEdges); // Sync the updated edges
+      pushSnapshotAfterNodeOperation('Drag Node');
+    }, 0);
+  }, [getNodes, getEdges, syncDraggedNodesToZustand]);
 
   // Handle edges delete
   const handleEdgesDelete = useCallback((edges: Edge[]) => {
-    if (isRestoringHistory.current) return;
-    
     if (edges.length > 0) {
       console.log(`[EdgesDelete] Deleting ${edges.length} edges`);
       const edgeIds = new Set(edges.map(e => e.id));
@@ -625,17 +577,20 @@ export const useNodeHandlers = (
       // Update Zustand store - ensure this happens for proper persistence
       setZustandEdges(nextEdges);
       
-      // Push to history
-      pushToHistory(localNodes, nextEdges);
+      // Use timeout to ensure state updates settle before snapshot
+      setTimeout(() => {
+        const { nodes: currentNodes } = useFlowStructureStore.getState();
+        setZustandNodes(currentNodes); // Sync nodes (might not be necessary but safer)
+        setZustandEdges(nextEdges); // Sync the updated edges
+        pushSnapshotAfterNodeOperation('Delete Edges');
+      }, 0);
       
       console.log(`[EdgesDelete] Updated edges count: ${nextEdges.length}`);
     }
-  }, [localNodes, localEdges, setLocalEdges, pushToHistory, isRestoringHistory]);
+  }, [localEdges, setLocalEdges]);
 
   // Handle nodes delete
   const handleNodesDelete = useCallback((nodes: Node<NodeData>[]) => {
-    if (isRestoringHistory.current) return;
-    
     if (nodes.length > 0) {
       const nodeIds = new Set(nodes.map(n => n.id));
       
@@ -697,10 +652,15 @@ export const useNodeHandlers = (
       // Clear selection in sidebar
       onNodeSelect(null);
       
-      // Push to history
-      pushToHistory(nextNodes, nextEdges);
+      // Use timeout to ensure state updates settle before snapshot
+      setTimeout(() => {
+        const { nodes: currentNodes } = useFlowStructureStore.getState();
+        setZustandNodes(currentNodes); // Sync nodes (might not be necessary but safer)
+        setZustandEdges(nextEdges); // Sync the updated edges
+        pushSnapshotAfterNodeOperation('Delete Nodes');
+      }, 0);
     }
-  }, [localNodes, localEdges, setLocalNodes, setLocalEdges, pushToHistory, isRestoringHistory]);
+  }, [localNodes, localEdges, setLocalNodes, setLocalEdges, onNodeSelect, getConnectedEdges]);
 
   return {
     handleNodesChange,
