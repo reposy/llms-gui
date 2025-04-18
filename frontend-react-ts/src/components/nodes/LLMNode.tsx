@@ -1,15 +1,15 @@
 import React, { useCallback } from 'react';
 import { Handle, Position } from 'reactflow';
-import { VIEW_MODES, NodeViewMode } from '../../../store/viewModeStore';
-import { LLMNodeData } from '../../../types/nodes';
-import { useNodeState } from '../../../store/useNodeStateStore';
+import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
+import { LLMNodeData } from '../../types/nodes';
+import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
-import { LlmNodeCompactView } from './LlmNodeCompactView';
-import { LlmNodeExpandedView } from './LlmNodeExpandedView';
-import { LlmNodeViewController } from './LlmNodeViewController';
-import { useLlmNodeData } from '../../../hooks/useLlmNodeData';
-import { useStore as useViewModeStore } from '../../../store/viewModeStore';
+import { LLMNodeCompactView } from './LLMNodeCompactView';
+import { LLMNodeExpandedView } from './LLMNodeExpandedView';
+import { LLMNodeViewController } from './LLMNodeViewController';
+import { useLlmNodeData } from '../../hooks/useLlmNodeData';
+import { useStore as useViewModeStore } from '../../store/viewModeStore';
 
 interface Props {
   id: string;
@@ -18,7 +18,7 @@ interface Props {
   selected?: boolean;
 }
 
-const LlmNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
+const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const nodeState = useNodeState(id);
   
   // Get view mode from Zustand store
@@ -52,7 +52,7 @@ const LlmNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <LlmNodeViewController id={id}>
+      <LLMNodeViewController id={id}>
         <div className="relative w-[350px]">
           <Handle
             type="target"
@@ -99,7 +99,7 @@ const LlmNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             )}
           >
             {viewMode === VIEW_MODES.COMPACT ? (
-              <LlmNodeCompactView
+              <LLMNodeCompactView
                 id={id}
                 data={data}
                 nodeState={nodeState}
@@ -107,7 +107,7 @@ const LlmNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                 onToggleView={toggleNodeView}
               />
             ) : (
-              <LlmNodeExpandedView
+              <LLMNodeExpandedView
                 id={id}
                 data={data}
                 nodeState={nodeState}
@@ -117,9 +117,9 @@ const LlmNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             )}
           </div>
         </div>
-      </LlmNodeViewController>
+      </LLMNodeViewController>
     </NodeErrorBoundary>
   );
 };
 
-export default LlmNode; 
+export default LLMNode; 
