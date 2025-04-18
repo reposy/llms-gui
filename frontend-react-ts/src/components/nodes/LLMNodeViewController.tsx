@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useReactFlow } from 'reactflow';
+import { useReactFlow } from '@xyflow/react';
 import { VIEW_MODES, GlobalViewMode } from '../../store/viewModeStore';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 

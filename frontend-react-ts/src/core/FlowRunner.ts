@@ -1,4 +1,4 @@
-import { Node as ReactFlowNode, Edge } from 'reactflow';
+import { Node as ReactFlowNode, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { NodeFactory } from './NodeFactory';

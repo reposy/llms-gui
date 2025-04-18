@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Handle, Position } from 'reactflow';
+import { Handle, Position } from '@xyflow/react';
 import { OutputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';

@@ -1,4 +1,4 @@
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeData } from '../types/nodes';
 import { getNodeContent, NodeContent } from '../store/useNodeContentStore';

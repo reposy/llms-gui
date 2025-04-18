@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Edge, Node, NodeChange, applyNodeChanges, applyEdgeChanges, EdgeChange } from 'reactflow';
+import { Edge, Node, NodeChange, applyNodeChanges, applyEdgeChanges, EdgeChange } from '@xyflow/react';
 
 /**
  * Flow store 인터페이스

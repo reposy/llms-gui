@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { shallow } from 'zustand/shallow';
-import { Edge, Node } from 'reactflow';
+import { Edge, Node } from '@xyflow/react';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getIncomingConnections } from '../utils/flowUtils';
 

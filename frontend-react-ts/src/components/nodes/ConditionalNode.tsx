@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 import { ConditionalNodeData, ConditionType } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';

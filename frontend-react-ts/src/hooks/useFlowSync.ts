@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import { Node, Edge, useNodesState, useEdgesState, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from 'reactflow';
+import { Node, Edge, useNodesState, useEdgesState, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { 
   useNodes, 

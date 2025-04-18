@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNodeContentStore, OutputNodeContent } from '../store/useNodeContentStore';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
-import { Node as ReactFlowNode } from 'reactflow';
+import { Node as ReactFlowNode } from '@xyflow/react';
 import { OutputNodeData, OutputFormat } from '../types/nodes';
 
 /**

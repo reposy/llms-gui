@@ -1,4 +1,4 @@
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { NodeViewMode } from '../store/viewModeStore';
 import { LLMMode } from '../api/llm';
 

@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';

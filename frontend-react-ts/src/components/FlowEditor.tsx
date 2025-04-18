@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { ReactFlowProvider } from 'reactflow';
+import { ReactFlowProvider } from '@xyflow/react';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
 import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 // import { FlowManager } from './FlowManager'; // Removed unused import
 import { NodeData, NodeType } from '../types/nodes';
-import type { Node } from 'reactflow';
+import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition } from '../utils/flowUtils';
 // Import specific node content types and the generic setter
 import { setNodeContent, NodeContent } from '../store/nodeContentStore'; 

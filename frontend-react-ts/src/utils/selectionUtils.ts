@@ -1,4 +1,4 @@
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { isEqual } from 'lodash';
 

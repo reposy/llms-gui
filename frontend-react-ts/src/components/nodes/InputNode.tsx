@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeData, FileLikeObject } from '../../types/nodes';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';

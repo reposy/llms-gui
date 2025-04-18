@@ -11,7 +11,7 @@ import {
   useReactFlow,
   getConnectedEdges,
   OnSelectionChangeParams,
-} from 'reactflow';
+} from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { 
   setNodes as setZustandNodes, 

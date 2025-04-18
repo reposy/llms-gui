@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isEqual } from 'lodash';
 import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { NodeData } from '../../types/nodes';
 
 /**

@@ -3,7 +3,7 @@ import { cloneDeep } from 'lodash';
 import { InputNodeData, FileLikeObject, NodeData } from '../types/nodes';
 import { useState } from 'react';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { Node as ReactFlowNode } from 'reactflow';
+import { Node as ReactFlowNode } from '@xyflow/react';
 
 // Define a type for the updates that allows items to be mixed temporarily
 type InputNodeUpdates = Omit<Partial<InputNodeData>, 'items'> & {

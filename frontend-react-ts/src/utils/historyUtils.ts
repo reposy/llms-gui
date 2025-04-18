@@ -1,4 +1,4 @@
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { FlowSnapshot, pushSnapshot } from '../store/useHistoryStore';
 import { getAllNodeContents } from '../store/useNodeContentStore';

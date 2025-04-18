@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useEffect, useMemo } from 'react';
-import ReactFlow, {
+import { 
+  ReactFlow,
   MiniMap,
   Controls,
   Background,
@@ -16,8 +17,8 @@ import ReactFlow, {
   Connection,
   NodeTypes,
   ReactFlowInstance
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import isEqual from 'lodash/isEqual';
 
 // Import custom hooks

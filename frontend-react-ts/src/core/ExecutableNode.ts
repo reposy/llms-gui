@@ -1,4 +1,4 @@
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getOutgoingConnections, findNodeById } from '../utils/flowUtils';
 

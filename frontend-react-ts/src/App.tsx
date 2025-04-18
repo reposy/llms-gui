@@ -1,10 +1,10 @@
-import { ReactFlowProvider } from 'reactflow';
+import { ReactFlowProvider } from '@xyflow/react';
 import { FlowEditor } from './components/FlowEditor';
 import { useEffect, useState, useRef } from 'react';
 import { registerAllNodeTypes } from './core/NodeRegistry';
 import { NodeFactory } from './core/NodeFactory';
 import { useNodes, useEdges, useFlowStructureStore } from './store/useFlowStructureStore';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 
 export default function App() {
   // Zustand persist hydration 상태 확인 (기존 정적 방식 제거)

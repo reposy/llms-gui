@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNodeContentStore, NodeContent } from '../store/useNodeContentStore'; // Import main store and types
 import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Import structure store
 import { isEqual } from 'lodash';
-import { Node as ReactFlowNode } from 'reactflow'; // Import React Flow Node type
+import { Node as ReactFlowNode } from '@xyflow/react'; // Import React Flow Node type
 import { JSONExtractorNodeData } from '../types/nodes'; // Corrected type name casing
 
 /**

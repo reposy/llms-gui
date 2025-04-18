@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { NodeContent, setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
 import { isEqual, cloneDeep } from 'lodash';

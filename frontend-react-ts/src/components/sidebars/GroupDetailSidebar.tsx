@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import type { Node } from 'reactflow';
+import type { Node } from '@xyflow/react';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useExecutionController, useExecutionState } from '../../store/useExecutionController';

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { cloneDeep } from 'lodash';
 import { NodeData } from '../types/nodes';
 import { setNodes as setZustandNodes, setEdges as setZustandEdges } from '../store/useFlowStructureStore';

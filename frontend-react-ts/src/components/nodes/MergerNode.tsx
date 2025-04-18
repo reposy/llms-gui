@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, Fragment } from 'react';
-import { Handle, Position } from 'reactflow';
+import { Handle, Position } from '@xyflow/react';
 import { MergerNodeData } from '../../types/nodes';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
 import clsx from 'clsx';

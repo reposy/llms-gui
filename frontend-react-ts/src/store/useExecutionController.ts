@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { Edge, Node } from 'reactflow';
+import { Edge, Node } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { NodeState, ExecutionContext } from '../types/execution';
 import { FlowExecutionContext } from '../core/FlowExecutionContext';

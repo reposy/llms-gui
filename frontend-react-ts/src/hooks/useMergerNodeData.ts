@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useNodeContentStore, MergerNodeContent } from '../store/useNodeContentStore';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
-import { Node as ReactFlowNode } from 'reactflow';
+import { Node as ReactFlowNode } from '@xyflow/react';
 import { MergerNodeData } from '../types/nodes';
 
 /**

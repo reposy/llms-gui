@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from 'reactflow';
+import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from '@xyflow/react';
 import clsx from 'clsx';
 import { GroupNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';

@@ -1,6 +1,6 @@
 import { createWithEqualityFn } from 'zustand/traditional';
 import { shallow } from 'zustand/shallow';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { buildExecutionGraph, GraphNode } from '../utils/flowUtils';
 
 interface ExecutionGraphState {

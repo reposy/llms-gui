@@ -5,7 +5,7 @@ import { getAllNodeContents, NodeContent } from '../store/useNodeContentStore';
 import { undo, redo } from '../store/useHistoryStore';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getNodeState } from '../store/useNodeStateStore';
-import { Node } from 'reactflow';
+import { Node } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 
 /**

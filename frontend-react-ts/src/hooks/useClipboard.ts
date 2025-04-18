@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useReactFlow, XYPosition, useStoreApi, Node, Edge } from 'reactflow';
+import { useReactFlow, XYPosition, useStoreApi, Node, Edge } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { flushSync } from 'react-dom';
 import { 

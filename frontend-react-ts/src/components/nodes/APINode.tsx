@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Handle, Position, useReactFlow } from 'reactflow';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { APINodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';

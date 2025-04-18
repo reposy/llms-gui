@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { NodeType } from '../types/nodes';
-import { NodeProps } from 'reactflow';
+import { NodeProps } from '@xyflow/react';
 import clsx from 'clsx';
 
 interface Props {

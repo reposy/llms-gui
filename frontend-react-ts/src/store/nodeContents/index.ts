@@ -5,7 +5,7 @@ import { shallow } from 'zustand/shallow';
 import { isEqual } from 'lodash';
 import { createIDBStorage } from '../../utils/idbStorage';
 import { NodeData } from '../../types/nodes';
-import { Node as ReactFlowNode } from 'reactflow';
+import { Node as ReactFlowNode } from '@xyflow/react';
 
 // Import all node content types and utilities
 import { 
