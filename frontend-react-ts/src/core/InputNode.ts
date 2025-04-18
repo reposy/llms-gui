@@ -53,15 +53,28 @@ export class InputNode extends Node {
     // Append the input to the items if it's not null/undefined
     // This allows chaining into an Input node
     if (input !== null && input !== undefined) {
+      // Filter out empty objects before pushing
+      const isValidObject = (item: any) => 
+        typeof item === 'object' && Object.keys(item).length > 0;
+
       if (Array.isArray(input)) {
-        items.push(...input);
+        // Filter empty objects from input array
+        const filteredInput = input.filter(item => item !== null && item !== undefined && (typeof item !== 'object' || isValidObject(item)));
+        if (filteredInput.length > 0) {
+            items.push(...filteredInput);
+        }
+      } else if (typeof input === 'object' && !isValidObject(input)){
+        // Do not push empty objects
+        this.context?.log(`${this.type}(${this.id}): Skipped adding empty object input.`);
       } else {
-        items.push(input);
+        items.push(input); // Push other valid types (string, number, non-empty objects, etc.)
       }
-      this.context?.log(`${this.type}(${this.id}): Added input to items. New count: ${items.length}`);
-      // Update the store content immediately if input was added
-      // Note: This might trigger UI updates if the store is reactive
-      useNodeContentStore.getState().setNodeContent(this.id, { items });
+
+      // Only log and update store if items were actually added or changed
+      if (items.length > nodeContent.items.length) { // Check if length increased
+          this.context?.log(`${this.type}(${this.id}): Added valid input to items. New count: ${items.length}`);
+          useNodeContentStore.getState().setNodeContent(this.id, { items });
+      }
     }
 
     // If iterateEachRow is true (ForEach mode)

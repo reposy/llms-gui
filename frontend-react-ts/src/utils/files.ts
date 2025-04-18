@@ -85,7 +85,36 @@ export async function readTextFile(file: File): Promise<string> {
 }
 
 /**
+ * Read a file and return its Base64 encoded content
+ * @param file File to read
+ * @returns Promise with the Base64 encoded string (including data: prefix)
+ */
+export function readFileAsBase64(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (reader.result && typeof reader.result === 'string') {
+        // result contains the Base64 string with the data URL prefix (e.g., "data:image/png;base64,...")
+        // Ollama library might just need the part after the comma
+        // Let's return the full string for now, and adjust if needed.
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read file as Base64 string.'));
+      }
+    };
+
+    reader.onerror = (error) => {
+      reject(new Error(`Error reading file: ${error}`));
+    };
+
+    reader.readAsDataURL(file); // Read as data URL (which is Base64)
+  });
+}
+
+/**
  * Get file path information for Ollama vision API
+ * @deprecated This function might be misleading as Ollama library in browser needs Base64, not path.
  * Instead of converting to base64, this returns the filename as a path
  * 
  * @param file File to get path information from

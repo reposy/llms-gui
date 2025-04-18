@@ -20,7 +20,7 @@ import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 
-export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
+export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isConnectable = true }) => {
   // Get node execution state
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
@@ -129,37 +129,62 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <div className={clsx("relative flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-blue-500' : 'border-gray-300', 'w-[350px]')}>
-        <NodeHeader 
-          nodeId={id} 
-          label={data.label || 'Input'} 
-          placeholderLabel="Input Node"
-          isRootNode={true}
-          isRunning={isRunning}
-          viewMode="expanded"
-          themeColor="gray"
-          onRun={handleRun}
-          onLabelUpdate={handleLabelUpdate}
-          onToggleView={() => {}}
-        />
+      <div className="relative w-[350px]">
+        {/* Source Handle - positioned at right with consistent styling */}
         <Handle 
           type="source" 
           position={Position.Right} 
           id="source"
-          className="w-3 h-3 !bg-gray-500"
-          style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '-6px', zIndex: 50 }}
+          isConnectable={isConnectable}
+          style={{
+            background: '#6b7280', // gray color for input node
+            border: '1px solid white',
+            width: '8px',
+            height: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            right: '-4px',
+            zIndex: 50
+          }}
         />
-        <NodeBody>
-          {/* Processing Mode toggle button */}
-          <div className="mb-3">
-            <InputModeToggle 
-              iterateEachRow={iterateEachRow}
-              onToggle={handleToggleProcessingMode}
-            />
+
+        {/* Node content box with consistent styling */}
+        <div className={clsx(
+          'px-4 py-2 shadow-md rounded-md bg-white',
+          'border',
+          selected
+            ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
+            : 'border-gray-200 shadow-sm'
+        )}>
+          {/* Node Header */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRun}
+                className={clsx(
+                  'relative shrink-0 px-2 py-1 text-xs font-medium rounded transition-colors',
+                  'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                )}
+                title="Run input node"
+              >
+                {isRunning ? '⏳' : '▶'} Run
+              </button>
+              <span className="font-bold text-gray-700">
+                {data.label || 'Input'}
+              </span>
+            </div>
           </div>
 
-          {/* Combined input section */}
-          <div className="flex-grow space-y-3">
+          {/* Node Content */}
+          <div className="flex flex-col space-y-3">
+            {/* Processing Mode toggle button */}
+            <div className="mb-1">
+              <InputModeToggle 
+                iterateEachRow={iterateEachRow}
+                onToggle={handleToggleProcessingMode}
+              />
+            </div>
+            
             {/* Text input */}
             <InputTextManagerSidebar
               textBuffer={textBuffer}
@@ -188,17 +213,17 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
               totalCount={data.items?.length || 0}
             />
           </div>
-        </NodeBody>
-        <NodeFooter>
+
+          {/* Node Footer */}
           {footerSummary && (
-            <div className="flex items-center justify-between w-full">
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between w-full">
               <span className="text-xs text-gray-500">{footerSummary}</span>
               <span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
                 {iterateEachRow ? 'Foreach mode' : 'Batch mode'}
               </span>
             </div>
           )}
-        </NodeFooter>
+        </div>
       </div>
     </NodeErrorBoundary>
   );

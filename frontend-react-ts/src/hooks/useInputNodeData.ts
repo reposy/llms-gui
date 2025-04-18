@@ -62,8 +62,17 @@ export const useInputNodeData = ({
    */
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.length) return;
-    const filePaths = Array.from(event.target.files).map(file => file.name);
-    updateContent({ items: [...items, ...filePaths] });
+    // Store the actual File objects, not just names
+    const files = Array.from(event.target.files);
+    // Filter out non-null files (though target.files should be File[])
+    const validFiles = files.filter((file): file is File => file !== null);
+    if (validFiles.length > 0) {
+      console.log(`[useInputNodeData] Adding ${validFiles.length} File objects to items.`);
+      // Ensure the items array can hold mixed types (string | File)
+      // Cast existing items to the correct type if necessary, or widen the type in the store
+      const currentItems: (string | File)[] = items as (string | File)[]; 
+      updateContent({ items: [...currentItems, ...validFiles] });
+    }
   }, [items, updateContent]);
 
   /**

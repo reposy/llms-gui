@@ -1,7 +1,9 @@
 import { Node } from './Node';
 import { getNodeFactory, getAllNodeTypes } from './NodeRegistry';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent } from '../store/nodeContentStore';
+// Import store getter directly - assumes it doesn't rely on hooks
+import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts'; 
+import { LLMNodeContent } from '../store/useNodeContentStore.ts'; // Import specific type
 
 /**
  * Factory to create and manage nodes
@@ -17,28 +19,52 @@ export class NodeFactory {
    * Create a node of the specified type
    * @param id The node ID
    * @param type The node type
-   * @param properties The node properties
+   * @param reactFlowProps Properties passed from the React Flow node data object
    * @param context Optional execution context
    * @returns The created node
    */
   create(
     id: string, 
     type: string, 
-    properties: Record<string, any> = {}, 
+    reactFlowProps: Record<string, any> = {}, 
     context?: FlowExecutionContext
   ): Node {
-    // 최신 property를 store에서 fetch (없으면 기존 properties 사용)
-    let latestProperties = getNodeContent(id, type);
-    if (!latestProperties || Object.keys(latestProperties).length === 0) {
-      latestProperties = properties;
+    // 1. Fetch the latest content state from the store
+    let latestStoredContent = getNodeContent(id, type); // Uses store getter
+    
+    // 2. Ensure essential properties exist, using defaults if necessary
+    if (type === 'llm') {
+        const defaultLLMContent = createDefaultNodeContent('llm') as LLMNodeContent;
+        latestStoredContent = {
+            ...defaultLLMContent, // Start with defaults
+            ...(latestStoredContent || {}), // Overlay stored content (if any)
+            label: latestStoredContent?.label || reactFlowProps?.label || defaultLLMContent.label // Prioritize labels correctly
+        } as LLMNodeContent;
+        
+        // Ensure required fields are present after merge
+        if (!latestStoredContent.provider || !latestStoredContent.model) {
+             console.warn(`[NodeFactory] LLM node ${id} missing provider or model in store. Applying defaults.`);
+             latestStoredContent.provider = latestStoredContent.provider || defaultLLMContent.provider;
+             latestStoredContent.model = latestStoredContent.model || defaultLLMContent.model;
+        }
+    } else if (!latestStoredContent || Object.keys(latestStoredContent).length === 0) {
+        // For other node types, if not found in store, try using reactFlowProps
+        // or fall back to default content for the type.
+        console.warn(`[NodeFactory] Content for ${type} node ${id} not found in store. Using reactFlowProps or defaults.`);
+        latestStoredContent = reactFlowProps && Object.keys(reactFlowProps).length > 0 
+                              ? reactFlowProps 
+                              : createDefaultNodeContent(type);
+        // Ensure label is consistent
+        latestStoredContent.label = reactFlowProps?.label || latestStoredContent.label || `Default ${type} Label`;
     }
-    // Add nodeFactory reference to properties
+    
+    // 3. Add nodeFactory reference (needed for dynamic child resolution in Node.ts)
     const enrichedProperties = {
-      ...latestProperties,
+      ...latestStoredContent,
       nodeFactory: this
     };
 
-    // Use the node factory from registry
+    // 4. Use the node factory function from the registry to create the instance
     const factoryFn = getNodeFactory(type);
     if (!factoryFn) {
       const registeredTypes = getAllNodeTypes();
@@ -46,10 +72,11 @@ export class NodeFactory {
       throw new Error(`Unknown node type: ${type}. Check console for registered types.`);
     }
 
-    const node = factoryFn(id, enrichedProperties, context);
+    const node = factoryFn(id, enrichedProperties, context); // Pass the validated/enriched properties
     
-    // Store node in the map
+    // 5. Store the created node instance in the factory's map
     this.nodes.set(id, node);
+    console.log(`[NodeFactory] Created node ${id} (${type}) with properties:`, enrichedProperties);
     return node;
   }
 

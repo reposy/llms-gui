@@ -3,7 +3,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
 import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
-// import { FlowManager } from './FlowManager'; // Removed unused import
+import { FlowManager } from './FlowManager'; // Re-added import
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition } from '../utils/flowUtils';
@@ -107,7 +107,8 @@ export const FlowEditor = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      {/* Main content area */}
+      <div className="flex-1 flex overflow-hidden relative"> {/* Added relative positioning */}
         {/* Node Palette Sidebar */}
         <div className="flex-none w-20 bg-white border-r border-gray-200 p-4 shadow-lg z-10 flex flex-col items-center space-y-4 overflow-y-auto">
             {/* ... Node buttons ... */}
@@ -124,7 +125,9 @@ export const FlowEditor = () => {
 
         {/* Main Flow Canvas Area */}
         <div className="flex-1 relative bg-gray-100">
-          <ReactFlowProvider> 
+          <ReactFlowProvider>
+            {/* Add FlowManager here, above the canvas or where appropriate */}
+            <FlowManager flowApi={reactFlowApiRef} />
             <FlowCanvas onNodeSelect={() => {}} registerReactFlowApi={handleRegisterApi} />
           </ReactFlowProvider>
         </div>

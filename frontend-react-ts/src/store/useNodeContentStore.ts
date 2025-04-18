@@ -267,42 +267,34 @@ export const useNodeContentStore = create<NodeContentStore>()(
           // 현재 컨텐츠 가져오기 (없으면 빈 객체)
           const currentContent = state.contents[nodeId] || {};
           
-          // Merge update with current content, excluding isDirty temporarily
-          const { isDirty: currentDirty, ...currentContentWithoutDirty } = currentContent;
-          const { isDirty: newDirtyUpdate, ...newContentUpdateWithoutDirty } = newContentUpdate as any;
-          
-          const potentialNewContent = {
-            ...currentContentWithoutDirty,
-            ...newContentUpdateWithoutDirty
-          };
+          // Determine the final isDirty state
+          // If newContentUpdate has an isDirty field, use it, otherwise default to true
+          const finalIsDirty = (newContentUpdate as any).isDirty !== undefined 
+                               ? (newContentUpdate as any).isDirty 
+                               : true;
 
-          // Check if the content actually changed (excluding isDirty)
-          if (isEqual(currentContentWithoutDirty, potentialNewContent)) {
-            // If only isDirty changed, handle that separately
-            const finalIsDirty = newDirtyUpdate !== undefined ? newDirtyUpdate : true;
-            if (currentDirty !== finalIsDirty) {
-              console.log(`[NodeContentStore] Updating only isDirty for ${nodeId} to ${finalIsDirty}`);
-              return {
-                contents: {
-                  ...state.contents,
-                  [nodeId]: { ...currentContent, isDirty: finalIsDirty }
-                }
-              };
-            } else {
-              return state; // No actual change
-            }
-          }
+          // Directly merge the update with the current content
+          const newContent = {
+            ...currentContent,
+            ...newContentUpdate,
+            isDirty: finalIsDirty // Ensure isDirty is correctly set
+          };
           
-          // Content changed, determine final isDirty state
-          // If newContentUpdate specified isDirty, use it, otherwise default to true
-          const finalIsDirty = newDirtyUpdate !== undefined ? newDirtyUpdate : true;
-          
-          console.log(`[NodeContentStore] Updating content for ${nodeId}:`, { ...potentialNewContent, isDirty: finalIsDirty });
+          // Optimization: Check if the object reference is the same AND isDirty is same.
+          // This avoids unnecessary updates if the exact same update object is passed multiple times.
+          // However, usually a new object is created for updates, making this less effective.
+          // Let Zustand handle shallow equality checks on the top level.
+          // A simple reference check might be sufficient if performance becomes an issue.
+          // if (state.contents[nodeId] === newContent && currentContent.isDirty === finalIsDirty) {
+          //   return state; // Avoid update if object reference and isDirty are identical
+          // }
+
+          console.log(`[NodeContentStore] Updating content for ${nodeId}:`, newContent);
           
           return {
             contents: {
               ...state.contents,
-              [nodeId]: { ...potentialNewContent, isDirty: finalIsDirty }
+              [nodeId]: newContent
             }
           };
         });

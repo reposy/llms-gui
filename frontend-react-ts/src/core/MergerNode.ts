@@ -1,7 +1,6 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { MergerNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { syncNodeProperties, mergerNodeSyncConfig } from '../utils/nodePropertySync';
 
 interface MergerNodeProperty {
   strategy: 'array' | 'object';

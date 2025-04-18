@@ -2,7 +2,7 @@ import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { runLLM, LLMResponse } from '../services/llmService.ts';
-import { getImageFilePath } from '../utils/files.ts';
+import { readFileAsBase64 } from '../utils/files.ts';
 
 /**
  * LLM Node properties
@@ -69,79 +69,126 @@ export class LlmNode extends Node {
    * @returns The LLM response
    */
   async execute(input: any): Promise<string | null> {
-    this.context?.log(`${this.type}(${this.id}): Executing`);
-    
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent<LLMNodeContent>(this.id, this.type);
+    this.context?.log(`${this.type}(${this.id}): Entering execute`); 
 
-    // Validate necessary properties are present from the store
-    if (!nodeContent.provider || !nodeContent.model || !nodeContent.prompt) {
-      const errorMsg = "Missing required properties: provider, model, or prompt.";
+    const currentProps = this.property; // Use the property directly
+
+    this.context?.log(`[DEBUG] ${this.type}(${this.id}): Checking properties: ${JSON.stringify(currentProps)}`); 
+
+    const providerValue = currentProps?.provider; // Optional chaining for safety
+    const modelValue = currentProps?.model;
+
+    this.context?.log(`[DEBUG] ${this.type}(${this.id}): Raw provider: '${providerValue}', Raw model: '${modelValue}'`);
+
+    // Validate necessary properties are present
+    if (!providerValue || !modelValue) { 
+      const errorMsg = "Missing required properties: provider or model.";
       this.context?.markNodeError(this.id, errorMsg);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
-      return null;
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}. Properties were: ${JSON.stringify(currentProps)}`);
+      return null; 
     }
-
-    const { 
-      provider, 
-      model, 
-      temperature = 0.7,
-      prompt,
-      ollamaUrl, 
-      openaiApiKey, 
-      mode 
-    } = nodeContent;
+    
+    // Now we know providerValue and modelValue are truthy strings
+    const provider = providerValue as 'ollama' | 'openai'; // Cast now safer
+    const model = modelValue as string;
+    const prompt = currentProps.prompt ?? ''; 
+    const temperature = currentProps.temperature ?? 0.7; 
+    const ollamaUrl = currentProps.ollamaUrl; 
+    const openaiApiKey = currentProps.openaiApiKey; 
+    const mode = currentProps.mode ?? 'text';
     
     this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
 
     try {
       let llmResult: LLMResponse | null = null;
-      const filledPrompt = this.resolvePrompt(input);
-      this.context?.log(`${this.type}(${this.id}): Resolved prompt: ${filledPrompt.substring(0, 100)}...`);
+      let filledPrompt: string; // Declare variable for prompt
 
-      if (mode === 'vision' && Array.isArray(input)) {
-        const imageItems = input
-          .map(item => {
-            // Handle both string paths and FileLikeObjects
-            if (typeof item === 'string') {
-              // Assume string is a path
-              return { path: item, name: item.split('/').pop() || item }; 
-            } else if (item && typeof item === 'object' && 'path' in item && 'name' in item) {
-              return item as { path: string; name: string };
-            } else if (item instanceof File) { // Handle actual File objects if they appear
-              // Need a way to get the persistent path if it's just a File object
-              // For now, use the name, assuming it's in the upload dir.
-              // This might need adjustment based on how File objects are stored/referenced.
-              console.warn(`LlmNode(${this.id}): Received File object, using name to construct path.`);
-              const filePathInfo = getImageFilePath(item); // Use the function for File objects
-              return filePathInfo;
-            }
-            return null;
-          })
-          .filter((item): item is { path: string; name: string } => item !== null && !!item.path && item.path.length > 0);
-          
-        // Get just the paths for the API call (assuming API needs paths)
-        const imagePaths = imageItems.map(item => item.path);
+      // --- Vision Mode Handling ---
+      if (mode === 'vision') {
+        let inputArray: any[] = [];
+        let treatAsText = false;
 
-        if (imagePaths.length === 0) {
-          throw new Error("Vision mode requires at least one valid image path or FileLikeObject in the input array.");
+        // Check if input is a single valid item or an array of items
+        if (Array.isArray(input)) {
+            inputArray = input;
+        } else if (input instanceof File) { // Accept File object directly
+            inputArray = [input]; 
+        } else if (typeof input === 'string') {
+            // TODO: Handle string paths - needs access to the actual File object
+            // For now, we cannot process string paths directly in the browser to get Base64
+            this.context?.log(`${this.type}(${this.id}): Warning - Received string path ('${input}') for vision mode. Cannot get Base64. Treating as text.`);
+            treatAsText = true;
+        } else if (input && typeof input === 'object' && 'path' in input && 'name' in input) {
+             // Handle FileLikeObject if needed, assuming it has enough info or a File reference
+             // For now, treat as text if we don't have the File object.
+             this.context?.log(`${this.type}(${this.id}): Warning - Received FileLikeObject without direct File access. Treating as text.`);
+            treatAsText = true; 
+        } else {
+            // Invalid input for vision mode
+            this.context?.log(`${this.type}(${this.id}): Warning - Vision mode received invalid input type (${typeof input}). Treating as text mode.`);
+            treatAsText = true; // Fallback to text mode
         }
-        
-        this.context?.log(`${this.type}(${this.id}): Vision mode with ${imagePaths.length} images: [${imagePaths.join(', ')}]`);
-        
-        // TODO: Implement vision call using appropriate service/function when available
-        const errorMsg = `Vision mode for provider '${provider}' is not currently implemented or service function is missing.`;
-        this.context?.markNodeError(this.id, errorMsg);
-        this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
-        return null;
+
+        if (!treatAsText) {
+            this.context?.log(`${this.type}(${this.id}): Vision mode processing input: ${JSON.stringify(inputArray.map(f => f instanceof File ? f.name : f))}`);
+
+            // Filter for actual File objects
+            const fileObjects = inputArray.filter((item): item is File => item instanceof File);
+            
+            if (fileObjects.length === 0) {
+                 this.context?.log(`${this.type}(${this.id}): Warning - No valid File objects found in input for Base64 conversion. Treating as text.`);
+                 treatAsText = true;
+            } else {
+                try {
+                    // Convert File objects to Base64 strings
+                    this.context?.log(`${this.type}(${this.id}): Converting ${fileObjects.length} files to Base64...`);
+                    const base64Promises = fileObjects.map(file => readFileAsBase64(file));
+                    const base64Images = await Promise.all(base64Promises);
+                    
+                    // We might need to strip the data URL prefix (e.g., "data:image/png;base64,") for the ollama library
+                    const base64DataOnly = base64Images.map(dataUrl => dataUrl.split(',')[1]);
+
+                    this.context?.log(`${this.type}(${this.id}): Successfully converted images to Base64.`);
+
+                    // Call runLLM with Base64 image data
+                    llmResult = await runLLM({
+                      provider,
+                      model,
+                      prompt: prompt, // Pass the original prompt for vision
+                      temperature,
+                      ollamaUrl,
+                      openaiApiKey,
+                      images: base64DataOnly // Pass the Base64 encoded data array
+                    });
+
+                } catch (base64Error) {
+                    this.context?.log(`${this.type}(${this.id}): Error converting files to Base64: ${base64Error}. Falling back to text mode.`);
+                    treatAsText = true;
+                }
+            }
+        }
+
+        // If vision mode failed or decided to treat as text
+        if (treatAsText) {
+             this.context?.log(`${this.type}(${this.id}): Falling back to text mode execution.`);
+             filledPrompt = this.resolvePrompt(input); // Use resolvePrompt here as well
+             this.context?.log(`${this.type}(${this.id}): Resolved prompt for text fallback: ${filledPrompt.substring(0, 100)}...`);
+             llmResult = await runLLM({
+                provider,
+                model,
+                prompt: filledPrompt, // Use the input-replaced prompt for text mode
+                temperature,
+                ollamaUrl, 
+                openaiApiKey,
+                // No images passed for text mode
+              });
+        }
 
       } else {
-        // Text mode
-        if (mode === 'vision') {
-          this.context?.log(`${this.type}(${this.id}): Warning - Vision mode expects an array input, but received non-array. Treating as text mode.`);
-        }
+        // --- Text Mode Handling ---
         this.context?.log(`${this.type}(${this.id}): Text mode execution using runLLM`);
-
+        filledPrompt = this.resolvePrompt(input); // Call resolvePrompt here
+        this.context?.log(`${this.type}(${this.id}): Resolved prompt: ${filledPrompt.substring(0, 100)}...`);
         llmResult = await runLLM({
           provider,
           model,
@@ -149,6 +196,7 @@ export class LlmNode extends Node {
           temperature,
           ollamaUrl, 
           openaiApiKey 
+          // No images passed for text mode
         });
       }
 

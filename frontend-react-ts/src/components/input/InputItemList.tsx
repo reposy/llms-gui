@@ -39,7 +39,7 @@ export const InputItemList: React.FC<InputItemListProps> = ({
   // Limit items if specified
   const displayItems = limit ? items.slice(-limit) : items;
   const hasMore = typeof totalCount === 'number' && totalCount > displayItems.length;
-  const isFile = (item: string) => item.startsWith('📄 ');
+  const isFile = (item: string) => typeof item === 'string' && item.startsWith('📄 ');
 
   return (
     <div>
@@ -66,8 +66,8 @@ export const InputItemList: React.FC<InputItemListProps> = ({
               isFile(item) ? "bg-blue-50" : "bg-gray-50"
             )}
           >
-            <span className="truncate block flex-grow" title={item}>
-              {item}
+            <span className="truncate block flex-grow" title={typeof item === 'string' ? item : JSON.stringify(item)}>
+              {typeof item === 'string' ? item : JSON.stringify(item)}
             </span>
             <button
               onClick={() => onDelete(index)}
