@@ -11,19 +11,18 @@ import {
   useReactFlow,
   getConnectedEdges,
   OnSelectionChangeParams,
-  getIncomers, getOutgoers,
-  OnConnectStartParams
 } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges, 
-  useFlowStructureStore
+  useFlowStructureStore,
+  setSelectedNodeIds as setZustandSelectedNodeIds
 } from '../store/useFlowStructureStore';
-import { syncVisualSelectionToReactFlow } from '../utils/flowUtils';
-import { isEqual } from 'lodash';
 import { hasEqualSelection } from '../utils/selectionUtils';
 
+// Define SelectionModifierKey type directly
+type SelectionModifierKey = 'ctrl' | 'shift' | 'none';
 
 interface UseNodeHandlersOptions {
   onNodeSelect: (node: Node | null) => void;
@@ -158,6 +157,49 @@ export const useNodeHandlers = (
     return nodesToUpdate;
   };
 
+  /**
+   * Applies node selection changes to the Zustand store,
+   * respecting modifier keys for multi-selection.
+   */
+  const applyNodeSelection = useCallback((selectedNodeIds: string[], modifierKey: SelectionModifierKey) => {
+    const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
+    let nextSelection: string[] = [];
+
+    if (modifierKey === 'ctrl' || modifierKey === 'shift') {
+      // Add/toggle selection
+      nextSelection = [...currentSelection];
+      selectedNodeIds.forEach(id => {
+        if (nextSelection.includes(id)) {
+          // If Ctrl/Cmd clicked on already selected node, remove it
+          if (modifierKey === 'ctrl') {
+             nextSelection = nextSelection.filter(nid => nid !== id);
+          }
+          // If Shift clicked, do nothing (already selected)
+        } else {
+          // Add to selection
+          nextSelection.push(id);
+        }
+      });
+      // Handle the case where the only node clicked was *already* selected and should be deselected with ctrl
+      if (selectedNodeIds.length === 1 && nextSelection.length === 0 && currentSelection.includes(selectedNodeIds[0])) {
+          // Stay deselected (handled by the filter above)
+      } else if (selectedNodeIds.length === 1 && !currentSelection.includes(selectedNodeIds[0])) {
+          // It was a new single selection added via modifier, keep others selected
+      }
+
+    } else {
+      // Replace selection (no modifier or single click)
+      nextSelection = selectedNodeIds;
+    }
+
+    // Only update if the final selection is different
+    if (!hasEqualSelection(currentSelection, nextSelection)) {
+      console.log(`[applyNodeSelection] Updating selection:`, nextSelection);
+      setZustandSelectedNodeIds(nextSelection);
+    }
+
+  }, []);
+
   // Handle nodes change (selection, position, etc)
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
     // Skip if we're currently restoring history to avoid feedback loops
@@ -268,7 +310,7 @@ export const useNodeHandlers = (
         }
       }
     }
-  }, [localNodes, setLocalNodes, onNodeSelect, isRestoringHistory]);
+  }, [localNodes, setLocalNodes, onNodeSelect, isRestoringHistory, applyNodeSelection]);
 
   // Handle edges change
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -400,7 +442,7 @@ export const useNodeHandlers = (
     } else {
       onNodeSelect(null);
     }
-  }, [onNodeSelect, isRestoringHistory]);
+  }, [onNodeSelect, isRestoringHistory, applyNodeSelection]);
 
   // Helper function to detect group intersections
   const checkNodeGroupIntersection = useCallback((node: Node<NodeData>, allNodes: Node<NodeData>[]) => {
@@ -569,17 +611,20 @@ export const useNodeHandlers = (
     if (isRestoringHistory.current) return;
     
     if (edges.length > 0) {
+      console.log(`[EdgesDelete] Deleting ${edges.length} edges`);
       const edgeIds = new Set(edges.map(e => e.id));
       const nextEdges = localEdges.filter(edge => !edgeIds.has(edge.id));
       
       // Update local state
       setLocalEdges(nextEdges);
       
-      // Update Zustand
+      // Update Zustand store - ensure this happens for proper persistence
       setZustandEdges(nextEdges);
       
       // Push to history
       pushToHistory(localNodes, nextEdges);
+      
+      console.log(`[EdgesDelete] Updated edges count: ${nextEdges.length}`);
     }
   }, [localNodes, localEdges, setLocalEdges, pushToHistory, isRestoringHistory]);
 

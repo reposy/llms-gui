@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { useInputNodeContent, InputNodeContent } from '../store/useInputNodeContentStore';
+import { useNodeContent } from '../store/useNodeContentStore';
+import { InputNodeContent } from '../store/nodeContentStore';
 
 /**
  * Simplified hook for InputNode data - minimal implementation that just connects to the store
@@ -9,11 +10,11 @@ export const useInputNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the InputNodeContentStore
+  // Use the NodeContentStore
   const { 
     content: generalContent, 
-    setContent 
-  } = useInputNodeContent(nodeId);
+    updateContent 
+  } = useNodeContent<InputNodeContent>(nodeId, 'input');
 
   // Cast the general content to InputNodeContent type
   const content = generalContent as InputNodeContent;
@@ -27,28 +28,34 @@ export const useInputNodeData = ({
    * Handle text buffer changes
    */
   const handleTextChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent({ textBuffer: event.target.value });
-  }, [setContent]);
+    updateContent({ textBuffer: event.target.value });
+  }, [updateContent]);
 
   /**
    * Handle adding text from buffer to items
    */
   const handleAddText = useCallback(() => {
-    if (!textBuffer.trim()) return;
-    setContent({ 
-      items: [...items, textBuffer.trim()],
-      textBuffer: ''
+    const trimmedText = textBuffer.trim();
+    if (!trimmedText) return;
+    
+    // First update items array with the current text
+    const updatedItems = [...items, trimmedText];
+    
+    // Then reset the textBuffer in a single update to avoid state inconsistency
+    updateContent({ 
+      items: updatedItems,
+      textBuffer: '' 
     });
-  }, [textBuffer, items, setContent]);
+  }, [textBuffer, items, updateContent]);
 
   /**
    * Toggle Batch/Foreach processing mode
    */
   const handleToggleProcessingMode = useCallback(() => {
-    setContent({ 
+    updateContent({ 
       iterateEachRow: !iterateEachRow
     });
-  }, [iterateEachRow, setContent]);
+  }, [iterateEachRow, updateContent]);
 
   /**
    * Handle file input change
@@ -56,8 +63,8 @@ export const useInputNodeData = ({
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.length) return;
     const filePaths = Array.from(event.target.files).map(file => file.name);
-    setContent({ items: [...items, ...filePaths] });
-  }, [items, setContent]);
+    updateContent({ items: [...items, ...filePaths] });
+  }, [items, updateContent]);
 
   /**
    * Handle item deletion
@@ -65,15 +72,15 @@ export const useInputNodeData = ({
   const handleDeleteItem = useCallback((index: number) => {
     const updatedItems = [...items];
     updatedItems.splice(index, 1);
-    setContent({ items: updatedItems });
-  }, [items, setContent]);
+    updateContent({ items: updatedItems });
+  }, [items, updateContent]);
 
   /**
    * Handle clearing all items
    */
   const handleClearItems = useCallback(() => {
-    setContent({ items: [] });
-  }, [setContent]);
+    updateContent({ items: [] });
+  }, [updateContent]);
 
   return {
     items,
@@ -85,6 +92,6 @@ export const useInputNodeData = ({
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
-    setContent
+    setContent: updateContent
   };
 }; 

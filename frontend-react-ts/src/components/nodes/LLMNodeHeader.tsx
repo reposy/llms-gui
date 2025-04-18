@@ -1,15 +1,17 @@
 import React, { useCallback } from 'react';
+import { Node } from 'reactflow';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { NodeHeader } from './shared/NodeHeader';
-import { LLMNodeData } from '../../types/nodes';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { LLMNodeData, NodeData } from '../../types/nodes';
+import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
+import { getNodeContent, setNodeContent, LLMNodeContent } from '../../store/nodeContentStore';
 
 interface LLMNodeHeaderProps {
   id: string;
@@ -21,58 +23,67 @@ interface LLMNodeHeaderProps {
 
 const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({ 
   id, 
-  data, 
+  data,
   viewMode, 
   onToggleView,
   isContentDirty
 }) => {
-  const { updateNode, nodes, edges } = useFlowStructureStore();
+  const { nodes, edges } = useFlowStructureStore();
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   
+  const initialLabel = getNodeContent<LLMNodeContent>(id, 'llm')?.label || data.label || 'LLM';
+  
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    updateNode(nodeId, (node) => ({
-      ...node,
-      data: { ...data, label: newLabel }
-    }));
-  }, [updateNode, data]);
+    setNodeContent<LLMNodeContent>(nodeId, { label: newLabel });
+    
+    setStructureNodes(nodes.map((node: Node<NodeData>) => 
+        node.id === nodeId ? { ...node, data: { ...node.data, label: newLabel } } : node
+    ));
+  }, [nodes]);
 
   const handleRun = useCallback(() => {
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
-      // Create execution context
       const executionId = `exec-${uuidv4()}`;
       const executionContext = new FlowExecutionContext(executionId);
       
-      // Set trigger node
       executionContext.setTriggerNode(id);
       
-      console.log(`[LlmNode] Starting execution for node ${id}`);
+      console.log(`[LlmNodeHeader] Starting execution for node ${id}`);
       
-      // Build execution graph
       buildExecutionGraphFromFlow(nodes, edges);
       const executionGraph = getExecutionGraph();
       
-      // Create node factory
       const nodeFactory = new NodeFactory();
-      registerAllNodeTypes(nodeFactory);
+      registerAllNodeTypes();
       
-      // Find the node data
-      const node = nodes.find(n => n.id === id);
-      if (!node) {
-        console.error(`[LlmNode] Node ${id} not found.`);
+      const nodeStructure = nodes.find(n => n.id === id);
+      if (!nodeStructure) {
+        console.error(`[LlmNodeHeader] Node structure ${id} not found.`);
         return;
       }
       
-      // Create the node instance
+      const nodeContent = getNodeContent<LLMNodeContent>(id, 'llm');
+      if (!nodeContent) {
+          console.error(`[LlmNodeHeader] Node content for ${id} not found.`);
+          return;
+      }
+      
+      const combinedNodeData = {
+          ...nodeStructure.data,
+          ...nodeContent
+      };
+
+      console.log(`[LlmNodeHeader] Creating instance with combined data:`, combinedNodeData);
+      
       const nodeInstance = nodeFactory.create(
         id,
-        node.type as string,
-        node.data,
+        nodeStructure.type as string,
+        combinedNodeData,
         executionContext
       );
       
-      // Attach graph structure reference to the node property
       nodeInstance.property = {
         ...nodeInstance.property,
         nodes,
@@ -81,9 +92,8 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
         executionGraph
       };
       
-      // Execute the node
       nodeInstance.process({}).catch((error: Error) => {
-        console.error(`[LlmNode] Error executing node ${id}:`, error);
+        console.error(`[LlmNodeHeader] Error executing node ${id}:`, error);
       });
     }
   }, [id, isRootNode, nodes, edges]);
@@ -91,7 +101,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   return (
     <NodeHeader
       nodeId={id}
-      label={data.label || 'LLM'}
+      label={initialLabel}
       placeholderLabel="LLM"
       isRootNode={isRootNode}
       isRunning={nodeState?.status === 'running'}

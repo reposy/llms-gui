@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import type { Node } from 'reactflow';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useNodeContent, GroupNodeContent } from '../store/useNodeContentStore';
+import { useNodeContent, GroupNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 
 /**
@@ -11,12 +11,14 @@ export const useGroupNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContentStore with GroupNodeContent type
+  // Use the general NodeContent hook with correct type and nodeType
   const { 
     content: generalContent, 
-    setContent,
-    isContentDirty
-  } = useNodeContent(nodeId);
+    updateContent,
+  } = useNodeContent<GroupNodeContent>(nodeId, 'group');
+
+  // Get isDirty status directly from the store
+  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
 
   // Cast the general content to GroupNodeContent type
   const content = generalContent as GroupNodeContent;
@@ -33,8 +35,8 @@ export const useGroupNodeData = ({
       console.log(`[GroupNode ${nodeId}] Skipping label update - no change (deep equal)`);
       return;
     }
-    setContent({ label: newLabel });
-  }, [nodeId, label, setContent]);
+    updateContent({ label: newLabel });
+  }, [nodeId, label, updateContent]);
 
   /**
    * Toggle collapse state with deep equality check
@@ -45,14 +47,13 @@ export const useGroupNodeData = ({
       console.log(`[GroupNode ${nodeId}] Skipping collapse toggle - no change (deep equal)`);
       return;
     }
-    setContent({ isCollapsed: newCollapsed });
-  }, [nodeId, isCollapsed, setContent]);
+    updateContent({ isCollapsed: newCollapsed });
+  }, [nodeId, isCollapsed, updateContent]);
 
   /**
    * Update multiple properties at once with deep equality check
    */
   const updateGroupContent = useCallback((updates: Partial<GroupNodeContent>) => {
-    // Skip update if no actual changes using deep equality
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof GroupNodeContent];
       return !isEqual(currentValue, value);
@@ -63,21 +64,16 @@ export const useGroupNodeData = ({
       return;
     }
     
-    // Create new content object with updates
-    const newContent = {
-      ...content,
-      ...updates
-    };
+    const newContent = { ...content, ...updates };
 
-    // Final deep equality check against current content
     if (isEqual(newContent, content)) {
       console.log(`[GroupNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
       return;
     }
     
     console.log(`[GroupNode ${nodeId}] Updating content with:`, updates);
-    setContent(updates);
-  }, [nodeId, content, setContent]);
+    updateContent(updates);
+  }, [nodeId, content, updateContent]);
 
   return {
     // Data

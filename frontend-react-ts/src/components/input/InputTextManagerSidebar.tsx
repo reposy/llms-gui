@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState, useEffect } from 'react';
+import React, { ChangeEvent, useState, useRef } from 'react';
 
 interface InputTextManagerProps {
   textBuffer: string;
@@ -19,36 +19,37 @@ export const InputTextManagerSidebar: React.FC<InputTextManagerProps> = ({
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const isDisabled = !textBuffer?.trim?.();
-  
-  // Debug: Log textBuffer changes
-  useEffect(() => {
-    console.log('InputTextManagerSidebar textBuffer:', textBuffer, 'isDisabled:', isDisabled);
-  }, [textBuffer, isDisabled]);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
-    console.log('TextArea change event:', e.target.value);
     onChange(e);
   };
 
+  const handleBlur = () => {
+    // Ensure the current value is properly committed on blur
+    if (textAreaRef.current && textAreaRef.current.value !== textBuffer) {
+      const event = {
+        target: textAreaRef.current
+      } as ChangeEvent<HTMLTextAreaElement>;
+      onChange(event);
+    }
+  };
+
   const handleAddClick = () => {
-    console.log('Add button clicked, textBuffer:', textBuffer);
     onAdd();
   };
 
   return (
     <div>
       <textarea
+        ref={textAreaRef}
         value={textBuffer || ''}
         onChange={handleChange}
+        onBlur={handleBlur}
         placeholder={placeholder}
         className={`w-full ${height} p-2 border border-gray-300 rounded-md bg-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
         onKeyDown={onKeyDown || ((e) => e.stopPropagation())} // Prevent keyboard shortcuts from triggering when editing text
       />
-      
-      {/* Debug info */}
-      <div className="text-xs text-gray-500 mt-1">
-        Buffer: "{textBuffer}" (Length: {textBuffer?.length || 0}, Trimmed: {textBuffer?.trim?.()?.length || 0})
-      </div>
       
       {/* Add Text button with tooltip */}
       <div className="flex justify-end mt-2 relative">

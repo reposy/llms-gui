@@ -1,38 +1,46 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useReactFlow, XYPosition, ReactFlowInstance, useStoreApi } from 'reactflow';
+import { useReactFlow, XYPosition, useStoreApi, Node, Edge } from 'reactflow';
 import { NodeData } from '../types/nodes';
 import { flushSync } from 'react-dom';
 import { 
   copySelectedNodes, 
   pasteClipboardContents, 
   hasClipboardData,
-  clearClipboard
+  PasteResult
 } from '../utils/clipboardUtils';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { setNodeContent } from '../store/useNodeContentStore';
+import { setNodeContent, NodeContent, getAllNodeContents as getAllNodeContentsFromStore } from '../store/useNodeContentStore';
 import { pushSnapshot } from '../store/useHistoryStore';
-import { resetNodeStates } from '../store/useNodeStateStore';
-import { getAllNodeContents } from '../store/useNodeContentStore';
 import { cloneDeep } from 'lodash';
 
-// Global flag for paste operations (for debugging and coordination)
+// Adjust _devFlags type to match global declaration
 declare global {
   interface Window {
-    _devFlags: {
-      hasJustPasted: boolean;
-      lastPasteTimestamp: number;
-      pasteVersion: number;
+    _devFlags?: { 
+      [key: string]: any; 
+      hasJustPasted?: boolean;
+      // lastPasteTimestamp?: number; // Commented out based on likely conflict
+      pasteVersion?: number;
+      debugMode?: boolean; // Added based on likely conflict
     };
   }
 }
 
-// Initialize global dev flags
+// Adjust initialization to match the modified type
 if (typeof window !== 'undefined') {
-  window._devFlags = window._devFlags || {
-    hasJustPasted: false,
-    lastPasteTimestamp: 0,
-    pasteVersion: 0
-  };
+  if (!window._devFlags) {
+    window._devFlags = { 
+      hasJustPasted: false,
+      // lastPasteTimestamp: 0, // Commented out
+      pasteVersion: 0,
+      debugMode: false // Initialize potentially conflicting property
+    };
+  } else {
+    window._devFlags.hasJustPasted = window._devFlags.hasJustPasted ?? false;
+    // window._devFlags.lastPasteTimestamp = window._devFlags.lastPasteTimestamp ?? 0; // Commented out
+    window._devFlags.pasteVersion = window._devFlags.pasteVersion ?? 0;
+    window._devFlags.debugMode = window._devFlags.debugMode ?? false; // Ensure this is checked
+  }
 }
 
 // Ensure we set pasted nodes at a higher z-index than existing ones
@@ -190,10 +198,47 @@ export const useClipboard = (): UseClipboardReturnType => {
     }
   }, [getNodes, getViewport, setViewport, fitView]);
 
-  /**
-   * Double-check that ReactFlow is in sync with Zustand after a delay
-   * This helps catch and fix cases where nodes disappear after paste
-   */
+  // Moved checkNodesInDOM declaration before verifyReactFlowSync
+  const checkNodesInDOM = useCallback((nodeIds: string[]) => {
+    if (!nodeIds.length) return;
+    
+    console.log(`[Clipboard] Checking DOM rendering for ${nodeIds.length} nodes`);
+    
+    // Wait a moment to ensure rendering had a chance to complete
+    setTimeout(() => {
+      const missingFromDOM: string[] = [];
+      
+      nodeIds.forEach(nodeId => {
+        if (!document.querySelector(`[data-id="${nodeId}"]`)) {
+          missingFromDOM.push(nodeId);
+        }
+      });
+      
+      if (missingFromDOM.length > 0) {
+        console.warn(`[Clipboard] Nodes missing from DOM after paste: ${missingFromDOM.join(', ')}`);
+        console.log('[Clipboard] Attempting re-sync again...');
+        forceSyncReactFlow();
+        
+        // Final check after re-sync
+        setTimeout(() => {
+          const stillMissing = missingFromDOM.filter(id => !document.querySelector(`[data-id="${id}"]`));
+          if (stillMissing.length > 0) {
+            console.error(`[Clipboard] CRITICAL: Nodes still missing after re-sync: ${stillMissing.join(', ')}. Manual intervention likely needed.`);
+          }
+        }, 100);
+      } else {
+        console.log('[Clipboard] All pasted nodes verified in DOM.');
+      }
+      
+      // Use non-null assertion for devFlags here
+      const devFlags = window._devFlags!;
+      if (devFlags) { 
+        devFlags.hasJustPasted = false;
+      }
+    }, 100); // Delay check slightly to allow DOM updates
+    
+  }, [forceSyncReactFlow]);
+
   const verifyReactFlowSync = useCallback(() => {
     // Get current node IDs from both stores
     const zustandNodes = useFlowStructureStore.getState().nodes;
@@ -228,67 +273,16 @@ export const useClipboard = (): UseClipboardReturnType => {
       console.log(`[Clipboard] Sync verification: Zustand and ReactFlow both have ${zustandNodes.length} nodes`);
       
       // Still check DOM rendering even if counts match
-      if (window._devFlags.hasJustPasted) {
+      const devFlags = window._devFlags!;
+      if (devFlags?.hasJustPasted) {
         const newNodeIds = zustandNodes.filter(n => n.selected).map(n => n.id);
         if (newNodeIds.length > 0) {
           checkNodesInDOM(newNodeIds);
         }
       }
     }
-  }, [forceSyncReactFlow, getNodes]);
+  }, [forceSyncReactFlow, getNodes, checkNodesInDOM]);
   
-  /**
-   * Check if nodes are actually rendered in the DOM
-   * This is a final verification to ensure ReactFlow has rendered the nodes
-   */
-  const checkNodesInDOM = useCallback((nodeIds: string[]) => {
-    if (!nodeIds.length) return;
-    
-    console.log(`[Clipboard] Checking DOM rendering for ${nodeIds.length} nodes`);
-    
-    // Wait a moment to ensure rendering had a chance to complete
-    setTimeout(() => {
-      const missingFromDOM: string[] = [];
-      
-      // Check each node ID to see if it's in the DOM
-      nodeIds.forEach((id: string) => {
-        const nodeElement = document.querySelector(`[data-id="${id}"]`);
-        if (!nodeElement) {
-          missingFromDOM.push(id);
-        }
-      });
-      
-      if (missingFromDOM.length > 0) {
-        console.warn(`[Clipboard] Nodes missing from DOM: ${missingFromDOM.join(', ')}`);
-        
-        // Try one more forceful ReactFlow update
-        const store = reactFlowStore.getState();
-        if (store && typeof store.setNodes === 'function') {
-          const zustandNodes = useFlowStructureStore.getState().nodes;
-          console.log('[Clipboard] Forcing one more ReactFlow update to fix DOM rendering');
-          
-          try {
-            flushSync(() => {
-              store.setNodes([...zustandNodes]);
-            });
-          } catch (err) {
-            console.warn('[Clipboard] flushSync failed in DOM check, using normal update');
-            store.setNodes([...zustandNodes]);
-          }
-          
-          // Force a key change on ReactFlow component as last resort
-          if (window._devFlags.pasteVersion) {
-            window._devFlags.pasteVersion += 1;
-            pasteVersionRef.current += 1;
-            console.log(`[Clipboard] Incremented paste version to ${pasteVersionRef.current} to force ReactFlow remount`);
-          }
-        }
-      } else {
-        console.log(`[Clipboard] All nodes correctly rendered in DOM`);
-      }
-    }, 100); // Small delay to ensure rendering had time to complete
-  }, [reactFlowStore, pasteVersionRef]);
-
   /**
    * Ensure selection state is consistent between our Zustand store and ReactFlow
    */
@@ -334,7 +328,8 @@ export const useClipboard = (): UseClipboardReturnType => {
     
     // 4. Finally, set the primary selected node for the sidebar if provided
     if (primaryNodeId) {
-      setSelectedNodeId(primaryNodeId);
+      // Pass the single ID wrapped in an array
+      useFlowStructureStore.getState().setSelectedNodeIds?.([primaryNodeId]); 
     }
     
     // Schedule selection unlock with delay to prevent immediate override
@@ -348,10 +343,7 @@ export const useClipboard = (): UseClipboardReturnType => {
   }, [getNodes, reactFlowStore, forceSyncReactFlow]);
 
   const handleCopy = useCallback(() => {
-    const nodeCount = copySelectedNodes();
-    if (nodeCount > 0) {
-      console.log(`[Clipboard] Copied ${nodeCount} nodes`);
-    }
+    copySelectedNodes();
   }, []);
 
   // Function to handle deferred UI updates after paste
@@ -414,9 +406,12 @@ export const useClipboard = (): UseClipboardReturnType => {
             
             // Last resort: attempt to trigger a key change on the ReactFlow component
             // through the global paste version counter
-            window._devFlags.pasteVersion += 1;
-            pasteVersionRef.current += 1;
-            console.log(`[Clipboard] Incremented paste version to ${pasteVersionRef.current} to force ReactFlow remount`);
+            if (window._devFlags) {
+              window._devFlags.pasteVersion = (window._devFlags.pasteVersion || 0) + 1;
+              pasteVersionRef.current = window._devFlags.pasteVersion;
+              window._devFlags.hasJustPasted = true;
+              console.log(`[Clipboard] Initiating paste operation (v${window._devFlags.pasteVersion})`);
+            }
             
             // Try one final force sync after incrementing the version
             forceSyncReactFlow();
@@ -471,14 +466,10 @@ export const useClipboard = (): UseClipboardReturnType => {
               setTimeout(verifyReactFlowSync, 500);
               
               // Release selection lock and clear paste flag after delay
-              const releaseTimeout = window.setTimeout(() => {
-                console.log('[Clipboard] Releasing selection lock and clearing paste flag');
+              if (window._devFlags) {
                 window._devFlags.hasJustPasted = false;
-                
                 isManualPasteInProgressRef.current = false;
-              }, 1000);
-              
-              activeTimeoutRefs.current.push(releaseTimeout);
+              }
             });
           });
         }, 50); // Small timeout to ensure rendering is complete
@@ -495,14 +486,10 @@ export const useClipboard = (): UseClipboardReturnType => {
           setTimeout(verifyReactFlowSync, 500);
           
           // Release selection lock and clear paste flag after delay
-          const releaseTimeout = window.setTimeout(() => {
-            console.log('[Clipboard] Releasing selection lock and clearing paste flag');
+          if (window._devFlags) {
             window._devFlags.hasJustPasted = false;
-            
             isManualPasteInProgressRef.current = false;
-          }, 1000);
-          
-          activeTimeoutRefs.current.push(releaseTimeout);
+          }
         }, 50);
         
         // Store the timeout ID
@@ -543,140 +530,223 @@ export const useClipboard = (): UseClipboardReturnType => {
     return highest;
   }, [getNodes]);
 
-  const handlePaste = useCallback((mousePosition?: XYPosition) => {
+  const handlePaste = useCallback((position?: XYPosition) => {
+    // 1. Check if data exists
+    if (!hasClipboardData()) {
+      console.warn('[Clipboard] No clipboard data found to paste.');
+      return;
+    }
+
+    // 2. Check for ongoing paste
+    if (isManualPasteInProgressRef.current) {
+      console.warn('[Clipboard] Paste already in progress, skipping.');
+      return;
+    }
     isManualPasteInProgressRef.current = true;
     
-    // Store the current viewport for potential restoration
+    // Clear timeouts
+    activeTimeoutRefs.current.forEach(clearTimeout);
+    activeTimeoutRefs.current = [];
+    
+    // Store viewport
     viewportBeforePasteRef.current = getViewport();
-    
-    // If no position is provided, calculate a position based on the viewport center
-    let position: XYPosition | undefined = mousePosition;
-    if (!position) {
-      const viewport = getViewport();
-      // Use window dimensions to calculate center
-      position = {
-        x: -viewport.x / viewport.zoom + window.innerWidth / 2 / viewport.zoom,
-        y: -viewport.y / viewport.zoom + window.innerHeight / 2 / viewport.zoom,
-      };
+
+    // 3. Update dev flags safely using non-null assertion
+    const devFlags = window._devFlags!;
+    if (devFlags) { 
+      devFlags.pasteVersion = (devFlags.pasteVersion || 0) + 1;
+      devFlags.hasJustPasted = true; 
     }
     
-    // Get paste data from clipboard
-    const pasteResult = pasteClipboardContents(position);
-    if (!pasteResult) return;
+    console.log(`[Clipboard] Initiating paste operation (v${devFlags.pasteVersion})`);
+
+    // 4. Get paste content
+    const pasteResult: PasteResult | null = pasteClipboardContents(position);
     
-    const { newNodes, newEdges, nodeContents, newNodeIds } = pasteResult;
-    
-    console.log(`[Clipboard] Applying paste with ${newNodes.length} nodes and ${newEdges.length} edges`);
-    
-    // Track recently pasted node IDs
-    newNodeIds.forEach(id => recentlyPastedNodeIdsRef.current.add(id));
-    
-    // Clean up recently pasted node IDs after 1000ms
-    setTimeout(() => {
-      newNodeIds.forEach(id => recentlyPastedNodeIdsRef.current.delete(id));
-    }, 1000);
-    
-    // Get the highest current z-index for layering
-    const highestZIndex = getHighestZIndex();
-    const zIndexBoost = highestZIndex + PASTE_Z_INDEX_BOOST;
-    
-    // Special group handling: identify parent-child relationships
-    const groupNodes = newNodes.filter(node => node.type === 'group');
-    const childrenByParentId: Record<string, string[]> = {};
-    
-    // Track children of each group
-    newNodes.forEach(node => {
-      if (node.parentNode) {
-        if (!childrenByParentId[node.parentNode]) {
-          childrenByParentId[node.parentNode] = [];
-        }
-        childrenByParentId[node.parentNode].push(node.id);
-      }
-    });
-    
-    // Log parent-child relationships for debugging
-    if (groupNodes.length > 0) {
-      console.log(`[Clipboard] Pasting ${groupNodes.length} group nodes with children:`, childrenByParentId);
+    if (!pasteResult) { 
+      isManualPasteInProgressRef.current = false;
+      if (devFlags) devFlags.hasJustPasted = false; 
+      return;
     }
     
-    // Add nodes directly to ReactFlow
-    const selectedHighZNewNodes = newNodes.map(node => ({
+    // Destructure using correct names from PasteResult type
+    const { 
+      newNodes: pastedNodes, 
+      newEdges: pastedEdges, 
+      nodeContents: pastedNodeContentsInfo, // Rename for clarity
+      oldToNewIdMap, // Needed for content mapping
+      newNodeIds // Use this directly later
+    } = pasteResult;
+
+    if (!pastedNodes || pastedNodes.length === 0) {
+      console.warn('[Clipboard] No nodes were generated from clipboard data.');
+      isManualPasteInProgressRef.current = false;
+      if (devFlags) devFlags.hasJustPasted = false; 
+      return;
+    }
+    
+    // Create final nodes with offset and z-index (use pastedNodes)
+    const finalNodes = pastedNodes.map((node: Node<NodeData>) => ({ // Add type to node
       ...node,
-      selected: true,
-      zIndex: (node.zIndex || 0) + zIndexBoost // Ensure pasted nodes appear above others
+      selected: false, 
+      zIndex: (node.zIndex || 0) + PASTE_Z_INDEX_BOOST 
     }));
     
-    reactFlowInstance.addNodes(selectedHighZNewNodes);
-    reactFlowInstance.addEdges(newEdges);
-    
-    // Update Zustand after rendering
-    setNodes([...nodes, ...selectedHighZNewNodes]);
-    setEdges([...edges, ...newEdges]);
-    
-    // Initialize node content
-    for (const [nodeId, contentData] of Object.entries(nodeContents)) {
-      const { content, nodeType } = contentData;
-      setNodeContent(nodeId, content, true);
-    }
-    
-    // Calculate the bounding box of pasted nodes for viewport focusing
-    const boundingBox = calculateNodesBoundingBox(newNodeIds);
-    
-    // Push snapshot to history
-    const allNodeContents = getAllNodeContents();
-    pushSnapshot({
-      nodes: useFlowStructureStore.getState().nodes,
-      edges: useFlowStructureStore.getState().edges,
-      contents: cloneDeep(allNodeContents)
-    });
-    
-    // Clear clipboard memory after successful paste
-    clearClipboard();
-    console.log('[Clipboard] Cleared clipboard memory after successful paste');
-    
-    // Immediate focus on pasted nodes without animation
-    focusViewportOnNodes(newNodeIds, false);
-    
-    console.log(`[Clipboard] Successfully pasted ${newNodes.length} nodes and ${newEdges.length} edges`);
-  }, [getViewport, nodes, edges, setNodes, setEdges, reactFlowInstance, getHighestZIndex, calculateNodesBoundingBox, focusViewportOnNodes]);
+    // Edges are already prepared in pasteResult (use pastedEdges)
+    const finalEdges = pastedEdges;
 
-  // Set up keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if Ctrl/Cmd + C is pressed (copy)
-      if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
-        event.preventDefault();
-        handleCopy();
+    // Map node contents (use pastedNodeContentsInfo)
+    const newNodeContents: Record<string, NodeContent> = {};
+    Object.entries(pastedNodeContentsInfo).forEach(([oldId, contentInfo]) => {
+      // contentInfo structure: {content: NodeContent, nodeId: string, nodeType: string}
+      const newId = oldToNewIdMap[oldId]; // Use the mapping from PasteResult
+      if (newId) {
+        newNodeContents[newId] = cloneDeep(contentInfo.content); // Extract content
       }
-      
-      // Check if Ctrl/Cmd + V is pressed (paste)
-      if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
-        event.preventDefault();
-        handlePaste();
-      }
+    });
+
+    // Use newNodeIds from PasteResult for logging and selection
+    // const newNodeIds = finalNodes.map(node => node.id); // No longer needed
+    const firstNodeId = newNodeIds.length > 0 ? newNodeIds[0] : null;
+    
+    // Update lastPasteOpRef (ensure structure matches usage)
+    lastPasteOpRef.current = {
+      newNodeIds, // Use directly from PasteResult
+      firstNodeId: firstNodeId || '', 
+      updatedNodes: finalNodes, // Store the final calculated nodes
+      updatedEdges: finalEdges // Store the final edges
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    console.log(`[Clipboard] Pasting ${finalNodes.length} nodes and ${finalEdges.length} edges`);
+    console.log(`[Clipboard] New node IDs: ${newNodeIds.join(', ')}`);
     
-    // Cleanup on unmount
+    try {
+      flushSync(() => {
+        // 1. Add new node contents to the store
+        Object.entries(newNodeContents).forEach(([id, content]) => {
+          setNodeContent(id, content);
+        });
+        
+        // 2. Add nodes and edges to the structure store
+        const currentNodes = useFlowStructureStore.getState().nodes;
+        const currentEdges = useFlowStructureStore.getState().edges;
+        setNodes([...currentNodes, ...finalNodes]); // Use finalNodes
+        setEdges([...currentEdges, ...finalEdges]); // Use finalEdges
+        
+        // 3. Take snapshot - remove explicit type, rely on function signature
+        const updatedNodes = useFlowStructureStore.getState().nodes;
+        const updatedEdges = useFlowStructureStore.getState().edges;
+        const updatedContents = getAllNodeContentsFromStore(); 
+        pushSnapshot({ 
+          nodes: updatedNodes,
+          edges: updatedEdges,
+          contents: cloneDeep(updatedContents)
+        }); 
+      });
+      
+      console.log('[Clipboard] State updated (flushSync complete)');
+
+      function continueWithPasteProcess() {
+        const currentLastPasteOp = lastPasteOpRef.current;
+        if (!currentLastPasteOp) return;
+        
+        const { newNodeIds: pastedNodeIds } = currentLastPasteOp;
+        
+        setTimeout(() => {
+          const allNodes = getNodes(); 
+          const updatedNodesForSelection = allNodes.map((n: Node<NodeData>) => ({ 
+            ...n,
+            selected: pastedNodeIds.includes(n.id)
+          }));
+          setNodes(updatedNodesForSelection); 
+          
+          if (pastedNodeIds.length > 0) {
+             // Pass the FIRST ID as an array 
+             useFlowStructureStore.getState().setSelectedNodeIds?.([pastedNodeIds[0]]); 
+             console.log(`[Clipboard] Selected ${pastedNodeIds.length} pasted nodes.`);
+          }
+          
+          recentlyPastedNodeIdsRef.current = new Set(pastedNodeIds);
+          focusViewportOnNodes(pastedNodeIds);
+          
+          const verifyTimeout = setTimeout(verifyReactFlowSync, 500);
+          activeTimeoutRefs.current.push(verifyTimeout as unknown as number);
+          
+          const lockTimeout = setTimeout(() => {
+            recentlyPastedNodeIdsRef.current.clear(); 
+            console.log('[Clipboard] Selection lock released.');
+          }, MAX_SELECTION_LOCK_TIME);
+          activeTimeoutRefs.current.push(lockTimeout as unknown as number);
+
+         }, 0); 
+      }
+
+      requestAnimationFrame(continueWithPasteProcess);
+      
+    } catch (error) {
+      console.error('[Clipboard] Error during paste operation:', error);
+      if (devFlags) devFlags.hasJustPasted = false; 
+    } finally {
+      // Ensure the paste lock is released
+      const releaseLockTimeout = setTimeout(() => {
+        isManualPasteInProgressRef.current = false;
+        console.log('[Clipboard] Paste operation lock released.');
+      }, 200);
+      activeTimeoutRefs.current.push(releaseLockTimeout as unknown as number);
+    }
+
+  }, [reactFlowInstance, screenToFlowPosition, getViewport, setNodes, setEdges, setNodeContent, pushSnapshot, getNodes, focusViewportOnNodes, verifyReactFlowSync, nodes, edges, checkNodesInDOM, syncSelectionState]);
+
+  // Check if pasting is possible
+  const canPaste = hasClipboardData();
+
+  /**
+   * Keyboard event handler for Ctrl+C / Ctrl+V
+   */
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key === 'c' || event.key === 'C') {
+        // Check if focus is on an input/textarea to avoid hijacking copy there
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+          return;
+        }
+        handleCopy();
+      } else if (event.key === 'v' || event.key === 'V') {
+        // Check if focus is on an input/textarea to avoid pasting there
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+          return;
+        }
+        // Get mouse position for pasting
+        // This might need a more robust way to get the intended paste position
+        const flowPane = document.querySelector('.react-flow__pane');
+        let pastePosition: XYPosition | undefined = undefined;
+        if (flowPane) {
+          // For simplicity, pasting near center if mouse isn't over the pane
+          // A better approach might store last mouse position over the pane
+          pastePosition = screenToFlowPosition({
+            x: window.innerWidth / 2, 
+            y: window.innerHeight / 2
+          });
+        }
+        handlePaste(pastePosition);
+      }
+    }
+  };
+
+  // Attach/detach keydown listener
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      // Clear any active timeouts
-      activeTimeoutRefs.current.forEach(timeoutId => window.clearTimeout(timeoutId));
-      // Clear global paste flag
-      if (window._devFlags) {
-        window._devFlags.hasJustPasted = false;
-      }
+      // Clear any remaining timeouts on unmount
+      activeTimeoutRefs.current.forEach(clearTimeout);
     };
   }, [handleCopy, handlePaste]);
 
-  // Check if we have data to paste
-  const canPaste = hasClipboardData();
-
-  return {
-    handleCopy,
-    handlePaste,
+  return { 
+    handleCopy, 
+    handlePaste, 
     canPaste,
-    pasteVersion: pasteVersionRef.current
+    pasteVersion: window._devFlags?.pasteVersion || 0
   };
 }; 

@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { shallow } from 'zustand/shallow';
 import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
 

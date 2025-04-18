@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isEqual } from 'lodash';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
+import { Node } from 'reactflow';
+import { NodeData } from '../../types/nodes';
 
 /**
  * Hook for syncing a single node field between Zustand store and local state
@@ -26,54 +28,58 @@ export function useSyncedNodeField<T>(options: {
     dispatchOnChange = false,
   } = options;
   
-  // Get flow structure store functions
-  const { updateNode } = useFlowStructureStore(state => ({
-    updateNode: state.updateNode,
-  }));
-  
-  // Get current node from Zustand store
+  // Get current node from Zustand store using selector
   const node = useFlowStructureStore(
     state => state.nodes.find(n => n.id === nodeId),
     isEqual
   );
   
-  // Get field data from Zustand store
+  // Get field data from the selected node's data
   const storeValue = node?.data ? (node.data as Record<string, any>)[field] as T | undefined : undefined;
   
-  // 고정 useState 훅 (동적 Map 금지)
+  // Local state for the field value
   const [value, setValue] = useState<T>(storeValue !== undefined ? storeValue : defaultValue);
   
-  // 스토어 값이 바뀌면 동기화 (단, 값이 다를 때만)
+  // Effect to sync from store to local state
   useEffect(() => {
     if (storeValue !== undefined && !compare(storeValue, value)) {
       setValue(storeValue);
     }
-    // nodeId, field가 바뀌면 defaultValue로 초기화
-    // (storeValue가 undefined일 때만)
     if (storeValue === undefined) {
+      // Reset to default if node/field changes and store value is missing
       setValue(defaultValue);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeValue, nodeId, field]);
+    // Dependencies include storeValue and key identifiers
+  }, [storeValue, nodeId, field, defaultValue, value, compare]);
   
-  // 수동으로 스토어에 동기화
+  // Function to manually sync local value back to the store
   const syncToStore = useCallback((newValue?: T) => {
     const valueToSync = newValue !== undefined ? newValue : value;
-    if (node) {
-      updateNode(nodeId, (currentNode) => {
-        const updatedData = {
-          ...currentNode.data,
-          [field]: valueToSync,
-        };
+    
+    // Get the current nodes array from the store
+    const currentNodes = useFlowStructureStore.getState().nodes;
+    
+    // Create the updated nodes array
+    const updatedNodes = currentNodes.map((n: Node<NodeData>) => {
+      if (n.id === nodeId) {
+        // Found the node, update its data
         return {
-          ...currentNode,
-          data: updatedData,
+          ...n,
+          data: {
+            ...n.data, // Keep existing data
+            [field]: valueToSync, // Update the specific field
+          },
         };
-      });
-    }
-  }, [field, nodeId, updateNode, value, node]);
+      }
+      return n; // Return other nodes unchanged
+    });
+
+    // Update the store with the new nodes array
+    setStructureNodes(updatedNodes);
+
+  }, [field, nodeId, value]);
   
-  // setValue 래퍼 (dispatchOnChange 옵션 지원)
+  // Wrapper for setValue that optionally syncs immediately
   const setValueAndMaybeSync = useCallback((newValue: T) => {
     setValue(newValue);
     if (dispatchOnChange) {

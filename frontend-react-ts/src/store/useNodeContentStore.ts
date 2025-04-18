@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
-import { FileLikeObject } from '../types/nodes';
+import { FileLikeObject, HTTPMethod } from '../types/nodes';
 
 /**
  * 노드 컨텐츠의 기본 인터페이스
@@ -61,7 +61,7 @@ export interface WebCrawlerNodeContent extends BaseNodeContent {
  */
 export interface APINodeContent extends BaseNodeContent {
   url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  method: HTTPMethod;
   headers?: Record<string, string>;
   body?: string;
   queryParams?: Record<string, string>;

@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, Fragment } from 'react';
 import { Handle, Position } from 'reactflow';
 import { MergerNodeData } from '../../types/nodes';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';

@@ -1,8 +1,14 @@
-import { useCallback, useMemo, ChangeEvent, useRef, useEffect } from 'react';
+import { useCallback, ChangeEvent, useRef, useEffect } from 'react';
 import { cloneDeep } from 'lodash';
-import { InputNodeData, FileLikeObject } from '../types/nodes';
+import { InputNodeData, FileLikeObject, NodeData } from '../types/nodes';
 import { useState } from 'react';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
+import { Node as ReactFlowNode } from 'reactflow';
+
+// Define a type for the updates that allows items to be mixed temporarily
+type InputNodeUpdates = Omit<Partial<InputNodeData>, 'items'> & {
+  items?: (string | FileLikeObject)[];
+};
 
 /**
  * Custom hook to manage InputNode state and operations, using Zustand store.
@@ -16,8 +22,9 @@ export const useInputNodeDataSimplified = ({
   nodeId: string
 }) => {
   // Use Zustand hooks
-  const { updateNode } = useFlowStructureStore(state => ({
-    updateNode: state.updateNode
+  const { setNodes, getNode } = useFlowStructureStore(state => ({
+    setNodes: state.setNodes,
+    getNode: (id: string) => state.nodes.find(n => n.id === id)
   }));
   
   const node = useFlowStructureStore(
@@ -57,11 +64,11 @@ export const useInputNodeDataSimplified = ({
       return;
     }
     
-    const fileItems = items.filter(item => typeof item !== 'string');
+    const fileItems = items.filter(item => typeof item !== 'string' && item.hasOwnProperty('file')) as FileLikeObject[];
     if (fileItems.length > 0) {
-      setFileList(fileItems.map(item => (item as FileLikeObject).file));
+      setFileList(fileItems.map(item => item.file));
       setFileName(fileItems.length === 1 
-        ? (fileItems[0] as FileLikeObject).file 
+        ? fileItems[0].file 
         : `${fileItems.length} files selected`);
     } else {
       setFileName(null);
@@ -72,19 +79,47 @@ export const useInputNodeDataSimplified = ({
   /**
    * Update node data in store while ensuring state consistency
    * Always maintains ALL state properties to prevent data loss
+   * Ensures only strings are saved in node.data.items
    */
-  const handleConfigChange = useCallback((updates: Partial<InputNodeData>) => {
-    if (!node) {
+  const handleConfigChange = useCallback((updates: InputNodeUpdates) => {
+    const targetNode = getNode(nodeId);
+    if (!targetNode) {
       console.warn(`[useInputNodeDataSimplified] Node ${nodeId} not found in store, skipping update`);
       return;
     }
-    
-    const currentNodeData = node.data as InputNodeData;
 
-    // Update local state
-    if ('items' in updates && updates.items) {
+    // Explicitly type check before accessing data
+    const currentNodeData = targetNode.data as InputNodeData;
+    if (!currentNodeData) {
+      console.error(`[useInputNodeDataSimplified] Node ${nodeId} found but has no data.`);
+      return;
+    }
+
+    // Prepare items for storage: convert FileLikeObjects to string paths/names
+    let itemsToStore: string[] = [];
+    // Use local state `items` as fallback if `updates.items` is not provided
+    const itemsSource = updates.items !== undefined ? updates.items : items;
+
+    itemsToStore = itemsSource.map(item => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      // Check if it's a FileLikeObject before accessing .file
+      if (typeof item === 'object' && item !== null && 'file' in item) {
+        // Ensure item.file exists and is a string
+        return typeof item.file === 'string' ? item.file : '';
+      }
+      // Handle unexpected item types if necessary, e.g., return empty string or log error
+      console.warn(`[useInputNodeDataSimplified] Unexpected item type found in items array:`, item);
+      return ''; // Or handle differently
+    }).filter(item => typeof item === 'string'); // Ensure only strings remain
+
+    // Update local state for items if they were part of the update
+    if (updates.items !== undefined) {
       setItems(updates.items);
     }
+
+    // Update local state for other properties
     if ('textBuffer' in updates && updates.textBuffer !== undefined) {
       setTextBuffer(updates.textBuffer);
     }
@@ -92,17 +127,43 @@ export const useInputNodeDataSimplified = ({
       setIterateEachRow(Boolean(updates.iterateEachRow));
     }
 
-    // Update Zustand store
-    updateNode(nodeId, (currentNode) => ({
-      ...currentNode,
-      data: {
-        ...currentNodeData,
-        ...updates,
-        type: currentNodeData.type || 'input',
-        label: ('label' in updates ? updates.label : currentNodeData.label) ?? '',
-      }
-    }));
-  }, [nodeId, node, updateNode]);
+    // Update Zustand store using setNodes
+    setNodes(
+      useFlowStructureStore.getState().nodes.map((n: ReactFlowNode<NodeData>) => { // Use NodeData here
+        if (n.id === nodeId) {
+          // Double check it's an input node before assuming InputNodeData
+          if (n.type === 'input') {
+            const currentInputData = n.data as InputNodeData;
+            // Create the updated data object safely
+            const updatedData: InputNodeData = {
+              ...currentInputData, // Start with existing data
+              ...updates, // Apply partial updates
+              items: itemsToStore, // Ensure items are strings
+              type: 'input', // Explicitly set type
+              label: ('label' in updates ? updates.label : currentInputData.label) ?? '',
+            };
+
+            // Ensure iterateEachRow and textBuffer from updates are correctly typed if present
+            if ('iterateEachRow' in updates && updates.iterateEachRow !== undefined) {
+              updatedData.iterateEachRow = Boolean(updates.iterateEachRow);
+            }
+            if ('textBuffer' in updates && updates.textBuffer !== undefined) {
+              updatedData.textBuffer = updates.textBuffer;
+            }
+
+            return {
+              ...n, // Keep other node properties (position, etc.)
+              data: updatedData, // Assign the specifically typed InputNodeData
+            };
+          } else {
+            // Log error if the node type doesn't match
+            console.error(`[useInputNodeDataSimplified] Expected node ${nodeId} to be type 'input', but found type ${n.type}`);
+          }
+        }
+        return n; // Return other nodes unchanged
+      })
+    );
+  }, [nodeId, getNode, setNodes, items]); // Add items to dependency array
 
   /**
    * Handle text buffer changes - directly update both local and store state
@@ -113,10 +174,8 @@ export const useInputNodeDataSimplified = ({
     setTextBuffer(newText);
     handleConfigChange({ 
       textBuffer: newText,
-      items: [...items],
-      iterateEachRow
     });
-  }, [handleConfigChange, items, iterateEachRow]);
+  }, [handleConfigChange]);
 
   /**
    * Handle adding text from buffer to items - preserves entire text as one item
@@ -125,28 +184,28 @@ export const useInputNodeDataSimplified = ({
     const trimmedText = textBuffer.trim();
     if (!trimmedText) return;
     const updatedItems = [...items, trimmedText];
+    setItems(updatedItems);
+    setTextBuffer('');
+
     handleConfigChange({ 
       items: updatedItems,
       textBuffer: '',
-      iterateEachRow: iterateEachRow
     });
-  }, [textBuffer, items, handleConfigChange, iterateEachRow]);
+  }, [textBuffer, items, handleConfigChange]);
 
   /**
    * Toggle Batch/Foreach processing mode while preserving all items and text
    * Uses lodash cloneDeep for proper deep copying of complex objects
    */
   const handleToggleProcessingMode = useCallback(() => {
-    const itemsCopy = cloneDeep(items);
     const newMode = !iterateEachRow;
     hasToggledRef.current = true;
     setIterateEachRow(newMode);
+
     handleConfigChange({ 
       iterateEachRow: newMode,
-      items: itemsCopy,
-      textBuffer: textBuffer
     });
-  }, [handleConfigChange, items, textBuffer, iterateEachRow]);
+  }, [iterateEachRow, handleConfigChange]);
 
   /**
    * Helper function to read file as text
@@ -171,26 +230,21 @@ export const useInputNodeDataSimplified = ({
       ? files[0].name 
       : `${fileCount} files selected`;
       
-    // Store individual file names for display
     const fileNameList = files.map(file => file.name);
     setFileList(fileNameList);
     setFileName(fileNames);
     
-    // Process all files
     const processFiles = async () => {
       try {
-        // Create deep copy of current items to avoid reference issues
         const currentItems = items ? [...items] : [];
         const newFiles: FileLikeObject[] = [];
         
         for (const file of files) {
-          // Create FileLikeObject for each file
           const fileObj: FileLikeObject = {
             file: file.name,
             type: file.type
           };
           
-          // For text files, read content and add to items
           if (file.type.startsWith('text/')) {
             const fileContent = await readFileAsText(file);
             fileObj.content = fileContent;
@@ -199,14 +253,11 @@ export const useInputNodeDataSimplified = ({
           newFiles.push(fileObj);
         }
         
-        // Use current items to preserve all existing content
         const updatedItems = [...currentItems, ...newFiles];
+        setItems(updatedItems);
         
-        // Update with new items while preserving ALL state
         handleConfigChange({ 
           items: updatedItems,
-          textBuffer: textBuffer,
-          iterateEachRow: iterateEachRow
         });
       } catch (error) {
         console.error("Error reading files:", error);
@@ -216,7 +267,7 @@ export const useInputNodeDataSimplified = ({
     };
     
     processFiles();
-  }, [handleConfigChange, items, textBuffer, iterateEachRow]);
+  }, [handleConfigChange, items]);
 
   /**
    * Handle deletion of a specific item
@@ -226,28 +277,24 @@ export const useInputNodeDataSimplified = ({
     const updatedItems = [...items];
     updatedItems.splice(index, 1);
     
-    // Update fileName and fileList if needed based on remaining file items
-    const fileItems = updatedItems.filter(item => typeof item !== 'string');
+    setItems(updatedItems);
+    
+    const fileItems = updatedItems.filter(item => typeof item !== 'string' && item.hasOwnProperty('file')) as FileLikeObject[];
     if (fileItems.length === 0) {
       setFileName(null);
       setFileList([]);
     } else {
-      setFileList(fileItems.map(item => 
-        typeof item !== 'string' ? item.file : ''
-      ).filter(Boolean));
+      setFileList(fileItems.map(item => item.file));
       
       setFileName(fileItems.length === 1 
-        ? (fileItems[0] as FileLikeObject).file 
+        ? fileItems[0].file 
         : `${fileItems.length} files selected`);
     }
     
-    // Update with new items while preserving ALL state
     handleConfigChange({ 
       items: updatedItems,
-      textBuffer: textBuffer,
-      iterateEachRow: iterateEachRow
     });
-  }, [items, textBuffer, iterateEachRow, handleConfigChange]);
+  }, [items, handleConfigChange]);
 
   /**
    * Handle saving the node label
@@ -280,11 +327,10 @@ export const useInputNodeDataSimplified = ({
     const lines = textBuffer
       .split('\n')
       .map(line => line.trim())
-      .filter(Boolean); // Remove empty lines
+      .filter(Boolean);
     
     if (lines.length === 0) return;
     
-    // Update with splitted text lines as items
     handleConfigChange({
       items: [...items, ...lines],
       textBuffer: '',

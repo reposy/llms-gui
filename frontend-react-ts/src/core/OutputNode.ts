@@ -65,12 +65,18 @@ export class OutputNode extends Node {
    * Synchronize property from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    const content = getNodeContent(this.id) as OutputNodeContent;
-    if (content) {
-      if (typeof content.format === 'string') this.property.format = content.format as 'json' | 'text';
-      if (content.data !== undefined) this.property.data = content.data;
-      if (typeof content.content === 'string') this.property.lastContent = content.content;
+    const content = getNodeContent<OutputNodeContent>(this.id, 'output');
+    if (content && content.format) {
+        this.property.format = content.format;
+        this.context?.log(`OutputNode(${this.id}): Synced format property from store: ${this.property.format}`);
+    } else {
+        // If not found in store, ensure the node has a default format
+        if (!this.property.format) {
+            this.property.format = 'text'; // Default format
+        }
+        this.context?.log(`OutputNode(${this.id}): Using existing/default format: ${this.property.format}`);
     }
+    // Remove syncing for data and lastContent, as they are runtime values
   }
   
   /**
@@ -163,50 +169,41 @@ export class OutputNode extends Node {
    * This prevents infinite update loops
    */
   private updateContentIfChanged(newContent: string): void {
-    // Skip update if content hasn't changed
+    // Skip update if content hasn't changed (simple string comparison)
     if (this.property.lastContent === newContent) {
-      this.context?.log(`OutputNode(${this.id}): Content unchanged, skipping update`);
+      this.context?.log(`OutputNode(${this.id}): Content unchanged (simple), skipping update`);
       return;
     }
     
-    // Check if the content is already in the store
-    const existingContent = getNodeContent(this.id) as OutputNodeContent;
-    if (existingContent && existingContent.content === newContent) {
-      this.context?.log(`OutputNode(${this.id}): Content already in store, skipping update`);
-      return;
-    }
-    
-    // For arrays and objects, do a deep comparison
-    if (this.property.lastContent && typeof this.property.lastContent === 'string' && 
-        newContent && typeof newContent === 'string') {
+    // Deeper comparison for JSON strings
+    if (this.property.lastContent && 
+        (this.property.lastContent.startsWith('[') || this.property.lastContent.startsWith('{')) &&
+        (newContent.startsWith('[') || newContent.startsWith('{'))) {
       try {
-        // If both are JSON strings, parse and compare
-        if (this.property.lastContent.startsWith('[') || this.property.lastContent.startsWith('{')) {
-          const lastObj = JSON.parse(this.property.lastContent);
-          const newObj = JSON.parse(newContent);
-          
-          if (isEqual(lastObj, newObj)) {
-            this.context?.log(`OutputNode(${this.id}): Content semantically unchanged, skipping update`);
-            return;
-          }
+        const lastObj = JSON.parse(this.property.lastContent);
+        const newObj = JSON.parse(newContent);
+        if (isEqual(lastObj, newObj)) {
+          this.context?.log(`OutputNode(${this.id}): Content unchanged (deep), skipping update`);
+          return;
         }
       } catch (e) {
-        // If there's an error in parsing, fall back to string comparison
-        // which we've already done above
+        // If parsing fails, fall back to string comparison (already handled above)
+        this.context?.log(`OutputNode(${this.id}): JSON parsing failed during deep compare, relying on string compare.`);
       }
     }
     
     // Update the last content tracker in memory
     this.property.lastContent = newContent;
     
-    // Update the node content in the store with timestamp to force UI update
-    const contentUpdate: OutputNodeContent = { 
+    // Update the node content in the store
+    const contentUpdate: Partial<OutputNodeContent> = { 
       content: newContent,
-      _forceUpdate: Date.now() 
+      format: this.property.format // Include the format property
+      // _forceUpdate removed
     };
     
-    // Use the debounced version to prevent too many updates in quick succession
-    this.debouncedSetContent(this.id, contentUpdate);
-    this.context?.log(`OutputNode(${this.id}): Updated UI content (length: ${newContent?.length || 0})`);
+    // Use the debounced version
+    this.debouncedSetContent(this.id, contentUpdate as OutputNodeContent);
+    this.context?.log(`OutputNode(${this.id}): Updated UI content via debouncedSetContent`);
   }
 } 

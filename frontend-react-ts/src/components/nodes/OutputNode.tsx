@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Handle, Position } from 'reactflow';
-import { OutputNodeData, LLMResult } from '../../types/nodes';
+import { OutputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';

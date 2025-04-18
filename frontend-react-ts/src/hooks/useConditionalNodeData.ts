@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useNodeContent, ConditionalNodeContent } from '../store/useNodeContentStore';
+import { useNodeContent, ConditionalNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 import { ConditionType } from '../types/nodes';
 
@@ -12,12 +12,14 @@ export const useConditionalNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContentStore with ConditionalNodeContent type
+  // Use the general NodeContent hook with correct type and nodeType
   const { 
     content: generalContent, 
-    setContent,
-    isContentDirty
-  } = useNodeContent(nodeId);
+    updateContent,
+  } = useNodeContent<ConditionalNodeContent>(nodeId, 'conditional');
+  
+  // Get isDirty status directly from the store
+  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
 
   // Cast the general content to ConditionalNodeContent type
   const content = generalContent as ConditionalNodeContent;
@@ -35,8 +37,8 @@ export const useConditionalNodeData = ({
       console.log(`[ConditionalNode ${nodeId}] Skipping condition type update - no change (deep equal)`);
       return;
     }
-    setContent({ conditionType: newType });
-  }, [nodeId, conditionType, setContent]);
+    updateContent({ conditionType: newType });
+  }, [nodeId, conditionType, updateContent]);
 
   /**
    * Handle condition value change with deep equality check
@@ -46,14 +48,13 @@ export const useConditionalNodeData = ({
       console.log(`[ConditionalNode ${nodeId}] Skipping condition value update - no change (deep equal)`);
       return;
     }
-    setContent({ conditionValue: newValue });
-  }, [nodeId, conditionValue, setContent]);
+    updateContent({ conditionValue: newValue });
+  }, [nodeId, conditionValue, updateContent]);
 
   /**
    * Update multiple properties at once with deep equality check
    */
   const updateConditionalContent = useCallback((updates: Partial<ConditionalNodeContent>) => {
-    // Skip update if no actual changes using deep equality
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof ConditionalNodeContent];
       return !isEqual(currentValue, value);
@@ -64,21 +65,16 @@ export const useConditionalNodeData = ({
       return;
     }
     
-    // Create new content object with updates
-    const newContent = {
-      ...content,
-      ...updates
-    };
+    const newContent = { ...content, ...updates };
 
-    // Final deep equality check against current content
     if (isEqual(newContent, content)) {
       console.log(`[ConditionalNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
       return;
     }
     
     console.log(`[ConditionalNode ${nodeId}] Updating content with:`, updates);
-    setContent(updates);
-  }, [nodeId, content, setContent]);
+    updateContent(updates);
+  }, [nodeId, content, updateContent]);
 
   return {
     // Data

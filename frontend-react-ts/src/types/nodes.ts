@@ -65,9 +65,10 @@ export interface APINodeData extends BaseNodeData {
 
 // Output 노드 데이터
 export interface OutputNodeData extends BaseNodeData {
+  type: 'output';
   format?: 'json' | 'text';
   content?: string;
-  mode?: 'batch' | 'foreach';
+  mode?: 'read' | 'write';
   label?: string;
   viewMode?: NodeViewMode;
 }
@@ -171,3 +172,95 @@ export type FlowNode = Node<NodeData>;
 export type FlowEdge = Edge;
 
 export type LLMProvider = 'ollama' | 'openai';
+
+// Add these types if they don't exist or modify if they do
+
+export type HTTPMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+
+export type RequestBodyType = 'none' | 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw';
+
+export interface APIResponse {
+  data: any; // Or define a more specific type
+  headers: Record<string, string>;
+  // Add other relevant response properties if needed (e.g., status, statusText)
+}
+
+// Example of a potential existing NodeData definition - adjust as needed
+export interface BaseNodeData {
+  label: string;
+  isRunning?: boolean; // Optional: for nodes that execute actions
+  errorMessage?: string | null; // Optional: for execution errors
+  [key: string]: any; // Allow other properties
+}
+
+// ... ensure other node data types like APINodeContent, ConditionalNodeContent etc. exist ...
+
+// If APINodeContent exists, ensure it includes the necessary fields
+export interface APINodeContent extends BaseNodeData {
+  url: string;
+  method: HTTPMethod;
+  requestBodyType: RequestBodyType;
+  requestBody?: string; // For JSON, raw text
+  requestHeaders?: Record<string, string>;
+  // Add fields for form-data or x-www-form-urlencoded if needed
+  // Response data
+  response?: APIResponse | null;
+  statusCode?: number | null;
+  executionTime?: number | null;
+  // Internal state
+  _flash?: number; // For visual feedback
+}
+
+// Define other specific node content types
+export interface InputNodeContent extends BaseNodeData {
+  value: string;
+}
+
+export interface OutputNodeContent extends BaseNodeData {
+  // Output specific fields
+}
+
+export interface TextNodeContent extends BaseNodeData {
+  text: string;
+}
+
+export interface ConditionalNodeContent extends BaseNodeData {
+  conditionType: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'regex'; // Example types
+  conditionValue: string;
+}
+
+export interface GroupNodeContent extends BaseNodeData {
+  isCollapsed: boolean;
+}
+
+// Union type for all possible node content types
+export type NodeContent = 
+  | APINodeContent 
+  | InputNodeContent 
+  | OutputNodeContent
+  | TextNodeContent
+  | ConditionalNodeContent
+  | GroupNodeContent;
+
+// Node type string literals corresponding to NodeContent types
+export type NodeType = 
+  | 'api' 
+  | 'input' 
+  | 'output'
+  | 'text'
+  | 'conditional'
+  | 'group';
+
+// Overwrite React Flow's Node type to use our specific data structure
+// Ensure this aligns with how nodes are created/used in React Flow
+export type CustomNode<T extends BaseNodeData = BaseNodeData> = Node<T, NodeType>;
+
+// Type mapping for content based on node type
+export type NodeTypeMap = {
+  api: APINodeContent;
+  input: InputNodeContent;
+  output: OutputNodeContent;
+  text: TextNodeContent;
+  conditional: ConditionalNodeContent;
+  group: GroupNodeContent;
+};

@@ -3,7 +3,6 @@ import { runLLM, LLMProvider } from '../api/llm';
 import { callOllamaVisionWithPaths } from '../utils/llm/ollamaClient';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, LLMNodeContent } from '../store/nodeContentStore';
-import { syncNodeProperties, llmNodeSyncConfig } from '../utils/nodePropertySync';
 
 /**
  * LLM Node properties
@@ -52,8 +51,27 @@ export class LlmNode extends Node {
    * Synchronize property from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    // 공통 유틸리티 사용하여 속성 동기화
-    syncNodeProperties(this, llmNodeSyncConfig, 'llm');
+    try {
+      // Get the node content from store
+      const content = getNodeContent<LLMNodeContent>(this.id, 'llm');
+      
+      if (content) {
+        // Update properties if they exist in the store
+        this.property.prompt = content.prompt || this.property.prompt;
+        this.property.temperature = content.temperature ?? this.property.temperature;
+        this.property.model = content.model || this.property.model;
+        this.property.provider = content.provider || this.property.provider;
+        this.property.ollamaUrl = content.ollamaUrl || this.property.ollamaUrl;
+        this.property.openaiApiKey = content.openaiApiKey || this.property.openaiApiKey;
+        this.property.mode = content.mode || this.property.mode;
+        
+        this.context?.log(`LlmNode(${this.id}): Successfully synced properties from store`);
+      } else {
+        this.context?.log(`LlmNode(${this.id}): No content found in store`);
+      }
+    } catch (error) {
+      this.context?.log(`LlmNode(${this.id}): Error syncing properties: ${error}`);
+    }
   }
 
   /**
@@ -114,6 +132,9 @@ export class LlmNode extends Node {
       // 실행 시작 표시
       this.context?.markNodeRunning(this.id);
       
+      // Ensure properties are synced from store before execution
+      this.syncPropertyFromStore();
+      
       // 디버그: 실행 시점 property 전체 로그
       this.context?.log(`[디버그] LLMNode(${this.id}) property: ` + JSON.stringify(this.property));
 
@@ -170,6 +191,9 @@ export class LlmNode extends Node {
       
       // Store the output in the context
       this.context?.storeOutput(this.id, result);
+      
+      // Mark the node as successful
+      this.context?.markNodeSuccess(this.id, result);
       
       return result;
     } catch (error) {

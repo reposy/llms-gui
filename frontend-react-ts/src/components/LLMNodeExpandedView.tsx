@@ -1,6 +1,5 @@
 import React from 'react';
 import { shallow } from 'zustand/shallow';
-import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { useNodeContentStore } from '../store/useNodeContentStore';
 
 interface LLMNodeExpandedViewProps {
@@ -9,7 +8,7 @@ interface LLMNodeExpandedViewProps {
 
 const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({ nodeId }) => {
   const nodeContent = useNodeContentStore(
-    state => state.content[nodeId] || {},
+    state => state.contents[nodeId] || {},
     shallow
   );
   

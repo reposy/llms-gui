@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { get } from 'lodash'; // Import lodash get function
 
 /**
  * A hook that provides template parsing functionality
@@ -23,10 +24,8 @@ export const useTemplateParser = () => {
         return `[No data for ${trimmedKey}]`;
       }
       
-      // Handle nested properties using path notation (e.g., "user.name")
-      const value = trimmedKey.split('.').reduce((obj, prop) => {
-        return obj && obj[prop] !== undefined ? obj[prop] : undefined;
-      }, data);
+      // Use lodash get for safe nested property access
+      const value = get(data, trimmedKey, undefined);
       
       // Return the value or a placeholder if undefined
       return value !== undefined ? String(value) : `[${trimmedKey} not found]`;

@@ -13,7 +13,7 @@ export const useLlmNodeData = ({
 }) => {
   // Use shallow comparison for content retrieval
   const content = useNodeContentStore(
-    state => state.content[nodeId] || {},
+    state => state.contents[nodeId] || {},
     shallow
   ) as LLMNodeContent;
   
