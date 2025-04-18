@@ -1,7 +1,6 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent, setNodeContent } from '../store/nodeContentStore';
-import { MergerNodeContent } from '../store/nodeContents/common';
+import { getNodeContent, MergerNodeContent } from '../store/nodeContentStore';
 
 interface MergerNodeProperty {
   strategy: 'array' | 'object';
@@ -40,11 +39,19 @@ export class MergerNode extends Node {
    * Synchronize property.items from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    const content = getNodeContent(this.id) as MergerNodeContent;
+    const content = getNodeContent<MergerNodeContent>(this.id, 'merger');
     if (content && Array.isArray(content.items)) {
       this.property.items = [...content.items];
     } else {
       this.property.items = [];
+    }
+    
+    if (content && typeof content.strategy === 'string') {
+      this.property.strategy = content.strategy as 'array' | 'object';
+    }
+    
+    if (content && Array.isArray(content.keys)) {
+      this.property.keys = [...content.keys];
     }
   }
 
@@ -55,31 +62,49 @@ export class MergerNode extends Node {
    * @returns The merged result
    */
   async execute(input: any): Promise<any> {
-    this.context?.log(`MergerNode(${this.id}): execute() called with input: ${JSON.stringify(input)}`);
+    try {
+      // 실행 시작 표시
+      this.context?.markNodeRunning(this.id);
+      
+      this.context?.log(`MergerNode(${this.id}): execute() called with input: ${JSON.stringify(input)}`);
 
-    // Use property.items (already synced)
-    let items = Array.isArray(this.property.items) ? [...this.property.items] : [];
+      // Use property.items (already synced)
+      let items = Array.isArray(this.property.items) ? [...this.property.items] : [];
 
-    // If input is not undefined/null, always push (including empty objects/arrays)
-    if (input !== undefined && input !== null) {
-      if (Array.isArray(input)) {
-        items.push(...input);
-      } else {
-        items.push(input);
+      // If input is not undefined/null, always push (including empty objects/arrays)
+      if (input !== undefined && input !== null) {
+        if (Array.isArray(input)) {
+          items.push(...input);
+        } else {
+          items.push(input);
+        }
       }
-    }
 
-    // Update Zustand store with new items array, cast as Partial<MergerNodeContent>
-    setNodeContent(this.id, { items } as Partial<MergerNodeContent>);
-    this.property.items = items;
+      // 결과를 property에 반영
+      this.property.items = items;
+      
+      // 디버깅 정보 저장
+      this.context?.storeNodeData(this.id, {
+        itemCount: items.length,
+        strategy: this.property.strategy
+      });
+      
+      // 컨텍스트에 결과 저장
+      const result = this.property.strategy === 'array' ? items : this.mergeAsObject(items);
+      this.context?.storeOutput(this.id, result);
 
-    this.context?.log(`MergerNode(${this.id}): items updated in Zustand, count: ${items.length}`);
+      this.context?.log(`MergerNode(${this.id}): items count: ${items.length}`);
 
-    // Return merged result according to strategy
-    if (this.property.strategy === 'array') {
-      return items;
-    } else {
-      return this.mergeAsObject(items);
+      // Return merged result according to strategy
+      return result;
+    } catch (error) {
+      // 오류 발생 시 로그 및 노드 상태 업데이트
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.context?.log(`MergerNode(${this.id}): 실행 중 오류 발생: ${errorMessage}`);
+      this.context?.markNodeError(this.id, errorMessage);
+      
+      // null 반환하여 실행 중단
+      return null;
     }
   }
 

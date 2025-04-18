@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { getNodeFactory, getAllNodeTypes } from './NodeRegistry';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent } from '../store/useNodeContentStore';
+import { getNodeContent } from '../store/nodeContentStore';
 
 /**
  * Factory to create and manage nodes
@@ -28,7 +28,7 @@ export class NodeFactory {
     context?: FlowExecutionContext
   ): Node {
     // 최신 property를 store에서 fetch (없으면 기존 properties 사용)
-    let latestProperties = getNodeContent(id);
+    let latestProperties = getNodeContent(id, type);
     if (!latestProperties || Object.keys(latestProperties).length === 0) {
       latestProperties = properties;
     }

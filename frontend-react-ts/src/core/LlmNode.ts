@@ -2,8 +2,7 @@ import { Node } from './Node';
 import { runLLM, LLMProvider } from '../api/llm';
 import { callOllamaVisionWithPaths } from '../utils/llm/ollamaClient';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent } from '../store/useNodeContentStore';
-import { LLMNodeContent } from '../store/useNodeContentStore';
+import { getNodeContent, LLMNodeContent } from '../store/nodeContentStore';
 
 /**
  * LLM Node properties
@@ -52,7 +51,7 @@ export class LlmNode extends Node {
    * Synchronize property from Zustand store before execution
    */
   syncPropertyFromStore(): void {
-    const content = getNodeContent(this.id) as LLMNodeContent;
+    const content = getNodeContent<LLMNodeContent>(this.id, 'llm');
     if (content) {
       if (typeof content.prompt === 'string') this.property.prompt = content.prompt;
       if (typeof content.temperature === 'number') this.property.temperature = content.temperature;
@@ -120,6 +119,9 @@ export class LlmNode extends Node {
    */
   async execute(input: any): Promise<any> {
     try {
+      // 실행 시작 표시
+      this.context?.markNodeRunning(this.id);
+      
       // 디버그: 실행 시점 property 전체 로그
       this.context?.log(`[디버그] LLMNode(${this.id}) property: ` + JSON.stringify(this.property));
 
@@ -138,9 +140,6 @@ export class LlmNode extends Node {
 
       const resolvedPrompt = this.resolvePrompt(input);
       
-      // Mark node as running
-      this.context?.markNodeRunning(this.id);
-      
       let result;
       
       // 비전 모드인 경우 이미지 파일만 필터링
@@ -151,20 +150,18 @@ export class LlmNode extends Node {
           const errorMsg = "비전 모드인데, 이미지가 입력되지 않았습니다.";
           this.context?.log(`LlmNode(${this.id}): ${errorMsg}`);
           this.context?.markNodeError(this.id, errorMsg);
-          
-          // 에러를 던지는 대신 에러 메시지를 결과로 반환하고 계속 체이닝
-          result = errorMsg;
-        } else {
-          // 이미지 경로 로깅
-          this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
-          
-          result = await callOllamaVisionWithPaths({ 
-            model: this.property.model, 
-            prompt: resolvedPrompt, 
-            imagePaths,
-            temperature: this.property.temperature
-          });
+          throw new Error(errorMsg);
         }
+        
+        // 이미지 경로 로깅
+        this.context?.log(`LlmNode(${this.id}): Processing vision with ${imagePaths.length} images: ${imagePaths.join(', ')}`);
+        
+        result = await callOllamaVisionWithPaths({ 
+          model: this.property.model, 
+          prompt: resolvedPrompt, 
+          imagePaths,
+          temperature: this.property.temperature
+        });
       } else {
         // 텍스트 모드 처리
         this.context?.log(`LlmNode(${this.id}): Processing text with prompt: ${resolvedPrompt.substring(0, 100)}...`);
@@ -189,8 +186,8 @@ export class LlmNode extends Node {
       this.context?.log(`LlmNode(${this.id}): Execution failed: ${errorMessage}`);
       this.context?.markNodeError(this.id, errorMessage);
       
-      // 에러를 던지는 대신 에러 메시지를 결과로 반환 (체이닝 유지)
-      return `에러 발생: ${errorMessage}`;
+      // 에러 발생 시 null 반환으로 체이닝 중단
+      return null;
     }
   }
 } 
