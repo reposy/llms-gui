@@ -24,7 +24,7 @@ const DEBUG_LOGS = false;
 // Temporary placeholder for isVisionModel logic
 // TODO: Implement proper vision model detection based on provider and model name
 const isVisionModel = (provider: 'ollama' | 'openai', model: string): boolean => {
-  console.warn('Vision model detection is using a placeholder implementation!');
+  // console.warn('Vision model detection is using a placeholder implementation!');
   if (provider === 'ollama' && model?.includes('vision')) {
       return true; // Basic check for Ollama vision models
   }

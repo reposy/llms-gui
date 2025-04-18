@@ -8,11 +8,11 @@ export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 export type LLMMode = 'text' | 'vision'; // Define LLMMode directly here
 
 // Define a FileLikeObject type for file content
-export interface FileLikeObject {
-  file: string; // File name
-  type: string; // MIME type
-  content?: string | ArrayBuffer; // Optional file content
-}
+// export interface FileLikeObject {
+//   file: string; // File name
+//   type: string; // MIME type
+//   content?: string | ArrayBuffer; // Optional file content
+// }
 
 // LLM 응답 타입 정의
 export interface LLMResult {

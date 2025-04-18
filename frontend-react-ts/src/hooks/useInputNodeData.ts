@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { useNodeContentStore, InputNodeContent, NodeContent } from '../store/useNodeContentStore';
-import { FileLikeObject } from '../types/nodes';
 
 /**
  * InputNode 데이터 관리 훅 (useNodeContentStore 기반 통합 버전)
@@ -22,7 +21,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   );
 
   // 컨텐츠 필드 접근 (기본값 처리 포함)
-  const items: (string | FileLikeObject)[] = content?.items || [];
+  const items: (string | File)[] = (content?.items as (string | File)[]) || [];
   const textBuffer: string = content?.textBuffer || '';
   const iterateEachRow: boolean = content?.iterateEachRow || false;
 
@@ -90,21 +89,15 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     const files = Array.from(event.target.files);
     
     try {
-      const newFileObjects: FileLikeObject[] = [];
+      const newFiles: File[] = [];
+
       for (const file of files) {
-        const fileObj: FileLikeObject = {
-          file: file.name,
-          type: file.type,
-          // 필요한 경우 파일 내용을 읽어서 포함 (예: 텍스트 파일)
-          // content: file.type.startsWith('text/') ? await readFileAsText(file) : undefined,
-        };
-        newFileObjects.push(fileObj);
+        newFiles.push(file);
       }
 
-      if (newFileObjects.length > 0) {
-        console.log(`[useInputNodeData] Adding ${newFileObjects.length} FileLikeObjects to items.`);
-        // 이전 items와 새로운 FileLikeObject들을 합칩니다.
-        const updatedItems = [...items, ...newFileObjects];
+      if (newFiles.length > 0) {
+        console.log(`[useInputNodeData] Adding ${newFiles.length} File objects to items.`);
+        const updatedItems = [...items, ...newFiles];
         updateInputContent({ items: updatedItems });
       }
     } catch (error) {

@@ -1,6 +1,6 @@
 // src/components/config/InputNodeConfig.tsx
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { InputNodeData, FileLikeObject } from '../../types/nodes';
+import { InputNodeData } from '../../types/nodes';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { InputTextManagerSidebar } from '../input/InputTextManagerSidebar';
 import { InputFileUploader } from '../input/InputFileUploader';
@@ -22,7 +22,7 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 // Utility function to calculate item counts (consistent with InputNode.tsx)
-const calculateItemCounts = (items: (string | FileLikeObject)[]) => {
+const calculateItemCounts = (items: (string | File)[]) => {
   if (!items) return { fileCount: 0, textCount: 0, total: 0 };
   
   const fileCount = items.filter(item => typeof item !== 'string').length;
@@ -36,7 +36,7 @@ const calculateItemCounts = (items: (string | FileLikeObject)[]) => {
 };
 
 // Utility function to format items for display (consistent with InputNode.tsx)
-const formatItemsForDisplay = (items: (string | FileLikeObject)[]) => {
+const formatItemsForDisplay = (items: (string | File)[]) => {
   if (!items) return [];
   
   return items.map((item, index) => {
@@ -50,11 +50,11 @@ const formatItemsForDisplay = (items: (string | FileLikeObject)[]) => {
         originalItem: item
       };
     } else {
-      // Assumes item is FileLikeObject
+      // item is now assumed to be a File object
       return {
         id: `file-${index}`,
         index,
-        display: item.file || 'Unnamed file',
+        display: item.name || 'Unnamed file',
         type: item.type,
         isFile: true,
         originalItem: item
