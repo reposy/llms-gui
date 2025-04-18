@@ -16,7 +16,8 @@ import {
   OnConnectEnd,
   Connection,
   NodeTypes,
-  ReactFlowInstance
+  ReactFlowInstance,
+  OnInit
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import isEqual from 'lodash/isEqual';
@@ -76,7 +77,7 @@ export interface FlowCanvasApi {
   addNodes: (nodes: Node<NodeData>[]) => void;
   forceSync: () => void;
   clearNodes: () => void;
-  reactFlowInstance?: ReactFlowInstance;
+  reactFlowInstance?: ReactFlowInstance<Node<NodeData>, Edge>;
   forceClearLocalState: () => void;
 }
 
@@ -95,13 +96,13 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   isRestoringHistory = false
 }) => {
   const reactFlowRef = useRef<HTMLDivElement>(null);
-  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance<Node<NodeData>, Edge> | null>(null);
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   const didNormalizeRef = useRef<boolean>(false);
   const isRestoringHistoryRef = useRef<boolean>(isRestoringHistory);
   
   // ReactFlow hooks
-  const { project } = useReactFlow();
+  const { screenToFlowPosition } = useReactFlow();
   
   // Use Zustand for flow structure instead of local state
   const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
@@ -288,9 +289,9 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         return;
       }
 
-      const position = project({
-        x: event.clientX - reactFlowBounds.left,
-        y: event.clientY - reactFlowBounds.top,
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
       });
       
       const newNode = createNewNode(nodeType, position);
@@ -298,7 +299,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       // Add node to local state
       setLocalNodes((nds) => nds.concat(newNode));
     },
-    [project, setLocalNodes]
+    [screenToFlowPosition, setLocalNodes]
   );
   
   // Selection consistency check - run only once after initial mount
@@ -324,24 +325,24 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   }, []); // 의존성 배열을 비워 마운트 시 한 번만 실행
 
   // Register React Flow API for external components to use
-  const registerApi = useCallback((api: ReactFlowInstance) => {
-    console.log('[FlowCanvas] Registering React Flow API:', api);
-    if (!api) {
+  const registerApi: OnInit<Node<NodeData>, Edge> = useCallback((reactFlowInstance: ReactFlowInstance<Node<NodeData>, Edge>) => {
+    console.log('[FlowCanvas] Registering React Flow API:', reactFlowInstance);
+    if (!reactFlowInstance) {
       console.error('[FlowCanvas] Attempted to register null API');
       return;
     }
     
     // Store the instance for external access
-    reactFlowInstanceRef.current = api;
+    reactFlowInstanceRef.current = reactFlowInstance;
     
     // Enhanced API with custom methods
     const enhancedApi: FlowCanvasApi = {
       // Add nodes directly to ReactFlow (use with caution)
       addNodes: (newNodes: Node<NodeData>[]) => {
         console.log('[FlowCanvas] API.addNodes called with:', newNodes);
-        if (api) {
-          const currentNodes = api.getNodes();
-          api.setNodes([...currentNodes, ...newNodes]);
+        if (reactFlowInstance) {
+          const currentNodes = reactFlowInstance.getNodes();
+          reactFlowInstance.setNodes([...currentNodes, ...newNodes]);
         }
       },
       
@@ -360,10 +361,10 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
           window.flowSyncUtils.enableForceClear(true);
         }
         
-        if (api) {
+        if (reactFlowInstance) {
           // React Flow 인스턴스에 직접 빈 배열 설정
-          api.setNodes([]);
-          api.setEdges([]);
+          reactFlowInstance.setNodes([]);
+          reactFlowInstance.setEdges([]);
           
           // 로컬 상태도 초기화
           setLocalNodes([]);
@@ -386,7 +387,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       },
       
       // React Flow 인스턴스 직접 노출
-      reactFlowInstance: api,
+      reactFlowInstance: reactFlowInstance,
       
       forceClearLocalState: forceClearLocalState
     };
