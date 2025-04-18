@@ -219,7 +219,7 @@ export const useNodeHandlers = (
     const nextNodes = applyNodeChanges(changes, localNodes);
     
     // Update local React Flow state
-    setLocalNodes(nextNodes);
+    setLocalNodes(nextNodes as Node<NodeData>[]);
     
     // Special selection debounce for paste operations
     // We'll track when the last paste-triggered selection happened to avoid loops
@@ -311,14 +311,8 @@ export const useNodeHandlers = (
   // Handle edges change
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
     // Apply the changes to get the new state
-    const nextEdges = applyEdgeChanges(changes, localEdges);
-    
-    // Update local state
-    setLocalEdges(nextEdges);
-    
-    // Update Zustand
-    setZustandEdges(nextEdges);
-  }, [localEdges, setLocalEdges]);
+    setLocalEdges((eds) => applyEdgeChanges(changes, eds));
+  }, [setLocalEdges]);
 
   // Handle new connections
   const handleConnect = useCallback((connection: Connection) => {
@@ -391,8 +385,9 @@ export const useNodeHandlers = (
 
     // Update Zustand selection state
     const selectedIds = selectedNodes.map(n => n.id);
-    if (!hasEqualSelection(useFlowStructureStore.getState().selectedNodeIds, selectedIds)) {
-      logSelectionChange(selectedIds); // Log the selection change
+    const currentSelection = useFlowStructureStore.getState().selectedNodeIds;
+    if (!hasEqualSelection(currentSelection, selectedIds)) {
+      logSelectionChange('handleSelectionChange', currentSelection, selectedIds);
       setZustandSelectedNodeIds(selectedIds);
     }
   }, [onNodeSelect]);
@@ -400,7 +395,7 @@ export const useNodeHandlers = (
   // Helper function to detect group intersections
   const checkNodeGroupIntersection = useCallback((node: Node<NodeData>, allNodes: Node<NodeData>[]) => {
     // Skip if node is already in a group
-    if (node.parentNode) return null;
+    if (node.parentId) return null;
 
     // Find all group nodes
     const groupNodes = allNodes.filter(n => n.type === 'group' && n.id !== node.id);
@@ -450,16 +445,16 @@ export const useNodeHandlers = (
       let needsUpdate = false;
       
       // Case 1: Check if node is being dragged into a group
-      if (!node.parentNode) {
+      if (!node.parentId) {
         const intersection = checkNodeGroupIntersection(node, localNodes);
         
         if (intersection) {
-          // Node intersects with a group, update its parentNode
+          // Node intersects with a group, update its parentId
           updatedNodes = localNodes.map(n => {
             if (n.id === node.id) {
               return {
                 ...n,
-                parentNode: intersection.group.id,
+                parentId: intersection.group.id,
                 position: intersection.relativePosition,
               };
             }
@@ -473,7 +468,7 @@ export const useNodeHandlers = (
       // Case 2: Check if node is being dragged out of its parent group
       else {
         // Find the parent group
-        const parentGroup = localNodes.find(n => n.id === node.parentNode);
+        const parentGroup = localNodes.find(n => n.id === node.parentId);
         
         if (parentGroup && parentGroup.position && parentGroup.style) {
           // Calculate parent group bounds
@@ -505,13 +500,13 @@ export const useNodeHandlers = (
             nodeBounds.bottom > groupBounds.bottom;
           
           if (isOutsideGroup) {
-            // Node is outside its parent group, remove parentNode reference
+            // Node is outside its parent group, remove parentId reference
             updatedNodes = localNodes.map(n => {
               if (n.id === node.id) {
                 // Return node with absolute position and no parent
                 return {
                   ...n,
-                  parentNode: undefined,
+                  parentId: undefined,
                   position: nodeAbsolutePos
                 };
               }
@@ -553,7 +548,7 @@ export const useNodeHandlers = (
     const currentEdges = getEdges();
     
     // Sync dragged node positions to Zustand using the shared helper
-    syncDraggedNodesToZustand(nodes, currentNodes);
+    syncDraggedNodesToZustand(nodes as Node<NodeData>[], currentNodes as Node<NodeData>[]);
     
     // Use timeout to ensure state updates settle before snapshot
     setTimeout(() => {
@@ -605,14 +600,14 @@ export const useNodeHandlers = (
         // Process each group node
         for (const groupNode of groupNodesToDelete) {
           // Find all child nodes for this group
-          const childNodes = updatedNodes.filter(node => node.parentNode === groupNode.id);
+          const childNodes = updatedNodes.filter(node => node.parentId === groupNode.id);
           
           if (childNodes.length > 0) {
             console.log(`[NodesDelete] Updating ${childNodes.length} child nodes for group ${groupNode.id}`);
             
             // Update child nodes to remove parent reference and update positions
             updatedNodes = updatedNodes.map(node => {
-              if (node.parentNode === groupNode.id) {
+              if (node.parentId === groupNode.id) {
                 // Calculate absolute position based on group's position
                 const absolutePosition = {
                   x: (groupNode.position?.x || 0) + node.position.x,
@@ -622,7 +617,7 @@ export const useNodeHandlers = (
                 // Return updated node with absolute position and no parent
                 return {
                   ...node,
-                  parentNode: undefined,
+                  parentId: undefined,
                   position: absolutePosition,
                   positionAbsolute: absolutePosition
                 };

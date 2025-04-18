@@ -42,11 +42,10 @@ export const useJsonExtractorNodeData = ({
   const updateExtractorContent = useCallback((updates: Partial<Omit<JSONExtractorNodeContent, keyof NodeContent | 'isDirty' | 'content'>>) => {
     const currentContent = useNodeContentStore.getState().getNodeContent<JSONExtractorNodeContent>(nodeId, 'json-extractor');
     // Filter out the 'content' field from updates as it's managed separately (result)
-    const { content: _, ...configUpdates } = updates;
-    const newContent: Partial<JSONExtractorNodeContent> = { ...currentContent, ...configUpdates };
+    const newContent: Partial<JSONExtractorNodeContent> = { ...currentContent, ...updates };
 
     if (!isEqual(currentContent, newContent)) {
-        console.log(`[useJsonExtractorNodeData ${nodeId}] Updating config content with:`, configUpdates);
+        console.log(`[useJsonExtractorNodeData ${nodeId}] Updating config content with:`, updates);
         setNodeContent<JSONExtractorNodeContent>(nodeId, newContent);
     } else {
         console.log(`[useJsonExtractorNodeData ${nodeId}] Skipping config content update - no changes (deep equal).`);

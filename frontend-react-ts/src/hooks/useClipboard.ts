@@ -6,13 +6,12 @@ import {
   copySelectedNodes, 
   pasteClipboardContents, 
   hasClipboardData,
-  clearClipboard
+  PasteResult
 } from '../utils/ui/clipboardUtils';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { setNodeContent, NodeContent, getAllNodeContents as getAllNodeContentsFromStore } from '../store/useNodeContentStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { cloneDeep } from 'lodash';
-import { pushSnapshotAfterNodeOperation } from '../utils/ui/historyUtils';
 
 // Adjust _devFlags type to match global declaration
 declare global {
@@ -59,7 +58,7 @@ export interface UseClipboardReturnType {
 export const recentlyPastedNodeIdsRef = { current: new Set<string>() };
 
 export const useClipboard = (): UseClipboardReturnType => {
-  const reactFlowInstance = useReactFlow<NodeData>();
+  const reactFlowInstance = useReactFlow<Node>();
   const { getViewport, fitView, getNodes, getEdges, setViewport, screenToFlowPosition } = reactFlowInstance;
   const reactFlowStore = useStoreApi();
   const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
@@ -655,11 +654,11 @@ export const useClipboard = (): UseClipboardReturnType => {
         
         setTimeout(() => {
           const allNodes = getNodes(); 
-          const updatedNodesForSelection = allNodes.map((n: Node<NodeData>) => ({ 
+          const updatedNodesForSelection = allNodes.map((n: Node) => ({ 
             ...n,
             selected: pastedNodeIds.includes(n.id)
           }));
-          setNodes(updatedNodesForSelection); 
+          setNodes(updatedNodesForSelection as Node<NodeData>[]);
           
           if (pastedNodeIds.length > 0) {
              // Pass the FIRST ID as an array 

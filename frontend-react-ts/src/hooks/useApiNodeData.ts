@@ -3,7 +3,6 @@ import { useNodeContent, APINodeContent, useNodeContentStore } from '../store/us
 import { isEqual } from 'lodash';
 import { HTTPMethod, RequestBodyType, APIResponse } from '../types/nodes';
 import { isValidUrl } from '../utils/web/urlUtils';
-import { useReactFlow, Node } from '@xyflow/react';
 
 /**
  * Custom hook to manage API node state and operations using Zustand store.
@@ -39,7 +38,7 @@ export const useApiNodeData = ({
   const errorMessage = content.errorMessage;
   const isRunning = content.isRunning || false;
 
-  const { setNodes } = useReactFlow<APINodeContent>();
+  // const { setNodes } = useReactFlow<APINodeContent>(); // Removed unused hook causing type error
   const lastRunTimeRef = useRef<number | null>(null);
   
   /**
@@ -183,7 +182,7 @@ export const useApiNodeData = ({
     }
   }, [
     nodeId, url, method, requestBodyType, requestBody, requestHeaders, 
-    updateContentIfChanged, setIsRunning, isRunning, setNodes, content
+    updateContentIfChanged, setIsRunning, isRunning, /* setNodes, */ content
   ]);
   
   // Effect to potentially clear 'isRunning' if component unmounts unexpectedly

@@ -6,7 +6,6 @@ import {
   useEdges, 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges,
-  setSelectedNodeIds,
   useFlowStructureStore
 } from '../store/useFlowStructureStore';
 import { isEqual } from 'lodash';
@@ -69,8 +68,8 @@ export const useFlowSync = ({
   const zustandEdges = useEdges();
   
   // React Flow internal state
-  const [localNodes, setLocalNodes, onLocalNodesChangeInternal] = useNodesState([]);
-  const [localEdges, setLocalEdges, onLocalEdgesChangeInternal] = useEdgesState([]);
+  const [localNodes, setLocalNodes, onLocalNodesChangeInternal] = useNodesState<Node<NodeData>>([]);
+  const [localEdges, setLocalEdges, onLocalEdgesChangeInternal] = useEdgesState<Edge>([]);
   
   // Track sync status and prevent infinite loops
   const isFirstRender = useRef(true);
@@ -161,12 +160,12 @@ export const useFlowSync = ({
     if (nonSelectionChanges.length === 0) {
       // Apply selection changes locally *only* to keep React Flow happy
       // This does NOT commit to Zustand selection state.
-      setLocalNodes(applyNodeChanges(changes, localNodes));
+      setLocalNodes(applyNodeChanges(changes, localNodes) as Node<NodeData>[]);
       return; 
     }
 
     // Apply non-selection changes to local React Flow state
-    const updatedNodes = applyNodeChanges(nonSelectionChanges, localNodes);
+    const updatedNodes = applyNodeChanges(nonSelectionChanges, localNodes) as Node<NodeData>[];
     setLocalNodes(updatedNodes);
 
     // Debug logs for position changes - 최소화
