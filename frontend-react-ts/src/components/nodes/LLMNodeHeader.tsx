@@ -1,17 +1,17 @@
 import React, { useCallback } from 'react';
-import { NodeViewMode } from '../../../store/viewModeStore';
-import { useIsRootNode } from '../../../store/useNodeGraphUtils';
-import { useNodeState } from '../../../store/useNodeStateStore';
+import { NodeViewMode } from '../../store/viewModeStore';
+import { useIsRootNode } from '../../store/useNodeGraphUtils';
+import { useNodeState } from '../../store/useNodeStateStore';
 import { NodeHeader } from './shared/NodeHeader';
-import { LLMNodeData } from '../../../types/nodes';
-import { useFlowStructureStore } from '../../../store/useFlowStructureStore';
-import { FlowExecutionContext } from '../../../core/FlowExecutionContext';
-import { NodeFactory } from '../../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../../core/NodeRegistry';
+import { LLMNodeData } from '../../types/nodes';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { FlowExecutionContext } from '../../core/FlowExecutionContext';
+import { NodeFactory } from '../../core/NodeFactory';
+import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
-import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../../store/useExecutionGraphStore';
+import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 
-interface LlmNodeHeaderProps {
+interface LLMNodeHeaderProps {
   id: string;
   data: LLMNodeData;
   viewMode: NodeViewMode;
@@ -19,7 +19,7 @@ interface LlmNodeHeaderProps {
   isContentDirty?: boolean;
 }
 
-export const LlmNodeHeader: React.FC<LlmNodeHeaderProps> = ({ 
+const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({ 
   id, 
   data, 
   viewMode, 
@@ -103,4 +103,6 @@ export const LlmNodeHeader: React.FC<LlmNodeHeaderProps> = ({
       onToggleView={onToggleView}
     />
   );
-}; 
+};
+
+export default LLMNodeHeader; 

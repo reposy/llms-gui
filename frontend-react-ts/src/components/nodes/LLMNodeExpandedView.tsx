@@ -3,7 +3,7 @@ import { shallow } from 'zustand/shallow';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
-import { LLMNodeHeader } from './LLMNodeHeader';
+import LLMNodeHeader from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
