@@ -1,3 +1,4 @@
+// src/components/nodes/InputNode.tsx
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeData, FileLikeObject } from '../../types/nodes';
@@ -20,6 +21,8 @@ import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 import { useNodeContentStore } from '../../store/useNodeContentStore';
+import { useNodeConnections } from '../../hooks/useNodeConnections';
+import { VIEW_MODES } from '../../store/viewModeStore';
 
 // Utility function to calculate item counts (moved from deleted hook)
 const calculateItemCounts = (items: (string | FileLikeObject)[]) => {
@@ -62,7 +65,10 @@ const formatItemsForDisplay = (items: (string | FileLikeObject)[]) => {
   });
 };
 
-export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected, isConnectable = true }) => {
+export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+  // Cast data to InputNodeData where needed
+  const inputData = data as InputNodeData;
+
   // Get node execution state
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
@@ -70,6 +76,8 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
   // Get flow structure
   const { nodes, edges } = useFlowStructureStore();
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  // Use incomingConnections array from the hook
+  const { incomingConnections } = useNodeConnections(id); 
 
   // Use the consolidated input node hook
   const {
@@ -87,13 +95,14 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
   // Calculate derived UI state using useMemo
   const itemCounts = useMemo(() => calculateItemCounts(items), [items]);
   const formattedItems = useMemo(() => formatItemsForDisplay(items), [items]);
-  const showIterateOption = items.length > 1;
+  // Check the length of the incomingConnections array
+  const isRootNode = incomingConnections.length === 0;
 
   // Handle label update via NodeHeader (or similar component)
-  const handleLabelUpdate = useCallback((newLabel: string) => {
+  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     // Use setNodeContent directly as the consolidated hook doesn't expose it by default
-    setNodeContent(id, { label: newLabel }); 
-  }, [id, setNodeContent]);
+    setNodeContent(nodeId, { label: newLabel }); 
+  }, [setNodeContent]);
 
   // Handle running the input node
   const handleRun = useCallback(() => {
@@ -191,23 +200,26 @@ export const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, select
           {/* Node Header */}
           <NodeHeader 
              nodeId={id} 
-             label={data.label || 'Input'} 
+             label={inputData.label || 'Input'} 
+             placeholderLabel="Input"
+             isRootNode={isRootNode}
              isRunning={isRunning}
+             viewMode={VIEW_MODES.EXPANDED}
+             themeColor="gray"
              onRun={handleRun}
              onLabelUpdate={handleLabelUpdate} 
+             onToggleView={() => {}}
           />
 
           {/* Node Content */}
           <div className="flex flex-col space-y-3">
             {/* Processing Mode toggle button */}
-            {showIterateOption && (
-              <div className="mb-1">
-                <InputModeToggle 
-                  iterateEachRow={iterateEachRow}
-                  onToggle={handleToggleProcessingMode}
-                />
-              </div>
-            )}
+            <div className="mb-1">
+              <InputModeToggle 
+                iterateEachRow={iterateEachRow}
+                onToggle={handleToggleProcessingMode}
+              />
+            </div>
             
             {/* Text input */}
             <InputTextManagerSidebar

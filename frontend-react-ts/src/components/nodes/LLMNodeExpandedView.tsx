@@ -1,3 +1,4 @@
+// src/components/nodes/LLMNodeExpandedView.tsx
 import React, { useCallback, useMemo } from 'react';
 import { shallow } from 'zustand/shallow';
 import { LLMNodeData } from '../../types/nodes';

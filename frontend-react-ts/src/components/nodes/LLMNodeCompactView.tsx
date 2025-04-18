@@ -1,10 +1,10 @@
+// src/components/nodes/LLMNodeCompactView.tsx
 import React from 'react';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
-import { isVisionModel } from '../../api/llm';
 
 interface LLMNodeCompactViewProps {
   id: string;
@@ -13,6 +13,20 @@ interface LLMNodeCompactViewProps {
   viewMode: NodeViewMode;
   onToggleView: () => void;
 }
+
+// Temporary placeholder for isVisionModel logic (same as in LLMConfig.tsx)
+// TODO: Move this to a shared utility location (e.g., src/utils/llm/)
+const isVisionModel = (provider: 'ollama' | 'openai' | string, model: string): boolean => {
+  console.warn('[CompactView] Vision model detection is using a placeholder!');
+  if (provider === 'ollama' && model?.includes('vision')) {
+      return true;
+  }
+  if (provider === 'openai' && model?.startsWith('gpt-4-vision')) {
+      return true;
+  }
+  // Add more robust checks based on known model identifiers
+  return false;
+};
 
 export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   id,
@@ -24,8 +38,8 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   // Use the LLM data hook to get content
   const { prompt, model, provider, mode, label } = useLlmNodeData({ nodeId: id });
 
-  // Check if model supports vision
-  const supportsVision = model && isVisionModel(provider as any, model);
+  // Use the local placeholder function
+  const supportsVision = model && isVisionModel(provider, model);
 
   // Use compact display with truncated prompt
   const truncatedPrompt = prompt.length > 50

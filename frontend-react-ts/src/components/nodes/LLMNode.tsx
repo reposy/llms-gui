@@ -1,3 +1,4 @@
+// src/components/nodes/LLMNode.tsx
 import React, { useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';

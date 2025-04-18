@@ -1,3 +1,4 @@
+// src/components/nodes/MergerNode.tsx
 import React, { useState, useCallback, useEffect, Fragment } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { MergerNodeData } from '../../types/nodes';

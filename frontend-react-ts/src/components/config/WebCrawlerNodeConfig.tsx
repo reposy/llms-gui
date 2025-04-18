@@ -1,66 +1,82 @@
+// src/components/config/WebCrawlerNodeConfig.tsx
 import React, { useState, useCallback } from 'react';
 import { WebCrawlerNodeData } from '../../types/nodes';
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeContentStore';
 
 interface WebCrawlerNodeConfigProps {
   nodeId: string;
-  data: WebCrawlerNodeData;
+  // data prop is likely unused now
+  // data: WebCrawlerNodeData;
 }
 
-export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ nodeId, data }) => {
-  // Local state for form fields
-  const [url, setUrl] = useState(data.url || '');
-  const [waitForSelector, setWaitForSelector] = useState(data.waitForSelector || '');
-  const [timeout, setTimeout] = useState(data.timeout || 30000);
-  const [outputFormat, setOutputFormat] = useState(data.outputFormat || 'text');
-  const [includeHtml, setIncludeHtml] = useState(data.includeHtml || false);
+export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ nodeId }) => {
+  // Get content and update function from the node content store
+  const { 
+    content, 
+    updateContent // Use updateContent instead of setContent
+  } = useNodeContent<WebCrawlerNodeContent>(nodeId, 'web-crawler'); 
   
-  // Extract selectors management
-  const [extractSelectors, setExtractSelectors] = useState<Record<string, string>>(data.extractSelectors || {});
+  // Local state for form fields, initialized from content store
+  const [url, setUrl] = useState(content.url || '');
+  const [waitForSelector, setWaitForSelector] = useState(content.waitForSelector || '');
+  const [timeout, setTimeout] = useState(content.timeout || 30000);
+  const [outputFormat, setOutputFormat] = useState(content.outputFormat || 'text');
+  const [includeHtml, setIncludeHtml] = useState(content.includeHtml || false);
+  const [extractSelectors, setExtractSelectors] = useState<Record<string, string>>(content.extractSelectors || {});
+  
   const [newExtractorName, setNewExtractorName] = useState('');
   const [newExtractorSelector, setNewExtractorSelector] = useState('');
   
-  // Get the update function from the node content store using the useNodeContent hook
-  const { setContent } = useNodeContent(nodeId);
+  // Sync local state if content from store changes externally
+  // This prevents UI from becoming stale if store is updated elsewhere
+  React.useEffect(() => {
+    setUrl(content.url || '');
+    setWaitForSelector(content.waitForSelector || '');
+    setTimeout(content.timeout || 30000);
+    setOutputFormat(content.outputFormat || 'text');
+    setIncludeHtml(content.includeHtml || false);
+    setExtractSelectors(content.extractSelectors || {});
+  }, [content]);
   
-  // Handle form field updates
-  const handleUpdateField = useCallback((field: string, value: any) => {
-    setContent({ [field]: value });
-  }, [setContent]);
+  // Handle form field updates - uses updateContent now
+  const handleUpdateField = useCallback((field: keyof WebCrawlerNodeContent, value: any) => {
+    // Use updateContent to update the store
+    updateContent({ [field]: value });
+  }, [updateContent]);
   
   // Handle URL update
   const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newUrl = e.target.value;
-    setUrl(newUrl);
-    handleUpdateField('url', newUrl);
+    setUrl(newUrl); // Update local state for immediate feedback
+    handleUpdateField('url', newUrl); // Update store
   }, [handleUpdateField]);
   
   // Handle wait selector update
   const handleWaitSelectorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newWaitSelector = e.target.value;
-    setWaitForSelector(newWaitSelector);
-    handleUpdateField('waitForSelector', newWaitSelector);
+    setWaitForSelector(newWaitSelector); // Update local state
+    handleUpdateField('waitForSelector', newWaitSelector); // Update store
   }, [handleUpdateField]);
   
   // Handle timeout update
   const handleTimeoutChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTimeout = parseInt(e.target.value, 10);
-    setTimeout(newTimeout);
-    handleUpdateField('timeout', newTimeout);
+    const newTimeout = parseInt(e.target.value, 10) || 30000; // Ensure valid number
+    setTimeout(newTimeout); // Update local state
+    handleUpdateField('timeout', newTimeout); // Update store
   }, [handleUpdateField]);
   
   // Handle output format update
   const handleOutputFormatChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const newOutputFormat = e.target.value as 'full' | 'text' | 'extracted' | 'html';
-    setOutputFormat(newOutputFormat);
-    handleUpdateField('outputFormat', newOutputFormat);
+    setOutputFormat(newOutputFormat); // Update local state
+    handleUpdateField('outputFormat', newOutputFormat); // Update store
   }, [handleUpdateField]);
   
   // Handle include HTML toggle
   const handleIncludeHtmlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newIncludeHtml = e.target.checked;
-    setIncludeHtml(newIncludeHtml);
-    handleUpdateField('includeHtml', newIncludeHtml);
+    setIncludeHtml(newIncludeHtml); // Update local state
+    handleUpdateField('includeHtml', newIncludeHtml); // Update store
   }, [handleUpdateField]);
   
   // Add a new extractor
@@ -70,8 +86,8 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
         ...extractSelectors,
         [newExtractorName]: newExtractorSelector
       };
-      setExtractSelectors(updatedExtractors);
-      handleUpdateField('extractSelectors', updatedExtractors);
+      setExtractSelectors(updatedExtractors); // Update local state
+      handleUpdateField('extractSelectors', updatedExtractors); // Update store
       setNewExtractorName('');
       setNewExtractorSelector('');
     }
@@ -81,9 +97,14 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
   const handleRemoveExtractor = useCallback((key: string) => {
     const updatedExtractors = { ...extractSelectors };
     delete updatedExtractors[key];
-    setExtractSelectors(updatedExtractors);
-    handleUpdateField('extractSelectors', updatedExtractors);
+    setExtractSelectors(updatedExtractors); // Update local state
+    handleUpdateField('extractSelectors', updatedExtractors); // Update store
   }, [extractSelectors, handleUpdateField]);
+  
+  // Prevent backspace delete
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+      e.stopPropagation();
+  }, []);
   
   return (
     <div className="space-y-6">
@@ -96,10 +117,11 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <input
             id="crawler-url"
             type="text"
-            value={url}
+            value={url} // Use local state for value
             onChange={handleUrlChange}
             placeholder="https://example.com"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
           />
           <p className="mt-1 text-xs text-gray-500">URL of the web page to crawl</p>
         </div>
@@ -110,10 +132,11 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <input
             id="wait-selector"
             type="text"
-            value={waitForSelector}
+            value={waitForSelector} // Use local state
             onChange={handleWaitSelectorChange}
             placeholder=".main-content"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
           />
           <p className="mt-1 text-xs text-gray-500">CSS selector to wait for before extracting content</p>
         </div>
@@ -124,12 +147,13 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <input
             id="timeout"
             type="number"
-            value={timeout}
+            value={timeout} // Use local state
             onChange={handleTimeoutChange}
             min="1000"
             max="60000"
             step="1000"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
           />
           <p className="mt-1 text-xs text-gray-500">Maximum time to wait in milliseconds</p>
         </div>
@@ -139,9 +163,10 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <label htmlFor="output-format" className="block text-xs font-medium text-gray-700">Output Format</label>
           <select
             id="output-format"
-            value={outputFormat}
+            value={outputFormat} // Use local state
             onChange={handleOutputFormatChange}
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
           >
             <option value="full">Full (All metadata)</option>
             <option value="text">Text only</option>
@@ -156,9 +181,10 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <input
             id="include-html"
             type="checkbox"
-            checked={includeHtml}
+            checked={includeHtml} // Use local state
             onChange={handleIncludeHtmlChange}
             className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded bg-white"
+            onKeyDown={handleKeyDown}
           />
           <label htmlFor="include-html" className="ml-2 block text-xs font-medium text-gray-700">Include HTML</label>
         </div>
@@ -177,6 +203,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
               onChange={(e) => setNewExtractorName(e.target.value)}
               placeholder="Name (e.g., title)"
               className="block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+              onKeyDown={handleKeyDown}
             />
           </div>
           <div className="flex">
@@ -186,11 +213,13 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
               onChange={(e) => setNewExtractorSelector(e.target.value)}
               placeholder="Selector (e.g., h1)"
               className="block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+              onKeyDown={handleKeyDown}
             />
             <button
               onClick={handleAddExtractor}
               disabled={!newExtractorName || !newExtractorSelector}
               className="ml-2 px-3 py-2 bg-blue-600 text-white text-xs rounded-md disabled:bg-gray-300"
+              onKeyDown={handleKeyDown}
             >
               Add
             </button>
@@ -209,6 +238,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
                 <button
                   onClick={() => handleRemoveExtractor(key)}
                   className="text-red-500 hover:text-red-700 text-xs"
+                  onKeyDown={handleKeyDown}
                 >
                   Remove
                 </button>

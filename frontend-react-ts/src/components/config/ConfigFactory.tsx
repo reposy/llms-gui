@@ -46,20 +46,20 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
   switch (type) {
     case 'llm':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering LLMConfig');
-      return <LLMConfig nodeId={id} data={data as LLMNodeData} />;
+      return <LLMConfig nodeId={id} />;
     
     case 'api':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering APIConfig');
-      return <APIConfig nodeId={id} data={data as APINodeData} />;
+      return <APIConfig nodeId={id} />;
     
     case 'output':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering OutputConfig');
-      return <OutputConfig nodeId={id} data={data as OutputNodeData} />;
+      return <OutputConfig nodeId={id} />;
     
     case 'input':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering InputNodeConfig');
       try {
-        return <InputNodeConfig nodeId={id} data={data as InputNodeData} />;
+        return <InputNodeConfig nodeId={id} />;
       } catch (error) {
         console.error('[ConfigFactory] Error rendering InputNodeConfig:', error);
         return (
@@ -86,7 +86,7 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
     
     case 'web-crawler':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');
-      return <WebCrawlerNodeConfig nodeId={id} data={data as WebCrawlerNodeData} />;
+      return <WebCrawlerNodeConfig nodeId={id} />;
     
     default:
       if (DEBUG_LOGS) console.log(`[ConfigFactory] No config for node type: ${type}`);
@@ -100,7 +100,7 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
       );
   }
 }, (prevProps, nextProps) => {
-  // 선택된 노드가 없거나 이전과 동일한 노드 ID인 경우 리렌더링 방지
+  // Revert memoization logic to original state
   if (!prevProps.selectedNode && !nextProps.selectedNode) return true;
   if (!prevProps.selectedNode || !nextProps.selectedNode) return false;
   

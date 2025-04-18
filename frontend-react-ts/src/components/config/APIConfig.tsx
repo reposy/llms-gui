@@ -1,11 +1,13 @@
-import React, { useCallback, useState, useEffect } from 'react';
-import { APINodeData } from '../../types/nodes';
+// src/components/config/APIConfig.tsx
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import { APINodeData, HTTPMethod, RequestBodyType } from '../../types/nodes';
 // Import our new hook
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 
 interface APIConfigProps {
   nodeId: string;
-  data: APINodeData;
+  // data prop is no longer needed as data is fetched by the hook
+  // data: APINodeData;
 }
 
 interface KeyValuePair {
@@ -21,18 +23,19 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
-export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
+export const APIConfig: React.FC<APIConfigProps> = ({ nodeId }) => {
   // Use our new Zustand hook
-  const { 
+  const {
     url,
     method,
-    headers,
+    requestHeaders,
+    requestBodyType,
+    requestBody,
     handleUrlChange,
     handleMethodChange,
     handleHeadersChange,
-    handleHeaderChange,
-    removeHeader,
-    addHeader: addNewHeader
+    handleRequestBodyTypeChange,
+    handleRequestBodyChange
   } = useApiNodeData({ nodeId });
   
   // IME composition states
@@ -46,12 +49,11 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   
   // Sync drafts with node data
   useEffect(() => {
-    // Initialize header drafts
     const initialHeaderKeyDrafts: Record<number, string> = {};
     const initialHeaderValueDrafts: Record<number, string> = {};
-    Object.entries(headers || {}).forEach(([key, value], index) => {
+    Object.entries(requestHeaders || {}).forEach(([key, value], index) => {
       initialHeaderKeyDrafts[index] = key;
-      initialHeaderValueDrafts[index] = value;
+      initialHeaderValueDrafts[index] = String(value);
     });
     setHeaderKeyDrafts(initialHeaderKeyDrafts);
     setHeaderValueDrafts(initialHeaderValueDrafts);
@@ -59,7 +61,7 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     if (!isUrlComposing) {
       setUrlDraft(url || '');
     }
-  }, [headers, url, isUrlComposing]);
+  }, [requestHeaders, url, isUrlComposing]);
 
   // Handle URL changes
   const handleUrlInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +69,6 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     setUrlDraft(newUrl);
     
     if (!isUrlComposing) {
-      // Update Zustand
       handleUrlChange(newUrl);
     }
   }, [isUrlComposing, handleUrlChange]);
@@ -76,13 +77,10 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
     setIsUrlComposing(false);
     const newUrl = e.currentTarget.value;
     setUrlDraft(newUrl);
-    
-    // Update Zustand
     handleUrlChange(newUrl);
   }, [handleUrlChange]);
 
   const handleUrlBlur = useCallback(() => {
-    // Always update with latest URL value
     handleUrlChange(urlDraft);
   }, [urlDraft, handleUrlChange]);
 
@@ -92,78 +90,79 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
   }, []);
 
   // Headers management
-  const addHeader = useCallback(() => {
-    // Update Zustand
-    addNewHeader();
-  }, [addNewHeader]);
+  const currentHeaderEntries = useMemo(() => Object.entries(requestHeaders || {}), [requestHeaders]);
 
-  const handleHeaderInputChange = useCallback((index: number, field: 'key' | 'value', value: string) => {
-    if ((field === 'key' && isHeaderKeyComposing) || (field === 'value' && isHeaderValueComposing)) {
-      // Update drafts during composition
-      if (field === 'key') {
-        setHeaderKeyDrafts(prev => ({ ...prev, [index]: value }));
-      } else {
-        setHeaderValueDrafts(prev => ({ ...prev, [index]: value }));
-      }
-      return;
-    }
-    
-    const currentHeaders = headers || {};
-    const headerEntries = Object.entries(currentHeaders);
-    
-    // Update or add the header
+  const addHeader = useCallback(() => {
+    const newHeaders = { ...(requestHeaders || {}), '': '' };
+    handleHeadersChange(newHeaders);
+  }, [requestHeaders, handleHeadersChange]);
+
+  const handleHeaderInputChange = useCallback((index: number, field: 'key' | 'value', draftValue: string) => {
+    const isComposing = (field === 'key' && isHeaderKeyComposing) || (field === 'value' && isHeaderValueComposing);
+
+    // Update drafts regardless of composition state
     if (field === 'key') {
-      const oldKey = headerEntries[index]?.[0];
-      const oldValue = headerEntries[index]?.[1];
-      
-      // Update Zustand
-      handleHeaderChange(value, oldValue, oldKey);
-    } else if (field === 'value') {
-      const key = headerEntries[index]?.[0];
-      if (key) {
-        // Update Zustand
-        handleHeaderChange(key, value);
-      }
+      setHeaderKeyDrafts(prev => ({ ...prev, [index]: draftValue }));
+    } else {
+      setHeaderValueDrafts(prev => ({ ...prev, [index]: draftValue }));
     }
-  }, [headers, isHeaderKeyComposing, isHeaderValueComposing, handleHeaderChange]);
+
+    // Only update the store if not composing
+    if (!isComposing) {
+        const currentKey = currentHeaderEntries[index]?.[0];
+        const currentValue = currentHeaderEntries[index]?.[1];
+        const finalKey = field === 'key' ? draftValue : headerKeyDrafts[index] ?? currentKey ?? '';
+        const finalValue = field === 'value' ? draftValue : headerValueDrafts[index] ?? currentValue ?? '';
+
+        const newHeaders = { ...(requestHeaders || {}) };
+
+        if (field === 'key' && currentKey !== undefined && currentKey !== finalKey) {
+            // Key changed, remove old entry first
+            delete newHeaders[currentKey];
+        }
+
+        // Update or add the new entry
+        if (finalKey) { // Don't add headers with empty keys
+            newHeaders[finalKey] = finalValue;
+        }
+
+        // Remove the original entry if the key was empty (effectively deleting the row)
+        if (field === 'key' && !finalKey && currentKey !== undefined) {
+            delete newHeaders[currentKey];
+        }
+
+        handleHeadersChange(newHeaders);
+    }
+  }, [requestHeaders, handleHeadersChange, isHeaderKeyComposing, isHeaderValueComposing, currentHeaderEntries, headerKeyDrafts, headerValueDrafts]);
 
   const handleHeaderBlur = useCallback((index: number, field: 'key' | 'value') => {
-    const isDrafting = field === 'key' ? isHeaderKeyComposing : isHeaderValueComposing;
-    
-    if (!isDrafting) {
-      // Apply changes when not in composition mode
-      const draftValue = field === 'key' 
-        ? headerKeyDrafts[index] 
-        : headerValueDrafts[index];
-      
+    const isComposing = field === 'key' ? isHeaderKeyComposing : isHeaderValueComposing;
+    if (!isComposing) {
+      const draftValue = field === 'key' ? headerKeyDrafts[index] : headerValueDrafts[index];
       if (draftValue !== undefined) {
+        // Trigger the input change logic on blur to commit the final draft value
         handleHeaderInputChange(index, field, draftValue);
       }
     }
   }, [handleHeaderInputChange, isHeaderKeyComposing, isHeaderValueComposing, headerKeyDrafts, headerValueDrafts]);
 
   const removeHeaderHandler = useCallback((index: number) => {
-    const currentHeaders = headers || {};
-    const headerEntries = Object.entries(currentHeaders);
-    const keyToRemove = headerEntries[index]?.[0];
-    
-    if (keyToRemove) {
-      // Update Zustand
-      removeHeader(keyToRemove);
+    const keyToRemove = currentHeaderEntries[index]?.[0];
+    if (keyToRemove !== undefined) {
+      const newHeaders = { ...(requestHeaders || {}) };
+      delete newHeaders[keyToRemove];
+      handleHeadersChange(newHeaders);
     }
-  }, [headers, removeHeader]);
+  }, [requestHeaders, handleHeadersChange, currentHeaderEntries]);
 
   // Add bearer token shortcut
   const addBearerToken = useCallback(() => {
-    // Update Zustand
-    handleHeaderChange('Authorization', 'Bearer ');
-  }, [handleHeaderChange]);
+    const newHeaders = { ...(requestHeaders || {}), Authorization: 'Bearer ' };
+    handleHeadersChange(newHeaders);
+  }, [requestHeaders, handleHeadersChange]);
   
   const handleMethodSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newMethod = e.target.value as APINodeData['method'];
-    
-    // Update Zustand
-    handleMethodChange(newMethod);
+    handleMethodChange(e.target.value as HTTPMethod);
   }, [handleMethodChange]);
   
   return (
@@ -225,23 +224,18 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
           </div>
         </div>
         <div className="space-y-2">
-          {Object.entries(headers || {}).map(([key, value], index) => (
+          {currentHeaderEntries.map(([key, value], index) => (
             <div key={index} className="grid grid-cols-[1fr,1fr,auto] gap-2">
               <input
                 type="text"
                 className="w-full p-2 bg-white border border-gray-300 rounded"
                 value={headerKeyDrafts[index] ?? key}
                 placeholder="Header Name"
-                onChange={(e) => {
-                  if (!isHeaderKeyComposing) {
-                    handleHeaderInputChange(index, 'key', e.target.value);
-                  }
-                  setHeaderKeyDrafts(prev => ({ ...prev, [index]: e.target.value }));
-                }}
+                onChange={(e) => handleHeaderInputChange(index, 'key', e.target.value)}
                 onCompositionStart={() => setIsHeaderKeyComposing(true)}
-                onCompositionEnd={() => {
+                onCompositionEnd={(e) => {
                   setIsHeaderKeyComposing(false);
-                  handleHeaderInputChange(index, 'key', headerKeyDrafts[index] || '');
+                  handleHeaderInputChange(index, 'key', e.currentTarget.value);
                 }}
                 onBlur={() => handleHeaderBlur(index, 'key')}
                 onKeyDown={handleKeyDown}
@@ -249,30 +243,23 @@ export const APIConfig: React.FC<APIConfigProps> = ({ nodeId, data }) => {
               <input
                 type="text"
                 className="w-full p-2 bg-white border border-gray-300 rounded"
-                value={headerValueDrafts[index] ?? value}
-                placeholder="Value"
-                onChange={(e) => {
-                  if (!isHeaderValueComposing) {
-                    handleHeaderInputChange(index, 'value', e.target.value);
-                  }
-                  setHeaderValueDrafts(prev => ({ ...prev, [index]: e.target.value }));
-                }}
+                value={headerValueDrafts[index] ?? String(value)}
+                placeholder="Header Value"
+                onChange={(e) => handleHeaderInputChange(index, 'value', e.target.value)}
                 onCompositionStart={() => setIsHeaderValueComposing(true)}
-                onCompositionEnd={() => {
+                onCompositionEnd={(e) => {
                   setIsHeaderValueComposing(false);
-                  handleHeaderInputChange(index, 'value', headerValueDrafts[index] || '');
+                  handleHeaderInputChange(index, 'value', e.currentTarget.value);
                 }}
                 onBlur={() => handleHeaderBlur(index, 'value')}
                 onKeyDown={handleKeyDown}
               />
               <button
-                className="p-2 text-gray-600 hover:text-red-500"
+                className="px-2 py-1 text-red-500 hover:text-red-700"
                 onClick={() => removeHeaderHandler(index)}
                 onKeyDown={handleKeyDown}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                Remove
               </button>
             </div>
           ))}

@@ -1,13 +1,13 @@
+// src/components/config/LLMConfig.tsx
 import React, { useCallback, useMemo } from 'react';
-import { LLMNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
-import { isVisionModel } from '../../api/llm';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 
 interface LLMConfigProps {
   nodeId: string;
-  data: LLMNodeData;
+  // data prop is no longer needed as data is fetched by the hook
+  // data: LLMNodeData; 
 }
 
 // Reusable label component
@@ -21,7 +21,21 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // Only log when debugging specific issues
 const DEBUG_LOGS = false;
 
-export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
+// Temporary placeholder for isVisionModel logic
+// TODO: Implement proper vision model detection based on provider and model name
+const isVisionModel = (provider: 'ollama' | 'openai', model: string): boolean => {
+  console.warn('Vision model detection is using a placeholder implementation!');
+  if (provider === 'ollama' && model?.includes('vision')) {
+      return true; // Basic check for Ollama vision models
+  }
+  if (provider === 'openai' && model?.startsWith('gpt-4-vision')) {
+      return true; // Basic check for OpenAI vision models
+  }
+  // Add more robust checks based on known model identifiers
+  return false;
+};
+
+export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
   const executionState = useNodeState(nodeId);
   
   // Use the LLM data hook instead of managed content
@@ -40,16 +54,14 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
     setProvider,
     handleOllamaUrlChange,
     handleOpenaiApiKeyChange,
-    handleModeChange,
     setMode,
-    setTemperature
   } = useLlmNodeData({ nodeId });
   
   // Check if there are input nodes that could provide images
   const { hasImageInputs } = useNodeConnections(nodeId);
   
-  // Check if the current model supports vision features
-  const supportsVision = model && isVisionModel(provider as any, model);
+  // Check if the current model supports vision features using the local placeholder
+  const supportsVision = model && isVisionModel(provider, model);
   
   // Check if vision mode can be enabled (needs image inputs and supported model)
   const canEnableVisionMode = useMemo(() => {
@@ -75,7 +87,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId, data }) => {
       mode,
       supportsVision,
       isDirty,
-      dataFromProps: data 
+      // dataFromProps: data 
     });
   }
 

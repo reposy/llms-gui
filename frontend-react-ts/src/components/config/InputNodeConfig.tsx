@@ -1,3 +1,4 @@
+// src/components/config/InputNodeConfig.tsx
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { InputNodeData, FileLikeObject } from '../../types/nodes';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
@@ -9,7 +10,8 @@ import { InputModeToggle } from '../input/InputModeToggle';
 
 interface InputNodeConfigProps {
   nodeId: string;
-  data: InputNodeData;
+  // data prop is no longer needed as data is fetched by the hook
+  // data: InputNodeData;
 }
 
 // Reusable label component

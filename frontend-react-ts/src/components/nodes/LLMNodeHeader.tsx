@@ -1,4 +1,5 @@
-import React, { useCallback } from 'react';
+// src/components/nodes/LLMNodeHeader.tsx
+import React, { memo, useCallback, useState } from 'react';
 import { Node } from '@xyflow/react';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';

@@ -44,7 +44,7 @@ import OutputNode from './nodes/OutputNode';
 import JSONExtractorNode from './nodes/JSONExtractorNode';
 import InputNode from './nodes/InputNode';
 import GroupNode from './nodes/GroupNode';
-import ConditionalNode from './nodes/ConditionalNode';
+import { ConditionalNode } from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
 import WebCrawlerNode from './nodes/WebCrawlerNode';
 import { NodeData, NodeType } from '../types/nodes';
