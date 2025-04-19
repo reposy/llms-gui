@@ -86,7 +86,7 @@ export class LlmNode extends Node {
     this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
 
     try {
-      let base64DataOnly: string[] | undefined = undefined;
+      let imageData: { base64: string, mimeType: string }[] | undefined = undefined;
       let finalPrompt = prompt; // Start with the base prompt
 
       // --- Input Processing for Vision/Text --- 
@@ -114,10 +114,15 @@ export class LlmNode extends Node {
         if (fileObjects.length > 0) {
           try {
             this.context?.log(`${this.type}(${this.id}): Converting ${fileObjects.length} files to Base64...`);
-            const base64Promises = fileObjects.map(file => readFileAsBase64(file));
-            const base64Images = await Promise.all(base64Promises);
-            base64DataOnly = base64Images.map(dataUrl => dataUrl.split(',')[1]);
-            this.context?.log(`${this.type}(${this.id}): Successfully converted images to Base64.`);
+            const fileReadPromises = fileObjects.map(async (file) => {
+              const base64 = await readFileAsBase64(file);
+              return {
+                base64: base64.split(',')[1], // Extract only base64 data
+                mimeType: file.type // Include the MIME type
+              };
+            });
+            imageData = await Promise.all(fileReadPromises);
+            this.context?.log(`${this.type}(${this.id}): Successfully converted images to Base64 with MIME types.`);
           } catch (base64Error) {
             this.context?.log(`${this.type}(${this.id}): Error converting files to Base64: ${base64Error}. Proceeding without images.`);
             // Continue without images
@@ -134,6 +139,16 @@ export class LlmNode extends Node {
       }
 
       // --- Prepare parameters for llmService --- 
+
+      // *** Add check for vision mode without images before proceeding ***
+      if (mode === 'vision' && (!imageData || imageData.length === 0)) {
+        const errorMsg = "Vision mode requires at least one valid image input, but none were found.";
+        this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+        this.context?.markNodeError(this.id, errorMsg);
+        return null; // Stop execution if no images in vision mode
+      }
+      // *** End check ***
+
       const params: LLMRequestParams = {
         provider,
         model,
@@ -141,10 +156,10 @@ export class LlmNode extends Node {
         temperature: currentProps.temperature ?? 0.7,
         ollamaUrl: currentProps.ollamaUrl,
         openaiApiKey: currentProps.openaiApiKey,
-        images: base64DataOnly // Pass Base64 data if available (for vision)
+        images: imageData // Pass image data objects (or undefined)
       };
       
-      this.context?.log(`${this.type}(${this.id}): Calling llmService.runLLM with params: ${JSON.stringify({...params, prompt: params.prompt.substring(0,50)+ '...', images: params.images ? `[${params.images.length} images]` : undefined})}`);
+      this.context?.log(`${this.type}(${this.id}): Calling llmService.runLLM with params: ${JSON.stringify({...params, prompt: params.prompt.substring(0,50)+ '...', images: params.images ? `[${params.images.length} images with types]` : undefined})}`);
 
       // --- Call the Facade Service --- 
       const llmResult = await runLLM(params);

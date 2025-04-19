@@ -9,7 +9,7 @@ export interface LLMRequestParams {
   model: string;
   prompt: string;
   temperature?: number;
-  images?: string[]; // Optional: Base64 encoded image data for vision models
+  images?: Array<{ base64: string; mimeType: string }>; // Updated for vision
   ollamaUrl?: string; // Specific configuration might be needed here or passed differently
   openaiApiKey?: string; // Specific configuration might be needed here or passed differently
   // Add other common parameters as needed (e.g., max_tokens, stop_sequences)
