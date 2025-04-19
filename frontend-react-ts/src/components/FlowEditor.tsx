@@ -8,13 +8,14 @@ import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition } from '../utils/flow/flowUtils';
 // Import specific node content types and the generic setter
-import { setNodeContent, NodeContent } from '../store/nodeContentStore'; 
+import { setNodeContent, NodeContent, useNodeContentStore } from '../store/nodeContentStore'; // Added useNodeContentStore
 // Import Zustand store hooks and actions
 import { useNodes, useEdges, setNodes as setStructureNodes, useSelectedNodeIds, useFlowStructureStore } from '../store/useFlowStructureStore';
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
 import { runFlow } from '../core/FlowRunner';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 
 export const FlowEditor = () => {
   const nodes = useNodes();
@@ -24,6 +25,13 @@ export const FlowEditor = () => {
   const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   const initialSnapshotCreatedRef = useRef(false);
   const hydrated = useFlowStructureStore.persist.hasHydrated(); // Use the store directly for hydration check
+
+  // State to store the ID of the node to be copied
+  const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
+  // Access node content store methods
+  const { getNodeContent, setNodeContent: setContent } = useNodeContentStore(
+    (state) => ({ getNodeContent: state.getNodeContent, setNodeContent: state.setNodeContent })
+  );
 
   useEffect(() => {
     if (hydrated && !initialSnapshotCreatedRef.current) {

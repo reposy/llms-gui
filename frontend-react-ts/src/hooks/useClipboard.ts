@@ -6,10 +6,11 @@ import {
   copySelectedNodes, 
   pasteClipboardContents, 
   hasClipboardData,
-  PasteResult
+  PasteResult,
+  copyNodesAndEdgesFromInstance
 } from '../utils/ui/clipboardUtils';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { setNodeContent, NodeContent, getAllNodeContents as getAllNodeContentsFromStore } from '../store/useNodeContentStore';
+import { setNodeContent, NodeContent, getAllNodeContents as getAllNodeContentsFromStore, getNodeContent as getNodeContentFromStore } from '../store/useNodeContentStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { cloneDeep } from 'lodash';
 
@@ -343,8 +344,25 @@ export const useClipboard = (): UseClipboardReturnType => {
   }, [getNodes, reactFlowStore, forceSyncReactFlow]);
 
   const handleCopy = useCallback(() => {
-    copySelectedNodes();
-  }, []);
+    // React Flow 인스턴스에서 현재 노드 및 엣지 가져오기
+    const currentNodes = getNodes();
+    const currentEdges = getEdges();
+    
+    // 선택된 노드 필터링
+    const selectedNodes = currentNodes.filter(node => node.selected);
+    
+    if (selectedNodes.length === 0) {
+      console.log('[Clipboard] No selected nodes to copy (from React Flow instance)');
+      return;
+    }
+    
+    console.log(`[Clipboard] Attempting to copy ${selectedNodes.length} selected nodes from React Flow instance.`);
+    
+    // clipboardUtils의 함수 호출 (새 함수 또는 수정된 함수 사용 가정)
+    // copySelectedNodes(selectedNodes, currentEdges); // 예시: clipboardUtils 함수 호출 방식 변경 필요
+    copyNodesAndEdgesFromInstance(selectedNodes, currentEdges); // 새로운 함수 이름 사용
+
+  }, [getNodes, getEdges]); // getNodes, getEdges 의존성 추가
 
   // Function to handle deferred UI updates after paste
   const handleDeferredPasteUIUpdates = useCallback(() => {
@@ -573,8 +591,8 @@ export const useClipboard = (): UseClipboardReturnType => {
     const { 
       newNodes: pastedNodes, 
       newEdges: pastedEdges, 
-      nodeContents: pastedNodeContentsInfo, // Rename for clarity
-      oldToNewIdMap, // Needed for content mapping
+      nodeContents: pastedNodeContentsInfo, // { [newNodeId]: { content: NodeContent, nodeId: string, nodeType: string } }
+      // oldToNewIdMap, // 더 이상 직접 필요하지 않음 (pastedNodeContentsInfo에 newId가 포함됨)
       newNodeIds // Use this directly later
     } = pasteResult;
 
@@ -588,100 +606,59 @@ export const useClipboard = (): UseClipboardReturnType => {
     // Create final nodes with offset and z-index (use pastedNodes)
     const finalNodes = pastedNodes.map((node: Node<NodeData>) => ({ // Add type to node
       ...node,
-      selected: false, 
+      selected: false, // 붙여넣기 직후에는 선택 해제 (나중에 syncSelectionState에서 처리)
       zIndex: (node.zIndex || 0) + PASTE_Z_INDEX_BOOST 
     }));
     
     // Edges are already prepared in pasteResult (use pastedEdges)
     const finalEdges = pastedEdges;
 
-    // Map node contents (use pastedNodeContentsInfo)
-    const newNodeContents: Record<string, NodeContent> = {};
-    Object.entries(pastedNodeContentsInfo).forEach(([oldId, contentInfo]) => {
-      // contentInfo structure: {content: NodeContent, nodeId: string, nodeType: string}
-      const newId = oldToNewIdMap[oldId]; // Use the mapping from PasteResult
-      if (newId) {
-        newNodeContents[newId] = cloneDeep(contentInfo.content); // Extract content
-      }
-    });
-
-    // Use newNodeIds from PasteResult for logging and selection
-    // const newNodeIds = finalNodes.map(node => node.id); // No longer needed
-    const firstNodeId = newNodeIds.length > 0 ? newNodeIds[0] : null;
-    
-    // Update lastPasteOpRef (ensure structure matches usage)
-    lastPasteOpRef.current = {
-      newNodeIds, // Use directly from PasteResult
-      firstNodeId: firstNodeId || '', 
-      updatedNodes: finalNodes, // Store the final calculated nodes
-      updatedEdges: finalEdges // Store the final edges
-    };
-
     console.log(`[Clipboard] Pasting ${finalNodes.length} nodes and ${finalEdges.length} edges`);
     console.log(`[Clipboard] New node IDs: ${newNodeIds.join(', ')}`);
     
     try {
       flushSync(() => {
-        // 1. Add new node contents to the store
-        Object.entries(newNodeContents).forEach(([id, content]) => {
-          setNodeContent(id, content);
-        });
-        
-        // 2. Add nodes and edges to the structure store
+        // --- 상태 업데이트 순서 명확화 --- 
+        // 1. 구조 스토어 업데이트 (Nodes & Edges)
         const currentNodes = useFlowStructureStore.getState().nodes;
         const currentEdges = useFlowStructureStore.getState().edges;
-        setNodes([...currentNodes, ...finalNodes]); // Use finalNodes
-        setEdges([...currentEdges, ...finalEdges]); // Use finalEdges
+        setNodes([...currentNodes, ...finalNodes]); 
+        setEdges([...currentEdges, ...finalEdges]);
+        console.log(`[Clipboard] Updated structure store with ${finalNodes.length} nodes and ${finalEdges.length} edges.`);
+
+        // 2. 콘텐츠 스토어 업데이트
+        Object.values(pastedNodeContentsInfo).forEach((contentInfo) => {
+          // contentInfo: { content: NodeContent, nodeId: string, nodeType: string }
+          // contentInfo.content는 clipboardUtils에서 이미 deep copied 되었어야 함
+          setNodeContent(contentInfo.nodeId, contentInfo.content);
+        });
+        console.log(`[Clipboard] Updated content store for ${Object.keys(pastedNodeContentsInfo).length} nodes.`);
         
-        // 3. Take snapshot - remove explicit type, rely on function signature
-        const updatedNodes = useFlowStructureStore.getState().nodes;
+        // 3. 히스토리 스냅샷 생성
+        const updatedNodes = useFlowStructureStore.getState().nodes; // 업데이트된 상태 다시 가져오기
         const updatedEdges = useFlowStructureStore.getState().edges;
         const updatedContents = getAllNodeContentsFromStore(); 
         pushSnapshot({ 
-          nodes: updatedNodes,
-          edges: updatedEdges,
+          nodes: cloneDeep(updatedNodes), // 스냅샷 위해 깊은 복사
+          edges: cloneDeep(updatedEdges),
           contents: cloneDeep(updatedContents)
         }); 
+        console.log('[Clipboard] Pushed snapshot to history.');
       });
       
-      console.log('[Clipboard] State updated (flushSync complete)');
+      console.log('[Clipboard] State update sequence complete (within flushSync). initiating async UI updates...');
 
-      function continueWithPasteProcess() {
-        const currentLastPasteOp = lastPasteOpRef.current;
-        if (!currentLastPasteOp) return;
-        
-        const { newNodeIds: pastedNodeIds } = currentLastPasteOp;
-        
-        setTimeout(() => {
-          const allNodes = getNodes(); 
-          const updatedNodesForSelection = allNodes.map((n: Node) => ({ 
-            ...n,
-            selected: pastedNodeIds.includes(n.id)
-          }));
-          setNodes(updatedNodesForSelection as Node<NodeData>[]);
-          
-          if (pastedNodeIds.length > 0) {
-             // Pass the FIRST ID as an array 
-             useFlowStructureStore.getState().setSelectedNodeIds?.([pastedNodeIds[0]]); 
-             console.log(`[Clipboard] Selected ${pastedNodeIds.length} pasted nodes.`);
-          }
-          
-          recentlyPastedNodeIdsRef.current = new Set(pastedNodeIds);
-          focusViewportOnNodes(pastedNodeIds);
-          
-          const verifyTimeout = setTimeout(verifyReactFlowSync, 500);
-          activeTimeoutRefs.current.push(verifyTimeout as unknown as number);
-          
-          const lockTimeout = setTimeout(() => {
-            recentlyPastedNodeIdsRef.current.clear(); 
-            console.log('[Clipboard] Selection lock released.');
-          }, MAX_SELECTION_LOCK_TIME);
-          activeTimeoutRefs.current.push(lockTimeout as unknown as number);
-
-         }, 0); 
-      }
-
-      requestAnimationFrame(continueWithPasteProcess);
+      // --- 비동기 후처리 --- 
+      // lastPasteOpRef 업데이트 (나중에 사용할 최종 노드/엣지 정보 저장)
+      lastPasteOpRef.current = {
+        newNodeIds, 
+        firstNodeId: newNodeIds.length > 0 ? newNodeIds[0] : '', 
+        updatedNodes: finalNodes, 
+        updatedEdges: finalEdges
+      };
+      
+      // 붙여넣기 후처리 시작 (선택, 뷰포트 조정 등)
+      requestAnimationFrame(handleDeferredPasteUIUpdates);
       
     } catch (error) {
       console.error('[Clipboard] Error during paste operation:', error);
@@ -695,7 +672,7 @@ export const useClipboard = (): UseClipboardReturnType => {
       activeTimeoutRefs.current.push(releaseLockTimeout as unknown as number);
     }
 
-  }, [reactFlowInstance, screenToFlowPosition, getViewport, setNodes, setEdges, setNodeContent, pushSnapshot, getNodes, focusViewportOnNodes, verifyReactFlowSync, nodes, edges, checkNodesInDOM, syncSelectionState]);
+  }, [reactFlowInstance, screenToFlowPosition, getViewport, setNodes, setEdges, setNodeContent, pushSnapshot, getNodes, focusViewportOnNodes, verifyReactFlowSync, checkNodesInDOM, syncSelectionState, handleDeferredPasteUIUpdates]); // 의존성 배열 업데이트
 
   // Check if pasting is possible
   const canPaste = hasClipboardData();

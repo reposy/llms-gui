@@ -8,11 +8,11 @@ export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 export type LLMMode = 'text' | 'vision'; // Define LLMMode directly here
 
 // Define a FileLikeObject type for file content
-// export interface FileLikeObject {
-//   file: string; // File name
-//   type: string; // MIME type
-//   content?: string | ArrayBuffer; // Optional file content
-// }
+export interface FileLikeObject {
+  file: string; // File name
+  type: string; // MIME type
+  content?: string | ArrayBuffer; // Optional file content
+}
 
 // LLM 응답 타입 정의
 export interface LLMResult {
@@ -186,14 +186,6 @@ export interface APIResponse {
   // Add other relevant response properties if needed (e.g., status, statusText)
 }
 
-// Example of a potential existing NodeData definition - adjust as needed
-export interface BaseNodeData {
-  label: string;
-  isRunning?: boolean; // Optional: for nodes that execute actions
-  errorMessage?: string | null; // Optional: for execution errors
-  [key: string]: any; // Allow other properties
-}
-
 // ... ensure other node data types like APINodeContent, ConditionalNodeContent etc. exist ...
 
 // If APINodeContent exists, ensure it includes the necessary fields
@@ -242,15 +234,6 @@ export type NodeContent =
   | TextNodeContent
   | ConditionalNodeContent
   | GroupNodeContent;
-
-// Node type string literals corresponding to NodeContent types
-export type NodeType = 
-  | 'api' 
-  | 'input' 
-  | 'output'
-  | 'text'
-  | 'conditional'
-  | 'group';
 
 // Overwrite React Flow's Node type to use our specific data structure
 // Ensure this aligns with how nodes are created/used in React Flow

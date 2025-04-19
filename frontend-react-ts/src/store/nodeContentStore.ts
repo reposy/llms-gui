@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
-import { FileLikeObject } from '../types/nodes';
 
 /**
  * 노드 컨텐츠의 기본 인터페이스
@@ -19,7 +18,7 @@ export interface BaseNodeContent {
  * 입력 노드 컨텐츠
  */
 export interface InputNodeContent extends BaseNodeContent {
-  items: (string | FileLikeObject)[];
+  items: (string | File)[];
   textBuffer?: string;
   iterateEachRow: boolean;
 }
