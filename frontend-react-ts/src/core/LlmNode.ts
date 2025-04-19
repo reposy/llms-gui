@@ -67,6 +67,13 @@ export class LlmNode extends Node {
     // Mark node as running at the beginning of execution
     this.context?.markNodeRunning(this.id); 
 
+    // Store input filename if mode is vision and input is a single File
+    let inputFileName: string | null = null;
+    if (this.property.mode === 'vision' && input instanceof File) {
+      inputFileName = input.name;
+      this.context?.log(`${this.type}(${this.id}): Input is a single file: ${inputFileName}`);
+    }
+
     const currentProps = this.property;
     this.context?.log(`[DEBUG] ${this.type}(${this.id}): Checking properties: ${JSON.stringify(currentProps)}`); 
 
@@ -168,7 +175,15 @@ export class LlmNode extends Node {
          throw new Error('llmService.runLLM returned null or failed unexpectedly.');
       }
 
-      const resultText = llmResult.response;
+      let resultText = llmResult.response;
+      
+      // --- Prepend filename if applicable --- 
+      if (inputFileName) { // This is only set if mode is vision and input was a single File
+        resultText = `[${inputFileName}] ${resultText}`;
+        this.context?.log(`${this.type}(${this.id}): Prepended filename to response.`);
+      }
+      // --- End prepend logic --- 
+
       this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
       this.context?.storeOutput(this.id, resultText); // Store result in execution context
       return resultText;
