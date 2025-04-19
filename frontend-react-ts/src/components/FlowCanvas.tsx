@@ -80,7 +80,7 @@ export interface FlowCanvasApi {
 }
 
 interface FlowCanvasProps {
-  onNodeSelect: (node: Node<NodeData> | null) => void;
+  onNodeSelect: (nodeIds: string[] | null) => void;
   registerReactFlowApi?: (api: FlowCanvasApi) => void;
   children?: React.ReactNode;
 }
@@ -118,7 +118,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       // Selection logic is now handled by onSelectionChange callback
       if (node) {
         console.log(`[FlowCanvas] Node selected: ${node.id}`);
-        onNodeSelect(node); // 전달받은 prop 함수 호출
+        onNodeSelect([node.id]); // Call with node.id instead of node object
       } else {
         console.log(`[FlowCanvas] Node selection cleared`);
         onNodeSelect(null);
@@ -212,7 +212,11 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     }
     const selectedIds = selectedFlowNodes.map(node => node.id);
     setSelectedNodeIds(selectedIds);
-  }, [isRestoringHistoryRef]);
+    
+    // Pass all selected node IDs to the parent component
+    console.log(`[FlowCanvas] Directly calling onNodeSelect with ${selectedIds.length} nodes: ${selectedIds.join(', ')}`);
+    onNodeSelect(selectedIds.length > 0 ? selectedIds : null);
+  }, [isRestoringHistoryRef, onNodeSelect]);
   
   // onDragOver, onDrop handlers
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -356,9 +360,9 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
 
 // Define props for FlowCanvasWrapper if needed, otherwise remove if FlowCanvas is used directly
 interface FlowCanvasWrapperProps {
-   onNodeSelect: (node: Node<NodeData> | null) => void;
-   registerReactFlowApi?: (api: FlowCanvasApi) => void;
-   children?: React.ReactNode;
+  onNodeSelect: (nodeIds: string[] | null) => void;
+  registerReactFlowApi?: (api: FlowCanvasApi) => void;
+  children?: React.ReactNode;
 }
 
 // This wrapper might be unnecessary if FlowEditor directly renders FlowCanvas within ReactFlowProvider

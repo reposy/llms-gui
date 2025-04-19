@@ -20,7 +20,7 @@ import {
 type SelectionModifierKey = 'ctrl' | 'shift' | 'none';
 
 interface UseNodeHandlersOptions {
-  onNodeSelect: (node: Node | null) => void;
+  onNodeSelect: (nodeIds: string[] | null) => void;
 }
 
 interface UseNodeHandlersReturn {
@@ -198,30 +198,36 @@ export const useNodeHandlers = (
     if (nodesToDelete.length === 0) return;
     
     const nodeIdsToDelete = new Set(nodesToDelete.map(n => n.id));
-    // Get current state directly from Zustand store for correct types
-    const currentNodes = useFlowStructureStore.getState().nodes;
-    const currentEdges = useFlowStructureStore.getState().edges;
-
-    // Group node deletion logic removed 
+    const currentNodes = getNodes() as Node<NodeData>[];
+    const currentEdges = getEdges();
     
-    // Filter nodes based on the correct type from Zustand state
-    const nextNodes: Node<NodeData>[] = currentNodes.filter(node => !nodeIdsToDelete.has(node.id));
+    // 1. Filter out nodes to delete
+    const remainingNodes = currentNodes.filter(node => !nodeIdsToDelete.has(node.id));
     
-    // Calculate connected edges using the correct type
+    // 2. Get all connected edges to deleted nodes
     const connectedEdges = getConnectedEdges(nodesToDelete, currentEdges);
-    const edgeIdsToRemove = new Set(connectedEdges.map(e => e.id));
+    const connectedEdgeIds = new Set(connectedEdges.map(e => e.id));
     
-    // Filter edges based on the correct type from Zustand state
-    const nextEdges: Edge[] = currentEdges.filter(edge => !edgeIdsToRemove.has(edge.id));
+    // 3. Filter out connected edges
+    const remainingEdges = currentEdges.filter(edge => !connectedEdgeIds.has(edge.id));
     
-    // Pass the correctly typed arrays directly to Zustand actions
-    setZustandNodes(nextNodes);
-    setZustandEdges(nextEdges);
-    
-    onNodeSelect(null);
-  // Dependencies updated: Removed getNodes, getEdges. Added getConnectedEdges, onNodeSelect.
-  // Zustand actions (setZustandNodes, setZustandEdges) don't need to be dependencies as they are stable.
-  }, [getConnectedEdges, onNodeSelect]);
+    // 4. Update Zustand state
+    setZustandNodes(remainingNodes);
+    setZustandEdges(remainingEdges);
+
+    // 5. Clear selection if all selected nodes were deleted
+    if (remainingNodes.every(node => !node.selected)) {
+      setZustandSelectedNodeIds([]);
+      onNodeSelect(null);
+    } else {
+      // If some selected nodes remain, update selection
+      const selectedNodeIds = remainingNodes
+        .filter(node => node.selected)
+        .map(node => node.id);
+      setZustandSelectedNodeIds(selectedNodeIds);
+      onNodeSelect(selectedNodeIds.length > 0 ? selectedNodeIds : null);
+    }
+  }, [getNodes, getEdges, onNodeSelect]);
 
   return {
     handleConnect,

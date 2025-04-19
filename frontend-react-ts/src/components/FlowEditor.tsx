@@ -29,7 +29,7 @@ export const FlowEditor = () => {
     (state) => ({ getNodeContent: state.getNodeContent, setNodeContent: state.setNodeContent })
   );
 
-  const [selectedNodeIdForSidebar, setSelectedNodeIdForSidebar] = useState<string | null>(null);
+  const [selectedNodeIdForSidebar, setSelectedNodeIdForSidebar] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (hydrated && !initialSnapshotCreatedRef.current) {
@@ -79,19 +79,38 @@ export const FlowEditor = () => {
 
   const [isExecuting, setIsExecuting] = useState(false);
 
-  const handleNodeSelect = useCallback((nodeId: string | null) => {
-    console.log(`[FlowEditor] Node selection changed: ${nodeId}`);
-    setSelectedNodeIdForSidebar(nodeId);
-  }, []);
+  const handleNodeSelect = useCallback((nodeIds: string[] | null) => {
+    console.log(`[FlowEditor] Node selection changed:`, nodeIds);
+    if (!nodeIds && !selectedNodeIdForSidebar) {
+      console.log(`[FlowEditor] Selection unchanged (null), not updating state`);
+      return;
+    }
+    
+    if (nodeIds && selectedNodeIdForSidebar && 
+        nodeIds.length === selectedNodeIdForSidebar.length && 
+        nodeIds.every((id, idx) => id === selectedNodeIdForSidebar[idx])) {
+      console.log(`[FlowEditor] Selection unchanged, not updating state`);
+      return;
+    }
+    
+    console.log(`[FlowEditor] Updating selectedNodeIdForSidebar to:`, nodeIds);
+    setSelectedNodeIdForSidebar(nodeIds);
+  }, [selectedNodeIdForSidebar]);
 
   const selectedNode = useMemo(() => {
-    if (selectedNodeIdForSidebar) {
-      return nodes.find(n => n.id === selectedNodeIdForSidebar);
+    if (selectedNodeIdForSidebar && selectedNodeIdForSidebar.length > 0) {
+      return nodes.find(n => n.id === selectedNodeIdForSidebar[0]);
     }
     return null;
   }, [nodes, selectedNodeIdForSidebar]);
 
-  const isGroupSelected = selectedNode?.type === 'group';
+  const isGroupSelected = useMemo(() => {
+    if (selectedNodeIdForSidebar && selectedNodeIdForSidebar.length === 1) {
+      const node = nodes.find(n => n.id === selectedNodeIdForSidebar[0]);
+      return node?.type === 'group';
+    }
+    return false;
+  }, [nodes, selectedNodeIdForSidebar]);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
@@ -142,7 +161,7 @@ export const FlowEditor = () => {
           {isGroupSelected ? (
             <GroupDetailSidebar selectedNodeIds={selectedNodeIds} />
           ) : (
-            <NodeConfigSidebar selectedNodeId={selectedNodeIdForSidebar} />
+            <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} />
           )}
         </div>
       </div>

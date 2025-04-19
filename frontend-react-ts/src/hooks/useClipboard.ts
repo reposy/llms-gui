@@ -78,8 +78,8 @@ export const useClipboard = (): UseClipboardReturnType => {
   const focusViewportOnNodes = useCallback((nodeIds: string[], animate = true) => {
     if (!nodeIds.length) return;
     try {
-      // 더 긴 애니메이션 지속 시간으로 사용자가 변화를 인지할 수 있게 합니다
-      const duration = animate ? 800 : 300; // 비애니메이션도 약간의 전환 효과 추가
+      // 애니메이션 매개변수가 false일 때는 지속 시간을 0으로 설정
+      const duration = animate ? 800 : 0;
       
       if (nodeIds.length === 1) {
         const node = getNodes().find(n => n.id === nodeIds[0]);
@@ -93,7 +93,7 @@ export const useClipboard = (): UseClipboardReturnType => {
           // 노드 하나일 때는 현재 줌보다 약간 확대해서 더 잘 보이게 함
           const targetZoom = Math.min(Math.max(zoom, 1.2), 1.8); // 줌 레벨을 1.2~1.8 사이로 조정
           
-          console.log(`[Clipboard] Focusing on single node at (${nodeCenter.x}, ${nodeCenter.y}) with zoom ${targetZoom}`);
+          console.log(`[Clipboard] Focusing on single node at (${nodeCenter.x}, ${nodeCenter.y}) with zoom ${targetZoom}${animate ? ' with animation' : ' without animation'}`);
           
           setViewport(
             { 
@@ -106,7 +106,7 @@ export const useClipboard = (): UseClipboardReturnType => {
         }
       } else {
         // 여러 노드일 경우 fitView 사용하되 패딩과 줌 제약을 조정
-        console.log(`[Clipboard] Fitting view to ${nodeIds.length} nodes with animation`);
+        console.log(`[Clipboard] Fitting view to ${nodeIds.length} nodes${animate ? ' with animation' : ' without animation'}`);
         
         fitView({
           padding: 0.3, // 패딩 증가로 더 여유있게 보임
@@ -117,7 +117,7 @@ export const useClipboard = (): UseClipboardReturnType => {
           includeHiddenNodes: false
         });
       }
-      console.log(`[Clipboard] Focused viewport on ${nodeIds.length} pasted nodes`);
+      console.log(`[Clipboard] Focused viewport on ${nodeIds.length} pasted nodes${animate ? ' with animation' : ' without animation'}`);
     } catch (e) {
       console.warn('[Clipboard] Error focusing viewport:', e);
     }
@@ -241,8 +241,8 @@ export const useClipboard = (): UseClipboardReturnType => {
          setZustandSelectedNodeIds(newNodeIds);
          console.log('[Clipboard] Set selection to new nodes.');
 
-         // 6. Focus viewport (애니메이션 활성화로 변경)
-         focusViewportOnNodes(newNodeIds, true); // true로 변경하여 애니메이션 활성화
+         // 6. Focus viewport 기능 비활성화 (뷰포트 이동 없음)
+         // focusViewportOnNodes(newNodeIds, false); // 뷰포트 이동 제거
 
          // 7. Release paste lock
          isManualPasteInProgressRef.current = false;
