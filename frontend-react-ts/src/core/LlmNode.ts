@@ -3,7 +3,7 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
-import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
+import { filterImageFiles, hasImageExtension } from '../utils/data/fileUtils.ts';
 
 /**
  * LLM node for generating text via LLM providers
@@ -117,31 +117,29 @@ export class LlmNode extends Node {
             inputArray = input;
         } else if (input instanceof File) {
             inputArray = [input];
-        } else if (input && typeof input === 'object' && 'path' in input && 'name' in input) {
-            // TODO: How to handle FileLikeObject - needs access to the actual File
-            this.context?.log(`${this.type}(${this.id}): Warning - FileLikeObject received, cannot process for vision without File.`);
-            inputArray = []; // Cannot process
-        } else if (typeof input === 'string' && /.(jpg|jpeg|png|gif|bmp)$/i.test(input)) {
-            // TODO: Handle string paths? Needs access to File object.
+        } else if (typeof input === 'string' && hasImageExtension(input)) {
+            // Handle string paths? Needs access to File object.
             this.context?.log(`${this.type}(${this.id}): Warning - Image path string received, cannot process for vision without File.`);
-            inputArray = []; // Cannot process
+            // Ensure inputArray remains empty or as previously determined if we can't process strings
+            inputArray = inputArray || []; 
         } else {
-           this.context?.log(`${this.type}(${this.id}): Vision mode selected, but input is not an image or array of images. Input type: ${typeof input}`);
-           // Proceed without images, or potentially error?
-           // For now, let's proceed, llmService won't get images.
+           // Handle other non-file/array inputs for vision
+           this.context?.log(`${this.type}(${this.id}): Vision mode selected, but input is not a File, array, or recognized image path string. Input type: ${typeof input}`);
+           inputArray = inputArray || [];
         }
 
-        // Extract File objects from the input
-        inputFileObjects = inputArray.filter((item): item is File => item instanceof File);
+        // Use the utility function to filter image files
+        inputFileObjects = filterImageFiles(inputArray);
+        
         if (inputFileObjects.length > 0) {
             this.context?.log(`${this.type}(${this.id}): Found ${inputFileObjects.length} image file(s) for vision mode.`);
         } else {
-            this.context?.log(`${this.type}(${this.id}): No valid File objects found for vision mode.`);
+            this.context?.log(`${this.type}(${this.id}): No valid *image* File objects found for vision mode.`);
         }
         // In vision mode, use the original prompt
 
       } else { // mode === 'text'
-        finalPrompt = this.resolvePrompt(input); // Resolve prompt only for text mode
+        finalPrompt = this.resolvePrompt(input);
         this.context?.log(`${this.type}(${this.id}): Resolved prompt: ${finalPrompt.substring(0, 50)}...`);
       }
 
