@@ -1,73 +1,67 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
+import { Node } from '@xyflow/react'; // Import Node type
+import { NodeData } from '../../types/nodes'; // Import NodeData type
 
 // Enable debugging logs
-const DEBUG_LOGS = true;
+const DEBUG_LOGS = false; // Disable logs for cleaner output, enable if needed
 
 interface NodeConfigSidebarProps {
-  selectedNodeIds: string[];
+  selectedNodeId: string | null; // Prop name and type changed
 }
 
-export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNodeIds }) => {
+export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNodeId }) => {
   const nodes = useNodes();
   const [isOpen, setIsOpen] = useState(false);
 
-  // 단일 선택 노드
-  const selectedNode = useMemo(() => {
-    if (selectedNodeIds.length === 1) {
-      const foundNode = nodes.find(node => node.id === selectedNodeIds[0]);
+  // Find the selected node based on the single ID
+  const selectedNode: Node<NodeData> | undefined = useMemo(() => {
+    if (selectedNodeId) { // Check if ID is not null
+      const foundNode = nodes.find(node => node.id === selectedNodeId);
       if (DEBUG_LOGS) {
-        console.log(`[NodeConfigSidebar] Found node:`, foundNode);
+        console.log(`[NodeConfigSidebar] Found node for ID ${selectedNodeId}:`, foundNode);
       }
       return foundNode;
     }
-    return null;
-  }, [nodes, selectedNodeIds]);
+    return undefined; // Return undefined instead of null if not found or no ID
+  }, [nodes, selectedNodeId]);
 
-  // 사이드바 열림 상태 업데이트
+  // Update sidebar open state based on whether a node is selected
   useEffect(() => {
-    setIsOpen(selectedNodeIds.length === 1 && !!selectedNode);
+    setIsOpen(!!selectedNode); // Open if selectedNode exists
     if (DEBUG_LOGS) {
       console.log('[NodeConfigSidebar] Selection changed:', {
-        selectedNodeIds,
+        selectedNodeId,
         hasNode: !!selectedNode,
         nodeType: selectedNode?.type
       });
     }
-  }, [selectedNode, selectedNodeIds]);
+  }, [selectedNode, selectedNodeId]);
 
-  // 무선택 또는 다중 선택 시 사이드바 비움/안내
-  if (selectedNodeIds.length === 0) return null;
-  if (selectedNodeIds.length > 1) {
-    return (
-      <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-4 border-l flex flex-col items-center justify-center">
-        <div className="text-lg font-semibold text-gray-700 mb-2">여러 노드가 선택되었습니다.</div>
-        <div className="text-gray-500 text-sm">그룹화, 삭제 등 다중 선택 액션을 사용할 수 있습니다.</div>
-      </div>
-    );
-  }
+  // If no node is selected or the sidebar is not open, render nothing
+  if (!selectedNode || !isOpen) return null; 
 
-  // 단일 노드 선택 시 상세
-  if (!isOpen) return null;
+  // Removed multi-select message logic
+
+  // Render sidebar content for the single selected node
   if (DEBUG_LOGS) {
     console.log('[NodeConfigSidebar] Rendering sidebar for node:', {
-      id: selectedNode?.id,
-      type: selectedNode?.type,
-      label: selectedNode?.data?.label
+      id: selectedNode.id,
+      type: selectedNode.type,
+      label: selectedNode.data?.label
     });
   }
 
   return (
-    <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-4 border-l">
-      {selectedNode && (
-        <>
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            {selectedNode.data.label || (selectedNode.type ? selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1) : 'Node')}
-          </h2>
-          <ConfigFactory selectedNode={selectedNode} />
-        </>
-      )}
+    <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-6 border-l border-gray-200 flex flex-col">
+      <h2 className="text-xl font-semibold text-gray-800 mb-6 border-b pb-3">
+        {/* Improve title display */}
+        {selectedNode.data?.label || 
+         (selectedNode.type ? selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1) : 'Node') + ' Configuration'}
+      </h2>
+      {/* Pass the correctly typed selectedNode */}
+      <ConfigFactory selectedNode={selectedNode as Node<NodeData>} /> 
     </div>
   );
 }; 

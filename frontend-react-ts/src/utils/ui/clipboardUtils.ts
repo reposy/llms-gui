@@ -46,6 +46,9 @@ const CLIPBOARD_STORAGE_KEY = 'flow-editor-clipboard';
  * @returns The number of nodes copied
  */
 export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], allEdges: Edge[]): number => {
+  console.log('[ClipboardUtils DEBUG] copyNodesAndEdgesFromInstance 호출됨');
+  console.log('[ClipboardUtils DEBUG] 선택된 노드 수:', selectedNodes.length);
+  
   if (selectedNodes.length === 0) {
     console.log('[Clipboard] No selected nodes provided to copy');
     return 0;
@@ -53,35 +56,43 @@ export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], a
 
   // Collect node IDs for filtering edges
   const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+  console.log('[ClipboardUtils DEBUG] 선택된 노드 ID들:', Array.from(selectedNodeIds));
   
   // Only copy edges where both source and target are selected nodes
   const relevantEdges = allEdges.filter(edge => 
     selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
   );
+  console.log('[ClipboardUtils DEBUG] 관련 엣지 수:', relevantEdges.length);
 
   // Fetch and store the DEEP COPIED content for each selected node
   const nodeContents: Record<string, NodeContent> = {};
   selectedNodes.forEach(node => {
     const content = getNodeContent(node.id); // useNodeContentStore에서 가져오기
+    console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!content);
     if (content) {
       // 콘텐츠 데이터 깊은 복사
       nodeContents[node.id] = cloneDeep(content); 
     }
   });
 
-  // Store data in memory (deep copy nodes/edges as well for safety)
-  clipboardMemory = {
-    nodes: cloneDeep(selectedNodes), // 노드 구조도 깊은 복사
-    edges: cloneDeep(relevantEdges), // 엣지 구조도 깊은 복사
-    nodeContents // 콘텐츠는 이미 위에서 깊은 복사됨
-  };
-
-  // Persist to localStorage if available
   try {
-    // localStorage에도 깊은 복사된 데이터 저장
+    // Store data in memory (deep copy nodes/edges as well for safety)
+    clipboardMemory = {
+      nodes: cloneDeep(selectedNodes), // 노드 구조도 깊은 복사
+      edges: cloneDeep(relevantEdges), // 엣지 구조도 깊은 복사
+      nodeContents // 콘텐츠는 이미 위에서 깊은 복사됨
+    };
+    console.log('[ClipboardUtils DEBUG] clipboardMemory 설정 완료:', {
+      nodesCount: clipboardMemory.nodes.length,
+      edgesCount: clipboardMemory.edges.length,
+      contentsCount: Object.keys(clipboardMemory.nodeContents).length
+    });
+
+    // Persist to localStorage if available
     localStorage.setItem(CLIPBOARD_STORAGE_KEY, JSON.stringify(clipboardMemory)); 
+    console.log('[ClipboardUtils DEBUG] localStorage에 저장 완료');
   } catch (error) {
-    console.warn('[Clipboard] Failed to persist to localStorage:', error);
+    console.error('[Clipboard] Failed to save clipboard data:', error);
   }
 
   console.log(`[Clipboard] Copied ${selectedNodes.length} nodes and ${relevantEdges.length} edges from instance state`);

@@ -146,7 +146,10 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
-              onClick={() => setMode('text')}
+              onClick={(e) => { 
+                e.stopPropagation();
+                setMode('text'); 
+              }}
             >
               Text
             </button>
@@ -157,7 +160,12 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               } ${!canEnableVisionMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-300'}`}
-              onClick={() => setMode('vision')}
+              onClick={(e) => { 
+                e.stopPropagation();
+                if (canEnableVisionMode) {
+                  setMode('vision');
+                } 
+              }}
             >
               Vision
             </button>
