@@ -30,13 +30,16 @@ class OllamaService implements LLMProviderService {
     const effectiveTemperature = temperature ?? 0.7;
 
     if (isVisionMode) {
+      // Extract only the base64 strings for the Ollama API
+      const base64ImageStrings = images.map(img => img.base64);
+      
       body = JSON.stringify({ 
         model,
         messages: [
           {
             role: 'user',
             content: prompt,
-            images: images // Pass the array of Base64 data strings
+            images: base64ImageStrings // Pass only the array of base64 strings
           }
         ],
         stream: false, 
