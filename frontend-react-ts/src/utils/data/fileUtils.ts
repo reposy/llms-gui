@@ -113,6 +113,29 @@ export function readFileAsBase64(file: File): Promise<string> {
 }
 
 /**
+ * Filters an array of items and returns only the image File objects.
+ * @param items An array potentially containing File objects and other types.
+ * @returns An array containing only the image File objects.
+ */
+export function filterImageFiles(items: any[]): File[] {
+  return items.filter((item): item is File => 
+    item instanceof File && item.type.startsWith('image/')
+  );
+}
+
+/**
+ * Checks if a string ends with a common image file extension.
+ * @param filename The string (presumably a filename or path) to check.
+ * @returns True if the string ends with a known image extension, false otherwise.
+ */
+export function hasImageExtension(filename: string): boolean {
+  if (typeof filename !== 'string') {
+    return false;
+  }
+  return /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(filename);
+}
+
+/**
  * Get file path information for Ollama vision API
  * @deprecated This function might be misleading as Ollama library in browser needs Base64, not path.
  * Instead of converting to base64, this returns the filename as a path

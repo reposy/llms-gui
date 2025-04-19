@@ -3,7 +3,7 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
-import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
+import { filterImageFiles, hasImageExtension } from '../utils/data/fileUtils.ts';
 
 /**
  * LLM node for generating text via LLM providers
@@ -107,8 +107,8 @@ export class LlmNode extends Node {
     this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
 
     try {
-      // --- Prepare input data (images and prompt) --- 
-      let imageData: { base64: string, mimeType: string }[] | undefined = undefined;
+      // --- Prepare input files (for vision) and final prompt --- 
+      let inputFileObjects: File[] | undefined = undefined;
       let finalPrompt = prompt;
 
       if (mode === 'vision') {
@@ -117,48 +117,36 @@ export class LlmNode extends Node {
             inputArray = input;
         } else if (input instanceof File) {
             inputArray = [input];
-        } else if (input && typeof input === 'object' && 'path' in input && 'name' in input) {
-            // TODO: How to handle FileLikeObject - needs access to the actual File
-            this.context?.log(`${this.type}(${this.id}): Warning - FileLikeObject received, cannot process for vision without File.`);
-            inputArray = []; // Cannot process
-        } else if (typeof input === 'string' && /.(jpg|jpeg|png|gif|bmp)$/i.test(input)) {
-            // TODO: Handle string paths? Needs access to File object.
+        } else if (typeof input === 'string' && hasImageExtension(input)) {
+            // Handle string paths? Needs access to File object.
             this.context?.log(`${this.type}(${this.id}): Warning - Image path string received, cannot process for vision without File.`);
-            inputArray = []; // Cannot process
+            // Ensure inputArray remains empty or as previously determined if we can't process strings
+            inputArray = inputArray || []; 
         } else {
-           this.context?.log(`${this.type}(${this.id}): Vision mode selected, but input is not an image or array of images. Input type: ${typeof input}`);
-           // Proceed without images, or potentially error?
-           // For now, let's proceed, llmService won't get images.
+           // Handle other non-file/array inputs for vision
+           this.context?.log(`${this.type}(${this.id}): Vision mode selected, but input is not a File, array, or recognized image path string. Input type: ${typeof input}`);
+           inputArray = inputArray || [];
         }
 
-        const fileObjects = inputArray.filter((item): item is File => item instanceof File);
-        if (fileObjects.length > 0) {
-          try {
-            this.context?.log(`${this.type}(${this.id}): Converting ${fileObjects.length} files to Base64...`);
-            const fileReadPromises = fileObjects.map(async (file) => {
-              const base64 = await readFileAsBase64(file);
-              return {
-                base64: base64.split(',')[1], // Extract only base64 data
-                mimeType: file.type // Include the MIME type
-              };
-            });
-            imageData = await Promise.all(fileReadPromises);
-            this.context?.log(`${this.type}(${this.id}): Successfully converted images to Base64 with MIME types.`);
-          } catch (base64Error) {
-            this.context?.log(`${this.type}(${this.id}): Error converting files to Base64: ${base64Error}. Proceeding without images.`);
-            // Continue without images
-          }
+        // Use the utility function to filter image files
+        inputFileObjects = filterImageFiles(inputArray);
+        
+        if (inputFileObjects.length > 0) {
+            this.context?.log(`${this.type}(${this.id}): Found ${inputFileObjects.length} image file(s) for vision mode.`);
         } else {
-             this.context?.log(`${this.type}(${this.id}): No valid File objects found for vision mode.`);
+            this.context?.log(`${this.type}(${this.id}): No valid *image* File objects found for vision mode.`);
         }
-      } else { // mode === 'text' or fallback
+        // In vision mode, use the original prompt
+
+      } else { // mode === 'text'
         finalPrompt = this.resolvePrompt(input);
-        this.context?.log(`${this.type}(${this.id}): Resolved prompt for text mode: ${finalPrompt.substring(0, 100)}...`);
+        this.context?.log(`${this.type}(${this.id}): Resolved prompt: ${finalPrompt.substring(0, 50)}...`);
       }
 
       // --- Validate vision input and prepare LLM params --- 
-      if (mode === 'vision' && (!imageData || imageData.length === 0)) {
-        const errorMsg = "Vision mode requires valid image input.";
+      // Check if vision mode is selected but no valid File objects were found
+      if (mode === 'vision' && (!inputFileObjects || inputFileObjects.length === 0)) {
+        const errorMsg = "Vision mode requires valid image file input, but none were found.";
         this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
         this.context?.markNodeError(this.id, errorMsg);
         return null;
@@ -171,9 +159,10 @@ export class LlmNode extends Node {
         temperature: currentProps.temperature ?? 0.7,
         ollamaUrl: currentProps.ollamaUrl,
         openaiApiKey: currentProps.openaiApiKey,
-        images: imageData
+        // Pass the File objects directly to the service
+        images: inputFileObjects 
       };
-      this.context?.log(`${this.type}(${this.id}): Calling llmService...`);
+      this.context?.log(`${this.type}(${this.id}): Calling llmService with ${params.images?.length ?? 0} file object(s)...`);
 
       // --- Call LLM Service --- 
       const llmResult = await runLLM(params);
