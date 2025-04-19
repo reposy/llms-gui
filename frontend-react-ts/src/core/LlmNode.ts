@@ -58,51 +58,65 @@ export class LlmNode extends Node {
   }
 
   /**
+   * Generates a prefix string based on the input files for vision mode.
+   * Returns '[filename.ext] ' for single file input.
+   * Returns '[file1.jpg, file2.png] ' for array input.
+   * Returns '' otherwise.
+   */
+  private _getResultPrefix(input: any): string {
+    if (this.property.mode !== 'vision') {
+      return ''; // Only apply prefix in vision mode
+    }
+
+    if (input instanceof File) {
+      return `[${input.name}] `;
+    } else if (Array.isArray(input)) {
+      const filenames = input
+        .filter((item): item is File => item instanceof File)
+        .map(file => file.name);
+      if (filenames.length > 0) {
+        return `[${filenames.join(', ')}] `;
+      }
+    }
+
+    return ''; // No applicable prefix found
+  }
+
+  /**
    * Execute the LLM node
    * @param input The input to process
    * @returns The LLM response text or null on error
    */
   async execute(input: any): Promise<string | null> {
     this.context?.log(`${this.type}(${this.id}): Entering execute`); 
-    // Mark node as running at the beginning of execution
-    this.context?.markNodeRunning(this.id); 
+    this.context?.markNodeRunning(this.id);
 
-    // Store input filename if mode is vision and input is a single File
-    let inputFileName: string | null = null;
-    if (this.property.mode === 'vision' && input instanceof File) {
-      inputFileName = input.name;
-      this.context?.log(`${this.type}(${this.id}): Input is a single file: ${inputFileName}`);
-    }
-
+    // --- Get properties and validate --- 
     const currentProps = this.property;
-    this.context?.log(`[DEBUG] ${this.type}(${this.id}): Checking properties: ${JSON.stringify(currentProps)}`); 
-
     const provider = currentProps?.provider;
     const model = currentProps?.model;
     const mode = currentProps.mode ?? 'text';
-    const prompt = currentProps.prompt ?? ''; // Use original prompt for vision
-
-    // Validate necessary properties before calling the service
-    if (!provider || !model) { 
+    const prompt = currentProps.prompt ?? '';
+    
+    if (!provider || !model) {
       const errorMsg = "Missing required properties: provider or model.";
       this.context?.markNodeError(this.id, errorMsg);
       this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}. Properties were: ${JSON.stringify(currentProps)}`);
-      return null; 
+      return null;
     }
-    
     this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
 
     try {
+      // --- Prepare input data (images and prompt) --- 
       let imageData: { base64: string, mimeType: string }[] | undefined = undefined;
-      let finalPrompt = prompt; // Start with the base prompt
+      let finalPrompt = prompt;
 
-      // --- Input Processing for Vision/Text --- 
       if (mode === 'vision') {
         let inputArray: any[] = [];
         if (Array.isArray(input)) {
             inputArray = input;
         } else if (input instanceof File) {
-            inputArray = [input]; 
+            inputArray = [input];
         } else if (input && typeof input === 'object' && 'path' in input && 'name' in input) {
             // TODO: How to handle FileLikeObject - needs access to the actual File
             this.context?.log(`${this.type}(${this.id}): Warning - FileLikeObject received, cannot process for vision without File.`);
@@ -137,62 +151,51 @@ export class LlmNode extends Node {
         } else {
              this.context?.log(`${this.type}(${this.id}): No valid File objects found for vision mode.`);
         }
-        // In vision mode, we typically don't replace {{input}} unless needed
-        // finalPrompt = prompt; // Kept original prompt
-
       } else { // mode === 'text' or fallback
-        finalPrompt = this.resolvePrompt(input); // Resolve prompt only for text mode
+        finalPrompt = this.resolvePrompt(input);
         this.context?.log(`${this.type}(${this.id}): Resolved prompt for text mode: ${finalPrompt.substring(0, 100)}...`);
       }
 
-      // --- Prepare parameters for llmService --- 
-
-      // *** Add check for vision mode without images before proceeding ***
+      // --- Validate vision input and prepare LLM params --- 
       if (mode === 'vision' && (!imageData || imageData.length === 0)) {
-        const errorMsg = "Vision mode requires at least one valid image input, but none were found.";
+        const errorMsg = "Vision mode requires valid image input.";
         this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
         this.context?.markNodeError(this.id, errorMsg);
-        return null; // Stop execution if no images in vision mode
+        return null;
       }
-      // *** End check ***
 
       const params: LLMRequestParams = {
         provider,
         model,
-        prompt: finalPrompt, // Use the potentially resolved prompt
+        prompt: finalPrompt,
         temperature: currentProps.temperature ?? 0.7,
         ollamaUrl: currentProps.ollamaUrl,
         openaiApiKey: currentProps.openaiApiKey,
-        images: imageData // Pass image data objects (or undefined)
+        images: imageData
       };
-      
-      this.context?.log(`${this.type}(${this.id}): Calling llmService.runLLM with params: ${JSON.stringify({...params, prompt: params.prompt.substring(0,50)+ '...', images: params.images ? `[${params.images.length} images with types]` : undefined})}`);
+      this.context?.log(`${this.type}(${this.id}): Calling llmService...`);
 
-      // --- Call the Facade Service --- 
+      // --- Call LLM Service --- 
       const llmResult = await runLLM(params);
+      if (!llmResult) { throw new Error('LLM service returned null.'); }
 
-      if (!llmResult) { // Should not happen if runLLM throws on error
-         throw new Error('llmService.runLLM returned null or failed unexpectedly.');
-      }
-
+      // --- Process and prepend prefix to the result --- 
       let resultText = llmResult.response;
-      
-      // --- Prepend filename if applicable --- 
-      if (inputFileName) { // This is only set if mode is vision and input was a single File
-        resultText = `[${inputFileName}] ${resultText}`;
-        this.context?.log(`${this.type}(${this.id}): Prepended filename to response.`);
+      const prefix = this._getResultPrefix(input);
+      if (prefix) {
+        resultText = prefix + resultText;
+        this.context?.log(`${this.type}(${this.id}): Prepended prefix: ${prefix.substring(0, 50)}...`);
       }
-      // --- End prepend logic --- 
 
       this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
-      this.context?.storeOutput(this.id, resultText); // Store result in execution context
+      this.context?.storeOutput(this.id, resultText);
       return resultText;
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.context?.markNodeError(this.id, errorMessage);
       this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
-      return null; // Return null to stop flow propagation on error
+      return null;
     }
   }
 } 
