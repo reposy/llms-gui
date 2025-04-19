@@ -1,4 +1,5 @@
 import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
+import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
 
 /**
  * Ollama API 호출 함수 (fetch 사용)
@@ -15,50 +16,64 @@ class OllamaService implements LLMProviderService {
       model,
       prompt,
       temperature,
-      images, // Base64 encoded image data (without prefix) expected here
-      ollamaUrl = 'http://localhost:11434' // Use default if not provided in params
+      images, // Now expecting File[] | undefined
+      ollamaUrl = 'http://localhost:11434'
     } = params;
 
-    // --- Start of integrated fetch logic from callOllamaFunc ---
     const isVisionMode = Array.isArray(images) && images.length > 0;
     const endpoint = isVisionMode ? `${ollamaUrl}/api/chat` : `${ollamaUrl}/api/generate`;
     let body: string;
 
     console.log(`Ollama Service: Generating response (${isVisionMode ? 'Vision' : 'Text'}) for model ${model}, Endpoint: ${endpoint}`);
-
-    // Ensure temperature has a default value if not provided
     const effectiveTemperature = temperature ?? 0.7;
 
-    if (isVisionMode) {
-      // Extract only the base64 strings for the Ollama API
-      const base64ImageStrings = images.map(img => img.base64);
-      
-      body = JSON.stringify({ 
-        model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-            images: base64ImageStrings // Pass only the array of base64 strings
-          }
-        ],
-        stream: false, 
-        options: {
-          temperature: effectiveTemperature
-        }
-      }); 
-    } else {
-      body = JSON.stringify({ 
-        model,
-        prompt,
-        stream: false, 
-        options: {
-          temperature: effectiveTemperature
-        }
-      });
-    }
-    
     try {
+      let base64ImageStrings: string[] | undefined = undefined;
+      if (isVisionMode) {
+        // --- Convert File objects to base64 strings --- 
+        console.log(`Ollama Service: Converting ${images.length} files to Base64...`);
+        try {
+            const base64Promises = images.map(file => readFileAsBase64(file));
+            const base64DataUrls = await Promise.all(base64Promises);
+            // Extract only the base64 part (after the comma)
+            base64ImageStrings = base64DataUrls.map(dataUrl => dataUrl.split(',')[1]);
+            console.log(`Ollama Service: Successfully converted images to Base64 strings.`);
+        } catch (conversionError) {
+            console.error('Ollama Service: Error converting files to Base64:', conversionError);
+            throw new Error(`Failed to convert images to Base64: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`);
+        }
+        // --- End conversion --- 
+      }
+
+      // --- Construct request body --- 
+      if (isVisionMode) {
+        body = JSON.stringify({ 
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+              images: base64ImageStrings // Pass the array of base64 strings
+            }
+          ],
+          stream: false, 
+          options: {
+            temperature: effectiveTemperature
+          }
+        }); 
+      } else {
+        body = JSON.stringify({ 
+          model,
+          prompt,
+          stream: false, 
+          options: {
+            temperature: effectiveTemperature
+          }
+        });
+      }
+      // --- End body construction --- 
+    
+      // --- API Call --- 
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -95,20 +110,18 @@ class OllamaService implements LLMProviderService {
       }
       
       console.log('Ollama API 호출 성공');
-      // --- End of integrated fetch logic ---
-
-      // Return using the LLMServiceResponse interface
       return {
         response: responseText,
-        // raw: result // Optionally keep raw response if needed later
       };
   
     } catch (error) {
-      console.error('Ollama API 직접 호출 오류:', error);
-      if (error instanceof Error && error.message.startsWith('Ollama API request failed')) {
+      // Log the error from conversion or API call
+      console.error('Ollama Service Error:', error);
+      // Re-throw a consistent error format if possible
+      if (error instanceof Error && (error.message.startsWith('Ollama API request failed') || error.message.startsWith('Failed to convert images'))) {
           throw error;
       }
-      throw new Error(`Ollama API 호출 실패: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Ollama Service failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

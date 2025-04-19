@@ -1,4 +1,5 @@
 import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
+import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
 
 /**
  * OpenAI API 호출 함수
@@ -15,46 +16,56 @@ class OpenAIService implements LLMProviderService {
       model,
       prompt,
       temperature,
-      openaiApiKey: apiKey, // Renamed for clarity
-      images // Expecting Array<{ base64: string; mimeType: string }> | undefined
+      openaiApiKey: apiKey,
+      images // Now expecting File[] | undefined
     } = params;
 
-    console.log(`OpenAI Service: Generating response for model ${model}. Images provided: ${!!images?.length}`);
+    console.log(`OpenAI Service: Generating response for model ${model}. Files provided: ${images?.length ?? 0}`);
 
     if (!apiKey) {
-      throw new Error('OpenAI API key is required but was not provided in request params.');
+      throw new Error('OpenAI API key is required but was not provided.');
     }
-
-    // Ensure temperature has a default value if not provided
     const effectiveTemperature = temperature ?? 0.7;
 
-    // --- Construct message content based on presence of images ---
-    let messagesContent: any; // Can be string or array
-
-    if (images && images.length > 0) {
-      // Vision API structure
-      messagesContent = [
-        { type: "text", text: prompt } // Text part
-      ];
-      images.forEach(image => {
-        messagesContent.push({
-          type: "image_url",
-          image_url: {
-             // Construct data URL using MIME type and base64 data
-            url: `data:${image.mimeType};base64,${image.base64}`
-          }
-        });
-      });
-      console.log(`OpenAI Service: Constructed vision message content with ${images.length} image(s).`);
-    } else {
-      // Text-only API structure
-      messagesContent = prompt;
-      console.log(`OpenAI Service: Using text-only message content.`);
-    }
-    // --- ---
-
     try {
-      // --- Start of integrated fetch logic ---
+      // --- Prepare message content (convert files if needed) --- 
+      let messagesContent: any; // Can be string or array
+      const isVisionMode = Array.isArray(images) && images.length > 0;
+
+      if (isVisionMode) {
+        console.log(`OpenAI Service: Converting ${images.length} files for Vision API...`);
+        let imageDataForApi: Array<{ type: string; image_url: { url: string } }> = [];
+        try {
+          const imagePromises = images.map(async (file) => {
+            const base64DataUrl = await readFileAsBase64(file);
+            // OpenAI expects data URL format: data:[mimeType];base64,[data]
+            return {
+              type: "image_url" as const,
+              image_url: { url: base64DataUrl }
+            };
+          });
+          imageDataForApi = await Promise.all(imagePromises);
+          console.log(`OpenAI Service: Successfully prepared ${imageDataForApi.length} image(s) for API.`);
+        } catch (conversionError) {
+            console.error('OpenAI Service: Error converting files:', conversionError);
+            throw new Error(`Failed to convert images for OpenAI: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`);
+        }
+        
+        // Construct Vision API message content
+        messagesContent = [
+          { type: "text", text: prompt }, // Text part first
+          ...imageDataForApi // Spread the image objects
+        ];
+        console.log(`OpenAI Service: Constructed vision message content.`);
+
+      } else {
+        // Text-only API structure
+        messagesContent = prompt;
+        console.log(`OpenAI Service: Using text-only message content.`);
+      }
+      // --- End content preparation --- 
+
+      // --- API Call --- 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -64,12 +75,10 @@ class OpenAIService implements LLMProviderService {
         body: JSON.stringify({
           model,
           messages: [
-            // Use the dynamically constructed content
             { role: 'user', content: messagesContent }
           ],
           temperature: effectiveTemperature,
-          // stream: false // Keep streaming off for now
-          // max_tokens might be needed for vision models
+          // max_tokens: 300 // Consider adding max_tokens for vision
         })
       });
 
@@ -95,20 +104,16 @@ class OpenAIService implements LLMProviderService {
       }
 
       console.log('OpenAI API 호출 성공');
-      // --- End of integrated fetch logic ---
-
       return {
         response: messageContent,
-        // raw: result // Optionally keep raw response if needed later
       };
 
     } catch (error) {
-      console.error('OpenAI API 호출 오류:', error);
-      // Avoid re-throwing generic error if specific error was already thrown
-      if (error instanceof Error && error.message.startsWith('OpenAI API request failed')) {
+      console.error('OpenAI Service Error:', error);
+      if (error instanceof Error && (error.message.startsWith('OpenAI API request failed') || error.message.startsWith('Failed to convert images'))) {
           throw error;
       }
-      throw new Error(`OpenAI API 호출 실패: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`OpenAI Service failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
