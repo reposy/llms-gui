@@ -1,8 +1,9 @@
+import React from 'react';
 import { memo } from 'react';
 import clsx from 'clsx';
 import { EditableNodeLabel } from './EditableNodeLabel';
 import { VIEW_MODES } from '../../../store/viewModeStore';
-import { FaCircle, FaChevronUp, FaChevronDown } from 'react-icons/fa'; // Example icon for dirty state
+import { FaCircle} from 'react-icons/fa'; // Example icon for dirty state
 
 interface Props {
   nodeId: string;

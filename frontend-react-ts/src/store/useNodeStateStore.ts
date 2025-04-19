@@ -1,97 +1,95 @@
-import { createWithEqualityFn } from 'zustand/traditional';
-import { devtools, persist } from 'zustand/middleware';
+import { create } from 'zustand';
+import { NodeState as ExecutionNodeState } from '../types/execution';
 import { isEqual } from 'lodash';
-import { NodeState, defaultNodeState } from '../types/execution';
 
-// Define the state structure for node state management
-export interface NodeStateStoreState {
-  nodeStates: Record<string, NodeState>;
-  
-  // Node state management
+// Use the NodeState from types/execution.ts to ensure consistency
+type NodeState = ExecutionNodeState;
+
+interface NodeStateStore {
+  states: Record<string, NodeState>;
   getNodeState: (nodeId: string) => NodeState;
   setNodeState: (nodeId: string, state: Partial<NodeState>) => void;
-  resetNodeStates: (nodeIds?: string[]) => void;
+  resetNodeState: (nodeId: string) => void;
 }
 
-// Create the Zustand store for node state management
-export const useNodeStateStore = createWithEqualityFn<NodeStateStoreState>()(
-  devtools(
-    persist(
-      (set, get) => ({
-        nodeStates: {},
-
-        // --- State Management Methods --- 
-        getNodeState: (nodeId) => {
-          return get().nodeStates[nodeId] || { ...defaultNodeState };
-        },
-
-        setNodeState: (nodeId, stateUpdate) => {
-          set(prev => {
-            const currentState = prev.nodeStates[nodeId] || defaultNodeState;
-            const updatedNodeState = {
-              ...currentState,
-              ...stateUpdate,
-              _lastUpdate: Date.now()
-            };
-
-            // Auto-clear results/errors based on status changes if not explicitly provided
-            if (stateUpdate.status && stateUpdate.status !== 'success' && stateUpdate.result === undefined) {
-                updatedNodeState.result = null;
-            }
-            if (stateUpdate.status && stateUpdate.status !== 'error' && stateUpdate.error === undefined) {
-                updatedNodeState.error = undefined;
-            }
-            // Always keep execution ID if provided
-            if (stateUpdate.executionId) {
-                updatedNodeState.executionId = stateUpdate.executionId;
-            }
-             // Always keep trigger node ID if provided
-            if (stateUpdate.lastTriggerNodeId) {
-                updatedNodeState.lastTriggerNodeId = stateUpdate.lastTriggerNodeId;
-            }
-
-            const newState = {
-              ...prev.nodeStates,
-              [nodeId]: updatedNodeState
-            };
-            return { nodeStates: newState };
-          });
-        },
-
-        resetNodeStates: (nodeIds?: string[]) => {
-          if (nodeIds && nodeIds.length > 0) {
-            set(prev => {
-              const newNodeStates = { ...prev.nodeStates };
-              nodeIds.forEach(id => {
-                newNodeStates[id] = { ...defaultNodeState }; // Reset to default, don't delete
-              });
-              return { nodeStates: newNodeStates };
-            });
-          } else {
-            set({ nodeStates: {} }); // Reset all if no specific IDs provided
-          }
-        },
-      }),
-      {
-        name: 'node-state-storage',
-        partialize: (state) => ({
-          nodeStates: state.nodeStates,
-        }),
+export const useNodeStateStore = create<NodeStateStore>((set, get) => ({
+  states: {},
+  
+  getNodeState: (nodeId) => {
+    return get().states[nodeId] || { status: 'idle', result: null };
+  },
+  
+  setNodeState: (nodeId, newStateUpdate) => {
+    set((store) => {
+      const currentState = get().getNodeState(nodeId);
+      
+      // Merge the update with the current state
+      const potentialNewState: NodeState = {
+        ...currentState,
+        ...newStateUpdate,
+      };
+      
+      // Check if the relevant parts of the state actually changed
+      const relevantCurrentState = { 
+        status: currentState.status, 
+        result: currentState.result, 
+        error: currentState.error 
+      };
+      const relevantPotentialNewState = { 
+        status: potentialNewState.status, 
+        result: potentialNewState.result, 
+        error: potentialNewState.error 
+      };
+      
+      if (isEqual(relevantCurrentState, relevantPotentialNewState)) {
+        // console.log(`[NodeStateStore] Skipping state update for ${nodeId} - no change.`);
+        return {}; // No actual change, return empty object to skip update
       }
-    )
-  )
-);
+      
+      // Add timestamp only if state actually changes
+      potentialNewState._lastUpdate = Date.now();
+      console.log(`[NodeStateStore] Updating state for ${nodeId}:`, potentialNewState);
+      
+      return {
+        states: {
+          ...store.states,
+          [nodeId]: potentialNewState
+        }
+      };
+    });
+  },
 
-// --- Hooks for Component Usage --- 
+  resetNodeState: (nodeId) => {
+    set((store) => {
+      const newStates = { ...store.states };
+      // 노드 상태를 초기 상태(idle)로 재설정
+      newStates[nodeId] = { status: 'idle', result: null };
+      return { states: newStates };
+    });
+  }
+}));
 
-// Hook to get the state of a specific node
-export const useNodeState = (nodeId: string): NodeState => {
-  return useNodeStateStore(
-    state => state.nodeStates[nodeId] || defaultNodeState,
-    // Use lodash isEqual for deep comparison to prevent unnecessary re-renders
-    isEqual 
-  );
+// 직접 접근 가능한 함수들 내보내기
+export const { 
+  getNodeState, 
+  setNodeState, 
+  resetNodeState 
+} = useNodeStateStore.getState();
+
+/**
+ * 지정된 노드 ID들의 상태를 모두 초기화하는 함수
+ * @param nodeIds 초기화할 노드 ID 배열
+ */
+export const resetNodeStates = (nodeIds: string[]) => {
+  // 각 노드의 상태를 초기화
+  for (const nodeId of nodeIds) {
+    resetNodeState(nodeId);
+  }
 };
 
-// Export actions directly for use outside components
-export const { setNodeState, resetNodeStates, getNodeState } = useNodeStateStore.getState(); 
+/**
+ * 특정 노드의 상태를 조회하는 훅
+ */
+export const useNodeState = (nodeId: string) => {
+  return useNodeStateStore((state) => state.getNodeState(nodeId));
+}; 

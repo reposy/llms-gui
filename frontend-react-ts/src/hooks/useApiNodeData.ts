@@ -1,170 +1,50 @@
-import { useCallback, ChangeEvent } from 'react';
-import { useNodeContent, APINodeContent } from '../store/useNodeContentStore';
+import { useCallback, useEffect, useRef } from 'react';
+import { useNodeContent, APINodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
+import { HTTPMethod, RequestBodyType, APIResponse } from '../types/nodes';
+import { isValidUrl } from '../utils/web/urlUtils';
 
 /**
  * Custom hook to manage API node state and operations using Zustand store.
- * Centralizes logic for both APINode and APIConfig components
+ * Centralizes logic for APINode component
  */
 export const useApiNodeData = ({ 
   nodeId
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContentStore with APINodeContent type
+  // Use the general NodeContent hook with correct type and nodeType
   const { 
     content: generalContent, 
-    setContent,
-    isContentDirty
-  } = useNodeContent(nodeId);
+    updateContent,
+  } = useNodeContent<APINodeContent>(nodeId, 'api');
+
+  // Get isDirty status directly from the store
+  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
 
   // Cast the general content to APINodeContent type
   const content = generalContent as APINodeContent;
 
-  // Destructure content for easier access
+  // Destructure content for easier access, providing defaults
   const url = content.url || '';
   const method = content.method || 'GET';
-  const headers = content.headers || {};
-  const queryParams = content.queryParams || {};
-  const body = content.body || '';
-  const useInputAsBody = content.useInputAsBody || false;
-  const contentType = content.contentType || 'application/json';
-  const bodyFormat = content.bodyFormat || 'raw';
-  const bodyParams = content.bodyParams || [];
-  const label = content.label || 'API Node';
+  const label = content.label || 'API Call';
+  const requestBodyType = content.requestBodyType || 'none';
+  const requestBody = content.requestBody || '';
+  const requestHeaders = content.requestHeaders || {};
+  const response = content.response; 
+  const statusCode = content.statusCode;
+  const executionTime = content.executionTime;
+  const errorMessage = content.errorMessage;
+  const isRunning = content.isRunning || false;
 
+  // const { setNodes } = useReactFlow<APINodeContent>(); // Removed unused hook causing type error
+  const lastRunTimeRef = useRef<number | null>(null);
+  
   /**
-   * Handle URL change, supporting both direct string values and events
-   * This allows the function to be used directly with onChange and for programmatic updates
+   * Deep equality checks to prevent unnecessary updates
    */
-  const handleUrlChange = useCallback((eventOrString: ChangeEvent<HTMLInputElement> | string) => {
-    const newUrl = typeof eventOrString === 'string' ? eventOrString : eventOrString.target.value;
-    if (isEqual(newUrl, url)) {
-      console.log(`[APINode ${nodeId}] Skipping URL update - no change (deep equal)`);
-      return;
-    }
-    setContent({ url: newUrl });
-  }, [nodeId, url, setContent]);
-
-  /**
-   * Handle method change (overloaded version that doesn't require an event)
-   * Supports direct method changes without requiring an event object
-   */
-  const handleMethodChange = useCallback((newMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') => {
-    if (isEqual(newMethod, method)) {
-      console.log(`[APINode ${nodeId}] Skipping method update - no change (deep equal)`);
-      return;
-    }
-    setContent({ method: newMethod });
-  }, [nodeId, method, setContent]);
-
-  /**
-   * Handle method change from select element event
-   */
-  const handleMethodSelectChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const newMethod = event.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-    setContent({ method: newMethod });
-  }, [setContent]);
-
-  /**
-   * Handle headers change with deep equality check
-   */
-  const handleHeadersChange = useCallback((newHeaders: Record<string, string>) => {
-    if (isEqual(newHeaders, headers)) {
-      console.log(`[APINode ${nodeId}] Skipping headers update - no change (deep equal)`);
-      return;
-    }
-    setContent({ headers: newHeaders });
-  }, [nodeId, headers, setContent]);
-
-  /**
-   * Handle single header change
-   */
-  const handleHeaderChange = useCallback((key: string, value: string, oldKey?: string) => {
-    const updatedHeaders = { ...headers };
-    
-    // If oldKey is provided and different from new key, remove the old one
-    if (oldKey && oldKey !== key) {
-      delete updatedHeaders[oldKey];
-    }
-    
-    // Set the new key-value pair
-    if (key) {
-      updatedHeaders[key] = value;
-    }
-    
-    setContent({ headers: updatedHeaders });
-  }, [headers, setContent]);
-
-  /**
-   * Remove a header
-   */
-  const removeHeader = useCallback((key: string) => {
-    const updatedHeaders = { ...headers };
-    delete updatedHeaders[key];
-    setContent({ headers: updatedHeaders });
-  }, [headers, setContent]);
-
-  /**
-   * Add a new header
-   */
-  const addHeader = useCallback((key: string = '', value: string = '') => {
-    // If key is empty, generate a default key
-    const actualKey = key || `header${Object.keys(headers).length + 1}`;
-    const updatedHeaders = { ...headers, [actualKey]: value };
-    setContent({ headers: updatedHeaders });
-  }, [headers, setContent]);
-
-  /**
-   * Handle body change with deep equality check
-   */
-  const handleBodyChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const newBody = event.target.value;
-    if (isEqual(newBody, body)) {
-      console.log(`[APINode ${nodeId}] Skipping body update - no change (deep equal)`);
-      return;
-    }
-    setContent({ body: newBody });
-  }, [nodeId, body, setContent]);
-
-  /**
-   * Handle query params change with deep equality check
-   */
-  const handleQueryParamsChange = useCallback((newQueryParams: Record<string, string>) => {
-    if (isEqual(newQueryParams, queryParams)) {
-      console.log(`[APINode ${nodeId}] Skipping query params update - no change (deep equal)`);
-      return;
-    }
-    setContent({ queryParams: newQueryParams });
-  }, [nodeId, queryParams, setContent]);
-
-  /**
-   * Toggle useInputAsBody
-   */
-  const toggleUseInputAsBody = useCallback((value?: boolean) => {
-    const newValue = value !== undefined ? value : !useInputAsBody;
-    setContent({ useInputAsBody: newValue });
-  }, [useInputAsBody, setContent]);
-
-  /**
-   * Update content type
-   */
-  const handleContentTypeChange = useCallback((newContentType: string) => {
-    setContent({ contentType: newContentType });
-  }, [setContent]);
-
-  /**
-   * Change body format (raw or key-value)
-   */
-  const handleBodyFormatChange = useCallback((newFormat: 'raw' | 'key-value') => {
-    setContent({ bodyFormat: newFormat });
-  }, [setContent]);
-
-  /**
-   * Update multiple properties at once with deep equality check
-   */
-  const updateApiContent = useCallback((updates: Partial<APINodeContent>) => {
-    // Skip update if no actual changes using deep equality
+  const updateContentIfChanged = useCallback((updates: Partial<APINodeContent>) => {
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof APINodeContent];
       return !isEqual(currentValue, value);
@@ -175,38 +55,181 @@ export const useApiNodeData = ({
       return;
     }
     
+    const newContent = { ...content, ...updates };
+
+    if (isEqual(newContent, content)) {
+      console.log(`[APINode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      return;
+    }
+    
     console.log(`[APINode ${nodeId}] Updating content with:`, updates);
-    setContent(updates);
-  }, [nodeId, content, setContent]);
+    updateContent(updates);
+  }, [nodeId, content, updateContent]);
+
+  // Specific event handlers using the central updater
+  const handleUrlChange = useCallback((newUrl: string) => {
+    updateContentIfChanged({ url: newUrl });
+  }, [updateContentIfChanged]);
+  
+  const handleMethodChange = useCallback((newMethod: HTTPMethod) => {
+    updateContentIfChanged({ method: newMethod });
+  }, [updateContentIfChanged]);
+
+  const handleLabelChange = useCallback((newLabel: string) => {
+    updateContentIfChanged({ label: newLabel });
+  }, [updateContentIfChanged]);
+
+  const handleRequestBodyTypeChange = useCallback((newType: RequestBodyType) => {
+    updateContentIfChanged({ requestBodyType: newType });
+  }, [updateContentIfChanged]);
+  
+  const handleRequestBodyChange = useCallback((newBody: string) => {
+    updateContentIfChanged({ requestBody: newBody });
+  }, [updateContentIfChanged]);
+
+  const handleHeadersChange = useCallback((newHeaders: Record<string, string>) => {
+    updateContentIfChanged({ requestHeaders: newHeaders });
+  }, [updateContentIfChanged]);
+
+  const handleResponseChange = useCallback((newResponse: APIResponse | null) => {
+    updateContentIfChanged({ response: newResponse });
+  }, [updateContentIfChanged]);
+
+  const handleStatusCodeChange = useCallback((newStatusCode: number | null) => {
+    updateContentIfChanged({ statusCode: newStatusCode });
+  }, [updateContentIfChanged]);
+
+  const handleExecutionTimeChange = useCallback((newTime: number | null) => {
+    updateContentIfChanged({ executionTime: newTime });
+  }, [updateContentIfChanged]);
+
+  const handleErrorMessageChange = useCallback((newError: string | null) => {
+    updateContentIfChanged({ errorMessage: newError });
+  }, [updateContentIfChanged]);
+
+  const setIsRunning = useCallback((running: boolean) => {
+    updateContentIfChanged({ isRunning: running });
+  }, [updateContentIfChanged]);
+
+  /**
+   * Trigger API execution (implementation likely uses worker or backend call)
+   */
+  const executeApiCall = useCallback(async () => {
+    if (!isValidUrl(url)) {
+      updateContentIfChanged({ 
+        errorMessage: 'Invalid URL',
+        isRunning: false,
+        response: null,
+        statusCode: null,
+        executionTime: null,
+      });
+      return;
+    }
+    if (isRunning) {
+      console.log(`[APINode ${nodeId}] API call already in progress.`);
+      return;
+    }
+
+    setIsRunning(true);
+    updateContentIfChanged({ 
+      errorMessage: null, 
+      response: null, 
+      statusCode: null, 
+      executionTime: null 
+    });
+    lastRunTimeRef.current = Date.now();
+
+    // TODO: Implement actual API call logic (e.g., using fetch in a worker)
+    // Simulating async operation for now
+    console.log(`[APINode ${nodeId}] Executing API call: ${method} ${url}`);
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
+
+    try {
+      // Simulate success
+      const simulatedResponse: APIResponse = { data: { message: `Success for ${url}` }, headers: { 'content-type': 'application/json' } };
+      const simulatedStatusCode = 200;
+      const simulatedTime = Date.now() - (lastRunTimeRef.current ?? Date.now());
+      
+      updateContentIfChanged({
+        response: simulatedResponse,
+        statusCode: simulatedStatusCode,
+        executionTime: simulatedTime,
+        errorMessage: null,
+        isRunning: false,
+      });
+      console.log(`[APINode ${nodeId}] API call successful.`);
+
+      // Trigger visual update/feedback if needed (REMOVED _flash logic)
+      // setNodes((nds: Node<APINodeContent>[]) => nds.map((n: Node<APINodeContent>) => {
+      //   if (n.id === nodeId) {
+      //     // Ensure data merging preserves existing data
+      //     const updatedData = { ...n.data, _flash: Date.now() };
+      //     return { ...n, data: updatedData }; // Add flash trigger
+      //   }
+      //   return n;
+      // }));
+
+    } catch (error) {
+      console.error(`[APINode ${nodeId}] API call failed:`, error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      updateContentIfChanged({
+        errorMessage: message,
+        response: null,
+        statusCode: null,
+        executionTime: null,
+        isRunning: false,
+      });
+    }
+  }, [
+    nodeId, url, method, requestBodyType, requestBody, requestHeaders, 
+    updateContentIfChanged, setIsRunning, isRunning, /* setNodes, */ content
+  ]);
+  
+  // Effect to potentially clear 'isRunning' if component unmounts unexpectedly
+  useEffect(() => {
+    return () => {
+      // Check if the component is still mounted and if the node still exists
+      const nodeContent = useNodeContentStore.getState().contents[nodeId];
+      if (isRunning && nodeContent !== undefined) {
+        console.warn(`[APINode ${nodeId}] Unmounting while API call was in progress. Resetting state.`);
+        // Use the store's setter directly as the hook's context might be gone
+        useNodeContentStore.getState().setNodeContent<APINodeContent>(nodeId, { isRunning: false });
+      }
+    };
+  }, [nodeId, isRunning]);
+
 
   return {
-    // Data
+    // State / Data
     content,
     url,
     method,
-    headers,
-    queryParams,
-    body,
-    useInputAsBody,
-    contentType,
-    bodyFormat,
-    bodyParams,
     label,
+    requestBodyType,
+    requestBody,
+    requestHeaders,
+    response,
+    statusCode,
+    executionTime,
+    errorMessage,
+    isRunning,
     isDirty: isContentDirty,
-    
-    // Event handlers
+
+    // Event Handlers / Updaters
     handleUrlChange,
     handleMethodChange,
-    handleMethodSelectChange,
+    handleLabelChange,
+    handleRequestBodyTypeChange,
+    handleRequestBodyChange,
     handleHeadersChange,
-    handleHeaderChange,
-    removeHeader,
-    addHeader,
-    handleBodyChange,
-    handleQueryParamsChange,
-    toggleUseInputAsBody,
-    handleContentTypeChange,
-    handleBodyFormatChange,
-    updateApiContent,
+    handleResponseChange,
+    handleStatusCodeChange,
+    handleExecutionTimeChange,
+    handleErrorMessageChange,
+    updateContent: updateContentIfChanged,
+    setIsRunning,
+
+    // Actions
+    executeApiCall,
   };
 }; 

@@ -35,6 +35,7 @@ export interface NodeState {
   activeOutputHandle?: string;
   conditionResult?: boolean;
   _lastUpdate?: number;
+  debugData?: Record<string, any>; // Store debugging data for development and troubleshooting
   
   // Iteration metadata
   iterationIndex?: number;

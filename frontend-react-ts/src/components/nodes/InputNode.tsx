@@ -1,5 +1,6 @@
-import React, { useCallback, useState, useEffect } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+// src/components/nodes/InputNode.tsx
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeData } from '../../types/nodes';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
@@ -8,7 +9,7 @@ import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
-import { InputTextManager } from '../input/InputTextManager';
+import { InputTextManagerSidebar } from '../input/InputTextManagerSidebar';
 import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
@@ -19,21 +20,69 @@ import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
+import { useNodeContentStore } from '../../store/useNodeContentStore';
+import { useNodeConnections } from '../../hooks/useNodeConnections';
+import { VIEW_MODES } from '../../store/viewModeStore';
 
-const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) => {
+// Utility function to calculate item counts
+const calculateItemCounts = (items: (string | File)[]) => {
+  if (!items) return { fileCount: 0, textCount: 0, total: 0 };
+  
+  const fileCount = items.filter(item => typeof item !== 'string').length;
+  const textCount = items.filter(item => typeof item === 'string').length;
+  
+  return {
+    fileCount,
+    textCount,
+    total: items.length
+  };
+};
+
+// Utility function to format items for display
+const formatItemsForDisplay = (items: (string | File)[]) => {
+  if (!items) return [];
+  
+  return items.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        id: `item-${index}`,
+        index,
+        display: item,
+        type: 'text',
+        isFile: false,
+        originalItem: item
+      };
+    } else {
+      return {
+        id: `file-${index}`,
+        index,
+        display: item.name || 'Unnamed file',
+        type: item.type,
+        isFile: true,
+        originalItem: item
+      };
+    }
+  });
+};
+
+export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+  // Cast data to InputNodeData where needed
+  const inputData = data as InputNodeData;
+
   // Get node execution state
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
   
   // Get flow structure
   const { nodes, edges } = useFlowStructureStore();
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  // Use incomingConnections array from the hook
+  const { incomingConnections } = useNodeConnections(id); 
 
-  // Use shared input node hook for state and handlers
+  // Use the consolidated input node hook
   const {
+    items,
     textBuffer,
-    itemCounts,
-    formattedItems,
-    showIterateOption,
     iterateEachRow,
     handleTextChange,
     handleAddText,
@@ -41,14 +90,21 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
-    handleConfigChange
   } = useInputNodeData({ nodeId: id });
+  
+  // Calculate derived UI state using useMemo
+  const itemCounts = useMemo(() => calculateItemCounts(items), [items]);
+  const formattedItems = useMemo(() => formatItemsForDisplay(items), [items]);
+  // Check the length of the incomingConnections array
+  const isRootNode = incomingConnections.length === 0;
 
-  const handleLabelUpdate = useCallback((newLabel: string) => {
-    handleConfigChange({ label: newLabel });
-  }, [handleConfigChange]);
+  // Handle label update via NodeHeader (or similar component)
+  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
+    // Use setNodeContent directly as the consolidated hook doesn't expose it by default
+    setNodeContent(nodeId, { label: newLabel }); 
+  }, [setNodeContent]);
 
-  // Add handler for running the input node
+  // Handle running the input node
   const handleRun = useCallback(() => {
     // Create execution context
     const executionId = `exec-${uuidv4()}`;
@@ -65,7 +121,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
     
     // Create node factory
     const nodeFactory = new NodeFactory();
-    registerAllNodeTypes(nodeFactory);
+    registerAllNodeTypes();
     
     // Find the node data
     const node = nodes.find(n => n.id === id);
@@ -98,7 +154,7 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
   }, [id, nodes, edges]);
   
   // Create a footer summary for display
-  const footerSummary = React.useMemo(() => {
+  const footerSummary = useMemo(() => {
     if (!itemCounts.total) return null;
     
     if (itemCounts.fileCount > 0 && itemCounts.textCount > 0) {
@@ -114,39 +170,59 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
 
   return (
     <NodeErrorBoundary nodeId={id}>
-      <div className={clsx("relative flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-blue-500' : 'border-gray-300', 'w-[350px]')}>
-        <NodeHeader 
-          nodeId={id} 
-          label={data.label || 'Input'} 
-          placeholderLabel="Input Node"
-          isRootNode={true}
-          isRunning={isRunning}
-          viewMode="expanded"
-          themeColor="gray"
-          onRun={handleRun}
-          onLabelUpdate={handleLabelUpdate}
-          onToggleView={() => {}}
-        />
+      <div className="relative w-[350px]">
+        {/* Source Handle - positioned at right with consistent styling */}
         <Handle 
           type="source" 
           position={Position.Right} 
           id="source"
-          className="w-3 h-3 !bg-gray-500"
-          style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '-6px', zIndex: 50 }}
+          isConnectable={isConnectable}
+          style={{
+            background: '#6b7280', // gray color for input node
+            border: '1px solid white',
+            width: '8px',
+            height: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            right: '-4px',
+            zIndex: 50
+          }}
         />
-        <NodeBody>
-          {/* Processing Mode toggle button */}
-          <div className="mb-3">
-            <InputModeToggle 
-              iterateEachRow={iterateEachRow}
-              onToggle={handleToggleProcessingMode}
-            />
-          </div>
 
-          {/* Combined input section */}
-          <div className="flex-grow space-y-3">
+        {/* Node content box with consistent styling */}
+        <div className={clsx(
+          'px-4 py-2 shadow-md rounded-md bg-white',
+          'border',
+          selected
+            ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
+            : 'border-gray-200 shadow-sm'
+        )}>
+          {/* Node Header */}
+          <NodeHeader 
+             nodeId={id} 
+             label={inputData.label || 'Input'} 
+             placeholderLabel="Input"
+             isRootNode={isRootNode}
+             isRunning={isRunning}
+             viewMode={VIEW_MODES.EXPANDED}
+             themeColor="gray"
+             onRun={handleRun}
+             onLabelUpdate={handleLabelUpdate} 
+             onToggleView={() => {}}
+          />
+
+          {/* Node Content */}
+          <div className="flex flex-col space-y-3">
+            {/* Processing Mode toggle button */}
+            <div className="mb-1">
+              <InputModeToggle 
+                iterateEachRow={iterateEachRow}
+                onToggle={handleToggleProcessingMode}
+              />
+            </div>
+            
             {/* Text input */}
-            <InputTextManager
+            <InputTextManagerSidebar
               textBuffer={textBuffer}
               onChange={handleTextChange}
               onAdd={handleAddText}
@@ -170,20 +246,20 @@ const InputNode: React.FC<NodeProps<InputNodeData>> = ({ id, data, selected }) =
               onDelete={handleDeleteItem}
               onClear={handleClearItems}
               limit={3}
-              totalCount={data.items?.length || 0}
+              totalCount={itemCounts.total}
             />
           </div>
-        </NodeBody>
-        <NodeFooter>
+
+          {/* Node Footer */}
           {footerSummary && (
-            <div className="flex items-center justify-between w-full">
+            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between w-full">
               <span className="text-xs text-gray-500">{footerSummary}</span>
               <span className="text-xs rounded bg-gray-100 px-2 py-0.5 text-gray-700">
                 {iterateEachRow ? 'Foreach mode' : 'Batch mode'}
               </span>
             </div>
           )}
-        </NodeFooter>
+        </div>
       </div>
     </NodeErrorBoundary>
   );

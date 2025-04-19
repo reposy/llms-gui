@@ -1,177 +1,138 @@
-import { useCallback } from 'react';
-import { useNodeContent, OutputNodeContent } from '../store/useNodeContentStore';
+import { useCallback, useMemo } from 'react';
+import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
+import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
+// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
 import { isEqual } from 'lodash';
+// import { Node as ReactFlowNode } from '@xyflow/react'; // Removed ReactFlowNode dependency
+import { OutputFormat } from '../types/nodes'; // Keep OutputFormat type
 
 /**
- * Custom hook to manage Output node state and operations using Zustand store.
- * Centralizes logic for both OutputNode and OutputConfig components
+ * Custom hook to manage Output node state and operations.
+ * All state (label, format, mode, content) is managed via useNodeContentStore.
  */
-export const useOutputNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Use the general NodeContentStore with OutputNodeContent type
-  const { 
-    content: generalContent, 
-    setContent,
-    isContentDirty
-  } = useNodeContent(nodeId);
+export const useOutputNodeData = (nodeId: string) => {
+  // --- Content Store Access (Unified State Management) ---
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Cast the general content to OutputNodeContent type
-  const content = generalContent as OutputNodeContent;
+  // Use a selector with shallow comparison to get the entire content object
+  const content = useNodeContentStore(
+    useCallback(
+      (state) => state.getNodeContent<OutputNodeContent>(nodeId, 'output'), // Get Output specific content
+      [nodeId]
+    ),
+    shallow // Use shallow comparison
+  );
 
-  // Destructure content for easier access
-  const format = content.format || 'text';
-  const outputContent = content.content || '';
-  const label = content.label || 'Output Node';
-  const mode = content.mode || 'batch'; // Add mode tracking
+  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
 
-  /**
-   * Format content based on type and format
-   */
-  const formatContent = useCallback((content: any): string => {
-    if (content === null || content === undefined) return '';
-
-    // Handle array content
-    if (Array.isArray(content)) {
-      if (format === 'json') {
-        return JSON.stringify(content, null, 2);
-      }
-      return content.join('\n');
-    }
-
-    // Handle object content in JSON mode
-    if (format === 'json' && typeof content === 'object') {
-      try {
-        return JSON.stringify(content, null, 2);
-      } catch (e) {
-        console.error(`[OutputNode ${nodeId}] Error stringifying JSON:`, e);
-        return String(content);
-      }
-    }
-
-    // Default to string conversion
-    return String(content);
-  }, [format, nodeId]);
+  // --- Derived State (from content store) ---
+  // Provide defaults directly when destructuring or accessing
+  const label = content?.label || 'Output Node';
+  const format = content?.format || 'text';
+  const mode = content?.mode || 'read';
+  const result = content?.content;
 
   /**
-   * Handle format change with deep equality check
+   * Utility function to update content in the store, ensuring defaults and types.
    */
-  const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
-    if (isEqual(newFormat, format)) return;
-    setContent({ format: newFormat });
-  }, [format, setContent]);
-
-  /**
-   * Handle content change with deep equality check
-   */
-  const handleContentChange = useCallback((newContent: any, isForeachUpdate?: boolean, forceUpdate?: boolean) => {
-    // Format the content appropriately
-    const formattedContent = formatContent(newContent);
-
-    // IMPORTANT: Always check for equality first to prevent infinite loops
-    // Even with forceUpdate, we need to prevent updating with identical content
-    if (isEqual(formattedContent, outputContent)) {
-      console.log(`[OutputNode ${nodeId}] Skipping content update - no change (deep equal)`);
-      return;
-    }
-
-    // In foreach mode or when forcing update, always overwrite content
-    if (isForeachUpdate || mode === 'foreach' || forceUpdate === true) {
-      console.log(`[OutputNode ${nodeId}] Forced update or foreach mode: Overwriting content with:`, formattedContent);
-      setContent({ content: formattedContent });
-      return;
-    }
-
-    console.log(`[OutputNode ${nodeId}] Updating content from "${outputContent}" to:`, formattedContent);
-    setContent({ content: formattedContent });
-  }, [nodeId, outputContent, mode, setContent, formatContent]);
-
-  /**
-   * Formats result based on the provided format
-   */
-  const formatResultBasedOnFormat = useCallback((result: any, format: 'json' | 'text'): string => {
-    if (result === null || result === undefined) return '';
-
-    if (format === 'json') {
-      // JSON Mode: Stringify if object, otherwise convert to string
-      if (typeof result === 'object') {
-        try {
-          return JSON.stringify(result, null, 2);
-        } catch (e) {
-          console.error("Error stringifying result for JSON display:", e);
-          return String(result); // Fallback
-        }
-      }
-      // For non-objects in JSON mode, just convert to string
-      return String(result); 
+  const updateOutputContent = useCallback((updates: Partial<Omit<OutputNodeContent, keyof NodeContent | 'isDirty'>>) => {
+    // Create the full update object based on current content
+    const currentContent = useNodeContentStore.getState().getNodeContent<OutputNodeContent>(nodeId, 'output');
+    const newContent: Partial<OutputNodeContent> = { ...currentContent, ...updates };
+    
+    // Check if the update actually changes anything using deep comparison
+    if (!isEqual(currentContent, newContent)) {
+        console.log(`[useOutputNodeData ${nodeId}] Updating content with:`, updates);
+        setNodeContent<OutputNodeContent>(nodeId, newContent);
     } else {
-      // TEXT Mode: Prioritize 'content' or 'text' properties
-      if (typeof result === 'object') {
-        if ('content' in result && result.content !== null && result.content !== undefined) {
-          // If content itself is an object, stringify it for text view
-          return typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
-        } 
-        if ('text' in result && result.text !== null && result.text !== undefined) {
-          return String(result.text);
-        }
-        // Fallback for objects in text mode
-        return JSON.stringify(result); 
-      }
-      // For primitives in text mode, just convert to string
-      return String(result); 
+        console.log(`[useOutputNodeData ${nodeId}] Skipping content update - no changes (deep equal).`);
     }
-  }, []);
+  }, [nodeId, setNodeContent]);
+
+  // --- Change Handlers (using updateOutputContent) ---
+  const handleLabelChange = useCallback((newLabel: string) => {
+    updateOutputContent({ label: newLabel });
+  }, [updateOutputContent]);
+
+  const handleFormatChange = useCallback((newFormat: OutputFormat) => {
+    updateOutputContent({ format: newFormat });
+  }, [updateOutputContent]);
+
+  const setMode = useCallback((newMode: 'write' | 'read') => {
+    updateOutputContent({ mode: newMode });
+  }, [updateOutputContent]);
+
+  const clearOutput = useCallback(() => {
+    console.log(`[OutputNode ${nodeId}] Clearing output content`);
+    // Update only the 'content' field to undefined
+    updateOutputContent({ content: undefined });
+  }, [updateOutputContent]);
+
+  const handleContentChange = useCallback((newContent: any) => {
+    console.log(`[OutputNode ${nodeId}] Setting output content`);
+    // Update only the 'content' field
+    updateOutputContent({ content: newContent });
+  }, [updateOutputContent]);
+
 
   /**
-   * Update multiple properties at once with deep equality check
+   * Formats the result based on the current format setting.
+   * @param data The data to format (defaults to the current result).
+   * @returns Formatted string.
    */
-  const updateOutputContent = useCallback((updates: Partial<OutputNodeContent>) => {
-    // If mode is changing, clear existing content
-    if ('mode' in updates && updates.mode !== mode) {
-      updates.content = '';
-    }
+  const formatResultBasedOnFormat = useCallback((
+    data: any = result // Use the result derived from content store
+  ): string => {
+    if (data === null || data === undefined) return '';
 
-    // Skip update if no actual changes using deep equality
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof OutputNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[OutputNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    // Create new content object with updates
-    const newContent = {
-      ...content,
-      ...updates
-    };
+    const currentFormat = format; // Use format derived from content store
 
-    // Final deep equality check against current content
-    if (isEqual(newContent, content)) {
-      console.log(`[OutputNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
-      return;
+    try {
+      switch (currentFormat) {
+        case 'json':
+          // Improved JSON formatting: handle potential stringified JSON
+          let jsonData = data;
+          if (typeof data === 'string') {
+            try { jsonData = JSON.parse(data); } catch { /* Ignore parse error, treat as string */ }
+          }
+          return JSON.stringify(jsonData, null, 2);
+        case 'text':
+        default:
+          if (typeof data === 'string') {
+            return data;
+          } else {
+            // Attempt to stringify non-string data for text format
+            try { return JSON.stringify(data); } catch { return String(data); }
+          }
+      }
+    } catch (error) {
+      console.error('Error formatting output:', error);
+      return String(data); // Fallback to simple string conversion on error
     }
-    
-    console.log(`[OutputNode ${nodeId}] Updating content with:`, updates);
-    setContent(updates);
-  }, [nodeId, content, mode, setContent]);
+  }, [result, format]); // Depend only on state derived from the store
 
   return {
-    // Data
-    content,
-    format,
-    outputContent,
+    // State Data (all from useNodeContentStore)
     label,
+    format,
+    mode,
+    content: result, 
     isDirty: isContentDirty,
-    
-    // Event handlers
+
+    // Change Handlers
+    handleLabelChange,
     handleFormatChange,
+    setMode,
+    // handleConfigChange, // Removed as config is now part of content
+
+    // Result Content Handlers
+    clearOutput,
     handleContentChange,
+
+    // Formatting Utility
     formatResultBasedOnFormat,
-    updateOutputContent,
+    
+    // Provide the unified update function if direct partial updates are needed
+    // updateContent: updateOutputContent 
   };
 }; 

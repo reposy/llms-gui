@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { shallow } from 'zustand/shallow';
 import { useNodes, useEdges } from './useFlowStructureStore';
 import { useNodeContentStore } from './useNodeContentStore';
@@ -22,8 +22,8 @@ interface DirtyTrackerState {
   reset: () => void;
 }
 
-// Create Zustand store
-export const useDirtyTrackerStore = create<DirtyTrackerState>()((set) => ({
+// Create Zustand store using createWithEqualityFn instead of create
+export const useDirtyTrackerStore = createWithEqualityFn<DirtyTrackerState>()((set) => ({
   // Initial state
   cleanState: null,
   isDirty: false,
@@ -41,7 +41,7 @@ export const useDirtyTrackerStore = create<DirtyTrackerState>()((set) => ({
 
   // Reset tracking
   reset: () => set({ cleanState: null, isDirty: false })
-}));
+}), shallow);
 
 // Export individual selectors
 export const useIsDirty = () => useDirtyTrackerStore(state => state.isDirty);

@@ -1,6 +1,7 @@
-import React, { useCallback } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
-import { ConditionalNodeData, NodeData, ConditionType } from '../../types/nodes';
+// src/components/nodes/ConditionalNode.tsx
+import React, { memo, useCallback} from 'react';
+import { Handle, Position, NodeProps } from '@xyflow/react';
+import { ConditionalNodeData, ConditionType } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
@@ -9,7 +10,10 @@ import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
 import { useConditionalNodeData } from '../../hooks/useConditionalNodeData';
 
-const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, selected }) => {
+export const ConditionalNode: React.FC<NodeProps> = memo(({ id, data, selected, isConnectable = true }) => {
+  // Cast data to ConditionalNodeData where needed
+  const conditionData = data as ConditionalNodeData;
+  
   const nodeState = useNodeState(id);
 
   // Use the Zustand hook
@@ -36,6 +40,11 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
     handleValueChange(newValue);
   }, [handleValueChange]);
 
+  // Event handler to prevent backspace from deleting nodes
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    e.stopPropagation();
+  }, []);
+
   return (
     <NodeErrorBoundary nodeId={id}>
       <div className={clsx("relative flex flex-col rounded-lg border bg-white shadow-lg", selected ? 'border-yellow-500' : 'border-gray-300', 'w-[300px]')}>
@@ -46,11 +55,12 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
           id="input"
           className="w-3 h-3 !bg-gray-500"
           style={{ top: '50%' }}
+          isConnectable={isConnectable}
         />
 
         <NodeHeader
           nodeId={id}
-          label={label || data.label || 'Condition'}
+          label={label || conditionData.label || 'Condition'}
           placeholderLabel="Conditional Node"
           isRootNode={false}
           isRunning={nodeState.status === 'running'}
@@ -69,6 +79,7 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
           className="w-3 h-3 !bg-green-500"
           // Style for vertical centering on the right edge
           style={{ top: '50%', right: '-6px', transform: 'translateY(-50%)' }}
+          isConnectable={isConnectable}
         />
          {/* Output Handle: False (Bottom Side) */}
         <Handle
@@ -78,6 +89,7 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
           className="w-3 h-3 !bg-red-500"
           // Style for horizontal centering on the bottom edge
           style={{ bottom: '-6px', left: '50%', transform: 'translateX(-50%)' }}
+          isConnectable={isConnectable}
         />
 
         <NodeBody>
@@ -87,9 +99,10 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
               <label htmlFor={`condition-type-${id}`} className="block text-xs font-medium text-gray-700 mb-1">Condition Type</label>
               <select
                 id={`condition-type-${id}`}
-                value={conditionType || data.conditionType || 'contains'}
+                value={conditionType || conditionData.conditionType || 'contains'}
                 onChange={handleConditionTypeChangeEvent}
                 className="nodrag block w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 bg-white text-black"
+                onKeyDown={handleKeyDown}
               >
                 <option value="contains">Contains Substring</option>
                 <option value="greater_than">Number Greater Than</option>
@@ -104,10 +117,11 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
               <input
                 id={`condition-value-${id}`}
                 type="text"
-                value={conditionValue || data.conditionValue || ''}
+                value={conditionValue || conditionData.conditionValue || ''}
                 onChange={handleConditionValueChange}
                 className="nodrag block w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 bg-white text-black"
                 placeholder={conditionType === 'json_path' ? 'e.g., $.result.score' : 'Value to check'}
+                onKeyDown={handleKeyDown}
               />
             </div>
 
@@ -145,6 +159,6 @@ const ConditionalNode: React.FC<NodeProps<ConditionalNodeData>> = ({ id, data, s
       </div>
     </NodeErrorBoundary>
   );
-};
+});
 
-export default ConditionalNode;
+ConditionalNode.displayName = 'ConditionalNode';

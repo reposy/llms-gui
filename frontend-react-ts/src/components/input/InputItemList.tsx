@@ -1,19 +1,20 @@
 import React from 'react';
 import clsx from 'clsx';
 
-// Optional backwards compatibility type
+// Define the expected item structure
 export interface FormattedItem {
   id: string;
-  index: number;
-  display: string;
-  type: string;
+  index: number; // Original index
+  display: string; // Text to show
+  type: string; // e.g., 'text', 'image/jpeg'
   isFile: boolean;
+  originalItem: any; // Keep original for potential future use
 }
 
 interface InputItemListProps {
-  // Update type to accept string[] instead of FormattedItem[]
-  items: string[];
-  onDelete: (index: number) => void;
+  // Expect an array of FormattedItem objects
+  items: FormattedItem[]; 
+  onDelete: (index: number) => void; // Pass original index back
   limit?: number;
   showClear?: boolean;
   onClear?: () => void;
@@ -39,7 +40,7 @@ export const InputItemList: React.FC<InputItemListProps> = ({
   // Limit items if specified
   const displayItems = limit ? items.slice(-limit) : items;
   const hasMore = typeof totalCount === 'number' && totalCount > displayItems.length;
-  const isFile = (item: string) => item.startsWith('📄 ');
+  // Removed isFile check as items are now objects with an isFile property
 
   return (
     <div>
@@ -58,19 +59,21 @@ export const InputItemList: React.FC<InputItemListProps> = ({
         )}
       </div>
       <div className="space-y-1 mb-1">
-        {displayItems.map((item, index) => (
+        {displayItems.map((item) => (
           <div 
-            key={`item-${index}`} 
+            key={item.id} // Use the unique id from FormattedItem
             className={clsx(
               "text-sm p-2 border border-gray-200 rounded flex items-center justify-between",
-              isFile(item) ? "bg-blue-50" : "bg-gray-50"
+              item.isFile ? "bg-blue-50" : "bg-gray-50" // Use item.isFile
             )}
           >
-            <span className="truncate block flex-grow" title={item}>
-              {item}
+            <span className="truncate block flex-grow" title={item.display}>
+              {/* Use item.display for content */}
+              {item.isFile ? '📄 ' : '📝 '}{item.display}
             </span>
             <button
-              onClick={() => onDelete(index)}
+              // Pass the original index from the item for deletion
+              onClick={() => onDelete(item.index)} 
               className="text-red-500 hover:text-red-700 ml-2 p-1 text-xs"
               title="Remove item"
             >

@@ -1,3 +1,4 @@
+// src/components/nodes/LLMNodeCompactView.tsx
 import React from 'react';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
@@ -13,6 +14,20 @@ interface LLMNodeCompactViewProps {
   onToggleView: () => void;
 }
 
+// Temporary placeholder for isVisionModel logic (same as in LLMConfig.tsx)
+// TODO: Move this to a shared utility location (e.g., src/utils/llm/)
+const isVisionModel = (provider: 'ollama' | 'openai' | string, model: string): boolean => {
+  console.warn('[CompactView] Vision model detection is using a placeholder!');
+  if (provider === 'ollama' && model?.includes('vision')) {
+      return true;
+  }
+  if (provider === 'openai' && model?.startsWith('gpt-4-vision')) {
+      return true;
+  }
+  // Add more robust checks based on known model identifiers
+  return false;
+};
+
 export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   id,
   data,
@@ -21,7 +36,10 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   onToggleView
 }) => {
   // Use the LLM data hook to get content
-  const { prompt, model, provider, label } = useLlmNodeData({ nodeId: id });
+  const { prompt, model, provider, mode, label } = useLlmNodeData({ nodeId: id });
+
+  // Use the local placeholder function
+  const supportsVision = model && isVisionModel(provider, model);
 
   // Use compact display with truncated prompt
   const truncatedPrompt = prompt.length > 50
@@ -46,8 +64,14 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
       </div>
       
       <div className="flex items-center text-xs text-gray-600">
-        <div className="flex-1 truncate">
+        <div className="flex-1 truncate flex items-center gap-1">
           {model || data.model || 'No model set'}
+          {/* Vision badge */}
+          {supportsVision && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+              {mode === 'vision' ? '🖼️ Vision' : '🖼️'}
+            </span>
+          )}
         </div>
         <div className="text-xs text-gray-500">
           {provider || data.provider}
@@ -63,13 +87,10 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
       
       {/* Display a result preview when execution is successful */}
       {nodeState?.status === 'success' && nodeState.result && (
-        <div className="text-xs text-gray-700 mt-1 truncate bg-gray-100 p-1 rounded border border-gray-300">
-          <span className="font-semibold text-gray-600">Result: </span>
-          {typeof nodeState.result === 'string' 
-            ? (nodeState.result.length > 60 ? `${nodeState.result.substring(0, 60)}...` : nodeState.result)
-            : (JSON.stringify(nodeState.result).length > 60 
-              ? `${JSON.stringify(nodeState.result).substring(0, 60)}...` 
-              : JSON.stringify(nodeState.result))}
+        <div className="text-xs text-green-600 truncate">
+          Result: {typeof nodeState.result === 'string' 
+            ? nodeState.result.substring(0, 40) + (nodeState.result.length > 40 ? '...' : '')
+            : JSON.stringify(nodeState.result).substring(0, 40) + '...'}
         </div>
       )}
       

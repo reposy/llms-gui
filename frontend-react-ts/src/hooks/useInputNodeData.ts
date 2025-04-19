@@ -1,89 +1,77 @@
-import { useCallback, useMemo, ChangeEvent, useEffect } from 'react';
-import { FileLikeObject } from '../types/nodes';
-import { isEqual } from 'lodash';
-import { sanitizeInputItems } from '../utils/inputUtils';
-
-// Import the general NodeContentStore and the InputNodeContent type
-import { useNodeContent, InputNodeContent, getNodeContent } from '../store/useNodeContentStore';
+import { useCallback } from 'react';
+import { useNodeContentStore, InputNodeContent, NodeContent } from '../store/useNodeContentStore';
 
 /**
- * Custom hook to manage InputNode state and operations using Zustand store.
- * Centralizes logic for both InputNode and InputNodeConfig components
+ * InputNode 데이터 관리 훅 (useNodeContentStore 기반 통합 버전)
+ * 
+ * Input 노드의 상태(items, textBuffer, iterateEachRow)를 관리하고,
+ * 관련 액션 핸들러를 제공합니다. 모든 상태는 useNodeContentStore와 동기화됩니다.
  */
-export const useInputNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Use the general NodeContentStore instead of input-specific store
-  const { 
-    content: generalContent, 
-    setContent 
-  } = useNodeContent(nodeId);
-
-  // Cast the general content to InputNodeContent type
-  const content = generalContent as InputNodeContent;
-
-  // Destructure and sanitize content for easier access
-  const rawItems = content.items || [];
+export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
+  // useNodeContentStore 훅 사용
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
   
-  // Debug raw items before sanitization
-  useEffect(() => {
-    if (rawItems.length > 0) {
-      console.log(`[useInputNodeData] Raw items for ${nodeId}:`, rawItems.map(item => ({
-        value: item,
-        type: typeof item,
-        isFileLike: typeof item === 'object' && 'file' in item,
-        stringValue: typeof item === 'object' ? JSON.stringify(item) : String(item)
-      })));
-    }
-  }, [rawItems, nodeId]);
+  // 노드 컨텐츠 가져오기 (selector 사용, InputNodeContent 타입 지정)
+  // getNodeContent는 노드가 없거나 타입이 다를 경우 기본값을 반환하도록 설계됨
+  const content = useNodeContentStore(
+    useCallback(
+      (state) => state.getNodeContent<InputNodeContent>(nodeId, 'input'),
+      [nodeId]
+    )
+  );
 
-  const items = useMemo(() => {
-    const sanitized = sanitizeInputItems(rawItems);
-    console.log(`[useInputNodeData] Sanitized items for ${nodeId}:`, {
-      raw: rawItems.map(item => ({
-        value: item,
-        type: typeof item
-      })),
-      sanitized: sanitized.map(item => ({
-        value: item,
-        type: typeof item
-      }))
-    });
-    return sanitized;
-  }, [rawItems, nodeId]);
-
-  // Debug effect to monitor items changes
-  useEffect(() => {
-    console.log(`[useInputNodeData] Final items for ${nodeId}:`, {
-      items: items.map(item => ({
-        value: item,
-        type: typeof item
-      })),
-      count: items.length
-    });
-  }, [items, nodeId]);
-
-  const textBuffer = content.textBuffer || '';
-  const iterateEachRow = !!content.iterateEachRow;
-  
-  // Ensure executionMode stays in sync with iterateEachRow on initialization and changes
-  useEffect(() => {
-    // Check if executionMode doesn't match iterateEachRow setting
-    const currentMode = content.executionMode;
-    const expectedMode = iterateEachRow ? 'foreach' : 'batch';
-    
-    if (currentMode !== expectedMode) {
-      console.log(`[useInputNodeData] Syncing executionMode (${currentMode}) with iterateEachRow (${iterateEachRow}) for ${nodeId}`);
-      setContent({ executionMode: expectedMode });
-    }
-  }, [nodeId, iterateEachRow, content.executionMode, setContent]);
+  // 컨텐츠 필드 접근 (기본값 처리 포함)
+  const items: (string | File)[] = (content?.items as (string | File)[]) || [];
+  const textBuffer: string = content?.textBuffer || '';
+  const iterateEachRow: boolean = content?.iterateEachRow || false;
 
   /**
-   * Helper function to read file as text
+   * 부분적인 컨텐츠 업데이트를 위한 유틸리티 함수
+   * 항상 전체 InputNodeContent 객체 구조를 유지하며 업데이트합니다.
    */
-  const readFileAsText = (file: File): Promise<string> => {
+  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeContent, keyof NodeContent>>) => {
+    // 현재 content 객체를 기반으로 업데이트 적용
+    setNodeContent<InputNodeContent>(nodeId, {
+      ...content, // 기존 content 보존 (label 등 Base 속성 포함)
+      ...updates, // 새로운 변경 사항 적용
+    });
+  }, [nodeId, content, setNodeContent]);
+
+
+  /**
+   * 텍스트 버퍼 변경 핸들러
+   */
+  const handleTextChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    updateInputContent({ textBuffer: event.target.value });
+  }, [updateInputContent]);
+
+  /**
+   * 텍스트 버퍼 내용을 아이템으로 추가하는 핸들러
+   */
+  const handleAddText = useCallback(() => {
+    const trimmedText = textBuffer.trim();
+    if (!trimmedText) return;
+    
+    const updatedItems = [...items, trimmedText];
+    updateInputContent({ 
+      items: updatedItems,
+      textBuffer: '' // 텍스트 추가 후 버퍼 비우기
+    });
+  }, [textBuffer, items, updateInputContent]);
+
+  /**
+   * 처리 모드 (Batch/Foreach) 토글 핸들러
+   */
+  const handleToggleProcessingMode = useCallback(() => {
+    updateInputContent({ 
+      iterateEachRow: !iterateEachRow
+    });
+  }, [iterateEachRow, updateInputContent]);
+
+  /**
+   * 파일 읽기 Promise 헬퍼
+   */
+   const readFileAsText = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);
@@ -93,164 +81,67 @@ export const useInputNodeData = ({
   };
 
   /**
-   * Update node content in Zustand store
+   * 파일 입력 변경 핸들러
+   * File 객체를 FileLikeObject로 변환하여 items에 추가합니다.
    */
-  const handleConfigChange = useCallback((updates: Partial<InputNodeContent>) => {
-    // If updating items, ensure they are sanitized
-    const sanitizedUpdates = { ...updates };
-    if ('items' in updates && Array.isArray(updates.items)) {
-      console.log(`[useInputNodeData] Pre-sanitization items in config update for ${nodeId}:`, updates.items);
-      sanitizedUpdates.items = sanitizeInputItems(updates.items);
-      console.log(`[useInputNodeData] Post-sanitization items in config update for ${nodeId}:`, sanitizedUpdates.items);
-    }
-    
-    console.log(`[useInputNodeData] handleConfigChange for ${nodeId}:`, sanitizedUpdates);
-    setContent(sanitizedUpdates);
-  }, [nodeId, setContent]);
-
-  /**
-   * Handle text buffer changes - directly update Zustand state
-   */
-  const handleTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = event.target.value;
-    setContent({ textBuffer: newText });
-  }, [setContent]);
-
-  /**
-   * Handle adding text from buffer to items
-   */
-  const handleAddText = useCallback(() => {
-    const trimmedText = textBuffer.trim();
-    if (!trimmedText) return;
-    
-    const updatedItems = sanitizeInputItems([...items, trimmedText]);
-    setContent({ 
-      items: updatedItems,
-      textBuffer: '' // Clear buffer after adding
-    });
-  }, [textBuffer, items, setContent]);
-
-  /**
-   * Toggle Batch/Foreach processing mode
-   */
-  const handleToggleProcessingMode = useCallback(() => {
-    const newMode = !iterateEachRow;
-    // Set both iterateEachRow and executionMode properties with proper types
-    const modeUpdate: Partial<InputNodeContent> = { 
-      iterateEachRow: newMode, 
-      executionMode: newMode ? 'foreach' : 'batch' 
-    };
-    
-    console.log(`[useInputNodeData] Toggling mode for ${nodeId}:`, modeUpdate);
-    setContent(modeUpdate);
-    
-    // Debug log to confirm the update
-    setTimeout(() => {
-      const updatedContent = getNodeContent(nodeId) as InputNodeContent;
-      console.log(`[useInputNodeData] After toggle for ${nodeId}:`, {
-        iterateEachRow: updatedContent.iterateEachRow,
-        executionMode: updatedContent.executionMode
-      });
-    }, 100);
-  }, [iterateEachRow, setContent, nodeId]);
-
-  /**
-   * Handle file input change
-   */
-  const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files || event.target.files.length === 0) return;
-    
+  const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files?.length) return;
     const files = Array.from(event.target.files);
     
     try {
-      // Process each file into a FileLikeObject
-      const fileObjects: FileLikeObject[] = await Promise.all(
-        files.map(async (file) => {
-          // Read the file content
-          const content = await readFileAsText(file);
-          
-          // Create a FileLikeObject
-          return {
-            file: file.name,
-            type: file.type,
-            content
-          };
-        })
-      );
-      
-      // Update items with new files and ensure sanitization
-      const updatedItems = sanitizeInputItems([...items, ...fileObjects]);
-      setContent({ items: updatedItems });
-      
+      const newFiles: File[] = [];
+
+      for (const file of files) {
+        newFiles.push(file);
+      }
+
+      if (newFiles.length > 0) {
+        console.log(`[useInputNodeData] Adding ${newFiles.length} File objects to items.`);
+        const updatedItems = [...items, ...newFiles];
+        updateInputContent({ items: updatedItems });
+      }
     } catch (error) {
-      console.error('Error processing files:', error);
+       console.error("Error processing files:", error);
+       // 사용자에게 오류 알림 등의 처리 추가 가능
+    } finally {
+       // 파일 입력 초기화 (동일 파일 재업로드 가능하도록)
+       event.target.value = ''; 
     }
-  }, [items, setContent]);
+  }, [items, updateInputContent]);
 
   /**
-   * Handle item deletion
+   * 특정 인덱스의 아이템 삭제 핸들러
    */
   const handleDeleteItem = useCallback((index: number) => {
+    if (index < 0 || index >= items.length) return; // 유효하지 않은 인덱스
     const updatedItems = [...items];
     updatedItems.splice(index, 1);
-    setContent({ items: updatedItems });
-  }, [items, setContent]);
+    updateInputContent({ items: updatedItems });
+  }, [items, updateInputContent]);
 
   /**
-   * Handle clearing all items
+   * 모든 아이템 삭제 핸들러
    */
   const handleClearItems = useCallback(() => {
-    setContent({ items: [] });
-  }, [setContent]);
-
-  /**
-   * Calculate item counts for display
-   */
-  const itemCounts = useMemo(() => {
-    const fileCount = items.filter(item => typeof item !== 'string').length;
-    const textCount = items.filter(item => typeof item === 'string').length;
-    
-    return {
-      fileCount,
-      textCount,
-      total: fileCount + textCount
-    };
-  }, [items]);
-
-  /**
-   * Format items for display
-   */
-  const formattedItems = useMemo(() => {
-    const formatted = items.map((item: string | FileLikeObject) => {
-      if (typeof item === 'string') {
-        return item;
-      } else {
-        return `📄 ${(item as FileLikeObject).file}`;
-      }
-    });
-    console.log(`[useInputNodeData] Formatted items for ${nodeId}:`, formatted);
-    return formatted;
-  }, [items, nodeId]);
-
-  // Always show iterate option for now
-  const showIterateOption = true;
+    updateInputContent({ items: [] });
+  }, [updateInputContent]);
 
   return {
-    // Data
-    items, // This is now always sanitized
+    // 상태 값
+    items,
     textBuffer,
-    itemCounts,
-    formattedItems,
-    showIterateOption,
     iterateEachRow,
     
-    // Event handlers
+    // 핸들러 함수
     handleTextChange,
     handleAddText,
-    handleFileChange, 
+    handleFileChange,
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
-    handleConfigChange
+
+    // 직접 content를 수정해야 할 경우를 위한 함수 (주의해서 사용)
+    // setContent: updateInputContent 
+    // setNodeContent 원본을 직접 노출하는 것보다 updateInputContent를 제공하는 것이 안전함
   };
 }; 

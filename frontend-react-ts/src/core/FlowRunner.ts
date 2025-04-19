@@ -1,8 +1,8 @@
-import { Node as ReactFlowNode, Edge } from 'reactflow';
+import { Node as ReactFlowNode, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { NodeFactory } from './NodeFactory';
-import { getRootNodeIds } from '../utils/flowUtils';
+import { getRootNodeIds } from '../utils/flow/flowUtils';
 import { registerAllNodeTypes } from './NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
 
@@ -47,6 +47,12 @@ export class FlowRunner {
     // Execute each root node in sequence
     for (const rootNodeId of rootNodeIds) {
       try {
+        // Skip if node has already been executed in this context
+        if (context.hasExecutedNode(rootNodeId)) {
+          context.log(`Skipping already executed root node: ${rootNodeId}`);
+          continue;
+        }
+
         // Find the node data
         const nodeData = nodes.find(node => node.id === rootNodeId);
         
@@ -78,6 +84,9 @@ export class FlowRunner {
         // Execute the node with an empty input object
         await nodeInstance.process({});
         
+        // Mark the node as executed to prevent re-execution
+        context.markNodeExecuted(rootNodeId);
+        
         context.log(`Completed execution of root node: ${rootNodeId}`);
       } catch (error) {
         context.log(`Error executing root node ${rootNodeId}: ${error}`);
@@ -100,7 +109,7 @@ export class FlowRunner {
 export async function runFlow(nodes: ReactFlowNode[], edges: Edge[]): Promise<void> {
   // Create and initialize the node factory
   const nodeFactory = new NodeFactory();
-  registerAllNodeTypes(nodeFactory);
+  registerAllNodeTypes();
   
   // Execute the flow
   return FlowRunner.executeFlow(nodes, edges, nodeFactory);

@@ -1,11 +1,12 @@
+// src/components/nodes/OutputNode.tsx
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Handle, Position } from 'reactflow';
-import { OutputNodeData, LLMResult } from '../../types/nodes';
+import { Handle, Position } from '@xyflow/react';
+import { OutputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
-import { downloadFile } from '../../utils/downloadUtils';
-import { useOutputNodeData } from '../../hooks/useOutputNodeData';
+import { downloadFile } from '../../utils/data/downloadUtils';
+import { useNodeContent } from '../../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 
 interface Props {
@@ -20,12 +21,62 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
   const contentRef = useRef<HTMLPreElement>(null);
   const previousContentRef = useRef<string | undefined>(data.content);
   
-  const { 
-    format,
-    handleFormatChange,
-    formatResultBasedOnFormat,
-    handleContentChange
-  } = useOutputNodeData({ nodeId: id });
+  const { updateContent, content } = useNodeContent(id);
+  const format = content?.format || 'text';
+  
+  const handleContentChange = useCallback((text: string) => {
+    updateContent({ result: text });
+  }, [updateContent]);
+  
+  const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
+    updateContent({ format: newFormat });
+  }, [updateContent]);
+  
+  /**
+   * Format a result based on the selected format
+   * A local implementation since it was removed from the hook for simplification
+   */
+  const formatResultBasedOnFormat = (result: any, format: 'json' | 'text'): string => {
+    try {
+      if (format === 'json') {
+        // If it's already a string but looks like JSON, try to parse and re-stringify for formatting
+        if (typeof result === 'string') {
+          try {
+            const parsed = JSON.parse(result);
+            return JSON.stringify(parsed, null, 2);
+          } catch {
+            // If it's not valid JSON, try to return as is
+            return result;
+          }
+        }
+        
+        // If it's an object, stringify it
+        if (result && typeof result === 'object') {
+          return JSON.stringify(result, null, 2);
+        }
+        
+        // Fall back to string representation
+        return String(result);
+      } else {
+        // For text format
+        if (typeof result === 'string') {
+          return result;
+        }
+        
+        // If it's an object, convert to string with some formatting
+        if (result && typeof result === 'object') {
+          // Simple formatting to make it readable, but not JSON-specific
+          return JSON.stringify(result, null, 2);
+        }
+        
+        // Fall back to string representation
+        return String(result);
+      }
+    } catch (error) {
+      console.error("Error formatting result:", error);
+      return String(result);
+    }
+  };
 
   // Function to handle the JSON/TEXT toggle effect on data.content
   const handleFormatToggle = useCallback((newFormat: 'json' | 'text') => {
@@ -43,47 +94,82 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
     }
   }, [format, nodeState?.result, data.content, handleFormatChange, handleContentChange, formatResultBasedOnFormat]);
 
+  // useRef 훅을 컴포넌트 바디 최상위에서 선언
+  const prevResultRef = useRef<any>();
+  const prevFormatRef = useRef<string>();
+  const prevErrorRef = useRef<any>();
+
   // Update data.content when node result or format changes
   useEffect(() => {
     // Skip effect if node state hasn't changed or if we're not in a valid state
     if (!nodeState) return;
 
+    // nodeState.result, format, error가 모두 이전과 같으면 아무것도 하지 않음
+    if (
+      isEqual(nodeState.result, prevResultRef.current) &&
+      format === prevFormatRef.current &&
+      isEqual(nodeState.error, prevErrorRef.current)
+    ) {
+      return;
+    }
+    prevResultRef.current = nodeState.result;
+    prevFormatRef.current = format;
+    prevErrorRef.current = nodeState.error;
+
     console.log(`[OutputNode ${id}] Node state changed: ${nodeState.status}, result:`, nodeState.result);
 
     let newContent: string | undefined;
+    let shouldUpdate = false;
 
     if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       newContent = formatResultBasedOnFormat(nodeState.result, format);
-      
-      // Only update if content has actually changed - prevents infinite updates
       if (!isEqual(newContent, data.content)) {
-        console.log(`[OutputNode ${id}] Setting success content: "${newContent}"`);
-        handleContentChange(newContent, false, true);
+        console.log(`[OutputNode ${id}] Needs update: success content`);
+        shouldUpdate = true;
       } else {
-        console.log(`[OutputNode ${id}] Skipping success content update - content unchanged: "${newContent}"`);
+        console.log(`[OutputNode ${id}] Skipping success content update - content unchanged.`);
       }
-      
-      // Don't continue with the normal deep equality check as we've already handled it
-      return;
     } else if (nodeState.status === 'running') {
       newContent = '처리 중...';
+      if (!isEqual(newContent, data.content)) {
+         console.log(`[OutputNode ${id}] Needs update: running state`);
+        shouldUpdate = true;
+      }
     } else if (nodeState.status === 'error') {
       newContent = `오류: ${nodeState.error}`;
+       if (!isEqual(newContent, data.content)) {
+         console.log(`[OutputNode ${id}] Needs update: error state`);
+        shouldUpdate = true;
+      }
     } else if (nodeState.status === 'idle') {
-      newContent = '실행 대기 중...';
-    } else {
+      // Explicitly check if the current content is *already* the idle message
+      // or if the result is already null/undefined. Only update if necessary.
+      const idleMessage = '실행 대기 중...';
+      if (!isEqual(idleMessage, data.content) || nodeState.result !== null) {
+        newContent = idleMessage;
+        console.log(`[OutputNode ${id}] Needs update: idle state (content diff or result exists)`);
+        shouldUpdate = true;
+      } else {
+         console.log(`[OutputNode ${id}] Skipping idle content update - already idle.`);
+      }
+    } else { // Fallback for unknown status or cleared result
       newContent = '결과 없음';
+      if (!isEqual(newContent, data.content)) {
+        console.log(`[OutputNode ${id}] Needs update: fallback state`);
+        shouldUpdate = true;
+      }
     }
 
-    // Only update if content has actually changed using deep equality
-    if (newContent !== undefined && 
-        !isEqual(newContent, data.content) && 
+    // Only update if content has actually changed AND it differs from the ref
+    if (shouldUpdate && newContent !== undefined && 
         !isEqual(newContent, previousContentRef.current)) {
-      console.log(`[OutputNode ${id}] Updating content from "${data.content}" to "${newContent}" (prev: "${previousContentRef.current}")`);
+      console.log(`[OutputNode ${id}] Applying update: "${newContent}" (prev ref: "${previousContentRef.current}")`);
       previousContentRef.current = newContent;
-      handleContentChange(newContent);
+      handleContentChange(newContent); // This updates useNodeContentStore
+    } else if (shouldUpdate) {
+        console.log(`[OutputNode ${id}] Skipping update: content matches previous ref (${previousContentRef.current})`);
     }
-  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, data.content, handleContentChange, formatResultBasedOnFormat, id]);
+  }, [nodeState?.status, nodeState?.result, nodeState?.error, format, handleContentChange, formatResultBasedOnFormat, id]);
 
   // Update previousContentRef when data.content changes externally
   useEffect(() => {
@@ -94,14 +180,16 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
 
   // This function now determines the *displayed* content in the node using the formatter
   const renderContentForDisplay = () => {
-    if (!nodeState || nodeState.status === 'idle') return '실행 대기 중...';
-    if (nodeState.status === 'running') return '처리 중...';
-    if (nodeState.status === 'error') return `오류: ${nodeState.error}`;
-    if (nodeState.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
-      // Use the single formatter, respecting data.format for display
+    if (nodeState?.status === 'success' && nodeState.result !== null && nodeState.result !== undefined) {
       return formatResultBasedOnFormat(nodeState.result, format);
     }
-    return '결과 없음';
+    // 실행이 끝났거나 idle일 때, store에 저장된 content가 있으면 그걸 표시
+    if (content?.content) {
+      return content.content;
+    }
+    if (nodeState?.status === 'running') return '처리 중...';
+    if (nodeState?.status === 'error') return `오류: ${nodeState.error}`;
+    return '실행 대기 중...';
   };
 
   // Handler for the download button

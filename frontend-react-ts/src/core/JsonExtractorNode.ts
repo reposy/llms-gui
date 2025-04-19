@@ -1,16 +1,17 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { extractValue } from '../utils/flow/executionUtils.ts';
+import { JSONExtractorNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 
 /**
- * Interface for JSON Extractor node properties
+ * JSON Extractor node properties
  */
 export interface JsonExtractorNodeProperty {
   path: string;
-  label?: string;
-  executionGraph?: Map<string, string[]>;
-  nodes?: any[];
-  edges?: any[];
+  defaultValue?: string;
+  input?: any;
   nodeFactory?: any;
+  [key: string]: any;
 }
 
 /**
@@ -20,7 +21,18 @@ export class JsonExtractorNode extends Node {
   /**
    * Type assertion for property
    */
-  declare property: JsonExtractorNodeProperty;
+  declare property: JSONExtractorNodeContent;
+
+  /**
+   * Constructor for JsonExtractorNode
+   */
+  constructor(
+    id: string,
+    property: Record<string, any> = {},
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'json-extractor', property, context);
+  }
 
   /**
    * Execute the node's specific logic
@@ -28,88 +40,58 @@ export class JsonExtractorNode extends Node {
    * @returns The extracted value or null if not found
    */
   async execute(input: any): Promise<any> {
-    this.context.log(`JsonExtractorNode(${this.id}): Processing with path "${this.property.path}"`);
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<JSONExtractorNodeContent>(this.id, this.type);
     
-    // Handle null or undefined input
-    if (input === null || input === undefined) {
-      this.context.log(`JsonExtractorNode(${this.id}): Input is ${input}, cannot extract value`);
-      return null;
+    const { 
+      path,
+      defaultValue = null // Default value if path not found or error
+    } = nodeContent;
+
+    if (!path) {
+      const errorMsg = "JSON Path is required for JSONExtractorNode.";
+      this.context?.markNodeError(this.id, errorMsg);
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      return defaultValue; // Return default value on configuration error
     }
 
-    try {
-      // Clone input to avoid side effects
-      const safeInput = structuredClone(input);
-      
-      // Get the path from properties
-      const path = this.property.path || '';
-      
-      if (!path) {
-        this.context.log(`JsonExtractorNode(${this.id}): No path specified, returning input as-is`);
-        return safeInput;
-      }
+    this.context?.log(`${this.type}(${this.id}): Extracting path: ${path}`);
 
-      // Split the path by dots to get individual keys
-      const pathParts = path.split('.');
-      
-      this.context.log(`JsonExtractorNode(${this.id}): Extracting path ${pathParts.join(' → ')}`);
-      
-      // Extract the nested value by traversing the path
-      let currentValue = safeInput;
-      
-      for (let i = 0; i < pathParts.length; i++) {
-        const part = pathParts[i];
-        
-        // Handle array indices (e.g., items[0])
-        const arrayMatch = part.match(/^([^\[]+)\[(\d+)\]$/);
-        
-        if (arrayMatch) {
-          // Extract array name and index
-          const [_, arrayName, indexStr] = arrayMatch;
-          const index = parseInt(indexStr, 10);
-          
-          // First access the array
-          if (currentValue[arrayName] === undefined || currentValue[arrayName] === null) {
-            this.context.log(`JsonExtractorNode(${this.id}): Path part '${arrayName}' not found`);
-            return null;
-          }
-          
-          currentValue = currentValue[arrayName];
-          
-          // Then access the index if it's an array
-          if (!Array.isArray(currentValue)) {
-            this.context.log(`JsonExtractorNode(${this.id}): '${arrayName}' is not an array`);
-            return null;
-          }
-          
-          if (index >= currentValue.length) {
-            this.context.log(`JsonExtractorNode(${this.id}): Array index ${index} out of bounds`);
-            return null;
-          }
-          
-          currentValue = currentValue[index];
-          this.context.log(`JsonExtractorNode(${this.id}): Accessed array element ${arrayName}[${index}]`);
-        } else {
-          // Regular object property access
-          if (currentValue[part] === undefined || currentValue[part] === null) {
-            this.context.log(`JsonExtractorNode(${this.id}): Path part '${part}' not found or null`);
-            return null;
-          }
-          
-          currentValue = currentValue[part];
-          this.context.log(`JsonExtractorNode(${this.id}): Accessed property '${part}'`);
+    try {
+      // Input can be a JSON string or a JavaScript object
+      let jsonInput = input;
+      if (typeof input === 'string') {
+        try {
+          jsonInput = JSON.parse(input);
+          this.context?.log(`${this.type}(${this.id}): Parsed string input as JSON`);
+        } catch (parseError) {
+          // If parsing fails, pass the raw string to extractValue, which might handle basic paths
+          this.context?.log(`${this.type}(${this.id}): Input string is not valid JSON, attempting extraction on raw string.`);
+          // No need to throw error here, let extractValue handle the raw string
         }
       }
       
-      this.context.log(`JsonExtractorNode(${this.id}): Successfully extracted value: ${
-        typeof currentValue === 'object' 
-          ? JSON.stringify(currentValue) 
-          : currentValue
-      }`);
+      // Use extractValue function
+      const result = extractValue(jsonInput, path);
       
-      return currentValue;
+      if (result === undefined) {
+        this.context?.log(`${this.type}(${this.id}): Path not found or extraction failed, returning default value`);
+        this.context?.storeOutput(this.id, defaultValue);
+        return defaultValue;
+      } else {
+        this.context?.log(`${this.type}(${this.id}): Extraction successful`);
+        this.context?.storeOutput(this.id, result);
+        return result;
+      }
+
     } catch (error) {
-      this.context.log(`JsonExtractorNode(${this.id}): Error extracting value - ${error}`);
-      return null;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.context?.markNodeError(this.id, errorMessage);
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
+      this.context?.storeOutput(this.id, defaultValue); // Store default value on error
+      return defaultValue;
     }
   }
 } 

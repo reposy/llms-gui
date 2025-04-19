@@ -1,22 +1,19 @@
 import { Node } from './Node';
-import { crawling } from '../utils/crawling';
+import { FlowExecutionContext } from './FlowExecutionContext';
+import { crawling } from '../utils/web/crawling.ts';
+import { WebCrawlerNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
 
 /**
  * Interface for Web Crawler node properties
  */
 export interface WebCrawlerNodeProperty {
-  url?: string;
-  label?: string;
+  url: string;
   waitForSelector?: string;
   extractSelectors?: Record<string, string>;
   timeout?: number;
-  headers?: Record<string, string>;
-  includeHtml?: boolean;
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
-  executionGraph?: Map<string, string[]>;
-  nodes?: any[];
-  edges?: any[];
   nodeFactory?: any;
+  [key: string]: any;
 }
 
 /**
@@ -26,7 +23,18 @@ export class WebCrawlerNode extends Node {
   /**
    * Type assertion for property
    */
-  declare property: WebCrawlerNodeProperty;
+  declare property: WebCrawlerNodeContent;
+
+  /**
+   * Constructor for WebCrawlerNode
+   */
+  constructor(
+    id: string,
+    property: Record<string, any> = {},
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'web-crawler', property, context);
+  }
 
   /**
    * Execute the node's specific logic
@@ -34,101 +42,49 @@ export class WebCrawlerNode extends Node {
    * @returns The extracted web content
    */
   async execute(input: any): Promise<any> {
-    this.context.log(`WebCrawlerNode(${this.id}): Starting web crawling process`);
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<WebCrawlerNodeContent>(this.id, this.type);
     
+    const { 
+      url,
+      waitForSelector,
+      extractSelectors,
+      timeout = 5000, // Default timeout if not set
+      outputFormat = 'full' // Default output format
+    } = nodeContent;
+
+    // Use input as URL if url property is empty and input is a valid URL string
+    let targetUrl = url;
+    if (!targetUrl && typeof input === 'string' && input.startsWith('http')) {
+      targetUrl = input;
+      this.context?.log(`${this.type}(${this.id}): Using input as URL: ${targetUrl}`);
+    } else if (!targetUrl) {
+      const errorMsg = "URL is required for WebCrawlerNode.";
+      this.context?.markNodeError(this.id, errorMsg);
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      return null;
+    }
+
+    this.context?.log(`${this.type}(${this.id}): Crawling URL: ${targetUrl}`);
+
     try {
-      // Determine URL (from property or input)
-      let url = this.property.url;
+      const result = await crawling({
+        url: targetUrl,
+        selector: waitForSelector || 'body',
+        waitBeforeLoad: timeout
+      });
       
-      // If input is a string, use it as URL override
-      if (typeof input === 'string' && input.trim().startsWith('http')) {
-        url = input.trim();
-        this.context.log(`WebCrawlerNode(${this.id}): Using URL from input: ${url}`);
-      } 
-      // If input is an object with a url property, use that
-      else if (input && typeof input === 'object' && input.url && typeof input.url === 'string') {
-        url = input.url;
-        this.context.log(`WebCrawlerNode(${this.id}): Using URL from input object: ${url}`);
-      }
-      
-      // Validate URL
-      if (!url) {
-        throw new Error('No URL specified. Please provide a URL in the node configuration or input.');
-      }
-      
-      // Parse selectors
-      const extractSelectors = this.property.extractSelectors || {};
-      
-      // If no selectors defined, use waitForSelector as the main selector
-      const mainSelector = this.property.waitForSelector || 'body';
-      
-      // Prepare result object
-      const result: Record<string, any> = {
-        url,
-        timestamp: new Date().toISOString()
-      };
-      
-      // If we have specific extractors
-      if (Object.keys(extractSelectors).length > 0) {
-        this.context.log(`WebCrawlerNode(${this.id}): Extracting ${Object.keys(extractSelectors).length} selectors`);
-        
-        // Process each extractor
-        for (const [key, selectorInfo] of Object.entries(extractSelectors)) {
-          // Parse selector string which might be in format "selector:attribute" or just "selector"
-          const [selector, attribute] = selectorInfo.split(':');
-          
-          this.context.log(`WebCrawlerNode(${this.id}): Extracting "${key}" with selector "${selector}"${attribute ? ` and attribute "${attribute}"` : ''}`);
-          
-          // Call the crawler utility
-          const extractedValue = await crawling({
-            url,
-            selector,
-            attribute,
-            waitBeforeLoad: this.property.timeout
-          });
-          
-          // Store the result
-          result[key] = extractedValue;
-        }
-      } else {
-        // Just extract the main selector
-        this.context.log(`WebCrawlerNode(${this.id}): Extracting content with selector "${mainSelector}"`);
-        
-        const extractedValue = await crawling({
-          url,
-          selector: mainSelector,
-          waitBeforeLoad: this.property.timeout
-        });
-        
-        // For simple extraction, set the content directly
-        result.content = extractedValue;
-      }
-      
-      // Format output according to configuration
-      const outputFormat = this.property.outputFormat || 'full';
-      
-      if (outputFormat === 'text' && result.content) {
-        // Return just the text content
-        this.context.log(`WebCrawlerNode(${this.id}): Returning text content`);
-        return result.content;
-      } else if (outputFormat === 'extracted' && Object.keys(extractSelectors).length > 0) {
-        // Return just the extracted values without metadata
-        const extractedData: Record<string, any> = {};
-        
-        for (const key of Object.keys(extractSelectors)) {
-          extractedData[key] = result[key];
-        }
-        
-        this.context.log(`WebCrawlerNode(${this.id}): Returning extracted data object`);
-        return extractedData;
-      } else {
-        // Return the full result object
-        this.context.log(`WebCrawlerNode(${this.id}): Returning full result object`);
-        return result;
-      }
+      this.context?.log(`${this.type}(${this.id}): Crawling successful, result type: ${typeof result}`);
+      this.context?.storeOutput(this.id, result);
+      return result;
+
     } catch (error) {
-      this.context.log(`WebCrawlerNode(${this.id}): Error during web crawling - ${error}`);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.context?.markNodeError(this.id, errorMessage);
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
+      return null;
     }
   }
 } 

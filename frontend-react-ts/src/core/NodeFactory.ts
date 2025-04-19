@@ -1,89 +1,136 @@
 import { Node } from './Node';
+import { getNodeFactory, getAllNodeTypes } from './NodeRegistry';
 import { FlowExecutionContext } from './FlowExecutionContext';
+// Import store getter directly - assumes it doesn't rely on hooks
+import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts'; 
+import { LLMNodeContent } from '../store/useNodeContentStore.ts'; // Import specific type
 
 /**
- * Factory for creating node instances by type
+ * Factory to create and manage nodes
  */
 export class NodeFactory {
-  // Map of node types to creator functions
-  private creators: Map<string, (id: string, property: any, context: FlowExecutionContext) => Node> = new Map();
+  private nodes: Map<string, Node>;
 
-  /**
-   * Register a node type with its creator function
-   * @param type The node type identifier
-   * @param creator Function to create a node of this type
-   */
-  register(type: string, creator: (id: string, property: any, context: FlowExecutionContext) => Node): void {
-    this.creators.set(type, creator);
-    console.log(`Registered node type: ${type}`);
+  constructor() {
+    this.nodes = new Map<string, Node>();
   }
 
   /**
-   * Create a node instance of the specified type
-   * @param id Node ID
-   * @param type Node type
-   * @param property Node configuration
-   * @param context Execution context
-   * @returns Node instance
+   * Create a node of the specified type
+   * @param id The node ID
+   * @param type The node type
+   * @param reactFlowProps Properties passed from the React Flow node data object
+   * @param context Optional execution context
+   * @returns The created node
    */
-  create(id: string, type: string, property: any, context: FlowExecutionContext): Node {
-    console.log(`[NodeFactory] Creating node ${id} of type ${type} with properties:`, property);
-    
-    // Get the creator function for this node type
-    const creator = this.creators.get(type);
-    
-    if (!creator) {
-      console.warn(`No creator registered for node type: ${type}. Falling back to PassthroughNode.`);
-      return new PassthroughNode(id, property, context);
-    }
-    
-    // Create node instance with property data
-    const node = creator(id, property, context);
-    console.log(`[NodeFactory] Created ${type} node instance ${id}`);
-    
-    return node;
-  }
-  
-  /**
-   * Create a node for a specific iteration context (foreach mode)
-   * @param id Node ID
-   * @param type Node type
-   * @param property Node configuration 
-   * @param context Parent execution context
-   * @param iterationIndex Current iteration index
-   * @param item Current item being processed
-   * @returns Node instance with iteration context
-   */
-  createForIteration(
+  create(
     id: string, 
     type: string, 
-    property: any, 
-    context: FlowExecutionContext, 
-    iterationIndex: number, 
-    item: any,
-    totalItems: number
+    reactFlowProps: Record<string, any> = {}, 
+    context?: FlowExecutionContext
   ): Node {
-    // Create an iteration-specific context
-    const iterContext = new FlowExecutionContext(context.executionId);
-    iterContext.setIterationContext({
-      item: item,
-      index: iterationIndex,
-      total: totalItems
-    });
+    // 1. Fetch the latest content state from the store
+    let latestStoredContent = getNodeContent(id, type); // Uses store getter
     
-    console.log(`[NodeFactory] Creating iteration node ${id} for item ${iterationIndex + 1}`);
+    // 2. Ensure essential properties exist, using defaults if necessary
+    if (type === 'llm') {
+        const defaultLLMContent = createDefaultNodeContent('llm') as LLMNodeContent;
+        latestStoredContent = {
+            ...defaultLLMContent, // Start with defaults
+            ...(latestStoredContent || {}), // Overlay stored content (if any)
+            label: latestStoredContent?.label || reactFlowProps?.label || defaultLLMContent.label // Prioritize labels correctly
+        } as LLMNodeContent;
+        
+        // Ensure required fields are present after merge
+        if (!latestStoredContent.provider || !latestStoredContent.model) {
+             console.warn(`[NodeFactory] LLM node ${id} missing provider or model in store. Applying defaults.`);
+             latestStoredContent.provider = latestStoredContent.provider || defaultLLMContent.provider;
+             latestStoredContent.model = latestStoredContent.model || defaultLLMContent.model;
+        }
+    } else if (!latestStoredContent || Object.keys(latestStoredContent).length === 0) {
+        // For other node types, if not found in store, try using reactFlowProps
+        // or fall back to default content for the type.
+        console.warn(`[NodeFactory] Content for ${type} node ${id} not found in store. Using reactFlowProps or defaults.`);
+        latestStoredContent = reactFlowProps && Object.keys(reactFlowProps).length > 0 
+                              ? reactFlowProps 
+                              : createDefaultNodeContent(type);
+        // Ensure label is consistent
+        latestStoredContent.label = reactFlowProps?.label || latestStoredContent.label || `Default ${type} Label`;
+    }
     
-    // Create the node with the iteration context
-    return this.create(id, type, property, iterContext);
-  }
-}
+    // 3. Add nodeFactory reference (needed for dynamic child resolution in Node.ts)
+    const enrichedProperties = {
+      ...latestStoredContent,
+      nodeFactory: this
+    };
 
-/**
- * Default passthrough node used when no specific implementation is available
- */
-class PassthroughNode extends Node {
-  execute(input: any): Promise<any> {
-    this.context.log(`PassthroughNode(${this.id}): No specific implementation for this type, passing through input`);
-    return Promise.resolve(input);
+    // 4. Use the node factory function from the registry to create the instance
+    const factoryFn = getNodeFactory(type);
+    if (!factoryFn) {
+      const registeredTypes = getAllNodeTypes();
+      console.error(`Node type "${type}" not found. Registered types: ${registeredTypes.join(', ')}`);
+      throw new Error(`Unknown node type: ${type}. Check console for registered types.`);
+    }
+
+    const node = factoryFn(id, enrichedProperties, context); // Pass the validated/enriched properties
+    
+    // 5. Store the created node instance in the factory's map
+    this.nodes.set(id, node);
+    console.log(`[NodeFactory] Created node ${id} (${type}) with properties:`, enrichedProperties);
+    return node;
+  }
+
+  /**
+   * Get a node by ID
+   * @param id The node ID
+   * @returns The node or undefined if not found
+   */
+  getNode(id: string): Node | undefined {
+    return this.nodes.get(id);
+  }
+
+  /**
+   * Set child node relationships
+   * @param edges Array of edges in the flow
+   */
+  setRelationships(edges: Array<{ source: string, target: string }>): void {
+    // Create a map of child IDs for each node
+    const childMap = new Map<string, string[]>();
+
+    // Process all edges
+    for (const edge of edges) {
+      const { source, target } = edge;
+      
+      // Skip if source doesn't exist
+      if (!this.nodes.has(source)) {
+        continue;
+      }
+
+      // Get or create child array
+      const children = childMap.get(source) || [];
+      
+      // Add target as child if not already present
+      if (!children.includes(target)) {
+        children.push(target);
+      }
+      
+      // Update the map
+      childMap.set(source, children);
+    }
+
+    // Set child IDs for each node
+    for (const [nodeId, childIds] of childMap.entries()) {
+      const node = this.nodes.get(nodeId);
+      if (node) {
+        node.setChildIds(childIds);
+      }
+    }
+  }
+
+  /**
+   * Clear all nodes
+   */
+  clear(): void {
+    this.nodes.clear();
   }
 }

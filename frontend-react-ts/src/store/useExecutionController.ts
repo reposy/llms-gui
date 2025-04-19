@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { Edge, Node } from 'reactflow';
+import { Edge, Node } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { NodeState, ExecutionContext } from '../types/execution';
 import { FlowExecutionContext } from '../core/FlowExecutionContext';
@@ -66,7 +66,7 @@ export const useExecutionController = create<ExecutionControllerState>()(
           
           // Create node factory
           const nodeFactory = new NodeFactory();
-          registerAllNodeTypes(nodeFactory);
+          registerAllNodeTypes();
           
           // Find the node data
           const node = nodes.find(n => n.id === groupNodeId);

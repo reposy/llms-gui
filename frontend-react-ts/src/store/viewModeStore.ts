@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
+import { createIDBStorage } from '../utils/storage/idbStorage';
 
 // Define the view mode types directly in this file (moved from viewModeSlice.ts)
 export type NodeViewMode = 'expanded' | 'compact' | 'auto';
@@ -70,6 +71,7 @@ export const useStore = create<ViewModeState>()(
       }),
       {
         name: 'view-mode-storage',
+        storage: createIDBStorage<ViewModeState>(),
       }
     )
   )

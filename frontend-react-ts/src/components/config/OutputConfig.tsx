@@ -1,11 +1,11 @@
+// src/components/config/OutputConfig.tsx
 import React, { useCallback } from 'react';
-import { OutputNodeData } from '../../types/nodes';
+import { OutputNodeData, OutputFormat } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useOutputNodeData } from '../../hooks/useOutputNodeData';
 
 interface OutputConfigProps {
   nodeId: string;
-  data: OutputNodeData;
 }
 
 interface FormatButtonProps {
@@ -13,26 +13,6 @@ interface FormatButtonProps {
   currentFormat: 'json' | 'text';
   onClick: () => void;
 }
-
-// Utility function to format execution result
-const formatExecutionResult = (result: any, format: 'json' | 'text'): string => {
-  if (!result) return '';
-
-  try {
-    const jsonResult = typeof result === 'string' ? JSON.parse(result) : result;
-
-    if (format === 'json') {
-      return JSON.stringify(jsonResult, null, 2);
-    } else {
-      if (typeof jsonResult === 'object' && jsonResult !== null) {
-        return jsonResult.content || jsonResult.text || '';
-      }
-      return String(jsonResult);
-    }
-  } catch (error) {
-    return String(result);
-  }
-};
 
 // Format button component
 const FormatButton: React.FC<FormatButtonProps> = ({ format, currentFormat, onClick }) => (
@@ -56,21 +36,22 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
-export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
+export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId }) => {
   const executionState = useNodeState(nodeId);
   
   const { 
     format, 
     handleFormatChange, 
-    formatResultBasedOnFormat 
-  } = useOutputNodeData({ nodeId });
+    formatResultBasedOnFormat,
+    content
+  } = useOutputNodeData(nodeId);
   
   // Event handler to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     e.stopPropagation();
   }, []);
   
-  const handleFormatToggle = useCallback((newFormat: 'json' | 'text') => {
+  const handleFormatToggle = useCallback((newFormat: OutputFormat) => {
     handleFormatChange(newFormat);
   }, [handleFormatChange]);
   
@@ -81,8 +62,8 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId, data }) => {
     displayContent = 'Processing...';
   } else if (executionState?.status === 'error') {
     displayContent = `Error: ${executionState.error}`;
-  } else if (executionState?.result) {
-    displayContent = formatResultBasedOnFormat(executionState.result, format);
+  } else if (content !== undefined) {
+    displayContent = formatResultBasedOnFormat();
   }
   
   return (

@@ -1,9 +1,10 @@
-import React, { useMemo, useCallback } from 'react';
-import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from 'reactflow';
+// src/components/nodes/GroupNode.tsx
+import React, { useMemo, useCallback, memo } from 'react';
+import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
 import clsx from 'clsx';
-import { GroupNodeData } from '../../types/nodes';
+import { GroupNodeData, NodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { getRootNodesFromSubset } from '../../utils/executionUtils';
+import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
 import { useNodes, useEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
@@ -15,15 +16,16 @@ import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useE
 // Add CSS import back to handle z-index
 import './GroupNode.css';
 
-const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPos, yPos, isConnectable }) => {
+const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
+  const groupData = data as GroupNodeData;
+  
   const allNodes = useNodes();
   const allEdges = useEdges();
   const { nodes, edges } = useFlowStructureStore();
-  const nodeState = useNodeState(id); // Get execution state for the group node
+  const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
   
-  // Use the Zustand state hook
   const { 
     label, 
     isCollapsed, 
@@ -31,13 +33,11 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
     handleLabelChange 
   } = useGroupNodeData({ nodeId: id });
 
-  // Memoize the calculation of nodes within the group and root nodes
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
-    const nodesInGroup = allNodes.filter(node => node.parentNode === id);
+    const nodesInGroup = allNodes.filter((node: Node<NodeData>) => node.parentId === id);
     const nodeIdsInGroup = new Set(nodesInGroup.map(n => n.id));
     const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
     const internalRoots = getRootNodesFromSubset(nodesInGroup, edgesInGroup);
-    // Remove noisy logging
     return {
       nodesInGroup,
       hasInternalRootNodes: internalRoots.length > 0,
@@ -46,31 +46,25 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
 
   const handleRunGroup = useCallback(() => {
     if (!isRunning) {
-      // Create execution context
       const executionId = `exec-${uuidv4()}`;
       const executionContext = new FlowExecutionContext(executionId);
       
-      // Set trigger node
       executionContext.setTriggerNode(id);
       
       console.log(`[GroupNode] Starting execution for node ${id}`);
       
-      // Build execution graph
       buildExecutionGraphFromFlow(nodes, edges);
       const executionGraph = getExecutionGraph();
       
-      // Create node factory
       const nodeFactory = new NodeFactory();
-      registerAllNodeTypes(nodeFactory);
+      registerAllNodeTypes();
       
-      // Find the node data
       const node = nodes.find(n => n.id === id);
       if (!node) {
         console.error(`[GroupNode] Node ${id} not found.`);
         return;
       }
       
-      // Create the node instance
       const nodeInstance = nodeFactory.create(
         id,
         node.type as string,
@@ -78,7 +72,6 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
         executionContext
       );
       
-      // Attach graph structure reference to the node property
       nodeInstance.property = {
         ...nodeInstance.property,
         nodes,
@@ -87,21 +80,16 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
         executionGraph
       };
       
-      // Execute the node
       nodeInstance.process({}).catch((error: Error) => {
         console.error(`[GroupNode] Error executing node ${id}:`, error);
       });
     }
   }, [id, isRunning, nodes, edges]);
   
-  // Handle selecting the group node manually
   const handleSelectGroup = useCallback((e: React.MouseEvent) => {
-    // Only handle events when they target exactly the current element
-    // This prevents capturing events from child nodes
     if (e.target === e.currentTarget) {
       e.stopPropagation();
       
-      // Select this node in ReactFlow
       setNodes(nodes => 
         nodes.map(node => ({
           ...node,
@@ -123,7 +111,6 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
         handleClassName="h-2 w-2 bg-white border border-blue-500"
       />
       
-      {/* Main container with flex layout - make entire group draggable */}
       <div
         className={clsx(
           'w-full h-full',
@@ -132,24 +119,23 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           'rounded-md',
           'flex flex-col',
           'bg-orange-100/50',
-          'group-node-container', // Add class for dragging the entire group
-          'cursor-move' // Indicate the entire group is draggable
+          'group-node-container',
+          'cursor-move'
         )}
         onClick={handleSelectGroup}
         data-testid={`group-node-${id}`}
       >
-        {/* Header */}
         <div
           className={clsx(
             'flex items-center justify-between p-1 text-xs text-orange-800 bg-orange-200/70 rounded-t-md',
-            'group-node-header' // Keep this class for compatibility
+            'group-node-header'
           )}
         >
           <span>{label}</span>
           {hasInternalRootNodes && (
             <button
               onClick={(e) => {
-                e.stopPropagation(); // Prevent parent node selection
+                e.stopPropagation();
                 handleRunGroup();
               }}
               disabled={isRunning}
@@ -164,17 +150,16 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
           )}
         </div>
 
-        {/* Content Area - use pointer-events-none to allow interaction with child elements */}
         <div
           className={clsx(
             'flex-grow',
             'bg-orange-50/30',
             'rounded-b-md',
             'relative',
-            'group-node-content', // Add class for potential CSS targeting
-            isCollapsed && 'collapsed' // Add class for collapsed state styling
+            'group-node-content',
+            isCollapsed && 'collapsed'
           )}
-          onClick={handleSelectGroup} // Also make content area selectable
+          onClick={handleSelectGroup}
         >
           {nodesInGroup.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs placeholder">
@@ -184,7 +169,6 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
         </div>
       </div>
 
-      {/* Handles */}
       <Handle
         type="target"
         position={Position.Left}
@@ -211,4 +195,4 @@ const GroupNode: React.FC<NodeProps<GroupNodeData>> = ({ id, data, selected, xPo
   );
 };
 
-export default GroupNode;
+export default memo(GroupNode);

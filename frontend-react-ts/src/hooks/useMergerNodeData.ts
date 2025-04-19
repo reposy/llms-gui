@@ -1,72 +1,110 @@
-import { useCallback } from 'react';
-import { useNodeContent, MergerNodeContent } from '../store/useNodeContentStore';
+import { useCallback, useMemo } from 'react';
+import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
+import { useNodeContentStore, MergerNodeContent, NodeContent } from '../store/useNodeContentStore';
+// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
 import { isEqual } from 'lodash';
+// import { Node as ReactFlowNode } from '@xyflow/react'; // Removed ReactFlowNode dependency
+import { MergerNodeData } from '../types/nodes'; // Keep type if needed elsewhere, but hook logic shouldn't rely on it
 
 /**
- * Custom hook to manage Merger node state and operations using Zustand store.
- * Centralizes logic for both MergerNode component and any related components
+ * Custom hook to manage Merger node state and operations.
+ * All state (label, strategy, keys, items) is managed via useNodeContentStore.
  */
-export const useMergerNodeData = ({ 
+export const useMergerNodeData = ({
   nodeId
-}: { 
+}: {
   nodeId: string
 }) => {
-  // Use the general NodeContentStore with MergerNodeContent type
-  const { 
-    content: generalContent, 
-    setContent,
-    isContentDirty
-  } = useNodeContent(nodeId);
+  // --- Content Store Access (Unified State Management) ---
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Cast the general content to MergerNodeContent type
-  const content = generalContent as MergerNodeContent;
+  // Use a selector with shallow comparison to get the entire content object
+  const content = useNodeContentStore(
+    useCallback(
+      (state) => state.getNodeContent<MergerNodeContent>(nodeId, 'merger'), // Get Merger specific content
+      [nodeId]
+    ),
+    shallow // Use shallow comparison
+  );
 
-  // Get accumulated items from content
-  const items = content.items || [];
+  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+
+  // --- Derived State (from content store) ---
+  // Provide defaults directly when accessing
+  const label = content?.label || 'Merger Node';
+  const strategy = content?.strategy || 'array';
+  const keys = content?.keys || [];
+  const items = content?.items || [];
   const itemCount = items.length;
-  const label = content.label || 'Merger Node';
 
   /**
-   * Add a new item to the accumulated items
+   * Utility function to update content in the store, ensuring defaults and types.
+   */
+  const updateMergerContent = useCallback((updates: Partial<Omit<MergerNodeContent, keyof NodeContent | 'isDirty'>>) => {
+    const currentContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(nodeId, 'merger');
+    const newContent: Partial<MergerNodeContent> = { ...currentContent, ...updates };
+
+    if (!isEqual(currentContent, newContent)) {
+        console.log(`[useMergerNodeData ${nodeId}] Updating content with:`, updates);
+        setNodeContent<MergerNodeContent>(nodeId, newContent);
+    } else {
+        console.log(`[useMergerNodeData ${nodeId}] Skipping content update - no changes (deep equal).`);
+    }
+  }, [nodeId, setNodeContent]);
+
+  // --- Change Handlers (using updateMergerContent) ---
+  const handleLabelChange = useCallback((newLabel: string) => {
+    updateMergerContent({ label: newLabel });
+  }, [updateMergerContent]);
+
+  const handleStrategyChange = useCallback((newStrategy: 'array' | 'object') => {
+    updateMergerContent({ strategy: newStrategy });
+  }, [updateMergerContent]);
+
+  const handleKeysChange = useCallback((newKeys: string[]) => {
+    updateMergerContent({ keys: newKeys });
+  }, [updateMergerContent]);
+
+  /**
+   * Add a new item to the accumulated items.
    */
   const addItem = useCallback((item: any) => {
-    const currentItems = items || [];
-    const newItems = [...currentItems, item];
-    
-    // Skip update if no actual changes using deep equality
-    if (isEqual(newItems, currentItems)) {
-      console.log(`[MergerNode ${nodeId}] Skipping item add - no change (deep equal)`);
-      return;
-    }
-    
-    console.log(`[MergerNode ${nodeId}] Adding item to accumulator. New count: ${newItems.length}`);
-    setContent({ items: newItems });
-  }, [nodeId, items, setContent]);
+    // Get current items directly from derived state within the hook
+    const newItems = [...items, item]; 
+    console.log(`[MergerNode ${nodeId}] Adding item. New count: ${newItems.length}`);
+    updateMergerContent({ items: newItems });
+  }, [nodeId, items, updateMergerContent]); // Depend on items from hook state
 
   /**
-   * Reset all accumulated items
+   * Reset all accumulated items.
    */
   const resetItems = useCallback(() => {
-    // Skip update if already empty
-    if (items.length === 0) {
-      console.log(`[MergerNode ${nodeId}] Skipping reset - already empty`);
-      return;
-    }
-    
-    console.log(`[MergerNode ${nodeId}] Resetting ${items.length} accumulated items`);
-    setContent({ items: [] });
-  }, [nodeId, items, setContent]);
+    if (items.length === 0) return; // Use items from hook state
+
+    console.log(`[MergerNode ${nodeId}] Resetting ${items.length} items`);
+    updateMergerContent({ items: [] });
+  }, [nodeId, items, updateMergerContent]); // Depend on items from hook state
 
   return {
-    // Data
-    content,
+    // State Data (all from useNodeContentStore)
+    label,
+    strategy,
+    keys,
     items,
     itemCount,
-    label,
     isDirty: isContentDirty,
-    
-    // Event handlers
+
+    // Change Handlers
+    handleLabelChange,
+    handleStrategyChange,
+    handleKeysChange,
+    // handleConfigChange, // Removed
+
+    // Result Item Handlers
     addItem,
     resetItems,
+    
+    // Provide the unified update function if direct partial updates are needed
+    // updateContent: updateMergerContent
   };
 }; 

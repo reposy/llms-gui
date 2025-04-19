@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 import { WebCrawlerNodeData } from '../../types/nodes';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
@@ -15,7 +15,10 @@ import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 
-const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, selected, isConnectable = true }) => {
+const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+  // Cast data prop internally
+  const crawlerData = data as WebCrawlerNodeData;
+
   // Get node execution state
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
@@ -44,7 +47,7 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
     
     // Create node factory
     const nodeFactory = new NodeFactory();
-    registerAllNodeTypes(nodeFactory);
+    registerAllNodeTypes();
     
     // Find the node data
     const node = nodes.find(n => n.id === id);
@@ -66,7 +69,6 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
       ...nodeInstance.property,
       nodes,
       edges,
-      nodeFactory,
       executionGraph
     };
     
@@ -78,8 +80,9 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // This should update the node label in your store
+    // TODO: Implement label update in the store if needed
     console.log(`Update label for node ${nodeId} to ${newLabel}`);
+    // Example: setNodeContent(nodeId, { label: newLabel });
   }, []);
   
   // Handle toggle view
@@ -90,12 +93,12 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
   }, []);
   
   // Format URL for display
-  const displayUrl = data.url 
-    ? (data.url.length > 30 ? data.url.substring(0, 27) + '...' : data.url)
+  const displayUrl = crawlerData.url 
+    ? (crawlerData.url.length > 30 ? crawlerData.url.substring(0, 27) + '...' : crawlerData.url)
     : 'No URL set';
   
   // Count extractors
-  const extractorCount = data.extractSelectors ? Object.keys(data.extractSelectors).length : 0;
+  const extractorCount = crawlerData.extractSelectors ? Object.keys(crawlerData.extractSelectors).length : 0;
   
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -108,7 +111,7 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
       >
         <NodeHeader 
           nodeId={id}
-          label={data.label || "Web Crawler"}
+          label={crawlerData.label || "Web Crawler"}
           placeholderLabel="Web Crawler"
           isRootNode={true}
           isRunning={isRunning}
@@ -126,10 +129,10 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
               <span className="ml-1 font-mono text-blue-600 break-all">{displayUrl}</span>
             </div>
             
-            {data.waitForSelector && (
+            {crawlerData.waitForSelector && (
               <div className="text-xs">
                 <span className="font-semibold">Wait for:</span> 
-                <span className="ml-1 font-mono">{data.waitForSelector}</span>
+                <span className="ml-1 font-mono">{crawlerData.waitForSelector}</span>
               </div>
             )}
             
@@ -142,7 +145,7 @@ const WebCrawlerNode: React.FC<NodeProps<WebCrawlerNodeData>> = ({ id, data, sel
             
             <div className="text-xs">
               <span className="font-semibold">Output:</span> 
-              <span className="ml-1 capitalize">{data.outputFormat || 'full'}</span>
+              <span className="ml-1 capitalize">{crawlerData.outputFormat || 'full'}</span>
             </div>
             
             {/* Error message display */}

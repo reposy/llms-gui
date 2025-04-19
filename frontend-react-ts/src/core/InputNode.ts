@@ -1,12 +1,15 @@
-import { Node } from '../core/Node';
-import { getNodeContent, InputNodeContent } from '../store/useNodeContentStore';
+import { Node } from './Node';
+import { FlowExecutionContext } from './FlowExecutionContext';
+import { InputNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
  * Input node properties
  */
-interface InputNodeProperty {
-  executionMode?: 'batch' | 'foreach';
-  items?: any[];
+export interface InputNodeProperty {
+  items: any[];
+  iterateEachRow: boolean;
+  nodeFactory?: any;
+  [key: string]: any;
 }
 
 /**
@@ -16,140 +19,86 @@ export class InputNode extends Node {
   /**
    * Type assertion for the property
    */
-  declare property: InputNodeProperty;
+  declare property: InputNodeContent;
   
   /**
-   * Execute the node's specific logic
-   * Implements the abstract method from Node
-   * @param input The input to execute
-   * @returns The items from this input node
+   * Constructor for InputNode
    */
-  async execute(input: any): Promise<any> {
-    // For InputNode, we get the items but don't propagate to children
-    // The process method overrides the parent and handles propagation
-    return this.getItems();
+  constructor(
+    id: string, 
+    property: Record<string, any> = {},
+    context?: FlowExecutionContext
+  ) {
+    super(id, 'input', property, context);
   }
 
   /**
-   * Retrieves the items from node data, content store, or text
-   * @returns Array of items to process
+   * Execute the input node, handling batch vs foreach logic
+   * Always pushes input to Zustand's items array and returns the updated array (batch) or null (foreach)
+   * @param input The input to execute
+   * @returns The items from this input node or null in foreach mode
    */
-  private getItems(): any[] {
-    // Get the current node content from the store to ensure we have the latest settings
-    const nodeContent = getNodeContent(this.id) as InputNodeContent;
+  async execute(input: any): Promise<any> {
+    this.context?.log(`${this.type}(${this.id}): Executing`);
+
+    // Get the latest content directly from the store within execute
+    const nodeContent = useNodeContentStore.getState().getNodeContent<InputNodeContent>(this.id, this.type);
+
+    // Use nodeContent for logic instead of this.property
+    const items = nodeContent.items || [];
+    const iterateEachRow = nodeContent.iterateEachRow;
     
-    // Ensure we have the executionMode from the node content
-    if (!this.property.executionMode && nodeContent && 'executionMode' in nodeContent) {
-      this.property.executionMode = nodeContent.executionMode as 'batch' | 'foreach';
-    }
-    
-    this.context.log(`InputNode(${this.id}): Retrieving items with executionMode=${this.property.executionMode || 'batch'}`);
-    
-    // First check property.items which contains runtime state
-    if (this.property.items && Array.isArray(this.property.items) && this.property.items.length > 0) {
-      this.context.log(`InputNode(${this.id}): Using ${this.property.items.length} items from property`);
-      return [...this.property.items];
-    }
-    
-    // If no items in property, check node content store
-    if (nodeContent?.items && Array.isArray(nodeContent.items) && nodeContent.items.length > 0) {
-      this.context.log(`InputNode(${this.id}): Using ${nodeContent.items.length} items from content store`);
-      return [...nodeContent.items];
-    }
-    
-    // Check for textBuffer in nodeContent
-    if (nodeContent?.textBuffer) {
-      const items = nodeContent.textBuffer.split(/\r?\n/).map((line: string) => line.trim()).filter((line: string) => line !== '');
-      this.context.log(`InputNode(${this.id}): Created ${items.length} items from textBuffer`);
-      return items;
-    }
-    
-    // Check node data for text property as a last resort
-    // Try to get the node data from the property
-    if (this.property && typeof this.property === 'object' && 'text' in this.property) {
-      const text = (this.property as any).text;
-      if (text) {
-        const items = text.split(/\r?\n/).map((line: string) => line.trim()).filter((line: string) => line !== '');
-        this.context.log(`InputNode(${this.id}): Created ${items.length} items from node property text`);
-        return items;
-      }
-    }
-    
-    this.context.log(`InputNode(${this.id}): No items found in node data or content store`);
-    return [];
-  }
-  
-  /**
-   * Process the input node and execute child nodes based on execution mode
-   * @param _ Input argument (typically ignored for InputNode)
-   * @returns The array of items from this input node
-   */
-  async process(_: any): Promise<any> {
-    try {
-      // Mark node as running
-      this.context.markNodeRunning(this.id);
-      
-      // Update property with latest execution mode from store
-      const nodeContent = getNodeContent(this.id) as InputNodeContent;
-      if (nodeContent && 'executionMode' in nodeContent) {
-        this.property.executionMode = nodeContent.executionMode as 'batch' | 'foreach';
-      }
-      
-      const executionMode = this.property.executionMode || 'batch';
-      const items = this.getItems();
-      
-      // Store the result (full array) in node state
-      this.context.storeOutput(this.id, items);
-      
-      if (items.length === 0) {
-        this.context.log(`InputNode(${this.id}): No items to process`);
-        return items;
-      }
-      
-      const children = this.getChildNodes();
-      
-      if (children.length === 0) {
-        this.context.log(`InputNode(${this.id}): No child nodes found to execute`);
-        return items;
-      }
-      
-      if (executionMode === 'foreach' && items.length > 0) {
-        this.context.log(`InputNode(${this.id}): Executing in FOREACH mode with ${items.length} items`);
-        
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          this.context.log(`InputNode(${this.id}): Processing item ${i+1}/${items.length} in foreach mode`);
-          
-          // Create a separate execution context for each iteration
-          // Use setIterationContext directly
-          this.context.setIterationContext({
-            index: i,
-            total: items.length,
-            item: item
-          });
-          
-          for (const child of children) {
-            this.context.log(`InputNode(${this.id}): Executing child node ${child.id} with item ${i+1}`);
-            await child.process(item);
-          }
+    this.context?.log(`${this.type}(${this.id}): Found ${items.length} items, iterateEachRow: ${iterateEachRow}`);
+
+    // Append the input to the items if it's not null/undefined
+    // This allows chaining into an Input node
+    if (input !== null && input !== undefined) {
+      // Filter out empty objects before pushing
+      const isValidObject = (item: any) => 
+        typeof item === 'object' && Object.keys(item).length > 0;
+
+      if (Array.isArray(input)) {
+        // Filter empty objects from input array
+        const filteredInput = input.filter(item => item !== null && item !== undefined && (typeof item !== 'object' || isValidObject(item)));
+        if (filteredInput.length > 0) {
+            items.push(...filteredInput);
         }
+      } else if (typeof input === 'object' && !isValidObject(input)){
+        // Do not push empty objects
+        this.context?.log(`${this.type}(${this.id}): Skipped adding empty object input.`);
       } else {
-        // For batch mode, just forward the entire array to child nodes
-        this.context.log(`InputNode(${this.id}): Executing in BATCH mode with ${items.length} items`);
-        
-        for (const child of children) {
-          await child.process(items);
+        items.push(input); // Push other valid types (string, number, non-empty objects, etc.)
+      }
+
+      // Only log and update store if items were actually added or changed
+      if (items.length > nodeContent.items.length) { // Check if length increased
+          this.context?.log(`${this.type}(${this.id}): Added valid input to items. New count: ${items.length}`);
+          useNodeContentStore.getState().setNodeContent(this.id, { items });
+      }
+    }
+
+    // If iterateEachRow is true (ForEach mode)
+    if (iterateEachRow) {
+      this.context?.log(`${this.type}(${this.id}): Running in ForEach mode`);
+      // Process each item individually
+      for (const item of items) {
+        const childNodes = this.getChildNodes();
+        for (const child of childNodes) {
+          // Use a deep copy of the context for parallel execution? 
+          // Need to consider if context needs to be isolated per branch.
+          await child.process(item);
         }
       }
-      
-      // Mark node as successful
-      this.context.markNodeSuccess(this.id, items);
-      
+      this.context?.log(`${this.type}(${this.id}): Finished ForEach mode processing`);
+      // Return null to stop chaining from this node after foreach completes
+      return null;
+    } else {
+      // If iterateEachRow is false (Batch mode)
+      this.context?.log(`${this.type}(${this.id}): Running in Batch mode, returning all items`);
+      // Return the whole items array for the next node to process
+      // Note: We are returning the items array directly, which might be mutated by downstream nodes.
+      // Consider returning a copy if mutation is a concern: return [...items];
       return items;
-    } catch (error) {
-      this.context.log(`InputNode(${this.id}): Execution failed: ${error}`);
-      this.context.markNodeError(this.id, String(error));
-      throw error;
     }
   }
 }

@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo } from 'react';
-import type { Node } from 'reactflow';
+import React, { useCallback } from 'react';
+import type { Node } from '@xyflow/react';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useExecutionController, useExecutionState } from '../../store/useExecutionController';
@@ -13,19 +13,21 @@ import GroupResultList from '../group/GroupResultList';
 import GroupExecutionToolbar from '../group/GroupExecutionToolbar';
 
 interface GroupDetailSidebarProps {
-  selectedNodeId: string | null;
+  selectedNodeIds: string[];
 }
 
-export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selectedNodeId }) => {
+export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selectedNodeIds }) => {
   const { nodes: allNodes } = useFlowStructureStore();
+  // 단일 그룹 노드만 허용
+  const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
   const nodeState = useNodeState(selectedNodeId || '');
   const executionState = useExecutionState();
 
-  // Handle the case when no node is selected
+  // 무선택 또는 다중 선택 시 안내
   if (!selectedNodeId) {
     return (
       <div className="w-80 flex-none bg-white border-l border-gray-200 p-6 shadow-lg z-10">
-        <p className="text-sm text-gray-500 italic">Select a group node to see details.</p>
+        <p className="text-sm text-gray-500 italic">그룹 노드를 하나만 선택하세요.</p>
       </div>
     ); 
   }
