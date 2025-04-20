@@ -128,7 +128,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   
   // 클립보드 초기화 및 기능 설정
   const { handleCopy, handlePaste, canPaste } = useClipboard();
-  console.log('[FlowCanvas] 클립보드 기능 초기화됨:', { handleCopy: !!handleCopy, handlePaste: !!handlePaste });
   
   // 선택된 노드를 삭제하는 핸들러
   const handleDeleteSelectedNodes = useCallback(() => {
@@ -179,10 +178,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
 
   // 키보드 이벤트 리스너 등록
   useEffect(() => {
-    console.log('[FlowCanvas] 키보드 이벤트 리스너 등록');
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      console.log('[FlowCanvas] 키보드 이벤트 리스너 제거');
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleKeyDown]);
@@ -240,12 +237,42 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         y: event.clientY,
       });
       
+      // 1. 먼저 새 노드 생성
       const newNode = createNewNode(nodeType, position);
       
-      // Add node to local state
+      // 2. 드롭 위치에 그룹 노드가 있는지 확인
+      const { reactFlowInstance } = useReactFlow();
+      const groupNodes = nodes.filter(node => node.type === 'group');
+      
+      let parentGroupId = null;
+      
+      // 그룹 노드들을 순회하며 새 노드가 그룹 내에 위치하는지 확인
+      for (const groupNode of groupNodes) {
+        // 그룹 노드의 영역을 계산 (position, width, height 사용)
+        if (
+          position.x >= groupNode.position.x && 
+          position.x <= groupNode.position.x + (groupNode.width || 1200) &&
+          position.y >= groupNode.position.y && 
+          position.y <= groupNode.position.y + (groupNode.height || 700)
+        ) {
+          // 이 그룹 노드 내부에 드롭됨
+          parentGroupId = groupNode.id;
+          break;
+        }
+      }
+      
+      // 3. 부모 그룹이 발견되면 parentNode만 설정 (위치 변환이나 extent 설정 안 함)
+      if (parentGroupId) {
+        newNode.parentNode = parentGroupId;
+        
+        // 절대 위치 그대로 유지 (상대 위치로 변환하지 않음)
+        // extent 속성도 설정하지 않음
+      }
+      
+      // 4. 노드 추가
       setNodes((nds) => [...nds, newNode]);
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, nodes]
   );
   
   // Selection consistency check - run only once after initial mount

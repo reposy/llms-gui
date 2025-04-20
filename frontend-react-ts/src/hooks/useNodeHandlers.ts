@@ -7,13 +7,14 @@ import {
   useReactFlow,
   getConnectedEdges,
   XYPosition,
-} from '@xyflow/react';
+  Rect, 
+} from '@xyflow/react'; 
 import { NodeData } from '../types/nodes';
 import { 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges, 
   useFlowStructureStore,
-  setSelectedNodeIds as setZustandSelectedNodeIds
+  setSelectedNodeIds
 } from '../store/useFlowStructureStore';
 
 // Define SelectionModifierKey type directly
@@ -31,11 +32,16 @@ interface UseNodeHandlersReturn {
   handleNodesDelete: (nodes: Node<NodeData>[]) => void;
 }
 
+// 타입 가드 함수
+function isNodeDataNode(node: Node | undefined): node is Node<NodeData> {
+  return node !== undefined && node !== null && typeof node.data === 'object';
+}
+
 export const useNodeHandlers = (
   options: UseNodeHandlersOptions
 ): UseNodeHandlersReturn => {
   const { onNodeSelect } = options;
-  const { getNodes, getEdges, getNode } = useReactFlow();
+  const { getNodes, getEdges, setNodes } = useReactFlow();
   
   // Add refs to track modifier key states
   const isShiftPressed = useRef(false);
@@ -113,18 +119,11 @@ export const useNodeHandlers = (
 
   // Handle new connections
   const handleConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) {
-      console.warn("[handleConnect] Invalid connection: missing source or target");
-      return;
-    }
+    const nodes = getNodes(); 
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const targetNode = nodes.find(n => n.id === connection.target);
     
-    const sourceNode = getNode(connection.source);
-    const targetNode = getNode(connection.target);
-    
-    if (!sourceNode || !targetNode) {
-      console.warn(`[handleConnect] Invalid connection: ${!sourceNode ? 'source' : 'target'} node not found`);
-      return;
-    }
+    if (!sourceNode || !targetNode) return;
     
     const currentEdges = getEdges();
     const connectionExists = currentEdges.some(edge => 
@@ -134,15 +133,7 @@ export const useNodeHandlers = (
       edge.targetHandle === connection.targetHandle
     );
     
-    if (connectionExists) {
-      console.warn("[handleConnect] Connection already exists, skipping duplicate");
-      return;
-    }
-    
-    console.log(`[handleConnect] Creating edge from ${sourceNode.type}:${connection.source} to ${targetNode.type}:${connection.target}`, {
-      sourceHandle: connection.sourceHandle,
-      targetHandle: connection.targetHandle
-    });
+    if (connectionExists) return;
     
     const newEdge: Edge = {
       ...connection,
@@ -151,44 +142,99 @@ export const useNodeHandlers = (
       target: connection.target,
     };
     
-    const newEdges = addEdge(newEdge, currentEdges);
-    setZustandEdges(newEdges);
-  }, [getNode, getEdges]);
+    setZustandEdges(addEdge(newEdge, currentEdges));
+  }, [getNodes, getEdges]);
 
-  // Handle node drag stop to update history
+  // Handle node drag stop - 그룹 노드 관련 처리 수정 (위치 조정 제거)
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, draggedNode: Node<NodeData>) => {
-      const latestNode = getNode(draggedNode.id);
-      if (!latestNode) return; 
+      // 드래그 종료 후 React Flow가 내부적으로 업데이트한 최신 노드 상태를 가져옵니다.
+      const allNodes = getNodes();
+      const draggedNodeWithUpdates = allNodes.find(n => n.id === draggedNode.id);
+      
+      if (!draggedNodeWithUpdates) return;
 
-      // Group membership logic removed. Only sync position.
-      console.log('[NodeDrag] Syncing dragged node position to Zustand.');
-      // Assert the type of latestNode before passing to sync function
-      syncDraggedNodePositionsToZustand([latestNode as Node<NodeData>]); 
+      // 1. 모든 그룹 노드 찾기
+      const groupNodes = allNodes.filter(n => n.type === 'group');
+      
+      // 2. 현재 노드의 중심점 좌표 계산
+      const draggedNodeCenter = {
+        x: draggedNodeWithUpdates.position.x + (draggedNodeWithUpdates.width || 100) / 2,
+        y: draggedNodeWithUpdates.position.y + (draggedNodeWithUpdates.height || 50) / 2
+      };
+      
+      // 3. 노드가 어떤 그룹 안에 있는지 확인
+      let foundParentGroup = null;
+      for (const groupNode of groupNodes) {
+        // 그룹 자신은 자신의 부모가 될 수 없음
+        if (groupNode.id === draggedNode.id) continue;
+        
+        // 그룹 노드의 경계 계산
+        const groupBounds = {
+          left: groupNode.position.x,
+          right: groupNode.position.x + (groupNode.width || 1200),
+          top: groupNode.position.y,
+          bottom: groupNode.position.y + (groupNode.height || 700)
+        };
+        
+        // 노드 중심점이 그룹 내부에 있는지 확인
+        if (
+          draggedNodeCenter.x >= groupBounds.left &&
+          draggedNodeCenter.x <= groupBounds.right &&
+          draggedNodeCenter.y >= groupBounds.top &&
+          draggedNodeCenter.y <= groupBounds.bottom
+        ) {
+          foundParentGroup = groupNode;
+          break;
+        }
+      }
+      
+      // 4. 복사본 생성 후 업데이트
+      const updatedNodes = allNodes.map(node => {
+        if (node.id !== draggedNode.id) return node;
+        
+        // 현재 노드의 업데이트된 복사본 생성
+        const updatedNode = { ...node } as any; // 타입 에러 해결을 위해 as any 사용
+        
+        if (foundParentGroup) {
+          // 그룹 내부로 드래그된 경우, parentNode만 설정하고 위치는 변경하지 않음
+          updatedNode.parentNode = foundParentGroup.id;
+          
+          // extent 속성 제거 - 이 속성이 자동 위치 조정을 일으킴
+          delete updatedNode.extent;
+          
+          // 위치는 변경하지 않고 그대로 유지 (절대 좌표 유지)
+          // console.log(`[NodeDragStop] Node ${node.id} is now child of group ${foundParentGroup.id}, keeping absolute position`);
+        } else if (updatedNode.parentNode) {
+          // 그룹 밖으로 드래그된 경우, parentNode 제거
+          // parentNode 및 extent 속성 제거
+          delete updatedNode.parentNode;
+          delete updatedNode.extent;
+          
+          // 위치는 이미 알맞게 설정되어 있으므로 변경 불필요
+          // console.log(`[NodeDragStop] Node ${node.id} removed from group, keeping absolute position`);
+        }
+        
+        return updatedNode;
+      });
+      
+      // 5. 상태 업데이트
+      setZustandNodes(updatedNodes as Node<NodeData>[]);
     },
-    // Removed checkNodeGroupIntersection. Only getNode, getNodes, sync... needed.
-    [getNode, getNodes, syncDraggedNodePositionsToZustand] 
+    [getNodes]
   );
 
-  // Handle selection drag stop to update history
-  const handleSelectionDragStop = useCallback((event: React.MouseEvent, draggedNodes: Node<NodeData>[]) => {
-    console.log(`[SelectionDragStop] Multi-selection drag completed for ${draggedNodes.length} nodes`);
-    
-    const latestDraggedNodes = draggedNodes.map(n => getNode(n.id)).filter(Boolean) as Node<NodeData>[];
-    
-    if (latestDraggedNodes.length > 0) {
-      syncDraggedNodePositionsToZustand(latestDraggedNodes);
-    }
-  }, [getNode, syncDraggedNodePositionsToZustand]);
+  // Handle selection drag stop
+  const handleSelectionDragStop = useCallback((event: React.MouseEvent, draggedNodesInput: Node[]) => {
+      // console.log(`[SelectionDragStop] Multi-selection drag completed. Syncing positions.`);
+      setZustandNodes(getNodes() as Node<NodeData>[]); 
+  }, [getNodes]);
 
   // Handle edges delete
   const handleEdgesDelete = useCallback((edgesToDelete: Edge[]) => {
     if (edgesToDelete.length === 0) return;
-    
-    console.log(`[EdgesDelete] Deleting ${edgesToDelete.length} edges`);
     const edgeIdsToDelete = new Set(edgesToDelete.map(e => e.id));
     const currentEdges = getEdges();
-    
     const nextEdges = currentEdges.filter((edge) => !edgeIdsToDelete.has(edge.id));
     setZustandEdges(nextEdges);
   }, [getEdges]);
@@ -196,36 +242,21 @@ export const useNodeHandlers = (
   // Handle nodes delete
   const handleNodesDelete = useCallback((nodesToDelete: Node<NodeData>[]) => {
     if (nodesToDelete.length === 0) return;
-    
     const nodeIdsToDelete = new Set(nodesToDelete.map(n => n.id));
-    const currentNodes = getNodes() as Node<NodeData>[];
+    const currentNodes = getNodes() as Node<NodeData>[]; 
     const currentEdges = getEdges();
-    
-    // 1. Filter out nodes to delete
     const remainingNodes = currentNodes.filter(node => !nodeIdsToDelete.has(node.id));
-    
-    // 2. Get all connected edges to deleted nodes
     const connectedEdges = getConnectedEdges(nodesToDelete, currentEdges);
     const connectedEdgeIds = new Set(connectedEdges.map(e => e.id));
-    
-    // 3. Filter out connected edges
     const remainingEdges = currentEdges.filter(edge => !connectedEdgeIds.has(edge.id));
-    
-    // 4. Update Zustand state
     setZustandNodes(remainingNodes);
     setZustandEdges(remainingEdges);
-
-    // 5. Clear selection if all selected nodes were deleted
-    if (remainingNodes.every(node => !node.selected)) {
-      setZustandSelectedNodeIds([]);
-      onNodeSelect(null);
-    } else {
-      // If some selected nodes remain, update selection
-      const selectedNodeIds = remainingNodes
-        .filter(node => node.selected)
-        .map(node => node.id);
-      setZustandSelectedNodeIds(selectedNodeIds);
-      onNodeSelect(selectedNodeIds.length > 0 ? selectedNodeIds : null);
+    // 선택 상태 업데이트 로직...
+    const currentSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
+    const newSelectedIds = currentSelectedIds.filter(id => !nodeIdsToDelete.has(id));
+    if (newSelectedIds.length !== currentSelectedIds.length) {
+        setSelectedNodeIds(newSelectedIds); // 여기서 사용됨
+        onNodeSelect(newSelectedIds.length > 0 ? newSelectedIds : null);
     }
   }, [getNodes, getEdges, onNodeSelect]);
 
@@ -236,4 +267,4 @@ export const useNodeHandlers = (
     handleEdgesDelete,
     handleNodesDelete
   };
-}; 
+};

@@ -19,7 +19,8 @@ import '@xyflow/react/dist/style.css';
 import 'tailwindcss/tailwind.css';
 
 // Store hooks
-import { useNodes, useEdges, useFlowActions, useSelectedNodeIds } from '../../store/useFlowStructureStore';
+import { useNodes, useEdges, useSelectedNodeIds } from '../../store/useFlowStructureStore';
+import { onNodesChange, onEdgesChange, setSelectedNodeIds } from '../../store/useFlowStructureStore';
 // import { useFlowSync } from '../../hooks/useFlowSync'; // 제거
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useViewModeStore } from '../../store/useViewModeStore';
@@ -48,7 +49,6 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
   // Zustand State and Actions
   const nodes = useNodes();
   const edges = useEdges();
-  const { onNodesChange, onEdgesChange, setSelectedNodeIds, clearAll } = useFlowActions(); // Zustand 액션 사용
   const selectedNodeIds = useSelectedNodeIds(); // 선택된 ID 직접 사용
   const { undo, redo } = useHistoryStore((state) => state.actions); // Undo/Redo actions
 
@@ -60,9 +60,6 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
   const { setViewport, getViewport, screenToFlowPosition, flowToScreenPosition, getNodes } = useReactFlow(); // getNodes 추가
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
-  // --- Remove useFlowSync ---
-  // const { isLoading } = useFlowSync(setViewport); // 제거
-
   // --- Node Handlers --- 
   // useNodeHandlers는 여전히 drag stop, connect, delete 로직을 포함하므로,
   // 필요에 따라 ReactFlow props나 단축키에 연결할 수 있습니다.
@@ -70,17 +67,11 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
   const nodeHandlers = useNodeHandlers({ onNodeSelect }); // Keep for potential use in shortcuts etc.
 
   // --- Clipboard ---
-  console.log('[FlowCanvas DEBUG] Setting up clipboard hooks'); // 디버그 메시지 추가
   const { handleCopy, handlePaste, canPaste } = useClipboard();
-  console.log('[FlowCanvas DEBUG] Clipboard handlers ready:', { 
-    handleCopyExists: !!handleCopy, 
-    handlePasteExists: !!handlePaste 
-  }); // 핸들러가 실제로 존재하는지 확인
 
   // --- Keyboard Shortcuts ---
   // 삭제 로직은 nodeHandlers 또는 직접 Zustand 액션 사용
   const handleDeleteSelection = useCallback(() => {
-    console.log('[FlowCanvas DEBUG] handleDeleteSelection called'); // 디버그 메시지 추가
     const selectedNodes = getNodes().filter(n => selectedNodeIds.includes(n.id));
     // TODO: selectedEdges도 가져와서 처리해야 함
     if (selectedNodes.length > 0) {
@@ -91,8 +82,6 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
 
   // 직접 키보드 이벤트 처리 로직 추가
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    console.log(`[FlowCanvas DEBUG] Direct keyDown: key=${event.key}, ctrl=${event.ctrlKey}, meta=${event.metaKey}`);
-    
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
     
@@ -103,16 +92,13 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
       targetElement.isContentEditable;
       
     if (isInputFocused) {
-      console.log('[FlowCanvas DEBUG] Input focused, ignoring shortcut');
       return;
     }
     
     if (isCtrlOrCmd && event.key.toLowerCase() === 'c') {
-      console.log('[FlowCanvas DEBUG] Directly calling handleCopy');
       handleCopy();
       event.preventDefault();
     } else if (isCtrlOrCmd && event.key.toLowerCase() === 'v') {
-      console.log('[FlowCanvas DEBUG] Directly calling handlePaste');
       const centerPosition = screenToFlowPosition({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2
@@ -122,28 +108,27 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
     }
   }, [handleCopy, handlePaste, screenToFlowPosition]);
 
-  // 직접 키보드 이벤트 리스너 등록
+  // 직접 키보드 이벤트 리스너 등록 (로그 제거됨)
   useEffect(() => {
-    console.log('[FlowCanvas DEBUG] Adding direct keyboard listener');
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      console.log('[FlowCanvas DEBUG] Removing direct keyboard listener');
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleKeyDown]);
 
-  // useKeyboardShortcuts 유지 (문제 진단용)
-  console.log('[FlowCanvas DEBUG] Setting up keyboard shortcuts');
+  // --- Clipboard --- (로그 제거됨)
+  const { handleCopy, handlePaste, canPaste } = useClipboard();
+  
+  // --- Keyboard Shortcuts --- (로그 제거됨)
   useKeyboardShortcuts({
     onCopy: handleCopy,
     onPaste: handlePaste,
-    onCut: null, // Remove onCut as it's not provided by useClipboard anymore
-    onDuplicate: null, // Remove onDuplicate as it's not provided by useClipboard anymore
-    onDelete: handleDeleteSelection, // Use custom handler
+    onCut: null, 
+    onDuplicate: null, 
+    onDelete: handleDeleteSelection, 
     onUndo: undo,
     onRedo: redo,
   });
-  console.log('[FlowCanvas DEBUG] Keyboard shortcuts setup complete');
 
   // --- Selection Handling ---
   const handleSelectionChange = useCallback(
@@ -169,8 +154,8 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
     <ReactFlow
       nodes={nodes} // Direct from Zustand
       edges={edges} // Direct from Zustand
-      onNodesChange={onNodesChange} // Direct from Zustand action
-      onEdgesChange={onEdgesChange} // Direct from Zustand action
+      onNodesChange={onNodesChange} // 직접 import한 액션 사용
+      onEdgesChange={onEdgesChange} // 직접 import한 액션 사용
       onSelectionChange={handleSelectionChange} // Handles selection sync to Zustand
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
@@ -204,7 +189,8 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
       
       {/* Example Panel - Can be customized */}
       <Panel position="top-right">
-        <button onClick={clearAll} className="p-2 bg-red-500 text-white rounded shadow mr-2">Clear All</button>
+        {/* clearAll 버튼 제거 또는 useFlowActions 재도입 필요 */} 
+        {/* <button onClick={clearAll} className="...">Clear All</button> */}
         <button onClick={undo} className="p-2 bg-gray-500 text-white rounded shadow mr-2">Undo</button>
         <button onClick={redo} className="p-2 bg-gray-500 text-white rounded shadow">Redo</button>
       </Panel>

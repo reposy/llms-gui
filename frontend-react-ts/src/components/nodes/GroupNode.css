@@ -52,21 +52,57 @@
 
 /* Group container should receive pointer events for selection */
 .group-node-container {
-  pointer-events: auto !important;
+  z-index: 0; /* 그룹 노드는 자식 노드보다 낮은 z-index를 가져야 함 */
+  min-width: 150px;
+  min-height: 100px;
+  background-color: rgba(255, 243, 230, 0.5);
+  transition: all 0.3s ease;
 }
 
 /* Group content area should receive pointer events for selection,
    but we'll use more selective element targeting in the component */
 .group-node-content {
-  pointer-events: auto !important;
+  /* pointer-events: auto !important; */ /* 테스트 원복 */
+  pointer-events: none; /* 그룹 컨텐츠 영역은 포인터 이벤트를 통과시킴 (원래대로) */
+  z-index: 0;
+}
+
+.group-node-content.collapsed {
+  height: 0;
+  overflow: hidden;
 }
 
 /* Group header should always be interactive */
 .group-node-header {
-  pointer-events: auto !important;
+  z-index: 1; /* 헤더는 클릭 가능하도록 높은 z-index */
+  cursor: default;
 }
 
 /* Make sure the entire group node can be selected */
 .react-flow__node.react-flow__node-group {
   cursor: pointer;
+}
+
+/* 그룹 노드 내부 제어 영역 */
+.group-controls {
+  z-index: 10;
+  pointer-events: all; /* 컨트롤 영역은 클릭 가능하도록 함 */
+}
+
+/* 그룹 노드 내부 오버레이 */
+.group-node-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0.1;
+  background-color: transparent;
+}
+
+/* 그룹 노드가 선택되었을 때 스타일 */
+.group-node-selected {
+  box-shadow: 0 0 0 2px #FF8C00;
 } 

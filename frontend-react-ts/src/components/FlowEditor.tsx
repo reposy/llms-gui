@@ -8,12 +8,20 @@ import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition } from '../utils/flow/flowUtils';
 import { setNodeContent, NodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { useNodes, useEdges, setNodes as setStructureNodes, useSelectedNodeIds, useFlowStructureStore } from '../store/useFlowStructureStore';
+import { 
+  useNodes, 
+  useEdges, 
+  setNodes as setStructureNodes,
+  useSelectedNodeIds, 
+  useFlowStructureStore,
+  setSelectedNodeIds
+} from '../store/useFlowStructureStore';
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
 import { runFlow } from '../core/FlowRunner';
 import { v4 as uuidv4 } from 'uuid';
+import { addNodeToGroup } from '../utils/flow/nodeUtils';
 
 export const FlowEditor = () => {
   const nodes = useNodes();
@@ -30,45 +38,67 @@ export const FlowEditor = () => {
   );
 
   const [selectedNodeIdForSidebar, setSelectedNodeIdForSidebar] = useState<string[] | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<Node | null>(null);
+  const [selectedNodesToAdd, setSelectedNodesToAdd] = useState<Node[]>([]);
 
   useEffect(() => {
     if (hydrated && !initialSnapshotCreatedRef.current) {
       if (nodes.length > 0 || edges.length > 0) {
-          console.log('[FlowEditor] Creating initial history snapshot after hydration.');
+          // console.log('[FlowEditor] Creating initial history snapshot after hydration.');
           pushCurrentSnapshot();
       }
       initialSnapshotCreatedRef.current = true;
     }
   }, [hydrated, nodes.length, edges.length]);
 
+  useEffect(() => {
+    if (selectedNodeIds.length > 0) {
+      const selectedNodes = nodes.filter(node => selectedNodeIds.includes(node.id));
+      
+      const groups = selectedNodes.filter(node => node.type === 'group');
+      const regularNodes = selectedNodes.filter(node => node.type !== 'group');
+      
+      if (groups.length === 1 && regularNodes.length > 0) {
+        setSelectedGroup(groups[0]);
+        setSelectedNodesToAdd(regularNodes);
+      } else {
+        setSelectedGroup(null);
+        setSelectedNodesToAdd([]);
+      }
+    } else {
+      setSelectedGroup(null);
+      setSelectedNodesToAdd([]);
+    }
+  }, [selectedNodeIds, nodes]);
+
   const handleRegisterApi = useCallback((api: FlowCanvasApi) => {
     reactFlowApiRef.current = api;
-    console.log("[FlowEditor] React Flow API registered:", api);
+    // console.log("[FlowEditor] React Flow API registered:", api);
   }, []);
 
   const handleAddNode = useCallback((type: NodeType) => {
     if (!reactFlowApiRef.current) {
-      console.error("React Flow API not available yet.");
+      // console.error("React Flow API not available yet.");
       return;
     }
     const position = calculateNodePosition(nodes, null);
     const newNode = createNewNode(type, position);
-    console.log(`[FlowEditor] Adding new node:`, newNode);
+    // console.log(`[FlowEditor] Adding new node:`, newNode);
     
     const updatedNodes = [...nodes, newNode];
     setStructureNodes(updatedNodes); 
     
     const initialContent = { ...newNode.data, isDirty: false };
-    setNodeContent(newNode.id, initialContent as Partial<NodeContent>); 
-    console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, initialContent);
+    setContent(newNode.id, initialContent as Partial<NodeContent>); 
+    // console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, initialContent);
     
     pushCurrentSnapshot();
-  }, [nodes]);
+  }, [nodes, setStructureNodes, setContent]);
 
   const handleRunFlow = useCallback(async () => {
     setIsExecuting(true);
     try {
-      console.log('[FlowEditor] Running flow directly through FlowRunner...');
+      // console.log('[FlowEditor] Running flow directly through FlowRunner...');
       await runFlow(nodes, edges); 
     } catch (error) {
       console.error('Flow execution error:', error);
@@ -80,20 +110,20 @@ export const FlowEditor = () => {
   const [isExecuting, setIsExecuting] = useState(false);
 
   const handleNodeSelect = useCallback((nodeIds: string[] | null) => {
-    console.log(`[FlowEditor] Node selection changed:`, nodeIds);
+    // console.log(`[FlowEditor] Node selection changed:`, nodeIds);
     if (!nodeIds && !selectedNodeIdForSidebar) {
-      console.log(`[FlowEditor] Selection unchanged (null), not updating state`);
+      // console.log(`[FlowEditor] Selection unchanged (null), not updating state`);
       return;
     }
     
     if (nodeIds && selectedNodeIdForSidebar && 
         nodeIds.length === selectedNodeIdForSidebar.length && 
         nodeIds.every((id, idx) => id === selectedNodeIdForSidebar[idx])) {
-      console.log(`[FlowEditor] Selection unchanged, not updating state`);
+      // console.log(`[FlowEditor] Selection unchanged, not updating state`);
       return;
     }
     
-    console.log(`[FlowEditor] Updating selectedNodeIdForSidebar to:`, nodeIds);
+    // console.log(`[FlowEditor] Updating selectedNodeIdForSidebar to:`, nodeIds);
     setSelectedNodeIdForSidebar(nodeIds);
   }, [selectedNodeIdForSidebar]);
 
@@ -111,6 +141,26 @@ export const FlowEditor = () => {
     }
     return false;
   }, [nodes, selectedNodeIdForSidebar]);
+
+  const handleAddNodesToGroup = useCallback(() => {
+    if (!selectedGroup || selectedNodesToAdd.length === 0) return;
+    
+    // console.log(`[FlowEditor] Adding ${selectedNodesToAdd.length} nodes to group ${selectedGroup.id}`);
+    
+    let updatedNodes = [...nodes];
+    
+    for (const node of selectedNodesToAdd) {
+      updatedNodes = addNodeToGroup(
+        node as unknown as Node<NodeData>, 
+        selectedGroup as unknown as Node<NodeData>, 
+        updatedNodes as Node<NodeData>[]
+      );
+    }
+    
+    setStructureNodes(updatedNodes);
+    
+    setSelectedNodeIds([selectedGroup.id]);
+  }, [selectedGroup, selectedNodesToAdd, nodes, setStructureNodes, setSelectedNodeIds]);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
@@ -131,6 +181,18 @@ export const FlowEditor = () => {
             </svg>
             {isExecuting ? '실행 중...' : '플로우 실행'}
           </button>
+          {selectedGroup && selectedNodesToAdd.length > 0 && (
+            <button
+              onClick={handleAddNodesToGroup}
+              className="px-3 py-1 bg-orange-500 text-white rounded-md hover:bg-orange-600 flex items-center"
+              title="선택한 노드를 그룹에 추가"
+            >
+              <span className="mr-1">+ 그룹에 추가</span>
+              <span className="bg-white text-orange-600 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">
+                {selectedNodesToAdd.length}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 

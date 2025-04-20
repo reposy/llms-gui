@@ -29,12 +29,45 @@ export class GroupNode extends Node {
   }
 
   /**
+   * Override the process method to execute all internal root nodes
+   * This gets called when the Group node is explicitly executed (Run button)
+   */
+  async process(input: any) {
+    // this.context?.log(`${this.type}(${this.id}): Group process called with input`);
+    
+    // Mark node as running
+    this.context?.markNodeRunning(this.id);
+    
+    try {
+      // Execute group logic
+      const result = await this.execute(input);
+      
+      // If group execution returned result, pass to child nodes in main flow
+      if (result !== null) {
+        // this.context?.log(`${this.type}(${this.id}): Group execution yielded result, continuing to external children`);
+        // Continue normal flow by passing result to external child nodes
+        for (const child of this.getChildNodes()) {
+          await child.process(result);
+        }
+      }
+      
+      // Mark successful execution
+      this.context?.markNodeSuccess(this.id, result);
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // this.context?.log(`${this.type}(${this.id}): Error in group process: ${errorMessage}`);
+      this.context?.markNodeError(this.id, errorMessage);
+    }
+  }
+
+  /**
    * Execute logic for a group node by finding and executing root nodes within the group
    * @param input The input to process
    * @returns The processed result
    */
   async execute(input: any): Promise<any> {
-    this.context?.log(`${this.type}(${this.id}): Executing group node`);
+    // this.context?.log(`${this.type}(${this.id}): Executing group node`);
 
     // Get the latest content (mainly childNodes) directly from the store
     const nodeContent = useNodeContentStore.getState().getNodeContent<GroupNodeContent>(this.id, this.type);
@@ -47,16 +80,16 @@ export class GroupNode extends Node {
     const nodeFactory = this.property.nodeFactory; // Need factory to create instances
 
     if (!nodeFactory || groupNodes.length === 0) {
-      this.context?.log(`${this.type}(${this.id}): No node factory or nodes found within the group property. Cannot execute.`);
+      // this.context?.log(`${this.type}(${this.id}): No node factory or nodes found within the group property. Cannot execute.`);
       return null; // Cannot proceed without factory or nodes
     }
 
     // Identify root nodes *within* the group
     const groupRootNodeIds = getRootNodeIds(groupNodes, groupEdges);
-    this.context?.log(`${this.type}(${this.id}): Found ${groupRootNodeIds.length} root nodes within group: ${groupRootNodeIds.join(', ')}`);
+    // this.context?.log(`${this.type}(${this.id}): Found ${groupRootNodeIds.length} root nodes within group: ${groupRootNodeIds.join(', ')}`);
 
     if (groupRootNodeIds.length === 0) {
-        this.context?.log(`${this.type}(${this.id}): No root nodes found inside the group. Group execution stopped.`);
+        // this.context?.log(`${this.type}(${this.id}): No root nodes found inside the group. Group execution stopped.`);
         return null; // No entry point for the group's internal flow
     }
 
@@ -64,18 +97,18 @@ export class GroupNode extends Node {
     for (const rootNodeId of groupRootNodeIds) {
       // Prevent infinite loops if a group somehow contains itself or similar issues
       if (this.context?.hasExecutedNode(rootNodeId)) {
-        this.context?.log(`${this.type}(${this.id}): Skipping already executed node within group: ${rootNodeId}`);
+        // this.context?.log(`${this.type}(${this.id}): Skipping already executed node within group: ${rootNodeId}`);
         continue;
       }
       
       const nodeData = groupNodes.find((n: any) => n.id === rootNodeId);
       if (!nodeData) {
-        this.context?.log(`${this.type}(${this.id}): Root node ${rootNodeId} data not found within group. Skipping.`);
+        // this.context?.log(`${this.type}(${this.id}): Root node ${rootNodeId} data not found within group. Skipping.`);
         continue;
       }
 
       try {
-        this.context?.log(`${this.type}(${this.id}): Executing group root node: ${rootNodeId}`);
+        // this.context?.log(`${this.type}(${this.id}): Executing group root node: ${rootNodeId}`);
         const nodeInstance = nodeFactory.create(
           nodeData.id,
           nodeData.type as string,
@@ -99,13 +132,13 @@ export class GroupNode extends Node {
         
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        this.context?.log(`${this.type}(${this.id}): Error executing node ${rootNodeId} within group: ${errorMessage}`);
+        // this.context?.log(`${this.type}(${this.id}): Error executing node ${rootNodeId} within group: ${errorMessage}`);
         // Optionally mark the group itself as error? Or just the internal node?
         // For now, just log and continue with other roots if they exist.
       }
     }
 
-    this.context?.log(`${this.type}(${this.id}): Finished executing group`);
+    // this.context?.log(`${this.type}(${this.id}): Finished executing group`);
     // What should a group node return? Usually, it might return the result of its designated 
     // "output" node, or perhaps null if it just orchestrates internal flow.
     // For now, return the original input, assuming it doesn't modify the main flow data directly.
@@ -118,13 +151,32 @@ export class GroupNode extends Node {
    */
   private getInternalNodes(): any[] {
     if (!this.property.nodes) {
-      this.context?.log(`GroupNode(${this.id}): No nodes property available`);
+      // this.context?.log(`GroupNode(${this.id}): No nodes property available`);
       return [];
     }
     
-    // Get all nodes that have this group as their parent
-    const childNodes = this.property.nodes.filter(node => node.parentNode === this.id);
-    this.context?.log(`GroupNode(${this.id}): Found ${childNodes.length} nodes inside group`);
+    // Get nodes with parentId
+    const nodesWithParentId = this.property.nodes.filter(node => node.parentId === this.id);
+    
+    // Get nodes with parentNode 
+    const nodesWithParentNode = this.property.nodes.filter(node => node.parentNode === this.id);
+    
+    // Combine both and remove duplicates
+    const childNodes = [...nodesWithParentId];
+    for (const node of nodesWithParentNode) {
+      if (!childNodes.some(n => n.id === node.id)) {
+        childNodes.push(node);
+      }
+    }
+    
+    // Debug logging 제거
+    // this.context?.log(`GroupNode(${this.id}): Finding internal nodes:...`);
+    
+    // Debug logging 제거
+    // if (childNodes.length > 0) {
+    //   this.context?.log(`GroupNode(${this.id}): Child nodes: ${childNodes.map(n => n.id).join(', ')}`);
+    // }
+    
     return childNodes;
   }
 } 

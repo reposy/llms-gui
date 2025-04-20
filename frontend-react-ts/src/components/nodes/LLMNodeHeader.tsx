@@ -12,7 +12,7 @@ import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { getNodeContent, setNodeContent, LLMNodeContent } from '../../store/nodeContentStore';
+import { getNodeContent, setNodeContent, LLMNodeContent } from '../../store/useNodeContentStore';
 
 interface LLMNodeHeaderProps {
   id: string;
