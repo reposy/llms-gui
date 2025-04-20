@@ -158,17 +158,6 @@ export class GroupNode extends Node {
     // Get nodes with parentId
     const nodesWithParentId = this.property.nodes.filter(node => node.parentId === this.id);
     
-    // Get nodes with parentNode 
-    const nodesWithParentNode = this.property.nodes.filter(node => node.parentNode === this.id);
-    
-    // Combine both and remove duplicates
-    const childNodes = [...nodesWithParentId];
-    for (const node of nodesWithParentNode) {
-      if (!childNodes.some(n => n.id === node.id)) {
-        childNodes.push(node);
-      }
-    }
-    
     // Debug logging 제거
     // this.context?.log(`GroupNode(${this.id}): Finding internal nodes:...`);
     
@@ -177,6 +166,6 @@ export class GroupNode extends Node {
     //   this.context?.log(`GroupNode(${this.id}): Child nodes: ${childNodes.map(n => n.id).join(', ')}`);
     // }
     
-    return childNodes;
+    return nodesWithParentId;
   }
 } 

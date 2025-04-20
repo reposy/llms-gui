@@ -2,12 +2,10 @@ import { useCallback, useEffect, useRef } from 'react';
 import { 
   Connection, 
   Edge, 
-  Node, 
+  Node,
   addEdge,
   useReactFlow,
   getConnectedEdges,
-  XYPosition,
-  Rect, 
 } from '@xyflow/react'; 
 import { NodeData } from '../types/nodes';
 import { 
@@ -30,11 +28,6 @@ interface UseNodeHandlersReturn {
   handleSelectionDragStop: (event: React.MouseEvent, nodes: Node<NodeData>[]) => void;
   handleEdgesDelete: (edges: Edge[]) => void;
   handleNodesDelete: (nodes: Node<NodeData>[]) => void;
-}
-
-// 타입 가드 함수
-function isNodeDataNode(node: Node | undefined): node is Node<NodeData> {
-  return node !== undefined && node !== null && typeof node.data === 'object';
 }
 
 export const useNodeHandlers = (
@@ -198,17 +191,17 @@ export const useNodeHandlers = (
         
         if (foundParentGroup) {
           // 그룹 내부로 드래그된 경우, parentNode만 설정하고 위치는 변경하지 않음
-          updatedNode.parentNode = foundParentGroup.id;
+          updatedNode.parentId = foundParentGroup.id;
           
           // extent 속성 제거 - 이 속성이 자동 위치 조정을 일으킴
           delete updatedNode.extent;
           
           // 위치는 변경하지 않고 그대로 유지 (절대 좌표 유지)
           // console.log(`[NodeDragStop] Node ${node.id} is now child of group ${foundParentGroup.id}, keeping absolute position`);
-        } else if (updatedNode.parentNode) {
+        } else if (updatedNode.parentId) {
           // 그룹 밖으로 드래그된 경우, parentNode 제거
           // parentNode 및 extent 속성 제거
-          delete updatedNode.parentNode;
+          delete updatedNode.parentId;
           delete updatedNode.extent;
           
           // 위치는 이미 알맞게 설정되어 있으므로 변경 불필요

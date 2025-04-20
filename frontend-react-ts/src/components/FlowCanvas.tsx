@@ -114,11 +114,11 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     handleEdgesDelete,
     handleNodesDelete
   } = useNodeHandlers({
-    onNodeSelect: (node) => {
+    onNodeSelect: (nodeIds) => {
       // Selection logic is now handled by onSelectionChange callback
-      if (node) {
-        console.log(`[FlowCanvas] Node selected: ${node.id}`);
-        onNodeSelect([node.id]); // Call with node.id instead of node object
+      if (nodeIds) {
+        console.log(`[FlowCanvas] Nodes selected: ${nodeIds.join(', ')}`);
+        onNodeSelect(nodeIds); // 이미 노드 ID 배열을 받고 있음
       } else {
         console.log(`[FlowCanvas] Node selection cleared`);
         onNodeSelect(null);
@@ -241,7 +241,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       const newNode = createNewNode(nodeType, position);
       
       // 2. 드롭 위치에 그룹 노드가 있는지 확인
-      const { reactFlowInstance } = useReactFlow();
       const groupNodes = nodes.filter(node => node.type === 'group');
       
       let parentGroupId = null;
@@ -261,16 +260,16 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         }
       }
       
-      // 3. 부모 그룹이 발견되면 parentNode만 설정 (위치 변환이나 extent 설정 안 함)
+      // 3. 부모 그룹이 발견되면 parentId만 설정 (위치 변환이나 extent 설정 안 함)
       if (parentGroupId) {
-        newNode.parentNode = parentGroupId;
+        newNode.parentId = parentGroupId;
         
         // 절대 위치 그대로 유지 (상대 위치로 변환하지 않음)
         // extent 속성도 설정하지 않음
       }
       
-      // 4. 노드 추가
-      setNodes((nds) => [...nds, newNode]);
+      // 4. 노드 추가 (명시적 타입 변환으로 에러 해결)
+      setNodes((nds: Node<NodeData>[]) => [...nds, newNode] as Node<NodeData>[]);
     },
     [screenToFlowPosition, setNodes, nodes]
   );

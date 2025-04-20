@@ -39,17 +39,10 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
       node.parentId === id
     );
     
-    const nodesWithParentNode = allNodes.filter((node: Node<NodeData>) => 
-      node.parentNode === id
-    );
+    // 기존 parentNode 필터링을 제거하고 parentId만 사용
     
-    // Combine both and remove duplicates
-    const combinedNodes = [...nodesWithParentId];
-    for (const node of nodesWithParentNode) {
-      if (!combinedNodes.some(n => n.id === node.id)) {
-        combinedNodes.push(node);
-      }
-    }
+    // 중복 제거는 더 이상 필요 없음 (단일 필터만 사용)
+    const combinedNodes = nodesWithParentId;
     
     // console.log(`[GroupNode] ID: ${id}, Found ${combinedNodes.length} nodes inside group: ${combinedNodes.map(n => n.id).join(", ")}`);
     
