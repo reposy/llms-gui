@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import { 
   ReactFlow,
   MiniMap,
@@ -10,17 +10,10 @@ import {
   Panel,
   ReactFlowProvider,
   ConnectionLineType,
-  useNodesState,
-  useEdgesState,
-  OnConnectStart,
-  OnConnectEnd,
-  Connection,
-  NodeTypes,
   ReactFlowInstance,
   OnInit
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import isEqual from 'lodash/isEqual';
 
 // Import custom hooks
 import { useClipboard } from '../hooks/useClipboard';
@@ -127,7 +120,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   });
   
   // 클립보드 초기화 및 기능 설정
-  const { handleCopy, handlePaste, canPaste } = useClipboard();
+  const { handleCopy, handlePaste } = useClipboard();
   
   // 선택된 노드를 삭제하는 핸들러
   const handleDeleteSelectedNodes = useCallback(() => {
@@ -269,7 +262,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       }
       
       // 4. 노드 추가 (명시적 타입 변환으로 에러 해결)
-      setNodes((nds: Node<NodeData>[]) => [...nds, newNode] as Node<NodeData>[]);
+      setNodes(prevNodes => [...prevNodes, newNode] as Node<NodeData>[]);
     },
     [screenToFlowPosition, setNodes, nodes]
   );

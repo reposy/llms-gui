@@ -3,58 +3,53 @@ import { NodeData } from '../../types/nodes';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * 노드를 그룹에 추가하는 함수
- * @param node 그룹에 추가할 노드
- * @param groupNode 그룹 노드
- * @param nodes 전체 노드 목록
- * @returns 업데이트된 노드 목록
+ * Adds a node to a group
+ * @param node Node to add to the group
+ * @param groupNode Group node
+ * @param nodes All nodes in the flow
+ * @returns Updated nodes array
  */
 export function addNodeToGroup(
   node: Node<NodeData>, 
   groupNode: Node<NodeData>, 
   nodes: Node<NodeData>[]
 ): Node<NodeData>[] {
-  // console.log(`[nodeUtils] Adding node ${node.id} to group ${groupNode.id}`);
-  
-  // 노드가 이미 다른 그룹에 속해 있는지 확인
+  // Check if the node is already in another group
   const wasInGroup = !!node.parentId;
   let oldParentPos = { x: 0, y: 0 };
   
   if (wasInGroup) {
-    // 이전 그룹 찾기
+    // Find previous parent group
     const oldParent = nodes.find(n => n.id === node.parentId);
     if (oldParent) {
       oldParentPos = oldParent.position;
-      // console.log(`[nodeUtils] Node was in group ${node.parentId}, will adjust position`);
     }
   }
   
-  // 새 위치 계산 (절대 좌표에서 그룹 기준 상대 좌표로 변환)
+  // Calculate new position (convert from absolute to relative position)
   const absoluteX = wasInGroup 
-    ? oldParentPos.x + node.position.x  // 이전 그룹 내 상대위치를 절대위치로
-    : node.position.x;                  // 이미 절대위치
+    ? oldParentPos.x + node.position.x  // Convert relative position to absolute
+    : node.position.x;                  // Already absolute
   
   const absoluteY = wasInGroup 
     ? oldParentPos.y + node.position.y
     : node.position.y;
   
-  // 그룹 기준 상대 좌표 계산
+  // Calculate position relative to the group
   const relativeX = absoluteX - groupNode.position.x;
   const relativeY = absoluteY - groupNode.position.y;
   
-  // console.log(`[nodeUtils] Position conversion:`, {...});
-  
-  // 업데이트된 노드 목록 생성
+  // Create updated nodes array
   return nodes.map(n => {
     if (n.id === node.id) {
       return {
         ...n,
-        parentId: groupNode.id,     // 그룹 ID 설정
-        position: {                 // 상대 위치 설정
+        parentId: groupNode.id,     // Set group ID using parentId property
+        position: {                 // Set relative position
           x: relativeX,
           y: relativeY
         },
-        // 기존 데이터 유지
+        // Preserve existing data
         data: n.data
       };
     }
@@ -63,29 +58,25 @@ export function addNodeToGroup(
 }
 
 /**
- * 노드를 그룹에서 제거하는 함수
- * @param node 그룹에서 제거할 노드
- * @param nodes 전체 노드 목록
- * @returns 업데이트된 노드 목록
+ * Removes a node from a group
+ * @param node Node to remove from group
+ * @param nodes All nodes in the flow
+ * @returns Updated nodes array
  */
 export function removeNodeFromGroup(
   node: Node<NodeData>, 
   nodes: Node<NodeData>[]
 ): Node<NodeData>[] {
-  // 노드가 그룹에 속해 있지 않으면 변경 없음
+  // No change if node is not in a group
   if (!node.parentId) {
-    // console.log(`[nodeUtils] Node ${node.id} is not in any group, no changes needed`);
     return nodes;
   }
   
-  // console.log(`[nodeUtils] Removing node ${node.id} from group ${node.parentId}`);
-  
-  // 부모 그룹 찾기
+  // Find parent group
   const parentGroup = nodes.find(n => n.id === node.parentId);
   
   if (!parentGroup) {
-    // console.log(`[nodeUtils] Parent group ${node.parentId} not found, just removing parentId`);
-    // 부모를 찾을 수 없으면 parentId만 제거
+    // If parent not found, just remove the parent reference
     return nodes.map(n => {
       if (n.id === node.id) {
         return {
@@ -97,19 +88,17 @@ export function removeNodeFromGroup(
     });
   }
   
-  // 절대 위치 계산 (그룹 기준 상대 좌표에서 절대 좌표로 변환)
+  // Calculate absolute position (convert from relative to absolute)
   const absoluteX = parentGroup.position.x + node.position.x;
   const absoluteY = parentGroup.position.y + node.position.y;
   
-  // console.log(`[nodeUtils] Converting to absolute position:`, {...});
-  
-  // 업데이트된 노드 목록 생성
+  // Create updated nodes array
   return nodes.map(n => {
     if (n.id === node.id) {
       return {
         ...n,
-        parentId: undefined,  // 그룹 제거
-        position: {           // 절대 위치로 변환
+        parentId: undefined,  // Remove group reference
+        position: {           // Convert to absolute position
           x: absoluteX,
           y: absoluteY
         }
@@ -120,32 +109,79 @@ export function removeNodeFromGroup(
 }
 
 /**
- * 노드 위치가 그룹 내부에 있는지 확인
- * @param node 확인할 노드
- * @param groupNode 그룹 노드
- * @returns 노드 중심이 그룹 내부에 있으면 true, 아니면 false
+ * Checks if a node is positioned inside a group
+ * @param node Node to check
+ * @param groupNode Group node
+ * @returns True if node's center is inside the group
  */
 export function isNodeInGroup(
   node: Node<NodeData>, 
   groupNode: Node<NodeData>
 ): boolean {
-  // 노드 중심점 계산
+  // Calculate node center point
   const nodeWidth = node.width || 150;
   const nodeHeight = node.height || 50;
   const nodeCenterX = node.position.x + nodeWidth / 2;
   const nodeCenterY = node.position.y + nodeHeight / 2;
   
-  // 그룹 경계 계산
+  // Calculate group boundaries
   const groupLeft = groupNode.position.x;
   const groupTop = groupNode.position.y;
   const groupRight = groupLeft + (groupNode.width || 300);
   const groupBottom = groupTop + (groupNode.height || 200);
   
-  // 노드 중심이 그룹 내에 있는지 확인
+  // Check if node center is inside group boundaries
   return (
     nodeCenterX >= groupLeft &&
     nodeCenterX <= groupRight &&
     nodeCenterY >= groupTop &&
     nodeCenterY <= groupBottom
   );
+}
+
+/**
+ * Finds a group node that intersects with the dragged node
+ * @param draggedNode The node being dragged
+ * @param nodes All nodes in the flow
+ * @returns ID of the intersecting group node or null
+ */
+export function getIntersectingGroupId(
+  draggedNode: Node<NodeData>,
+  nodes: Node<NodeData>[]
+): string | null {
+  // Filter for group nodes only
+  const groupNodes = nodes.filter(node => node.type === 'group');
+  
+  // Current parent (if any)
+  const currentParentId = draggedNode.parentId;
+  
+  // Calculate node center
+  const nodeWidth = draggedNode.width || 150;
+  const nodeHeight = draggedNode.height || 50;
+  const nodeCenterX = draggedNode.position.x + nodeWidth / 2;
+  const nodeCenterY = draggedNode.position.y + nodeHeight / 2;
+  
+  // Check each group node for intersection
+  for (const groupNode of groupNodes) {
+    // Skip if it's the same node
+    if (groupNode.id === draggedNode.id) continue;
+    
+    // Calculate group boundaries
+    const groupLeft = groupNode.position.x;
+    const groupTop = groupNode.position.y;
+    const groupRight = groupLeft + (groupNode.width || 1200); // Default group size 1200x700
+    const groupBottom = groupTop + (groupNode.height || 700);
+    
+    // Check if node center is inside the group
+    if (
+      nodeCenterX >= groupLeft &&
+      nodeCenterX <= groupRight &&
+      nodeCenterY >= groupTop &&
+      nodeCenterY <= groupBottom
+    ) {
+      return groupNode.id;
+    }
+  }
+  
+  return null;
 } 

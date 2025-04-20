@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, memo, useState, useEffect } from 'react';
+import React, { useCallback, useRef, memo, useState, useEffect, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -14,6 +14,7 @@ import ReactFlow, {
   Node,
   // useNodesState, // 제거
   // useEdgesState, // 제거
+  KeyboardOptions
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import 'tailwindcss/tailwind.css';
@@ -64,7 +65,12 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
   // useNodeHandlers는 여전히 drag stop, connect, delete 로직을 포함하므로,
   // 필요에 따라 ReactFlow props나 단축키에 연결할 수 있습니다.
   // 여기서는 명시적으로 <ReactFlow> prop에 연결하지 않고 단축키 위주로 연결합니다.
-  const nodeHandlers = useNodeHandlers({ onNodeSelect }); // Keep for potential use in shortcuts etc.
+  const nodeHandlers = useNodeHandlers({
+    onNodeSelect: (nodeIds) => {
+      // nodeIds가 배열이면 그대로 설정, null이면 빈 배열로 설정
+      setSelectedNodeIds(nodeIds ? nodeIds : []);
+    }
+  });
 
   // --- Clipboard ---
   const { handleCopy, handlePaste, canPaste } = useClipboard();
@@ -120,11 +126,19 @@ const InternalFlowCanvas: React.FC<FlowCanvasProps> = memo(({ onNodeSelect }) =>
   const { handleCopy, handlePaste, canPaste } = useClipboard();
   
   // --- Keyboard Shortcuts --- (로그 제거됨)
+  const keyboardHandlers = {
+    onCopy: handleCopy,
+    onPaste: handlePaste,
+    // 타입 에러 해결을 위해 함수로 변경
+    onCut: undefined,
+    onDuplicate: undefined
+  };
+
   useKeyboardShortcuts({
     onCopy: handleCopy,
     onPaste: handlePaste,
-    onCut: null, 
-    onDuplicate: null, 
+    onCut: undefined,
+    onDuplicate: undefined,
     onDelete: handleDeleteSelection, 
     onUndo: undo,
     onRedo: redo,

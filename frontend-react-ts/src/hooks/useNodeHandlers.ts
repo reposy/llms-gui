@@ -6,6 +6,10 @@ import {
   addEdge,
   useReactFlow,
   getConnectedEdges,
+  useStore,
+  NodeChange,
+  NodeMouseHandler,
+  OnNodesChange
 } from '@xyflow/react'; 
 import { NodeData } from '../types/nodes';
 import { 
@@ -14,12 +18,13 @@ import {
   useFlowStructureStore,
   setSelectedNodeIds
 } from '../store/useFlowStructureStore';
+import { getIntersectingGroupId } from '../utils/flow/nodeUtils';
 
 // Define SelectionModifierKey type directly
 type SelectionModifierKey = 'ctrl' | 'shift' | 'none';
 
-interface UseNodeHandlersOptions {
-  onNodeSelect: (nodeIds: string[] | null) => void;
+interface UseNodeHandlersParams {
+  onNodeSelect?: (nodeIds: string[] | null) => void;
 }
 
 interface UseNodeHandlersReturn {
@@ -28,12 +33,10 @@ interface UseNodeHandlersReturn {
   handleSelectionDragStop: (event: React.MouseEvent, nodes: Node<NodeData>[]) => void;
   handleEdgesDelete: (edges: Edge[]) => void;
   handleNodesDelete: (nodes: Node<NodeData>[]) => void;
+  handleNodeClick: NodeMouseHandler;
 }
 
-export const useNodeHandlers = (
-  options: UseNodeHandlersOptions
-): UseNodeHandlersReturn => {
-  const { onNodeSelect } = options;
+export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): UseNodeHandlersReturn {
   const { getNodes, getEdges, setNodes } = useReactFlow();
   
   // Add refs to track modifier key states
@@ -138,81 +141,106 @@ export const useNodeHandlers = (
     setZustandEdges(addEdge(newEdge, currentEdges));
   }, [getNodes, getEdges]);
 
-  // Handle node drag stop - 그룹 노드 관련 처리 수정 (위치 조정 제거)
+  // Handle node drag stop
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, draggedNode: Node<NodeData>) => {
-      // 드래그 종료 후 React Flow가 내부적으로 업데이트한 최신 노드 상태를 가져옵니다.
-      const allNodes = getNodes();
-      const draggedNodeWithUpdates = allNodes.find(n => n.id === draggedNode.id);
+      const nodes = getNodes() as Node<NodeData>[];
       
-      if (!draggedNodeWithUpdates) return;
-
-      // 1. 모든 그룹 노드 찾기
-      const groupNodes = allNodes.filter(n => n.type === 'group');
+      // Find intersecting group node
+      const intersectingGroupId = getIntersectingGroupId(draggedNode, nodes);
       
-      // 2. 현재 노드의 중심점 좌표 계산
-      const draggedNodeCenter = {
-        x: draggedNodeWithUpdates.position.x + (draggedNodeWithUpdates.width || 100) / 2,
-        y: draggedNodeWithUpdates.position.y + (draggedNodeWithUpdates.height || 50) / 2
-      };
+      // Get current parent relationship
+      // Note: React Flow v11+ uses parentNode, but our NodeData may use parentId
+      // Added type assertion to avoid TypeScript errors
+      const currentParentId = (draggedNode as any).parentNode || draggedNode.parentId;
       
-      // 3. 노드가 어떤 그룹 안에 있는지 확인
-      let foundParentGroup = null;
-      for (const groupNode of groupNodes) {
-        // 그룹 자신은 자신의 부모가 될 수 없음
-        if (groupNode.id === draggedNode.id) continue;
+      // Only update if parent relationship changed
+      if (currentParentId !== intersectingGroupId) {
+        console.log(`[NodeDragStop] Node ${draggedNode.id} parent changed: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
         
-        // 그룹 노드의 경계 계산
-        const groupBounds = {
-          left: groupNode.position.x,
-          right: groupNode.position.x + (groupNode.width || 1200),
-          top: groupNode.position.y,
-          bottom: groupNode.position.y + (groupNode.height || 700)
-        };
+        let updatedNodes;
         
-        // 노드 중심점이 그룹 내부에 있는지 확인
-        if (
-          draggedNodeCenter.x >= groupBounds.left &&
-          draggedNodeCenter.x <= groupBounds.right &&
-          draggedNodeCenter.y >= groupBounds.top &&
-          draggedNodeCenter.y <= groupBounds.bottom
-        ) {
-          foundParentGroup = groupNode;
-          break;
+        if (intersectingGroupId) {
+          // Node is being added to a group
+          const groupNode = nodes.find(n => n.id === intersectingGroupId);
+          if (groupNode) {
+            // Calculate relative position
+            const absoluteX = currentParentId 
+              ? (draggedNode.position.x + (nodes.find(n => n.id === currentParentId)?.position.x || 0))
+              : draggedNode.position.x;
+            
+            const absoluteY = currentParentId
+              ? (draggedNode.position.y + (nodes.find(n => n.id === currentParentId)?.position.y || 0))
+              : draggedNode.position.y;
+            
+            const relativeX = absoluteX - groupNode.position.x;
+            const relativeY = absoluteY - groupNode.position.y;
+            
+            // Update node with new parent and relative position
+            updatedNodes = nodes.map(node => {
+              if (node.id === draggedNode.id) {
+                return {
+                  ...node,
+                  // Use parentId that exists in our type definition
+                  // The actual React Flow will interpret this correctly
+                  parentId: intersectingGroupId,
+                  position: {
+                    x: relativeX,
+                    y: relativeY
+                  }
+                };
+              }
+              return node;
+            });
+          } else {
+            // Group not found, keep nodes unchanged
+            updatedNodes = nodes;
+          }
+        } else if (currentParentId) {
+          // Node is being removed from a group
+          const parentNode = nodes.find(n => n.id === currentParentId);
+          if (parentNode) {
+            // Calculate absolute position
+            const absoluteX = parentNode.position.x + draggedNode.position.x;
+            const absoluteY = parentNode.position.y + draggedNode.position.y;
+            
+            // Update node with no parent and absolute position
+            updatedNodes = nodes.map(node => {
+              if (node.id === draggedNode.id) {
+                return {
+                  ...node,
+                  parentId: undefined, // Clear parentId to remove from group
+                  position: {
+                    x: absoluteX,
+                    y: absoluteY
+                  }
+                };
+              }
+              return node;
+            });
+          } else {
+            // Parent not found, just remove parent references
+            updatedNodes = nodes.map(node => {
+              if (node.id === draggedNode.id) {
+                return {
+                  ...node,
+                  parentId: undefined
+                };
+              }
+              return node;
+            });
+          }
+        } else {
+          // No parent change, but might need other updates
+          updatedNodes = nodes;
         }
+        
+        // Update store
+        setZustandNodes(updatedNodes);
+      } else {
+        // No parent change, just update position
+        setZustandNodes(nodes);
       }
-      
-      // 4. 복사본 생성 후 업데이트
-      const updatedNodes = allNodes.map(node => {
-        if (node.id !== draggedNode.id) return node;
-        
-        // 현재 노드의 업데이트된 복사본 생성
-        const updatedNode = { ...node } as any; // 타입 에러 해결을 위해 as any 사용
-        
-        if (foundParentGroup) {
-          // 그룹 내부로 드래그된 경우, parentNode만 설정하고 위치는 변경하지 않음
-          updatedNode.parentId = foundParentGroup.id;
-          
-          // extent 속성 제거 - 이 속성이 자동 위치 조정을 일으킴
-          delete updatedNode.extent;
-          
-          // 위치는 변경하지 않고 그대로 유지 (절대 좌표 유지)
-          // console.log(`[NodeDragStop] Node ${node.id} is now child of group ${foundParentGroup.id}, keeping absolute position`);
-        } else if (updatedNode.parentId) {
-          // 그룹 밖으로 드래그된 경우, parentNode 제거
-          // parentNode 및 extent 속성 제거
-          delete updatedNode.parentId;
-          delete updatedNode.extent;
-          
-          // 위치는 이미 알맞게 설정되어 있으므로 변경 불필요
-          // console.log(`[NodeDragStop] Node ${node.id} removed from group, keeping absolute position`);
-        }
-        
-        return updatedNode;
-      });
-      
-      // 5. 상태 업데이트
-      setZustandNodes(updatedNodes as Node<NodeData>[]);
     },
     [getNodes]
   );
@@ -232,7 +260,7 @@ export const useNodeHandlers = (
     setZustandEdges(nextEdges);
   }, [getEdges]);
 
-  // Handle nodes delete
+  // Handle nodes delete with updated type handling
   const handleNodesDelete = useCallback((nodesToDelete: Node<NodeData>[]) => {
     if (nodesToDelete.length === 0) return;
     const nodeIdsToDelete = new Set(nodesToDelete.map(n => n.id));
@@ -244,20 +272,49 @@ export const useNodeHandlers = (
     const remainingEdges = currentEdges.filter(edge => !connectedEdgeIds.has(edge.id));
     setZustandNodes(remainingNodes);
     setZustandEdges(remainingEdges);
-    // 선택 상태 업데이트 로직...
+    
+    // 선택 상태 업데이트 로직 - 타입 안전하게 수정
     const currentSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
-    const newSelectedIds = currentSelectedIds.filter(id => !nodeIdsToDelete.has(id));
-    if (newSelectedIds.length !== currentSelectedIds.length) {
-        setSelectedNodeIds(newSelectedIds); // 여기서 사용됨
-        onNodeSelect(newSelectedIds.length > 0 ? newSelectedIds : null);
+    
+    // 배열 타입 처리
+    if (Array.isArray(currentSelectedIds)) {
+      const newSelectedIds = currentSelectedIds.filter(id => !nodeIdsToDelete.has(id));
+      if (newSelectedIds.length !== currentSelectedIds.length) {
+        setSelectedNodeIds(newSelectedIds); 
+        
+        // onNodeSelect 호출 시 타입 안전성 확보
+        if (onNodeSelect) {
+          if (newSelectedIds.length > 0) {
+            onNodeSelect(newSelectedIds);
+          } else {
+            onNodeSelect(null);
+          }
+        }
+      }
+    } 
+    // 단일 ID 문자열 처리
+    else if (typeof currentSelectedIds === 'string' && nodeIdsToDelete.has(currentSelectedIds)) {
+      setSelectedNodeIds([]); // 빈 배열로 변경
+      if (onNodeSelect) {
+        onNodeSelect(null);
+      }
     }
   }, [getNodes, getEdges, onNodeSelect]);
+
+  // 노드 클릭 핸들러
+  const handleNodeClick: NodeMouseHandler = useCallback((event, node) => {
+    // 단일 노드 ID를 배열로 변환하여 전달
+    if (onNodeSelect) {
+      onNodeSelect([node.id]);
+    }
+  }, [onNodeSelect]);
 
   return {
     handleConnect,
     handleNodeDragStop,
     handleSelectionDragStop,
     handleEdgesDelete,
-    handleNodesDelete
+    handleNodesDelete,
+    handleNodeClick
   };
-};
+}
