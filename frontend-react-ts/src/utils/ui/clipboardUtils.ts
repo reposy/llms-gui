@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { NodeData } from '../../types/nodes';
 import { getNodeContent, NodeContent } from '../../store/useNodeContentStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { cloneDeep } from 'lodash';
 
 // Interface for copied data
 export interface ClipboardData {
@@ -33,50 +34,68 @@ export const explicitlyInitializedNodeIds = new Set<string>();
 const CLIPBOARD_STORAGE_KEY = 'flow-editor-clipboard';
 
 /**
- * Copy selected nodes and their contents to the clipboard
+ * (DEPRECATED or REMOVED) Copy selected nodes and their contents to the clipboard
  * @returns The number of nodes copied
  */
-export const copySelectedNodes = (): number => {
-  const state = useFlowStructureStore.getState();
-  const selectedNodes = state.nodes.filter(node => node.selected);
+// export const copySelectedNodes = (): number => { ... }; // 기존 함수 제거 또는 주석 처리
+
+/**
+ * Copy selected nodes and their contents from React Flow instance state
+ * @param selectedNodes Array of selected node objects from React Flow
+ * @param allEdges Array of all edge objects from React Flow
+ * @returns The number of nodes copied
+ */
+export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], allEdges: Edge[]): number => {
+  console.log('[ClipboardUtils DEBUG] copyNodesAndEdgesFromInstance 호출됨');
+  console.log('[ClipboardUtils DEBUG] 선택된 노드 수:', selectedNodes.length);
   
   if (selectedNodes.length === 0) {
-    console.log('[Clipboard] No selected nodes to copy');
+    console.log('[Clipboard] No selected nodes provided to copy');
     return 0;
   }
 
   // Collect node IDs for filtering edges
   const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+  console.log('[ClipboardUtils DEBUG] 선택된 노드 ID들:', Array.from(selectedNodeIds));
   
   // Only copy edges where both source and target are selected nodes
-  const relevantEdges = state.edges.filter(edge => 
+  const relevantEdges = allEdges.filter(edge => 
     selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
   );
+  console.log('[ClipboardUtils DEBUG] 관련 엣지 수:', relevantEdges.length);
 
-  // Fetch and store the content for each selected node
+  // Fetch and store the DEEP COPIED content for each selected node
   const nodeContents: Record<string, NodeContent> = {};
   selectedNodes.forEach(node => {
-    const content = getNodeContent(node.id);
+    const content = getNodeContent(node.id); // useNodeContentStore에서 가져오기
+    console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!content);
     if (content) {
-      nodeContents[node.id] = content;
+      // 콘텐츠 데이터 깊은 복사
+      nodeContents[node.id] = cloneDeep(content); 
     }
   });
 
-  // Store data in memory
-  clipboardMemory = {
-    nodes: selectedNodes,
-    edges: relevantEdges,
-    nodeContents
-  };
-
-  // Persist to localStorage if available
   try {
-    localStorage.setItem(CLIPBOARD_STORAGE_KEY, JSON.stringify(clipboardMemory));
+    // Store data in memory (deep copy nodes/edges as well for safety)
+    clipboardMemory = {
+      nodes: cloneDeep(selectedNodes), // 노드 구조도 깊은 복사
+      edges: cloneDeep(relevantEdges), // 엣지 구조도 깊은 복사
+      nodeContents // 콘텐츠는 이미 위에서 깊은 복사됨
+    };
+    console.log('[ClipboardUtils DEBUG] clipboardMemory 설정 완료:', {
+      nodesCount: clipboardMemory.nodes.length,
+      edgesCount: clipboardMemory.edges.length,
+      contentsCount: Object.keys(clipboardMemory.nodeContents).length
+    });
+
+    // Persist to localStorage if available
+    localStorage.setItem(CLIPBOARD_STORAGE_KEY, JSON.stringify(clipboardMemory)); 
+    console.log('[ClipboardUtils DEBUG] localStorage에 저장 완료');
   } catch (error) {
-    console.warn('[Clipboard] Failed to persist to localStorage:', error);
+    console.error('[Clipboard] Failed to save clipboard data:', error);
   }
 
-  console.log(`[Clipboard] Copied ${selectedNodes.length} nodes`);
+  console.log(`[Clipboard] Copied ${selectedNodes.length} nodes and ${relevantEdges.length} edges from instance state`);
   return selectedNodes.length;
 };
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { persist } from 'zustand/middleware';
+import { persist, PersistStorage } from 'zustand/middleware';
 import { shallow } from 'zustand/shallow';
 import { isEqual } from 'lodash';
 import { createIDBStorage } from '../../utils/storage/idbStorage';
@@ -365,25 +365,20 @@ export const useNodeContentStore = create<NodeContentStore>()(
     })),
     {
       name: 'node-content-storage',
-      storage: createIDBStorage(),
-      partialize: (state) => {
+      // Cast storage through unknown to satisfy the type checker
+      storage: createIDBStorage() as unknown as PersistStorage<Partial<NodeContentStore>>,
+      partialize: (state): Partial<NodeContentStore> => {
         // Create a filtered copy of nodeContents with potentially large values truncated
         const filteredContents: Record<string, NodeContent> = {};
         
         Object.entries(state.nodeContents).forEach(([nodeId, content]) => {
-          // Create a copy of the content to modify
           let filteredContent = { ...content };
-          
-          // Apply node-specific truncation based on type
           const nodeType = resolveNodeType(nodeId, content);
-          
           if (nodeType === 'llm') {
             filteredContent = truncateLlmContentForStorage(filteredContent as any, MAX_PERSISTED_CONTENT_LENGTH);
           } else if (nodeType === 'output') {
             filteredContent = truncateOutputContentForStorage(filteredContent as any, MAX_PERSISTED_CONTENT_LENGTH);
           }
-          
-          // Store the filtered content
           filteredContents[nodeId] = filteredContent;
         });
         

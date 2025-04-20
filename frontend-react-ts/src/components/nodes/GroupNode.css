@@ -5,44 +5,38 @@
 }
 */
 
-/* Override React Flow's default group node styles - Commented out for debugging */
-/*
+/* Override React Flow's default group node styles */
 .react-flow__node-group {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
-}
-*/
-
-/* Ensure group nodes stay behind child nodes */
-.react-flow__node-group {
+  background: rgba(240, 240, 240, 0.25) !important; 
+  border: 1px dashed #ccc !important;
+  border-radius: 4px !important;
+  padding: 10px !important;
   z-index: 0 !important;
-  pointer-events: auto !important; /* Important to capture clicks */
+  pointer-events: all !important; /* 중요: 그룹 노드도 이벤트를 받아야 함 */
 }
 
 /* Child nodes should appear above the group */
 .react-flow__node:not(.react-flow__node-group) {
   z-index: 10 !important;
-  pointer-events: auto !important;
+  pointer-events: all !important;
 }
 
 /* Ensure handles are always on top of nodes */
 .react-flow__handle {
   z-index: 20 !important;
-  pointer-events: auto !important;
+  pointer-events: all !important;
 }
 
 /* Make sure edges are always on top and can be interacted with */
 .react-flow__edge {
   z-index: 15 !important;
-  pointer-events: auto !important;
+  pointer-events: all !important;
 }
 
 /* Ensure edge interaction elements are fully clickable */
 .react-flow__edge-path,
 .react-flow__edge-interaction {
-  pointer-events: auto !important;
+  pointer-events: all !important;
 }
 
 /* Style for group node placeholders */
@@ -52,21 +46,58 @@
 
 /* Group container should receive pointer events for selection */
 .group-node-container {
-  pointer-events: auto !important;
+  z-index: 0;
+  min-width: 200px;
+  min-height: 150px;
+  background-color: rgba(255, 243, 230, 0.5);
+  transition: all 0.3s ease;
+  /* Critical for drag and drop parent detection */
+  pointer-events: all !important;
 }
 
-/* Group content area should receive pointer events for selection,
-   but we'll use more selective element targeting in the component */
+/* Group content area - pointer-events 설정 변경 */
 .group-node-content {
-  pointer-events: auto !important;
+  pointer-events: all !important; /* 그룹 컨텐츠가 이벤트를 받도록 변경 */
+  z-index: 0;
+}
+
+.group-node-content.collapsed {
+  height: 0;
+  overflow: hidden;
 }
 
 /* Group header should always be interactive */
 .group-node-header {
-  pointer-events: auto !important;
+  z-index: 1;
+  cursor: default;
+  pointer-events: all !important;
 }
 
 /* Make sure the entire group node can be selected */
 .react-flow__node.react-flow__node-group {
   cursor: pointer;
+}
+
+/* 그룹 노드 내부 제어 영역 */
+.group-controls {
+  z-index: 10;
+  pointer-events: all !important;
+}
+
+/* 그룹 노드 내부 오버레이 */
+.group-node-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  opacity: 0.1;
+  background-color: transparent;
+  pointer-events: none; /* 오버레이는 이벤트를 통과시킴 */
+}
+
+/* 그룹 노드가 선택되었을 때 스타일 */
+.group-node-selected {
+  box-shadow: 0 0 0 2px #FF8C00;
 } 

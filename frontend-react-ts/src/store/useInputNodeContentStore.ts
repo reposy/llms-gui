@@ -1,12 +1,11 @@
 import { create } from 'zustand';
 import { FileLikeObject } from '../types/nodes';
-import { getNodeContent, setNodeContent, InputNodeContent } from './nodeContentStore';
+import { getNodeContent, setNodeContent, InputNodeContent } from './useNodeContentStore';
 
 /**
  * Custom hook for using InputNode content
  * Provides type-safe access and manipulation of InputNode content
  */
-export type { InputNodeContent } from './nodeContentStore';
 
 /**
  * Hook for using InputNode content with type safety

@@ -34,12 +34,24 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   } = useGroupNodeData({ nodeId: id });
 
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
-    const nodesInGroup = allNodes.filter((node: Node<NodeData>) => node.parentId === id);
-    const nodeIdsInGroup = new Set(nodesInGroup.map(n => n.id));
+    // Check both parentId and parentNode properties to support both formats
+    const nodesWithParentId = allNodes.filter((node: Node<NodeData>) => 
+      node.parentId === id
+    );
+    
+    // 기존 parentNode 필터링을 제거하고 parentId만 사용
+    
+    // 중복 제거는 더 이상 필요 없음 (단일 필터만 사용)
+    const combinedNodes = nodesWithParentId;
+    
+    // console.log(`[GroupNode] ID: ${id}, Found ${combinedNodes.length} nodes inside group: ${combinedNodes.map(n => n.id).join(", ")}`);
+    
+    const nodeIdsInGroup = new Set(combinedNodes.map(n => n.id));
     const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
-    const internalRoots = getRootNodesFromSubset(nodesInGroup, edgesInGroup);
+    const internalRoots = getRootNodesFromSubset(combinedNodes, edgesInGroup);
+    
     return {
-      nodesInGroup,
+      nodesInGroup: combinedNodes,
       hasInternalRootNodes: internalRoots.length > 0,
     };
   }, [allNodes, allEdges, id]);
@@ -51,8 +63,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
       
       executionContext.setTriggerNode(id);
       
-      console.log(`[GroupNode] Starting execution for node ${id}`);
-      
       buildExecutionGraphFromFlow(nodes, edges);
       const executionGraph = getExecutionGraph();
       
@@ -61,7 +71,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
       
       const node = nodes.find(n => n.id === id);
       if (!node) {
-        console.error(`[GroupNode] Node ${id} not found.`);
         return;
       }
       
@@ -81,7 +90,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
       };
       
       nodeInstance.process({}).catch((error: Error) => {
-        console.error(`[GroupNode] Error executing node ${id}:`, error);
       });
     }
   }, [id, isRunning, nodes, edges]);
@@ -96,8 +104,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
           selected: node.id === id
         }))
       );
-      
-      console.log(`[GroupNode] Selected group ${id}`);
     }
   }, [id, setNodes]);
 
@@ -115,7 +121,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         className={clsx(
           'w-full h-full',
           'border-2',
-          selected ? 'border-orange-600' : 'border-orange-400',
+          selected ? 'border-orange-600 group-node-selected' : 'border-orange-400',
           'rounded-md',
           'flex flex-col',
           'bg-orange-100/50',
@@ -132,22 +138,21 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
           )}
         >
           <span>{label}</span>
-          {hasInternalRootNodes && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRunGroup();
-              }}
-              disabled={isRunning}
-              className={clsx(
-                'ml-2 px-1.5 py-0.5 text-xs font-medium rounded transition-colors',
-                'bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed'
-              )}
-              title="Execute group nodes"
-            >
-              {isRunning ? '⏳' : '▶'} Run
-            </button>
-          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRunGroup();
+            }}
+            disabled={isRunning}
+            className={clsx(
+              'ml-2 px-1.5 py-0.5 text-xs font-medium rounded transition-colors',
+              'bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed',
+              'group-controls'
+            )}
+            title="Execute group nodes"
+          >
+            {isRunning ? '⏳' : '▶'} Run
+          </button>
         </div>
 
         <div
@@ -161,11 +166,28 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
           )}
           onClick={handleSelectGroup}
         >
+          <div className="group-node-overlay"></div>
+          
           {nodesInGroup.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs placeholder">
               Drag nodes here
             </div>
           )}
+          
+          <div className="absolute top-2 right-2 p-2 bg-orange-50/70 rounded-md text-xs max-w-[80%] max-h-[75%] overflow-auto group-controls">
+            <div className="font-medium mb-1">Nodes in Group ({nodesInGroup.length})</div>
+            {nodesInGroup.length > 0 ? (
+              <ul className="list-disc pl-4 text-xs text-gray-600">
+                {nodesInGroup.map(node => (
+                  <li key={node.id} className="truncate">
+                    {node.data?.label || node.type || node.id}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-orange-300 italic">No nodes defined in this group.</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -181,14 +203,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         position={Position.Right}
         id="source"
         className="!w-2.5 !h-2.5 !bg-orange-500 !border-2 !border-white !rounded-full !-mr-[5px]"
-        isConnectable={isConnectable}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="group-results"
-        className="!w-3 !h-3 !bg-purple-500 !border-2 !border-white !rounded-full !-mr-[6px]"
-        style={{ top: '75%' }}
         isConnectable={isConnectable}
       />
     </>

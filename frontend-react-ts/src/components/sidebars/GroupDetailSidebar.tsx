@@ -33,7 +33,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   }
 
   // Get data for the selected group and source nodes
-  const groupNodes = allNodes.filter((node: Node<NodeData>) => node.parentNode === selectedNodeId);
+  const groupNodes = allNodes.filter((node: Node<NodeData>) => node.parentId === selectedNodeId);
   const groupNode = allNodes.find((node: Node<NodeData>) => node.id === selectedNodeId) as Node<GroupNodeData> | undefined;
   const sourceNodeId = groupNode?.data.iterationConfig?.sourceNodeId;
   const sourceNode = allNodes.find((node: Node<NodeData>) => node.id === sourceNodeId) as Node<InputNodeData> | undefined;

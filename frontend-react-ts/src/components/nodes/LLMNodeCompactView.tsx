@@ -57,7 +57,7 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   return (
     <div className="flex flex-col space-y-2">
       <div className="flex items-center justify-between">
-        <div className="flex-1 text-sm font-medium truncate" onClick={onToggleView}>
+        <div className="flex-1 text-sm font-medium truncate">
           {label || data.label || 'LLM Node'}
         </div>
         <NodeStatusIndicator status={nodeStatus} />
@@ -79,8 +79,7 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
       </div>
       
       <div 
-        className="text-xs text-gray-600 cursor-pointer hover:text-blue-600"
-        onClick={onToggleView}
+        className="text-xs text-gray-600"
       >
         {truncatedPrompt || 'No prompt set'}
       </div>

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import { 
   ReactFlow,
   MiniMap,
@@ -10,29 +10,23 @@ import {
   Panel,
   ReactFlowProvider,
   ConnectionLineType,
-  useNodesState,
-  useEdgesState,
-  OnConnectStart,
-  OnConnectEnd,
-  Connection,
-  NodeTypes,
   ReactFlowInstance,
   OnInit
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import isEqual from 'lodash/isEqual';
 
 // Import custom hooks
 import { useClipboard } from '../hooks/useClipboard';
-import { useFlowSync } from '../hooks/useFlowSync';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flow/flowUtils';
-// Import Zustand store
+// Import Zustand store & actions
 import { 
-  setNodes, 
-  setEdges, 
   useFlowStructureStore,
+  useNodes,
+  useEdges,
+  onNodesChange as onZustandNodesChange,
+  onEdgesChange as onZustandEdgesChange,
   setSelectedNodeIds
 } from '../store/useFlowStructureStore';
 import { undo, redo } from '../store/useHistoryStore';
@@ -74,15 +68,12 @@ const defaultViewport = { x: 0, y: 0, zoom: 1 };
 
 // API exported to parent components
 export interface FlowCanvasApi {
-  addNodes: (nodes: Node<NodeData>[]) => void;
-  forceSync: () => void;
   clearNodes: () => void;
   reactFlowInstance?: ReactFlowInstance<Node<NodeData>, Edge>;
-  forceClearLocalState: () => void;
 }
 
 interface FlowCanvasProps {
-  onNodeSelect: (node: Node<NodeData> | null) => void;
+  onNodeSelect: (nodeIds: string[] | null) => void;
   registerReactFlowApi?: (api: FlowCanvasApi) => void;
   children?: React.ReactNode;
 }
@@ -95,7 +86,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
 }) => {
   const reactFlowRef = useRef<HTMLDivElement>(null);
   const reactFlowInstanceRef = useRef<ReactFlowInstance<Node<NodeData>, Edge> | null>(null);
-  const reactFlowApiRef = useRef<FlowCanvasApi | null>(null);
   const didNormalizeRef = useRef<boolean>(false);
   const isRestoringHistoryRef = useRef<boolean>(false);
   
@@ -103,33 +93,11 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   const { screenToFlowPosition } = useReactFlow();
   
   // Use Zustand for flow structure instead of local state
-  const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
-  
-  // Using FlowSync hook to manage local nodes/edges and sync with store
-  const { 
-    localNodes, 
-    localEdges, 
-    setLocalNodes, 
-    setLocalEdges, 
-    onLocalNodesChange, 
-    onLocalEdgesChange,
-    forceSyncFromStore,
-    forceClearLocalState,
-    flowResetKey
-  } = useFlowSync({ isRestoringHistory: isRestoringHistoryRef });
+  const nodes = useNodes();
+  const edges = useEdges();
+  const { setNodes, setEdges } = useFlowStructureStore.getState();
   
   useConsoleErrorOverride();
-  
-  // Add nodes utility function
-  const addNodes = useCallback((nodes: Node<NodeData>[]) => {
-    console.log('Adding nodes:', nodes);
-    setLocalNodes(nds => [...nds, ...nodes]);
-  }, [setLocalNodes]);
-  
-  // Clipboard hook now interacts with Zustand
-  const { 
-    handleCopy 
-  } = useClipboard();
   
   // Node handlers now operate on Zustand state
   const { 
@@ -138,26 +106,76 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     handleSelectionDragStop,
     handleEdgesDelete,
     handleNodesDelete
-  } = useNodeHandlers(
-    localNodes,
-    setLocalNodes,
-    localEdges, 
-    setLocalEdges,
-    { 
-      onNodeSelect: (node) => {
-        // Selection logic is now handled by onSelectionChange callback
-        if (node) {
-          console.log(`[FlowCanvas] Node selected: ${node.id}`);
-        } else {
-          console.log(`[FlowCanvas] Node selection cleared`);
-        }
+  } = useNodeHandlers({
+    onNodeSelect: (nodeIds) => {
+      // Selection logic is now handled by onSelectionChange callback
+      if (nodeIds) {
+        console.log(`[FlowCanvas] Nodes selected: ${nodeIds.join(', ')}`);
+        onNodeSelect(nodeIds); // 이미 노드 ID 배열을 받고 있음
+      } else {
+        console.log(`[FlowCanvas] Node selection cleared`);
+        onNodeSelect(null);
       }
     }
-  );
+  });
+  
+  // 클립보드 초기화 및 기능 설정
+  const { handleCopy, handlePaste } = useClipboard();
+  
+  // 선택된 노드를 삭제하는 핸들러
+  const handleDeleteSelectedNodes = useCallback(() => {
+    const selectedNodes = nodes.filter(node => node.selected);
+    if (selectedNodes.length > 0) {
+      console.log(`[FlowCanvas] 선택된 ${selectedNodes.length}개 노드 삭제`);
+      handleNodesDelete(selectedNodes as Node<NodeData>[]);
+    }
+  }, [nodes, handleNodesDelete]);
+  
+  // 직접 키보드 이벤트 처리 로직 추가
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    console.log(`[FlowCanvas] 키보드 이벤트 감지: key=${event.key}, ctrl=${event.ctrlKey}, meta=${event.metaKey}`);
+    
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
+    
+    const targetElement = event.target as HTMLElement;
+    const isInputFocused = 
+      targetElement.tagName === 'INPUT' || 
+      targetElement.tagName === 'TEXTAREA' || 
+      targetElement.isContentEditable;
+      
+    if (isInputFocused) {
+      console.log('[FlowCanvas] 입력 필드에 포커스 중, 단축키 무시');
+      return;
+    }
+    
+    if (isCtrlOrCmd && event.key.toLowerCase() === 'c') {
+      console.log('[FlowCanvas] Ctrl/Cmd+C 감지, 복사 시작...');
+      event.preventDefault();
+      handleCopy();
+    } else if (isCtrlOrCmd && event.key.toLowerCase() === 'v') {
+      console.log('[FlowCanvas] Ctrl/Cmd+V 감지, 붙여넣기 시작...');
+      event.preventDefault();
+      const centerPosition = screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2
+      });
+      handlePaste(centerPosition);
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Delete 키 또는 Backspace 키로 선택된 노드 삭제
+      console.log(`[FlowCanvas] ${event.key} 키 감지, 선택된 노드 삭제 시작...`);
+      event.preventDefault();
+      handleDeleteSelectedNodes();
+    }
+  }, [handleCopy, handlePaste, screenToFlowPosition, handleDeleteSelectedNodes]);
 
-  // 렌더링 최적화를 위한 메모이제이션 추가
-  const memoizedNodes = useMemo(() => localNodes, [localNodes]);
-  const memoizedEdges = useMemo(() => localEdges, [localEdges]);
+  // 키보드 이벤트 리스너 등록
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
   
   // 패널 버튼 핸들러를 메모이제이션
   const handleUndo = useCallback(() => {
@@ -170,92 +188,25 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   
   const handleClearAll = useCallback(() => {
     console.log('[FlowCanvas] Clear All button clicked');
-    
-    // 강제 초기화 모드 활성화
-    if ('enableForceClear' in window.flowSyncUtils) {
-      window.flowSyncUtils.enableForceClear(true);
-    }
-    
-    // React Flow 인스턴스에 접근하여 직접 노드/엣지 초기화
-    if (reactFlowInstanceRef.current) {
-      reactFlowInstanceRef.current.setNodes([]);
-      reactFlowInstanceRef.current.setEdges([]);
-      console.log('[FlowCanvas] Cleared nodes/edges in React Flow instance');
-    }
-    
-    // 로컬 상태 초기화
-    setLocalNodes([]);
-    setLocalEdges([]);
-    console.log('[FlowCanvas] Cleared local nodes/edges state');
-    
-    // zustand 전역 상태 초기화 (이미 실행됨)
-    // setNodes([]);
-    // setEdges([]);
-    // console.log('[FlowCanvas] Cleared global zustand state');
-    
-    // 변경사항 커밋 (지연 실행)
-    setTimeout(() => {
-      // Replace commitStructureToStore() with direct Zustand updates
-      // Note: This might be redundant if clearing already updates Zustand immediately
-      // Consider if this timeout logic is still necessary
-      console.log('[FlowCanvas] Committing empty state to store (post-clear)');
-      setNodes([]); // Explicitly ensure Zustand is empty
-      setEdges([]);
-      
-      // 일정 시간 후 강제 초기화 모드 비활성화
-      if ('enableForceClear' in window.flowSyncUtils) {
-        window.flowSyncUtils.enableForceClear(false);
-      }
-    }, 300);
-  }, [setNodes, setLocalNodes, setLocalEdges, setEdges]);
+    setNodes([]);
+    setEdges([]);
+    setSelectedNodeIds([]);
+  }, [setNodes, setEdges]);
   
   // 선택 변경을 처리하는 핸들러 최적화
-  const handleSelectionChange = useCallback(({ nodes = [] }: { nodes: Node[] }) => {
-    if (isRestoringHistoryRef.current) return;
-
-    const selectedIds = nodes.map(node => node.id);
-    const currentSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
+  const handleSelectionChange = useCallback(({ nodes: selectedFlowNodes = [] }: { nodes: Node[] }) => {
+    console.log('[FlowCanvas] handleSelectionChange called with nodes:', selectedFlowNodes.map(n => n.id));
+    if (isRestoringHistoryRef.current) {
+      console.log('[FlowCanvas] Skipping selection change during history restore.');
+      return;
+    }
+    const selectedIds = selectedFlowNodes.map(node => node.id);
+    setSelectedNodeIds(selectedIds);
     
-    if (!isEqual(currentSelectedIds, selectedIds)) {
-      console.log('Selection changed:', selectedIds);
-      setSelectedNodeIds(selectedIds);
-    }
-  }, [isRestoringHistoryRef]);
-  
-  // 메모이제이션된 FlowCanvas 렌더링 프롭스
-  const flowProps = useMemo(() => {
-    // 디버그: ReactFlow에 전달되는 nodes의 position 로그
-    memoizedNodes.forEach((node, idx) => {
-      console.log(`[FlowCanvas] ReactFlow nodes[${idx}] id=${node.id} position=`, node.position);
-    });
-    return {
-      nodes: memoizedNodes,
-      edges: memoizedEdges,
-      onNodesChange: onLocalNodesChange,
-      onEdgesChange: onLocalEdgesChange,
-      onConnect: handleConnect,
-      nodeTypes,
-      onSelectionChange: handleSelectionChange
-    };
-  }, [
-    memoizedNodes, 
-    memoizedEdges, 
-    onLocalNodesChange, 
-    onLocalEdgesChange, 
-    handleConnect,
-    handleSelectionChange
-  ]);
-
-  // Detect if we're in a paste operation using global flags
-  const isJustAfterPaste = (window as any)._devFlags?.hasJustPasted;
-  const pasteVersion = (window as any)._devFlags?.pasteVersion || 0;
-
-  // Debug paste activity in ReactFlow state
-  useEffect(() => {
-    if (isJustAfterPaste) {
-      console.log(`[FlowCanvas] Detected paste operation, using pasteVersion=${pasteVersion}`);
-    }
-  }, [isJustAfterPaste, pasteVersion]);
+    // Pass all selected node IDs to the parent component
+    console.log(`[FlowCanvas] Directly calling onNodeSelect with ${selectedIds.length} nodes: ${selectedIds.join(', ')}`);
+    onNodeSelect(selectedIds.length > 0 ? selectedIds : null);
+  }, [isRestoringHistoryRef, onNodeSelect]);
   
   // onDragOver, onDrop handlers
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -279,12 +230,41 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         y: event.clientY,
       });
       
+      // 1. 먼저 새 노드 생성
       const newNode = createNewNode(nodeType, position);
       
-      // Add node to local state
-      setLocalNodes((nds) => nds.concat(newNode));
+      // 2. 드롭 위치에 그룹 노드가 있는지 확인
+      const groupNodes = nodes.filter(node => node.type === 'group');
+      
+      let parentGroupId = null;
+      
+      // 그룹 노드들을 순회하며 새 노드가 그룹 내에 위치하는지 확인
+      for (const groupNode of groupNodes) {
+        // 그룹 노드의 영역을 계산 (position, width, height 사용)
+        if (
+          position.x >= groupNode.position.x && 
+          position.x <= groupNode.position.x + (groupNode.width || 1200) &&
+          position.y >= groupNode.position.y && 
+          position.y <= groupNode.position.y + (groupNode.height || 700)
+        ) {
+          // 이 그룹 노드 내부에 드롭됨
+          parentGroupId = groupNode.id;
+          break;
+        }
+      }
+      
+      // 3. 부모 그룹이 발견되면 parentId만 설정 (위치 변환이나 extent 설정 안 함)
+      if (parentGroupId) {
+        newNode.parentId = parentGroupId;
+        
+        // 절대 위치 그대로 유지 (상대 위치로 변환하지 않음)
+        // extent 속성도 설정하지 않음
+      }
+      
+      // 4. 노드 추가 (명시적 타입 변환으로 에러 해결)
+      setNodes(prevNodes => [...prevNodes, newNode] as Node<NodeData>[]);
     },
-    [screenToFlowPosition, setLocalNodes]
+    [screenToFlowPosition, setNodes, nodes]
   );
   
   // Selection consistency check - run only once after initial mount
@@ -295,14 +275,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     
     // We only need to normalize selection state once after initial mount
     if (!didNormalizeRef.current) {
-      // Selection state is now managed by React Flow only; skip normalization check
-      // const hasAnySelection = useFlowStructureStore.getState().selectedNodeIds.length > 0;
-      // if (hasAnySelection) {
-      //   console.log("[FlowCanvas] Running one-time selection normalization");
-      //   // selectionHandlers.normalizeSelectionState();
-      // } else {
-      //   console.log("[FlowCanvas] Skipping normalization - no selection to normalize");
-      // }
       didNormalizeRef.current = true;
     }
     
@@ -320,140 +292,18 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     // Store the instance for external access
     reactFlowInstanceRef.current = reactFlowInstance;
     
-    // Enhanced API with custom methods
-    const enhancedApi: FlowCanvasApi = {
-      // Add nodes directly to ReactFlow (use with caution)
-      addNodes: (newNodes: Node<NodeData>[]) => {
-        console.log('[FlowCanvas] API.addNodes called with:', newNodes);
-        if (reactFlowInstance) {
-          const currentNodes = reactFlowInstance.getNodes();
-          reactFlowInstance.setNodes([...currentNodes, ...newNodes]);
-        }
-      },
-      
-      // Force synchronization from Zustand store to ReactFlow
-      forceSync: () => {
-        console.log('[FlowCanvas] API.forceSync called, enforcing state from Zustand store');
-        forceSyncFromStore();
-      },
-      
-      // 새로운 메소드: React Flow의 모든 노드를 완전히 지움
-      clearNodes: () => {
-        console.log('[FlowCanvas] API.clearNodes called, removing all nodes from React Flow');
-        
-        // 강제 초기화 모드 활성화
-        if ('enableForceClear' in window.flowSyncUtils) {
-          window.flowSyncUtils.enableForceClear(true);
-        }
-        
-        if (reactFlowInstance) {
-          // React Flow 인스턴스에 직접 빈 배열 설정
-          reactFlowInstance.setNodes([]);
-          reactFlowInstance.setEdges([]);
-          
-          // 로컬 상태도 초기화
-          setLocalNodes([]);
-          setLocalEdges([]);
-          
-          // zustand 상태도 초기화
-          setNodes([]);
-          setEdges([]);
-          
-          // 강제로 상태 커밋
-          console.log('[FlowCanvas] All nodes and edges cleared from React Flow');
-          
-          // 일정 시간 후 강제 초기화 모드 비활성화
-          setTimeout(() => {
-            if ('enableForceClear' in window.flowSyncUtils) {
-              window.flowSyncUtils.enableForceClear(false);
-            }
-          }, 500);
-        }
-      },
-      
-      // React Flow 인스턴스 직접 노출
-      reactFlowInstance: reactFlowInstance,
-      
-      forceClearLocalState: forceClearLocalState
+    // 필요한 최소 API만 구성
+    const minimalApi: FlowCanvasApi = {
+      clearNodes: handleClearAll,
+      reactFlowInstance: reactFlowInstance
     };
     
     // Set the API reference for external components
-    reactFlowApiRef.current = enhancedApi;
-    
-    // Register the API if a callback was provided
     if (registerReactFlowApi) {
-      registerReactFlowApi(enhancedApi);
+      registerReactFlowApi(minimalApi);
     }
-  }, [forceSyncFromStore, registerReactFlowApi, setLocalNodes, setLocalEdges, setNodes, setEdges, forceClearLocalState]);
+  }, [registerReactFlowApi, handleClearAll]);
   
-  // useEffect to handle sync from URL parameters
-  useEffect(() => {
-    // Attempt to load flow from URL if present
-    const params = new URLSearchParams(window.location.search);
-    const importParam = params.get('import');
-    
-    if (importParam) {
-      console.log('[FlowCanvas] Import param detected:', importParam);
-      
-      try {
-        // Try to decode the import parameter
-        const decoded = atob(importParam);
-        const importData = JSON.parse(decoded);
-        
-        // Handle importData based on expected structure
-        if (importData && importData.nodes && importData.edges) {
-          console.log('[FlowCanvas] Applying imported flow data');
-          setLocalNodes(importData.nodes);
-          setLocalEdges(importData.edges);
-        }
-      } catch (err) {
-        console.error('[FlowCanvas] Error parsing import data:', err);
-      }
-    }
-  }, [setLocalNodes, setLocalEdges]);
-
-  // Handle Paste action
-  useEffect(() => {
-    const handlePaste = (event: ClipboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        return; // Don't interfere with text input pasting
-      }
-      const text = event.clipboardData?.getData('text/plain');
-      if (!text) return;
-
-      try {
-        const parsed = JSON.parse(text);
-        if (parsed && parsed.nodes && parsed.edges) {
-          event.preventDefault();
-          const { nodes: pastedNodes, edges: pastedEdges } = parsed;
-
-          // Set local state first
-          setLocalNodes((nds) => [...nds, ...pastedNodes]);
-          setLocalEdges((eds) => [...eds, ...pastedEdges]);
-          
-          // Immediately update Zustand store after paste
-          console.log('[FlowCanvas][Paste] Committing pasted structure to store');
-          setNodes([...localNodes, ...pastedNodes]);
-          setEdges([...localEdges, ...pastedEdges]);
-
-          // Mark that a paste happened for debugging/potential coordination
-          if (!(window as any)._devFlags) (window as any)._devFlags = {};
-          (window as any)._devFlags.hasJustPasted = true;
-          (window as any)._devFlags.pasteVersion = ((window as any)._devFlags.pasteVersion || 0) + 1;
-          setTimeout(() => { (window as any)._devFlags.hasJustPasted = false; }, 100); // Reset flag
-        }
-      } catch (e) {
-        // Not valid JSON or not the expected format, ignore
-      }
-    };
-
-    document.addEventListener('paste', handlePaste);
-    return () => {
-      document.removeEventListener('paste', handlePaste);
-    };
-  // Update dependencies: add localNodes, localEdges, setNodes, setEdges
-  }, [setLocalNodes, setLocalEdges, localNodes, localEdges, setNodes, setEdges]);
-
   return (
     <div 
       ref={reactFlowRef} 
@@ -462,9 +312,17 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       onDrop={onDrop}
     >
       <ReactFlow
-        // 메모이제이션된 프롭스 사용
-        {...flowProps}
-        key={flowResetKey}
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onZustandNodesChange}
+        onEdgesChange={onZustandEdgesChange}
+        onSelectionChange={handleSelectionChange}
+        onConnect={handleConnect}
+        multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
+        selectionKeyCode={'Shift'}
+        zoomActivationKeyCode={'Alt'}
+        deleteKeyCode={['Delete', 'Backspace']}
+        nodeTypes={nodeTypes}
         fitView
         defaultViewport={defaultViewport}
         attributionPosition="bottom-right"
@@ -473,14 +331,13 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         snapToGrid
         snapGrid={[15, 15]}
         className="w-full h-full bg-dot-pattern"
-        // Additional connection validation and configuration
         connectOnClick={false}
         disableKeyboardA11y={false}
-        deleteKeyCode="Delete"
-        multiSelectionKeyCode="Control"
-        selectionKeyCode="Shift"
-        zoomActivationKeyCode="Alt"
         onInit={registerApi}
+        onNodesDelete={handleNodesDelete}
+        onEdgesDelete={handleEdgesDelete}
+        onNodeDragStop={handleNodeDragStop}
+        onSelectionDragStop={handleSelectionDragStop}
       >
         <Controls position="bottom-right" />
         <MiniMap position="bottom-left" zoomable pannable />
@@ -522,9 +379,9 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
 
 // Define props for FlowCanvasWrapper if needed, otherwise remove if FlowCanvas is used directly
 interface FlowCanvasWrapperProps {
-   onNodeSelect: (node: Node<NodeData> | null) => void;
-   registerReactFlowApi?: (api: FlowCanvasApi) => void;
-   children?: React.ReactNode;
+  onNodeSelect: (nodeIds: string[] | null) => void;
+  registerReactFlowApi?: (api: FlowCanvasApi) => void;
+  children?: React.ReactNode;
 }
 
 // This wrapper might be unnecessary if FlowEditor directly renders FlowCanvas within ReactFlowProvider
