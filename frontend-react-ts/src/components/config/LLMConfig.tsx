@@ -25,11 +25,12 @@ const DEBUG_LOGS = false;
 // TODO: Implement proper vision model detection based on provider and model name
 const isVisionModel = (provider: 'ollama' | 'openai', model: string): boolean => {
   // console.warn('Vision model detection is using a placeholder implementation!');
-  if (provider === 'ollama' && model?.includes('vision')) {
-      const visionAbleModels = ['llama', 'gemma3']
+  if (provider === 'ollama') {
+      // 모델 이름에 'vision' 포함 여부 체크 제거
+      const visionAbleModels = ['llama', 'gemma']
 
       for (const visionModel of visionAbleModels) {
-        if (model.includes(visionModel)) {
+        if (model?.includes(visionModel)) { // 모델 이름이 null/undefined 인 경우 방지
           return true;
         }
       }
@@ -42,7 +43,7 @@ const isVisionModel = (provider: 'ollama' | 'openai', model: string): boolean =>
       ]
 
       for (const visionModel of visionAbleModels) {
-        if (model.includes(visionModel)) {
+        if (model?.includes(visionModel)) { // 모델 이름이 null/undefined 인 경우 방지
           return true;
         }
       }
