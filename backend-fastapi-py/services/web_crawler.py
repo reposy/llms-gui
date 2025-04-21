@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import Dict, Optional, Any, List
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Error as PlaywrightError
 import json
 import re
 from bs4 import BeautifulSoup
@@ -14,121 +14,162 @@ async def crawl_webpage(
     url: str,
     wait_for_selector: Optional[str] = None,
     extract_selectors: Optional[Dict[str, str]] = None,
-    timeout: int = 30000,
+    timeout: int = 30000,  # Timeout now consistently in milliseconds
     headers: Optional[Dict[str, str]] = None,
     include_html: bool = False
 ) -> Dict[str, Any]:
     """
-    Crawls a webpage using Playwright and extracts content based on provided selectors
+    Crawls a webpage using Playwright and extracts content.
+    Handles dynamic content loading and provides robust error handling.
     
     Args:
         url: URL to crawl
-        wait_for_selector: CSS selector to wait for before extraction
+        wait_for_selector: Optional CSS selector to wait for after network idle
         extract_selectors: Dictionary of name:selector pairs for targeted extraction
-        timeout: Timeout in milliseconds
+        timeout: Total timeout for the operation in milliseconds
         headers: HTTP headers to send with the request
         include_html: Whether to include the full HTML in the response
         
     Returns:
-        Dictionary with extracted page data
+        Dictionary with page data including status and potential error.
     """
-    logger.info(f"Crawling URL: {url}")
+    logger.info(f"Crawling URL: {url} with timeout {timeout}ms")
     
+    # Initialize result structure with default values
     result = {
-        "title": "",
-        "text": "",
-        "status": "success",
-        "extracted_data": {}
+        "url": url,
+        "title": None,
+        "text": None,
+        "html": None,
+        "extracted_data": {},
+        "status": "success", # Assume success initially
+        "error": None
     }
     
+    browser = None # Define browser outside try block for cleanup
     try:
         async with async_playwright() as p:
-            # Launch browser
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             
-            # Set default headers or override with provided headers
+            # Set headers
             default_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
-            
             if headers:
                 default_headers.update(headers)
-                
             await page.set_extra_http_headers(default_headers)
             
-            # Navigate to the URL with timeout
-            logger.info(f"Navigating to {url}")
-            await page.goto(url, wait_until="networkidle", timeout=timeout)
+            # Navigate and wait for initial load
+            logger.info(f"Navigating to {url} (waiting for domcontentloaded)")
+            # Use half of the timeout for the initial navigation
+            nav_timeout = timeout / 2 
+            await page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
             
-            # Wait for specific selector if provided
+            # Wait for network activity to settle
+            logger.info(f"Waiting for network idle (timeout: {timeout / 2}ms)")
+            try:
+                # Use the remaining half of the timeout
+                await page.wait_for_load_state("networkidle", timeout=timeout / 2)
+                logger.info("Network is idle.")
+            except PlaywrightError as net_idle_e:
+                # Log warning but continue if network doesn't fully idle
+                logger.warning(f"Network did not fully idle within timeout: {str(net_idle_e)}")
+            except Exception as e:
+                logger.warning(f"Error during network idle wait: {str(e)}")
+
+            # Wait for specific selector if provided (after network idle attempt)
             if wait_for_selector:
                 logger.info(f"Waiting for selector: {wait_for_selector}")
                 try:
-                    await page.wait_for_selector(wait_for_selector, timeout=timeout)
+                    # Use a smaller portion of the original timeout for this wait
+                    await page.wait_for_selector(wait_for_selector, timeout=max(5000, timeout / 5)) # e.g., 5s or 1/5th of total
+                except PlaywrightError as selector_e:
+                    # Log warning but proceed if selector not found
+                    logger.warning(f"Selector '{wait_for_selector}' not found or timed out: {str(selector_e)}")
                 except Exception as e:
-                    logger.warning(f"Selector '{wait_for_selector}' not found: {str(e)}")
-            
-            # Get page title
-            result["title"] = await page.title()
-            
+                    logger.warning(f"Error waiting for selector '{wait_for_selector}': {str(e)}")
+
+            # --- Content Extraction --- 
+            # Get title (even if some waits failed)
+            try:
+                result["title"] = await page.title()
+            except Exception as title_e:
+                 logger.warning(f"Could not get page title: {str(title_e)}")
+
             # Get page content
-            content = await page.content()
-            
-            # Store HTML if requested
-            if include_html:
-                result["html"] = content
-            
-            # Extract page text using BeautifulSoup for better text extraction
-            soup = BeautifulSoup(content, 'html.parser')
-            
-            # Remove script and style elements
-            for script in soup(["script", "style"]):
-                script.extract()
+            try:
+                content = await page.content()
                 
-            # Extract text
-            text = soup.get_text(separator='\n')
-            
-            # Clean up text: remove extra whitespace and blank lines
-            lines = [line.strip() for line in text.splitlines()]
-            text = '\n'.join(line for line in lines if line)
-            result["text"] = text
-            
+                # Store HTML if requested
+                if include_html:
+                    result["html"] = content
+                
+                # Extract page text using BeautifulSoup
+                soup = BeautifulSoup(content, 'html.parser')
+                for script in soup(["script", "style"]):
+                    script.extract()
+                text = soup.get_text(separator='\n')
+                lines = [line.strip() for line in text.splitlines()]
+                result["text"] = '\n'.join(line for line in lines if line)
+
+            except Exception as content_e:
+                logger.error(f"Error extracting main content/text: {str(content_e)}")
+                # Mark status as error if core content extraction fails
+                result["status"] = "error"
+                result["error"] = f"Failed to extract page content: {str(content_e)}"
+                # Skip further extraction if content failed
+                # Close browser and return immediately
+                await browser.close()
+                return result
+
             # Extract specific content using selectors if provided
-            if extract_selectors:
+            if extract_selectors and result["status"] == "success": # Only run if no major error yet
                 extracted_data = {}
+                logger.info(f"Extracting specific selectors: {list(extract_selectors.keys())}")
                 for name, selector in extract_selectors.items():
                     try:
                         elements = await page.query_selector_all(selector)
                         if elements:
-                            # Multiple elements found
-                            if len(elements) > 1:
-                                extracted_data[name] = []
-                                for element in elements:
-                                    text_content = await element.text_content()
-                                    extracted_data[name].append(text_content.strip())
-                            # Single element found
+                            element_texts = []
+                            for element in elements:
+                                text_content = await element.text_content()
+                                element_texts.append(text_content.strip() if text_content else "")
+                            
+                            if len(element_texts) == 1:
+                                extracted_data[name] = element_texts[0]
+                            elif len(element_texts) > 1:
+                                 extracted_data[name] = element_texts
                             else:
-                                text_content = await elements[0].text_content()
-                                extracted_data[name] = text_content.strip()
+                                extracted_data[name] = None # Should not happen if elements found
                         else:
                             extracted_data[name] = None
                     except Exception as e:
-                        logger.error(f"Error extracting '{name}' with selector '{selector}': {str(e)}")
+                        logger.warning(f"Error extracting '{name}' with selector '{selector}': {str(e)}")
                         extracted_data[name] = None
-                
                 result["extracted_data"] = extracted_data
             
-            # Clean up
-            await browser.close()
+            # --- End Content Extraction --- 
             
-            logger.info(f"Successfully crawled {url}")
+            await browser.close() # Close browser on success
+            browser = None # Mark as closed
+            logger.info(f"Successfully crawled and processed {url}")
             
-    except Exception as e:
-        logger.error(f"Error crawling {url}: {str(e)}")
+    except PlaywrightError as pe:
+        logger.error(f"Playwright error crawling {url}: {str(pe)}")
         result["status"] = "error"
-        result["error"] = str(e)
+        result["error"] = f"Playwright Error: {str(pe)}"
+    except Exception as e:
+        logger.error(f"Generic error crawling {url}: {str(e)}", exc_info=True) # Log traceback for generic errors
+        result["status"] = "error"
+        result["error"] = f"Unexpected Error: {str(e)}"
+    finally:
+        # Ensure browser is closed even if an error occurred mid-process
+        if browser and browser.is_connected():
+            logger.info("Closing browser due to error or completion.")
+            await browser.close()
     
+    # Return the final result dictionary (includes status and error if any)
     return result
 
 # Helper function to sanitize content

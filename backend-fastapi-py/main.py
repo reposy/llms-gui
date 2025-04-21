@@ -30,14 +30,14 @@ class WebCrawlerRequest(BaseModel):
     url: str
     wait_for_selector: Optional[str] = None
     extract_selectors: Optional[Dict[str, str]] = None
-    timeout: Optional[int] = 30
+    timeout: Optional[int] = 30000 # Expect timeout in milliseconds, default 30000ms
     headers: Optional[Dict[str, str]] = None
     include_html: bool = False
 
 class WebCrawlerResponse(BaseModel):
     url: str
-    title: str
-    text: str
+    title: Optional[str] = None # Make fields optional for error cases
+    text: Optional[str] = None
     html: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
     status: str
@@ -79,33 +79,27 @@ async def list_models(provider: LLMProvider):
 @app.post("/api/web-crawler/fetch")
 async def fetch_webpage(request: WebCrawlerRequest) -> WebCrawlerResponse:
     try:
+        # Pass timeout directly (it's in milliseconds)
         result = await crawl_webpage(
             url=request.url,
             wait_for_selector=request.wait_for_selector,
             extract_selectors=request.extract_selectors,
-            timeout=request.timeout or 30,
+            timeout=request.timeout, # Pass timeout in ms
             headers=request.headers,
             include_html=request.include_html
         )
         
-        return WebCrawlerResponse(
-            url=request.url,
-            title=result.get("title", ""),
-            text=result.get("text", ""),
-            html=result.get("html") if request.include_html else None,
-            extracted_data=result.get("extracted_data"),
-            status="success",
-            error=None
-        )
+        # Return based on the structure returned by crawl_webpage
+        return WebCrawlerResponse(**result)
     
     except Exception as e:
-        # Return error but still with 200 status code so the node can handle it
+        # Fallback error response if crawl_webpage itself fails unexpectedly
         return WebCrawlerResponse(
             url=request.url,
-            title="",
-            text="",
+            title=None,
+            text=None,
             html=None,
             extracted_data=None,
             status="error",
-            error=str(e)
+            error=f"Unhandled exception in API handler: {str(e)}"
         ) 

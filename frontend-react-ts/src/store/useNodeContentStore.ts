@@ -55,6 +55,7 @@ export interface WebCrawlerNodeContent extends BaseNodeContent {
   extractSelectors?: Record<string, string>;
   timeout?: number;
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
+  headers?: Record<string, string>;
 }
 
 /**
@@ -160,7 +161,8 @@ export function createDefaultNodeContent(type: string): NodeContent {
         waitForSelector: 'body',
         extractSelectors: {},
         timeout: 3000,
-        outputFormat: 'full',
+        outputFormat: 'html',
+        headers: {},
         isDirty: false,
         label: 'Web Crawler'
       } as WebCrawlerNodeContent;
