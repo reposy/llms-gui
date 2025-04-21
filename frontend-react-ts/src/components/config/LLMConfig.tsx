@@ -26,10 +26,26 @@ const DEBUG_LOGS = false;
 const isVisionModel = (provider: 'ollama' | 'openai', model: string): boolean => {
   // console.warn('Vision model detection is using a placeholder implementation!');
   if (provider === 'ollama' && model?.includes('vision')) {
-      return true; // Basic check for Ollama vision models
+      const visionAbleModels = ['llama', 'gemma3']
+
+      for (const visionModel of visionAbleModels) {
+        if (model.includes(visionModel)) {
+          return true;
+        }
+      }
   }
-  if (provider === 'openai' && model?.startsWith('gpt-4-vision')) {
-      return true; // Basic check for OpenAI vision models
+  if (provider === 'openai') {
+      const visionAbleModels = [
+        'gpt-4o',
+        'gpt-4o-mini',
+        'gpt-4o-nano', 
+      ]
+
+      for (const visionModel of visionAbleModels) {
+        if (model.includes(visionModel)) {
+          return true;
+        }
+      }
   }
   // Add more robust checks based on known model identifiers
   return false;
@@ -57,25 +73,21 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
     setMode,
   } = useLlmNodeData({ nodeId });
   
-  // Check if there are input nodes that could provide images
-  const { hasImageInputs } = useNodeConnections(nodeId);
-  
   // Check if the current model supports vision features using the local placeholder
   const supportsVision = model && isVisionModel(provider, model);
   
-  // Check if vision mode can be enabled (needs image inputs and supported model)
-  const canEnableVisionMode = useMemo(() => {
-    const hasInputs = hasImageInputs();
-    const canEnable = supportsVision && hasInputs;
-    if (DEBUG_LOGS) {
-      console.log(`[LLMConfig] Node ${nodeId} vision mode status:`, {
-        supportsVision,
-        hasImageInputs: hasInputs,
-        canEnableVision: canEnable
-      });
-    }
-    return canEnable;
-  }, [nodeId, supportsVision, hasImageInputs]);
+  // Vision button is always enabled from UI perspective
+  // const canEnableVisionButton = useMemo(() => {
+  //   if (DEBUG_LOGS) {
+  //     console.log(`[LLMConfig] Node ${nodeId} vision button status:`, {
+  //       supportsVision,
+  //     });
+  //   }
+  //   return supportsVision;
+  // }, [nodeId, supportsVision]);
+  
+  // Check if there are image inputs (used for click handler alert)
+  const hasImageInputs = useNodeConnections(nodeId).hasImageInputs;
   
   // Debug logs for render and content state
   if (DEBUG_LOGS) {
@@ -167,31 +179,26 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
               mode === 'vision'
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            } ${
-              !canEnableVisionMode ? 'opacity-50 cursor-not-allowed' : ''
             }`}
             onClick={() => {
+              // 클릭 시 임시 로직으로 비전 지원 여부 확인 (알림용)
               if (!supportsVision) {
-                alert(`모델 ${model}은(는) 비전 기능을 지원하지 않습니다. 비전을 지원하는 모델로 변경해주세요.`);
-                return;
+                alert(`모델 ${model}은(는) 비전 기능을 지원하지 않을 수 있습니다. (임시 확인)`);
+                // 지원 여부와 관계없이 모드 변경 허용
               }
               
+              // 이미지 입력 연결 여부 확인 (알림용)
               if (!hasImageInputs()) {
                 alert('비전 모드는 이미지 입력이 필요합니다. 이미지 입력 노드를 연결하세요.');
-                return;
+                // 입력이 없어도 모드 변경은 허용
               }
               
-              // If both conditions pass, we can enable vision mode
               setMode('vision');
             }}
             onKeyDown={handleKeyDown}
-            disabled={!canEnableVisionMode}
             title={
-              !supportsVision 
-                ? '현재 모델은 비전을 지원하지 않습니다' 
-                : !hasImageInputs() 
-                  ? '이미지 입력이 필요합니다. 입력 노드를 연결하세요.'
-                  : '이미지 입력 처리'
+               // 툴팁 업데이트: 비전 지원 여부와 관계없이 일반적인 설명 제공
+               '텍스트와 이미지 입력을 함께 처리합니다.'
             }
           >
             Vision
