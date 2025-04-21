@@ -5,3 +5,5 @@ pydantic==2.6.1
 python-dotenv==1.0.0
 playwright
 beautifulsoup4
+lxml
+pydantic-settings

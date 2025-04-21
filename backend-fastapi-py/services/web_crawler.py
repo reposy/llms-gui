@@ -1,20 +1,138 @@
 import asyncio
 import logging
 from typing import Dict, Optional, Any, List
-from playwright.async_api import async_playwright, Error as PlaywrightError
+from playwright.async_api import async_playwright, Error as PlaywrightError, Page, Browser
 import json
 import re
 from bs4 import BeautifulSoup
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Removed basicConfig from here
+# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- Private Helper Functions --- 
+
+async def _setup_browser_and_page(headless: bool = True) -> tuple[Browser, Page]:
+    """Launches browser and creates a new page."""
+    p = await async_playwright().start()
+    browser = await p.chromium.launch(headless=headless)
+    page = await browser.new_page()
+    logger.info("Browser and page initialized.")
+    return browser, page
+
+async def _set_page_headers(page: Page, headers: Optional[Dict[str, str]]):
+    """Sets extra HTTP headers for the page."""
+    default_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    if headers:
+        default_headers.update(headers)
+        logger.info(f"Using custom headers: {list(headers.keys())}")
+    else:
+        logger.info("Using default User-Agent header.")
+    await page.set_extra_http_headers(default_headers)
+
+async def _navigate_and_wait(page: Page, url: str, timeout: int):
+    """Navigates to the URL and waits for load states."""
+    logger.info(f"Navigating to {url} (waiting for domcontentloaded)")
+    nav_timeout = timeout / 2 
+    await page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
+    
+    logger.info(f"Waiting for network idle (timeout: {timeout / 2}ms)")
+    try:
+        await page.wait_for_load_state("networkidle", timeout=timeout / 2)
+        logger.info("Network is idle.")
+    except PlaywrightError as net_idle_e:
+        logger.warning(f"Network did not fully idle within timeout: {str(net_idle_e)}")
+    except Exception as e:
+        logger.warning(f"Error during network idle wait: {str(e)}")
+
+async def _wait_for_optional_selector(page: Page, selector: Optional[str], timeout: int):
+    """Waits for an optional selector if provided."""
+    if not selector:
+        return
+        
+    logger.info(f"Waiting for selector: {selector}")
+    try:
+        selector_timeout = max(5000, timeout / 5)
+        await page.wait_for_selector(selector, timeout=selector_timeout)
+        logger.info(f"Selector '{selector}' found.")
+    except PlaywrightError as selector_e:
+        logger.warning(f"Selector '{selector}' not found or timed out: {str(selector_e)}")
+    except Exception as e:
+        logger.warning(f"Error waiting for selector '{selector}': {str(e)}")
+
+async def _extract_content(page: Page, include_html: bool) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Extracts page title, text content, and optionally HTML."""
+    title: Optional[str] = None
+    text: Optional[str] = None
+    html: Optional[str] = None
+
+    try:
+        title = await page.title()
+    except Exception as title_e:
+        logger.warning(f"Could not get page title: {str(title_e)}")
+
+    try:
+        page_content = await page.content()
+        if include_html:
+            html = page_content
+            logger.info(f"HTML content captured (length: {len(html)})")
+        
+        # Use lxml parser if installed for potentially better performance/robustness
+        soup = BeautifulSoup(page_content, 'lxml' if 'lxml' in globals() else 'html.parser') 
+        for script in soup(["script", "style"]):
+            script.extract()
+        raw_text = soup.get_text(separator='\n')
+        lines = [line.strip() for line in raw_text.splitlines()]
+        text = '\n'.join(line for line in lines if line)
+        logger.info(f"Text content extracted (length: {len(text) if text else 0})")
+
+    except Exception as content_e:
+        logger.error(f"Error extracting main content/text: {str(content_e)}")
+        # Raise the exception to be caught by the main function's handler
+        raise content_e 
+
+    return title, text, html
+
+async def _extract_selectors_data(page: Page, selectors: Optional[Dict[str, str]]) -> Dict[str, Any]:
+    """Extracts data based on specific CSS selectors."""
+    if not selectors:
+        return {}
+
+    extracted_data: Dict[str, Any] = {}
+    logger.info(f"Extracting specific selectors: {list(selectors.keys())}")
+    for name, selector in selectors.items():
+        try:
+            elements = await page.query_selector_all(selector)
+            if elements:
+                element_texts = []
+                for element in elements:
+                    text_content = await element.text_content()
+                    element_texts.append(text_content.strip() if text_content else "")
+                
+                if len(element_texts) == 1:
+                    extracted_data[name] = element_texts[0]
+                elif len(element_texts) > 1:
+                    extracted_data[name] = element_texts
+                else:
+                    extracted_data[name] = None
+            else:
+                extracted_data[name] = None
+                logger.warning(f"No elements found for selector '{selector}' (name: '{name}')")
+        except Exception as e:
+            logger.warning(f"Error extracting '{name}' with selector '{selector}': {str(e)}")
+            extracted_data[name] = None
+    logger.info(f"Finished extracting specific selectors. Found data for keys: {list(extracted_data.keys())}")
+    return extracted_data
+
+# --- Main Public Function --- 
 
 async def crawl_webpage(
     url: str,
     wait_for_selector: Optional[str] = None,
     extract_selectors: Optional[Dict[str, str]] = None,
-    timeout: int = 30000,  # Timeout now consistently in milliseconds
+    timeout: int = 30000,  # Timeout in milliseconds
     headers: Optional[Dict[str, str]] = None,
     include_html: bool = False
 ) -> Dict[str, Any]:
@@ -35,207 +153,50 @@ async def crawl_webpage(
     """
     logger.info(f"Crawling URL: {url} with timeout {timeout}ms")
     
-    # Initialize result structure with default values
     result = {
         "url": url,
         "title": None,
         "text": None,
         "html": None,
         "extracted_data": {},
-        "status": "success", # Assume success initially
+        "status": "success",
         "error": None
     }
     
-    browser = None # Define browser outside try block for cleanup
+    browser: Optional[Browser] = None 
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
-            # Set headers
-            default_headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-            }
-            if headers:
-                default_headers.update(headers)
-            await page.set_extra_http_headers(default_headers)
-            
-            # Navigate and wait for initial load
-            logger.info(f"Navigating to {url} (waiting for domcontentloaded)")
-            # Use half of the timeout for the initial navigation
-            nav_timeout = timeout / 2 
-            await page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
-            
-            # Wait for network activity to settle
-            logger.info(f"Waiting for network idle (timeout: {timeout / 2}ms)")
-            try:
-                # Use the remaining half of the timeout
-                await page.wait_for_load_state("networkidle", timeout=timeout / 2)
-                logger.info("Network is idle.")
-            except PlaywrightError as net_idle_e:
-                # Log warning but continue if network doesn't fully idle
-                logger.warning(f"Network did not fully idle within timeout: {str(net_idle_e)}")
-            except Exception as e:
-                logger.warning(f"Error during network idle wait: {str(e)}")
+        browser, page = await _setup_browser_and_page()
+        await _set_page_headers(page, headers)
+        await _navigate_and_wait(page, url, timeout)
+        await _wait_for_optional_selector(page, wait_for_selector, timeout)
+        
+        # Extract content (title, text, html)
+        title, text, html = await _extract_content(page, include_html)
+        result["title"] = title
+        result["text"] = text
+        result["html"] = html # Will be None if include_html is False or error occurred
 
-            # Wait for specific selector if provided (after network idle attempt)
-            if wait_for_selector:
-                logger.info(f"Waiting for selector: {wait_for_selector}")
-                try:
-                    # Use a smaller portion of the original timeout for this wait
-                    await page.wait_for_selector(wait_for_selector, timeout=max(5000, timeout / 5)) # e.g., 5s or 1/5th of total
-                except PlaywrightError as selector_e:
-                    # Log warning but proceed if selector not found
-                    logger.warning(f"Selector '{wait_for_selector}' not found or timed out: {str(selector_e)}")
-                except Exception as e:
-                    logger.warning(f"Error waiting for selector '{wait_for_selector}': {str(e)}")
-
-            # --- Content Extraction --- 
-            # Get title (even if some waits failed)
-            try:
-                result["title"] = await page.title()
-            except Exception as title_e:
-                 logger.warning(f"Could not get page title: {str(title_e)}")
-
-            # Get page content
-            try:
-                content = await page.content()
-                
-                # Store HTML if requested
-                if include_html:
-                    result["html"] = content
-                
-                # Extract page text using BeautifulSoup
-                soup = BeautifulSoup(content, 'html.parser')
-                for script in soup(["script", "style"]):
-                    script.extract()
-                text = soup.get_text(separator='\n')
-                lines = [line.strip() for line in text.splitlines()]
-                result["text"] = '\n'.join(line for line in lines if line)
-
-            except Exception as content_e:
-                logger.error(f"Error extracting main content/text: {str(content_e)}")
-                # Mark status as error if core content extraction fails
-                result["status"] = "error"
-                result["error"] = f"Failed to extract page content: {str(content_e)}"
-                # Skip further extraction if content failed
-                # Close browser and return immediately
-                await browser.close()
-                return result
-
-            # Extract specific content using selectors if provided
-            if extract_selectors and result["status"] == "success": # Only run if no major error yet
-                extracted_data = {}
-                logger.info(f"Extracting specific selectors: {list(extract_selectors.keys())}")
-                for name, selector in extract_selectors.items():
-                    try:
-                        elements = await page.query_selector_all(selector)
-                        if elements:
-                            element_texts = []
-                            for element in elements:
-                                text_content = await element.text_content()
-                                element_texts.append(text_content.strip() if text_content else "")
-                            
-                            if len(element_texts) == 1:
-                                extracted_data[name] = element_texts[0]
-                            elif len(element_texts) > 1:
-                                 extracted_data[name] = element_texts
-                            else:
-                                extracted_data[name] = None # Should not happen if elements found
-                        else:
-                            extracted_data[name] = None
-                    except Exception as e:
-                        logger.warning(f"Error extracting '{name}' with selector '{selector}': {str(e)}")
-                        extracted_data[name] = None
-                result["extracted_data"] = extracted_data
+        # Extract specific selectors if requested
+        extracted_data = await _extract_selectors_data(page, extract_selectors)
+        result["extracted_data"] = extracted_data
             
-            # --- End Content Extraction --- 
-            
-            await browser.close() # Close browser on success
-            browser = None # Mark as closed
-            logger.info(f"Successfully crawled and processed {url}")
+        logger.info(f"Successfully crawled and processed {url}")
             
     except PlaywrightError as pe:
-        logger.error(f"Playwright error crawling {url}: {str(pe)}")
+        logger.error(f"Playwright error during crawl of {url}: {str(pe)}")
         result["status"] = "error"
         result["error"] = f"Playwright Error: {str(pe)}"
     except Exception as e:
-        logger.error(f"Generic error crawling {url}: {str(e)}", exc_info=True) # Log traceback for generic errors
+        logger.error(f"Generic error during crawl of {url}: {str(e)}", exc_info=True)
         result["status"] = "error"
         result["error"] = f"Unexpected Error: {str(e)}"
     finally:
-        # Ensure browser is closed even if an error occurred mid-process
         if browser and browser.is_connected():
-            logger.info("Closing browser due to error or completion.")
+            logger.info("Closing browser.")
             await browser.close()
     
-    # Return the final result dictionary (includes status and error if any)
     return result
 
-# Helper function to sanitize content
-def sanitize_content(content: str) -> str:
-    """Clean up extracted content by normalizing whitespace and removing non-printable chars"""
-    # Replace multiple whitespace with a single space
-    content = re.sub(r'\s+', ' ', content)
-    # Strip leading/trailing whitespace
-    content = content.strip()
-    # Remove non-printable characters
-    content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', content)
-    return content
-
-# Helper function to convert extracted content to structured JSON
-def structure_content(
-    extracted_data: Dict[str, Any], 
-    schema: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Convert extracted data to a structured format based on optional schema
-    
-    Args:
-        extracted_data: Dictionary of extracted data
-        schema: Optional schema to structure the data (keys and types)
-        
-    Returns:
-        Structured data following the schema
-    """
-    if not schema:
-        return extracted_data
-        
-    result = {}
-    
-    for key, type_info in schema.items():
-        if key not in extracted_data:
-            result[key] = None
-            continue
-            
-        value = extracted_data[key]
-        
-        # Apply type conversion based on schema
-        if type_info == "string":
-            result[key] = str(value) if value is not None else ""
-        elif type_info == "integer":
-            try:
-                result[key] = int(value) if value is not None else 0
-            except (ValueError, TypeError):
-                result[key] = 0
-        elif type_info == "float":
-            try:
-                result[key] = float(value) if value is not None else 0.0
-            except (ValueError, TypeError):
-                result[key] = 0.0
-        elif type_info == "boolean":
-            if isinstance(value, str):
-                result[key] = value.lower() in ("yes", "true", "t", "1")
-            else:
-                result[key] = bool(value)
-        elif type_info == "array" and isinstance(value, str):
-            # Split string by commas if it's not already a list
-            if not isinstance(value, list):
-                result[key] = [item.strip() for item in value.split(',')]
-            else:
-                result[key] = value
-        else:
-            # Default: keep as is
-            result[key] = value
-    
-    return result 
+# Removed unused helper functions sanitize_content and structure_content
+# def sanitize_content(content: str) -> str: ...
+# def structure_content(extracted_data: Dict[str, Any], schema: Optional[Dict[str, Any]] = None) -> Dict[str, Any]: ... 

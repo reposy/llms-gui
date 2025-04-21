@@ -1,8 +1,19 @@
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from services.web_crawler import crawl_webpage
+
+# Configure logging (call once at the start)
+logging.basicConfig(
+    level=logging.INFO, # Or load from settings: settings.LOG_LEVEL
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# Get a logger for this module if needed (optional here)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
