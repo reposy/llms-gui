@@ -1,9 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any, Union
-import os
-from services.llm_service import LLMServiceFactory, LLMProvider
+from typing import Optional, Dict, Any
 from services.web_crawler import crawl_webpage
 
 app = FastAPI()
@@ -17,15 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class LLMRequest(BaseModel):
-    prompt: str
-    model: str
-    provider: LLMProvider = LLMProvider.OLLAMA
-    config: Optional[dict] = None
-
-class LLMResponse(BaseModel):
-    response: str
-    
 class WebCrawlerRequest(BaseModel):
     url: str
     wait_for_selector: Optional[str] = None
@@ -36,7 +25,7 @@ class WebCrawlerRequest(BaseModel):
 
 class WebCrawlerResponse(BaseModel):
     url: str
-    title: Optional[str] = None # Make fields optional for error cases
+    title: Optional[str] = None
     text: Optional[str] = None
     html: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
@@ -47,53 +36,21 @@ class WebCrawlerResponse(BaseModel):
 async def root():
     return {"message": "Hello World"}
 
-@app.post("/api/run-llm")
-async def run_llm(request: LLMRequest) -> LLMResponse:
-    try:
-        # OpenAI API 키가 필요한 경우 환경 변수에서 가져옴
-        config = request.config or {}
-        if request.provider == LLMProvider.OPENAI:
-            config["api_key"] = os.getenv("OPENAI_API_KEY")
-
-        service = LLMServiceFactory.create_service(request.provider, config)
-        response = await service.generate(request.prompt, request.model)
-        return LLMResponse(response=response)
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/models/{provider}")
-async def list_models(provider: LLMProvider):
-    try:
-        config = {}
-        if provider == LLMProvider.OPENAI:
-            config["api_key"] = os.getenv("OPENAI_API_KEY")
-
-        service = LLMServiceFactory.create_service(provider, config)
-        models = await service.list_models()
-        return {"models": models}
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/web-crawler/fetch")
 async def fetch_webpage(request: WebCrawlerRequest) -> WebCrawlerResponse:
     try:
-        # Pass timeout directly (it's in milliseconds)
         result = await crawl_webpage(
             url=request.url,
             wait_for_selector=request.wait_for_selector,
             extract_selectors=request.extract_selectors,
-            timeout=request.timeout, # Pass timeout in ms
+            timeout=request.timeout,
             headers=request.headers,
             include_html=request.include_html
         )
-        
-        # Return based on the structure returned by crawl_webpage
         return WebCrawlerResponse(**result)
     
     except Exception as e:
-        # Fallback error response if crawl_webpage itself fails unexpectedly
+        # Consistent error handling for the remaining endpoint
         return WebCrawlerResponse(
             url=request.url,
             title=None,
