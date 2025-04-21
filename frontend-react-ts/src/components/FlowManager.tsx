@@ -52,8 +52,9 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
         
         // 3. Clear Zustand store
         console.log('[FlowManager] Step 3: Clearing Zustand store (setNodes/setEdges)');
-        setNodes([]);
-        setEdges([]);
+        const currentState = useFlowStructureStore.getState();
+        setNodes([...currentState.nodes]);
+        setEdges([...currentState.edges]);
         
         console.log('[FlowManager] Step 4: Manual IndexedDB clear removed. Relying on Zustand persist.');
         
@@ -62,8 +63,12 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
           flowApi.current.forceClearLocalState();
           console.log('[FlowManager] Step 5: Directly cleared React Flow local state via API');
         } else {
-           console.warn('[FlowManager] Warning: flowApi.current.forceClearLocalState is not available.');
-           flowApi.current?.forceSync?.();
+          console.warn('[FlowManager] Warning: flowApi.current.forceClearLocalState is not available.');
+          // forceSync 호출 제거
+          // 대신 직접 상태 업데이트
+          const currentState = useFlowStructureStore.getState();
+          setNodes([...currentState.nodes]); // 이미 빈 배열일 것이므로 불필요할 수 있지만, 일관성을 위해 유지
+          setEdges([...currentState.edges]);
         }
         
         // 6. Push empty state to history and mark clean
@@ -116,8 +121,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
         importFlowFromJson(flowData);
         
         setTimeout(() => {
-          console.log('[FlowManager] Forcing sync after import');
-          flowApi.current?.forceSync?.();
+          console.log('[FlowManager] Import complete, updating store state');
+          // forceSync 호출 제거
           
           const currentState = useFlowStructureStore.getState(); // Get state *after* import
           const stateToSave = {
@@ -155,7 +160,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
     if (canUndo) {
       console.log("[FlowManager] Undo triggered");
       undo();
-      flowApi.current?.forceSync?.();
+      // forceSync 호출 제거
+      // 대신 Zustand 상태 업데이트 시점에 내부적으로 처리됨
     }
   }, { enableOnFormTags: false }, [canUndo, flowApi]);
   
@@ -164,7 +170,8 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
     if (canRedo) {
       console.log("[FlowManager] Redo triggered");
       redo();
-      flowApi.current?.forceSync?.();
+      // forceSync 호출 제거
+      // 대신 Zustand 상태 업데이트 시점에 내부적으로 처리됨
     }
   }, { enableOnFormTags: false }, [canRedo, flowApi]);
 
@@ -172,7 +179,11 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   useHotkeys('ctrl+shift+s, cmd+shift+s', (event: KeyboardEvent) => {
     event.preventDefault();
     console.log("[FlowManager] Force Sync hotkey triggered");
-    flowApi.current?.forceSync?.(); 
+    // forceSync 호출 제거
+    // 대신 필요한 경우 상태 업데이트
+    const currentState = useFlowStructureStore.getState();
+    setNodes([...currentState.nodes]);
+    setEdges([...currentState.edges]);
   }, { enableOnFormTags: false }, [flowApi]);
 
   return (
@@ -209,32 +220,6 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
         ref={fileInputRef}
         className="hidden"
       />
-      <button 
-        onClick={() => {
-          undo();
-          flowApi.current?.forceSync?.();
-        }}
-        disabled={!canUndo}
-        className="px-3 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-        </svg>
-        <span className="ml-1">실행 취소</span>
-      </button>
-      <button 
-        onClick={() => {
-          redo();
-          flowApi.current?.forceSync?.();
-        }}
-        disabled={!canRedo}
-        className="px-3 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-        </svg>
-        <span className="ml-1">다시 실행</span>
-      </button>
     </div>
   );
 }; 

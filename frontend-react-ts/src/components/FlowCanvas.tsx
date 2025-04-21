@@ -29,7 +29,7 @@ import {
   onEdgesChange as onZustandEdgesChange,
   setSelectedNodeIds
 } from '../store/useFlowStructureStore';
-import { undo, redo } from '../store/useHistoryStore';
+import { undo, redo, useCanUndo, useCanRedo } from '../store/useHistoryStore';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -70,6 +70,7 @@ const defaultViewport = { x: 0, y: 0, zoom: 1 };
 export interface FlowCanvasApi {
   clearNodes: () => void;
   reactFlowInstance?: ReactFlowInstance<Node<NodeData>, Edge>;
+  forceClearLocalState?: () => void;
 }
 
 interface FlowCanvasProps {
@@ -96,6 +97,10 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   const nodes = useNodes();
   const edges = useEdges();
   const { setNodes, setEdges } = useFlowStructureStore.getState();
+  
+  // 실행 취소/다시 실행 상태
+  const canUndo = useCanUndo();
+  const canRedo = useCanRedo();
   
   useConsoleErrorOverride();
   
@@ -179,18 +184,58 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   
   // 패널 버튼 핸들러를 메모이제이션
   const handleUndo = useCallback(() => {
-    undo();
-  }, []);
+    if (canUndo) {
+      console.log("[FlowCanvas] Undo triggered via UI button");
+      // 실행 취소 수행
+      undo();
+      
+      // 상태 변경 감지를 위한 미세한 지연
+      setTimeout(() => {
+        // 현재 Zustand 스토어 상태 가져오기
+        const currentState = useFlowStructureStore.getState();
+        // 노드와 엣지를 다시 설정하여 React Flow에 반영
+        // TypeScript 에러 해결: 함수가 아닌 배열을 전달
+        setNodes([...currentState.nodes]);
+        setEdges([...currentState.edges]);
+      }, 10); // 지연 시간을 약간 늘려 확실히 적용되도록 함
+    }
+  }, [canUndo]);
   
   const handleRedo = useCallback(() => {
-    redo();
-  }, []);
+    if (canRedo) {
+      console.log("[FlowCanvas] Redo triggered via UI button");
+      // 다시 실행 수행
+      redo();
+      
+      // 상태 변경 감지를 위한 미세한 지연
+      setTimeout(() => {
+        // 현재 Zustand 스토어 상태 가져오기
+        const currentState = useFlowStructureStore.getState();
+        // 노드와 엣지를 다시 설정하여 React Flow에 반영
+        // TypeScript 에러 해결: 함수가 아닌 배열을 전달
+        setNodes([...currentState.nodes]);
+        setEdges([...currentState.edges]);
+      }, 10); // 지연 시간을 약간 늘려 확실히 적용되도록 함
+    }
+  }, [canRedo]);
   
   const handleClearAll = useCallback(() => {
     console.log('[FlowCanvas] Clear All button clicked');
+    // 모든 노드와 엣지 지우기
     setNodes([]);
     setEdges([]);
     setSelectedNodeIds([]);
+    
+    // 미세한 지연으로 React Flow 업데이트 보장
+    setTimeout(() => {
+      const currentState = useFlowStructureStore.getState();
+      // 빈 배열로 다시 설정하여 React Flow에 반영
+      setNodes(currentState.nodes); // 이미 빈 배열일 것이므로 그대로 사용
+      setEdges(currentState.edges);
+      
+      // 뷰 재설정을 통해 캔버스 갱신
+      reactFlowInstanceRef.current?.fitView();
+    }, 10);
   }, [setNodes, setEdges]);
   
   // 선택 변경을 처리하는 핸들러 최적화
@@ -261,8 +306,9 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         // extent 속성도 설정하지 않음
       }
       
-      // 4. 노드 추가 (명시적 타입 변환으로 에러 해결)
-      setNodes(prevNodes => [...prevNodes, newNode] as Node<NodeData>[]);
+      // 4. 노드 추가 (타입 에러 수정)
+      const updatedNodes = [...nodes, newNode];
+      setNodes(updatedNodes);
     },
     [screenToFlowPosition, setNodes, nodes]
   );
@@ -295,7 +341,16 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     // 필요한 최소 API만 구성
     const minimalApi: FlowCanvasApi = {
       clearNodes: handleClearAll,
-      reactFlowInstance: reactFlowInstance
+      reactFlowInstance: reactFlowInstance,
+      forceClearLocalState: () => {
+        console.log('[FlowCanvas] Force clear local state via API');
+        // 노드와 엣지를 비우고 캔버스 초기화
+        setNodes([]);
+        setEdges([]);
+        setSelectedNodeIds([]);
+        // 뷰 재설정
+        reactFlowInstance.fitView();
+      }
     };
     
     // Set the API reference for external components
@@ -342,11 +397,13 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         <Controls position="bottom-right" />
         <MiniMap position="bottom-left" zoomable pannable />
         <Background gap={15} color="#d9e1ec" />
-        <Panel position="top-right" className="bg-white rounded-lg shadow-lg p-3 space-y-2 flex flex-col">
+        <Panel position="top-right" className="bg-white rounded-lg shadow-lg p-3 space-y-2 flex flex-col mr-4 self-center">
           <button
             onClick={handleUndo}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip"
-            data-tooltip="Undo (Ctrl+Z)"
+            className={`p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip ${!canUndo ? 'opacity-50 cursor-not-allowed' : ''}`}
+            data-tooltip="실행 취소 (Ctrl+Z)"
+            aria-label="실행 취소"
+            disabled={!canUndo}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -354,8 +411,10 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
           </button>
           <button
             onClick={handleRedo}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip"
-            data-tooltip="Redo (Ctrl+Shift+Z)"
+            className={`p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip ${!canRedo ? 'opacity-50 cursor-not-allowed' : ''}`}
+            data-tooltip="다시 실행 (Ctrl+Shift+Z)"
+            aria-label="다시 실행"
+            disabled={!canRedo}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
@@ -364,7 +423,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
           <button
             onClick={handleClearAll}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors tooltip"
-            data-tooltip="Clear All"
+            data-tooltip="모두 지우기"
+            aria-label="모두 지우기"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
