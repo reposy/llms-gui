@@ -164,29 +164,17 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
           // Node is being added to a group
           const groupNode = nodes.find(n => n.id === intersectingGroupId);
           if (groupNode) {
-            // Calculate relative position
-            const absoluteX = currentParentId 
-              ? (draggedNode.position.x + (nodes.find(n => n.id === currentParentId)?.position.x || 0))
-              : draggedNode.position.x;
-            
-            const absoluteY = currentParentId
-              ? (draggedNode.position.y + (nodes.find(n => n.id === currentParentId)?.position.y || 0))
-              : draggedNode.position.y;
-            
-            const relativeX = absoluteX - groupNode.position.x;
-            const relativeY = absoluteY - groupNode.position.y;
-            
-            // Update node with new parent and relative position
+            // 절대 좌표 유지 - UI 가이드라인에 따르면 그룹 내 자식 노드는 절대 좌표를 유지해야 함
             updatedNodes = nodes.map(node => {
               if (node.id === draggedNode.id) {
                 return {
                   ...node,
                   // Use parentId that exists in our type definition
-                  // The actual React Flow will interpret this correctly
                   parentId: intersectingGroupId,
+                  // 현재 위치 유지 (절대 좌표)
                   position: {
-                    x: relativeX,
-                    y: relativeY
+                    x: node.position.x,
+                    y: node.position.y
                   }
                 };
               }
@@ -198,38 +186,21 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
           }
         } else if (currentParentId) {
           // Node is being removed from a group
-          const parentNode = nodes.find(n => n.id === currentParentId);
-          if (parentNode) {
-            // Calculate absolute position
-            const absoluteX = parentNode.position.x + draggedNode.position.x;
-            const absoluteY = parentNode.position.y + draggedNode.position.y;
-            
-            // Update node with no parent and absolute position
-            updatedNodes = nodes.map(node => {
-              if (node.id === draggedNode.id) {
-                return {
-                  ...node,
-                  parentId: undefined, // Clear parentId to remove from group
-                  position: {
-                    x: absoluteX,
-                    y: absoluteY
-                  }
-                };
-              }
-              return node;
-            });
-          } else {
-            // Parent not found, just remove parent references
-            updatedNodes = nodes.map(node => {
-              if (node.id === draggedNode.id) {
-                return {
-                  ...node,
-                  parentId: undefined
-                };
-              }
-              return node;
-            });
-          }
+          // 그룹에서 제거될 때도 위치 유지
+          updatedNodes = nodes.map(node => {
+            if (node.id === draggedNode.id) {
+              return {
+                ...node,
+                parentId: undefined, // Clear parentId to remove from group
+                // 현재 위치 유지
+                position: {
+                  x: node.position.x,
+                  y: node.position.y
+                }
+              };
+            }
+            return node;
+          });
         } else {
           // No parent change, but might need other updates
           updatedNodes = nodes;

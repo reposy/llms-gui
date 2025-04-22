@@ -14,40 +14,17 @@ export function addNodeToGroup(
   groupNode: Node<NodeData>, 
   nodes: Node<NodeData>[]
 ): Node<NodeData>[] {
-  // Check if the node is already in another group
-  const wasInGroup = !!node.parentId;
-  let oldParentPos = { x: 0, y: 0 };
-  
-  if (wasInGroup) {
-    // Find previous parent group
-    const oldParent = nodes.find(n => n.id === node.parentId);
-    if (oldParent) {
-      oldParentPos = oldParent.position;
-    }
-  }
-  
-  // Calculate new position (convert from absolute to relative position)
-  const absoluteX = wasInGroup 
-    ? oldParentPos.x + node.position.x  // Convert relative position to absolute
-    : node.position.x;                  // Already absolute
-  
-  const absoluteY = wasInGroup 
-    ? oldParentPos.y + node.position.y
-    : node.position.y;
-  
-  // Calculate position relative to the group
-  const relativeX = absoluteX - groupNode.position.x;
-  const relativeY = absoluteY - groupNode.position.y;
-  
-  // Create updated nodes array
+  // 절대 좌표 유지 - UI 가이드라인에 따르면 그룹 내 자식 노드는 절대 좌표를 유지해야 함
+  // 위치 변환 없이 parentId만 설정
   return nodes.map(n => {
     if (n.id === node.id) {
       return {
         ...n,
         parentId: groupNode.id,     // Set group ID using parentId property
-        position: {                 // Set relative position
-          x: relativeX,
-          y: relativeY
+        // 현재 위치 유지 (절대 좌표 유지)
+        position: {
+          x: n.position.x,
+          y: n.position.y
         },
         // Preserve existing data
         data: n.data
@@ -72,35 +49,17 @@ export function removeNodeFromGroup(
     return nodes;
   }
   
-  // Find parent group
-  const parentGroup = nodes.find(n => n.id === node.parentId);
-  
-  if (!parentGroup) {
-    // If parent not found, just remove the parent reference
-    return nodes.map(n => {
-      if (n.id === node.id) {
-        return {
-          ...n,
-          parentId: undefined
-        };
-      }
-      return n;
-    });
-  }
-  
-  // Calculate absolute position (convert from relative to absolute)
-  const absoluteX = parentGroup.position.x + node.position.x;
-  const absoluteY = parentGroup.position.y + node.position.y;
-  
+  // 절대 좌표 유지 - UI 가이드라인에 따르면 절대 좌표를 유지해야 함
   // Create updated nodes array
   return nodes.map(n => {
     if (n.id === node.id) {
       return {
         ...n,
         parentId: undefined,  // Remove group reference
-        position: {           // Convert to absolute position
-          x: absoluteX,
-          y: absoluteY
+        // 현재 위치 유지 (절대 좌표)
+        position: {
+          x: n.position.x,
+          y: n.position.y
         }
       };
     }
