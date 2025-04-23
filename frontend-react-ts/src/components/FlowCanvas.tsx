@@ -396,12 +396,12 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         const reactFlowNodes = getReactFlowNodes() as Node<NodeData>[];
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[FlowCanvas] React Flow 내부 노드 수: ${reactFlowNodes.length}, Zustand 노드 수: ${nodes.length}`);
+          // console.log(`[FlowCanvas] React Flow 내부 노드 수: ${reactFlowNodes.length}, Zustand 노드 수: ${nodes.length}`);
           
           // 부모 관계가 있는 노드 확인
           const zustandParentNodes = nodes.filter(node => node.parentId).length;
           const reactFlowParentNodes = reactFlowNodes.filter((node: any) => node.parentId || node.parentNode).length;
-          console.log(`[FlowCanvas] 부모가 있는 노드 - Zustand: ${zustandParentNodes}, React Flow: ${reactFlowParentNodes}`);
+          // console.log(`[FlowCanvas] 부모가 있는 노드 - Zustand: ${zustandParentNodes}, React Flow: ${reactFlowParentNodes}`);
         }
         
         // 변경이 있는지 확인 (부모 ID와 parentNode 속성 모두 비교)
@@ -418,7 +418,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         // 변경이 있을 경우에만 상태 업데이트
         if (hasChanges) {
           if (process.env.NODE_ENV === 'development') {
-            console.log('[FlowCanvas] 부모-자식 관계가 변경되어 노드 상태 업데이트');
+            // console.log('[FlowCanvas] 부모-자식 관계가 변경되어 노드 상태 업데이트');
           }
           
           // ReactFlow용 노드 배열 생성 (parentNode 속성 등 설정)

@@ -152,7 +152,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, draggedNode: Node<NodeData>) => {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[handleNodeDragStop] 노드 드래그 종료: id=${draggedNode.id}, type=${draggedNode.type}, position=(${draggedNode.position.x}, ${draggedNode.position.y})`);
+        // console.log(`[handleNodeDragStop] 노드 드래그 종료: id=${draggedNode.id}, type=${draggedNode.type}, position=(${draggedNode.position.x}, ${draggedNode.position.y})`);
       }
       
       const nodes = getNodes() as Node<NodeData>[];
@@ -171,13 +171,13 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
       const currentParentId = draggedNode.parentId;
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[handleNodeDragStop] 현재 부모: ${currentParentId || '없음'}, 교차하는 그룹: ${intersectingGroupId || '없음'}`);
+        // console.log(`[handleNodeDragStop] 현재 부모: ${currentParentId || '없음'}, 교차하는 그룹: ${intersectingGroupId || '없음'}`);
       }
       
       // 3. 부모 관계 변경 시에만 처리
       if (currentParentId !== intersectingGroupId) {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[NodeDragStop] 노드 ${draggedNode.id}의 부모 변경: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
+          // console.log(`[NodeDragStop] 노드 ${draggedNode.id}의 부모 변경: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
         }
         
         let updatedNodes;
@@ -187,7 +187,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
           const groupNode = nodes.find(n => n.id === intersectingGroupId);
           if (groupNode) {
             if (process.env.NODE_ENV === 'development') {
-              console.log(`[handleNodeDragStop] 노드 ${draggedNode.id}를 그룹 ${intersectingGroupId}에 추가합니다.`);
+              // console.log(`[handleNodeDragStop] 노드 ${draggedNode.id}를 그룹 ${intersectingGroupId}에 추가합니다.`);
             }
             
             // 그룹 노드와 비그룹 노드 분리
@@ -198,7 +198,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
             const relativePosition = absoluteToRelativePosition(absolutePosition, groupNode.position);
             
             if (process.env.NODE_ENV === 'development') {
-              console.log(`[handleNodeDragStop] 좌표 변환: 절대(${absolutePosition.x}, ${absolutePosition.y}) -> 상대(${relativePosition.x}, ${relativePosition.y})`);
+              // console.log(`[handleNodeDragStop] 좌표 변환: 절대(${absolutePosition.x}, ${absolutePosition.y}) -> 상대(${relativePosition.x}, ${relativePosition.y})`);
             }
             
             // 업데이트된 노드 생성
@@ -217,7 +217,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
         } else if (currentParentId) {
           // 노드가 그룹에서 제거됨
           if (process.env.NODE_ENV === 'development') {
-            console.log(`[handleNodeDragStop] 노드 ${draggedNode.id}를 그룹 ${currentParentId}에서 제거합니다.`);
+            // console.log(`[handleNodeDragStop] 노드 ${draggedNode.id}를 그룹 ${currentParentId}에서 제거합니다.`);
           }
           
           // 그룹과 비그룹 노드 분리
@@ -237,14 +237,14 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
         } else {
           // 부모 변경 없음, 위치만 업데이트
           if (process.env.NODE_ENV === 'development') {
-            console.log(`[handleNodeDragStop] 부모 변경이 없으나, 위치는 업데이트합니다.`);
+            // console.log(`[handleNodeDragStop] 부모 변경이 없으나, 위치는 업데이트합니다.`);
           }
           updatedNodes = nodes;
         }
         
         // 4. 상태 업데이트: React Flow -> Zustand
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[handleNodeDragStop] React Flow와 Zustand 상태 업데이트`);
+          // console.log(`[handleNodeDragStop] React Flow와 Zustand 상태 업데이트`);
         }
         
         // React Flow에 전달하기 전에 parentNode 속성 설정
@@ -258,7 +258,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
       } else {
         // 단순 위치 변경만 있는 경우
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[handleNodeDragStop] 부모 변경 없음, 위치만 업데이트: 노드 ${draggedNode.id}`);
+          // console.log(`[handleNodeDragStop] 부모 변경 없음, 위치만 업데이트: 노드 ${draggedNode.id}`);
         }
         setZustandNodes(nodes);
       }
