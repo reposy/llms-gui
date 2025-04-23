@@ -1,5 +1,5 @@
 // src/components/nodes/GroupNode.tsx
-import React, { useMemo, useCallback, memo } from 'react';
+import React, { useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
 import clsx from 'clsx';
 import { GroupNodeData, NodeData } from '../../types/nodes';
@@ -25,6 +25,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
+  const executionContextRef = useRef<FlowExecutionContext | null>(null);
   
   const { 
     label, 
@@ -39,12 +40,23 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
       node.parentId === id
     );
     
-    // 기존 parentNode 필터링을 제거하고 parentId만 사용
+    // React Flow v11+에서 사용되는 parentNode 속성도 체크 (호환성 보장)
+    const nodesWithParentNode = allNodes.filter((node: any) => 
+      node.parentNode === id && !node.parentId
+    );
     
-    // 중복 제거는 더 이상 필요 없음 (단일 필터만 사용)
-    const combinedNodes = nodesWithParentId;
+    // 두 결과 결합 (중복 제거)
+    const combinedNodes = [...nodesWithParentId];
+    nodesWithParentNode.forEach(node => {
+      if (!combinedNodes.some(n => n.id === node.id)) {
+        combinedNodes.push(node);
+      }
+    });
     
-    // console.log(`[GroupNode] ID: ${id}, Found ${combinedNodes.length} nodes inside group: ${combinedNodes.map(n => n.id).join(", ")}`);
+    // 개발 모드에서만 로깅 - 성능 최적화
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[GroupNode] ID: ${id}, 전체 노드 수: ${allNodes.length}, 그룹에 속한 노드 수: ${combinedNodes.length}`);
+    }
     
     const nodeIdsInGroup = new Set(combinedNodes.map(n => n.id));
     const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
@@ -56,43 +68,115 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     };
   }, [allNodes, allEdges, id]);
 
-  const handleRunGroup = useCallback(() => {
-    if (!isRunning) {
-      const executionId = `exec-${uuidv4()}`;
-      const executionContext = new FlowExecutionContext(executionId);
-      
-      executionContext.setTriggerNode(id);
-      
-      buildExecutionGraphFromFlow(nodes, edges);
-      const executionGraph = getExecutionGraph();
-      
-      const nodeFactory = new NodeFactory();
-      registerAllNodeTypes();
-      
-      const node = nodes.find(n => n.id === id);
-      if (!node) {
-        return;
+  // Clean up any running executions when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (executionContextRef.current) {
+        // Clean up logic if needed
+        executionContextRef.current = null;
       }
-      
+    };
+  }, []);
+
+  const runNodesInGroup = useCallback((
+    executionContext: FlowExecutionContext, 
+    nodesInGroupList: Node[],
+    edgesList: any[],
+    nodesList: any[]
+  ) => {
+    // 그룹 내 노드 ID 집합
+    const nodeIdsInGroup = new Set(nodesInGroupList.map(n => n.id));
+    
+    // 그룹 내 작업을 처리할 실행 컨텍스트 생성
+    executionContext.log(`그룹 ${id} 내부의 노드 실행 시작`);
+    
+    // 먼저 그룹 노드 자신을 running 상태로 표시
+    executionContext.markNodeRunning(id);
+    
+    // 그룹 내 엣지만 필터링
+    const edgesInGroup = edgesList.filter(edge => 
+      nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target)
+    );
+    
+    // 그룹 내부의 루트 노드 찾기 (그룹 노드 자신은 제외)
+    const internalRootNodes = nodesInGroupList.filter(node => 
+      // 들어오는 엣지가 없는 노드를 찾음
+      !edgesInGroup.some(edge => edge.target === node.id)
+    );
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[handleRunGroup] 그룹 ${id} 내부의 루트 노드:`, 
+        internalRootNodes.map(n => ({ id: n.id, type: n.type }))
+      );
+    }
+    
+    const executionGraph = getExecutionGraph();
+    const nodeFactory = new NodeFactory();
+    registerAllNodeTypes();
+    
+    // 각 루트 노드에 대해 처리
+    const rootPromises = internalRootNodes.map(rootNode => {
       const nodeInstance = nodeFactory.create(
-        id,
-        node.type as string,
-        node.data,
+        rootNode.id,
+        rootNode.type as string,
+        rootNode.data,
         executionContext
       );
       
       nodeInstance.property = {
         ...nodeInstance.property,
-        nodes,
-        edges,
+        nodes: nodesList,
+        edges: edgesList,
         nodeFactory,
         executionGraph
       };
       
-      nodeInstance.process({}).catch((error: Error) => {
+      return nodeInstance.process({}).catch((error: Error) => {
+        console.error(`그룹 ${id} 내 노드 ${rootNode.id} 실행 오류:`, error);
+        executionContext.markNodeError(rootNode.id, error.message);
       });
+    });
+    
+    // 모든 루트 노드 실행 완료 후 그룹 노드 성공 상태로 표시
+    return Promise.all(rootPromises)
+      .then(() => {
+        executionContext.log(`그룹 ${id} 내부의 모든 노드 실행 완료`);
+        executionContext.markNodeSuccess(id, { message: "그룹 내 노드 실행 완료" });
+      })
+      .catch(error => {
+        executionContext.log(`그룹 ${id} 실행 중 오류 발생: ${error.message}`);
+        executionContext.markNodeError(id, error.message);
+      });
+  }, [id]);
+
+  const handleRunGroup = useCallback(() => {
+    if (isRunning) return;
+    
+    const executionId = `exec-${uuidv4()}`;
+    const executionContext = new FlowExecutionContext(executionId);
+    executionContextRef.current = executionContext;
+    
+    // 그룹 노드 자신이 아닌 그룹 내부의 노드들을 실행하도록 설정
+    executionContext.setTriggerNode(id);
+    
+    buildExecutionGraphFromFlow(nodes, edges);
+    
+    // 그룹 노드 자체는 항상 런닝 상태로 표시
+    const groupNode = nodes.find(n => n.id === id);
+    if (!groupNode) {
+      executionContext.log(`그룹 ${id}를 찾을 수 없습니다.`);
+      return;
     }
-  }, [id, isRunning, nodes, edges]);
+    
+    // 그룹 내부의 실제 루트 노드들을 직접 찾아서 실행
+    if (nodesInGroup.length > 0) {
+      runNodesInGroup(executionContext, nodesInGroup, allEdges, nodes);
+    } else {
+      // 그룹 내 노드가 없는 경우
+      executionContext.log(`그룹 ${id}에 실행할 노드가 없습니다.`);
+      executionContext.markNodeSuccess(id, { message: "그룹 내 노드 없음" });
+    }
+  }, [id, isRunning, nodes, edges, nodesInGroup, allEdges, runNodesInGroup]);
   
   const handleSelectGroup = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {

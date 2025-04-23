@@ -259,19 +259,4 @@ export class GroupNode extends Node {
     const allChildren = Array.from(graph.values()).flat();
     return allNodes.filter(nodeId => !allChildren.includes(nodeId));
   }
-  
-  /**
-   * Gets all nodes that are direct children of this group
-   * This is different from getChildNodes() which gets connected nodes via edges
-   */
-  private getInternalNodes(): any[] {
-    if (!this.property.nodes) {
-      return [];
-    }
-    
-    // Get nodes with parentId
-    const nodesWithParentId = this.property.nodes.filter(node => node.parentId === this.id);
-    
-    return nodesWithParentId;
-  }
-} 
+}

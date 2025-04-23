@@ -20,16 +20,19 @@ import { useClipboard } from '../hooks/useClipboard';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flow/flowUtils';
+import { updateNodeParentRelationships, prepareNodesForReactFlow } from '../utils/flow/nodeUtils';
 // Import Zustand store & actions
 import { 
   useFlowStructureStore,
   useNodes,
   useEdges,
-  onNodesChange as onZustandNodesChange,
-  onEdgesChange as onZustandEdgesChange,
-  setSelectedNodeIds
+  onNodesChange,
+  onEdgesChange,
+  setSelectedNodeIds,
+  setNodes as setZustandNodes,
+  setEdges as setZustandEdges
 } from '../store/useFlowStructureStore';
-import { undo, redo, useCanUndo, useCanRedo } from '../store/useHistoryStore';
+import { useCanUndo, useCanRedo, undo, redo } from '../store/useHistoryStore';
 
 // Node type imports
 import LLMNode from './nodes/LLMNode';
@@ -91,12 +94,11 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   const isRestoringHistoryRef = useRef<boolean>(false);
   
   // ReactFlow hooks
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodes: getReactFlowNodes, setNodes: setReactFlowNodes } = useReactFlow();
   
   // Use Zustand for flow structure instead of local state
   const nodes = useNodes();
   const edges = useEdges();
-  const { setNodes, setEdges } = useFlowStructureStore.getState();
   
   // 실행 취소/다시 실행 상태
   const canUndo = useCanUndo();
@@ -195,8 +197,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         const currentState = useFlowStructureStore.getState();
         // 노드와 엣지를 다시 설정하여 React Flow에 반영
         // TypeScript 에러 해결: 함수가 아닌 배열을 전달
-        setNodes([...currentState.nodes]);
-        setEdges([...currentState.edges]);
+        setZustandNodes([...currentState.nodes]);
+        setZustandEdges([...currentState.edges]);
       }, 10); // 지연 시간을 약간 늘려 확실히 적용되도록 함
     }
   }, [canUndo]);
@@ -213,8 +215,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         const currentState = useFlowStructureStore.getState();
         // 노드와 엣지를 다시 설정하여 React Flow에 반영
         // TypeScript 에러 해결: 함수가 아닌 배열을 전달
-        setNodes([...currentState.nodes]);
-        setEdges([...currentState.edges]);
+        setZustandNodes([...currentState.nodes]);
+        setZustandEdges([...currentState.edges]);
       }, 10); // 지연 시간을 약간 늘려 확실히 적용되도록 함
     }
   }, [canRedo]);
@@ -222,21 +224,21 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   const handleClearAll = useCallback(() => {
     console.log('[FlowCanvas] Clear All button clicked');
     // 모든 노드와 엣지 지우기
-    setNodes([]);
-    setEdges([]);
+    setZustandNodes([]);
+    setZustandEdges([]);
     setSelectedNodeIds([]);
     
     // 미세한 지연으로 React Flow 업데이트 보장
     setTimeout(() => {
       const currentState = useFlowStructureStore.getState();
       // 빈 배열로 다시 설정하여 React Flow에 반영
-      setNodes(currentState.nodes); // 이미 빈 배열일 것이므로 그대로 사용
-      setEdges(currentState.edges);
+      setZustandNodes(currentState.nodes); // 이미 빈 배열일 것이므로 그대로 사용
+      setZustandEdges(currentState.edges);
       
       // 뷰 재설정을 통해 캔버스 갱신
       reactFlowInstanceRef.current?.fitView();
     }, 10);
-  }, [setNodes, setEdges]);
+  }, [setZustandNodes, setZustandEdges]);
   
   // 선택 변경을 처리하는 핸들러 최적화
   const handleSelectionChange = useCallback(({ nodes: selectedFlowNodes = [] }: { nodes: Node[] }) => {
@@ -275,42 +277,74 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         y: event.clientY,
       });
       
+      console.log(`[onDrop] 노드 타입 ${nodeType} 드롭됨, 위치=(${position.x}, ${position.y})`);
+      
       // 1. 먼저 새 노드 생성
       const newNode = createNewNode(nodeType, position);
+      console.log(`[onDrop] 새 노드 생성: id=${newNode.id}, type=${newNode.type}`);
       
       // 2. 드롭 위치에 그룹 노드가 있는지 확인
       const groupNodes = nodes.filter(node => node.type === 'group');
+      console.log(`[onDrop] 그룹 노드 개수: ${groupNodes.length}`);
       
       let parentGroupId = null;
+      let parentGroupNode = null;
       
       // 그룹 노드들을 순회하며 새 노드가 그룹 내에 위치하는지 확인
       for (const groupNode of groupNodes) {
+        const groupWidth = groupNode.width || 1200;
+        const groupHeight = groupNode.height || 700;
         // 그룹 노드의 영역을 계산 (position, width, height 사용)
         if (
           position.x >= groupNode.position.x && 
-          position.x <= groupNode.position.x + (groupNode.width || 1200) &&
+          position.x <= groupNode.position.x + groupWidth &&
           position.y >= groupNode.position.y && 
-          position.y <= groupNode.position.y + (groupNode.height || 700)
+          position.y <= groupNode.position.y + groupHeight
         ) {
           // 이 그룹 노드 내부에 드롭됨
           parentGroupId = groupNode.id;
+          parentGroupNode = groupNode;
+          console.log(`[onDrop] 드롭 위치가 그룹 ${groupNode.id} 내부에 있음. 경계=(${groupNode.position.x}, ${groupNode.position.y}, ${groupNode.position.x + groupWidth}, ${groupNode.position.y + groupHeight})`);
           break;
+        } else {
+          console.log(`[onDrop] 드롭 위치가 그룹 ${groupNode.id} 내부에 없음. 경계=(${groupNode.position.x}, ${groupNode.position.y}, ${groupNode.position.x + groupWidth}, ${groupNode.position.y + groupHeight})`);
         }
       }
       
-      // 3. 부모 그룹이 발견되면 parentId만 설정 (위치 변환이나 extent 설정 안 함)
-      if (parentGroupId) {
-        newNode.parentId = parentGroupId;
+      // 3. 부모 그룹이 발견되면 parentId 설정 및 좌표 변환
+      if (parentGroupId && parentGroupNode) {
+        console.log(`[onDrop] 노드 ${newNode.id}에 부모 그룹 ${parentGroupId} 설정`);
         
-        // 절대 위치 그대로 유지 (상대 위치로 변환하지 않음)
-        // extent 속성도 설정하지 않음
+        // 절대 좌표를 부모 기준의 상대 좌표로 변환
+        const absoluteX = position.x;
+        const absoluteY = position.y;
+        const relativeX = absoluteX - parentGroupNode.position.x;
+        const relativeY = absoluteY - parentGroupNode.position.y;
+        
+        console.log(`[onDrop] 좌표 변환: 절대(${absoluteX}, ${absoluteY}) -> 상대(${relativeX}, ${relativeY})`);
+        
+        // 부모 ID 및 상대 좌표 설정
+        newNode.parentId = parentGroupId;
+        // React Flow 내부 속성도 설정 
+        (newNode as any).parentNode = parentGroupId; 
+        newNode.position = {
+          x: relativeX, 
+          y: relativeY
+        };
+      } else {
+        console.log(`[onDrop] 노드 ${newNode.id}에 부모 그룹 없음`);
       }
       
-      // 4. 노드 추가 (타입 에러 수정)
-      const updatedNodes = [...nodes, newNode];
-      setNodes(updatedNodes);
+      // 4. 노드 배열 재정렬하여 그룹 노드가 자식 노드보다 앞에 오도록 함
+      const existingGroupNodes = [...nodes.filter(n => n.type === 'group')];
+      const existingNonGroupNodes = [...nodes.filter(n => n.type !== 'group')];
+      
+      // 업데이트된 노드 배열: 그룹 -> 기존 일반 노드 -> 새 노드
+      const updatedNodes = [...existingGroupNodes, ...existingNonGroupNodes, newNode];
+      console.log(`[onDrop] Zustand 상태 업데이트: 노드 ${newNode.id} 추가됨. parentId=${newNode.parentId || '없음'}`);
+      setZustandNodes(updatedNodes);
     },
-    [screenToFlowPosition, setNodes, nodes]
+    [screenToFlowPosition, setZustandNodes, nodes]
   );
   
   // Selection consistency check - run only once after initial mount
@@ -326,6 +360,93 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 의존성 배열을 비워 마운트 시 한 번만 실행
+
+  // 컴포넌트가 마운트될 때 한 번 처리하는 효과
+  useEffect(() => {
+    // 마운트 시 한 번 React Flow에 맞게 노드를 처리
+    if (nodes.length > 0) {
+      const processedNodes = prepareNodesForReactFlow(nodes);
+      setReactFlowNodes(processedNodes);
+    }
+  }, []);
+
+  // 노드의 부모-자식 관계를 업데이트하는 효과
+  const updatingParentRelationsRef = useRef(false);
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // 이미 업데이트 중이거나 노드가 없으면 건너뜀
+    if (updatingParentRelationsRef.current || nodes.length === 0) return;
+    
+    // 이전 타임아웃이 있으면 취소
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+    }
+    
+    // 짧은 지연 후 업데이트 수행 (연속적인 변경이 일어날 경우 마지막 변경 후에만 실행)
+    updateTimeoutRef.current = setTimeout(() => {
+      // 업데이트 플래그 설정
+      updatingParentRelationsRef.current = true;
+      
+      try {
+        // 부모-자식 관계 업데이트
+        const updatedNodes = updateNodeParentRelationships(nodes);
+        
+        // React Flow 내부 상태와 Zustand 상태 비교
+        const reactFlowNodes = getReactFlowNodes() as Node<NodeData>[];
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[FlowCanvas] React Flow 내부 노드 수: ${reactFlowNodes.length}, Zustand 노드 수: ${nodes.length}`);
+          
+          // 부모 관계가 있는 노드 확인
+          const zustandParentNodes = nodes.filter(node => node.parentId).length;
+          const reactFlowParentNodes = reactFlowNodes.filter((node: any) => node.parentId || node.parentNode).length;
+          console.log(`[FlowCanvas] 부모가 있는 노드 - Zustand: ${zustandParentNodes}, React Flow: ${reactFlowParentNodes}`);
+        }
+        
+        // 변경이 있는지 확인 (부모 ID와 parentNode 속성 모두 비교)
+        const hasChanges = updatedNodes.some((updatedNode, index) => {
+          if (index >= nodes.length) return false; // 배열 길이 차이 대응
+          
+          const originalNode = nodes[index];
+          const rfNode = reactFlowNodes.find(n => n.id === originalNode.id);
+          
+          return updatedNode.parentId !== originalNode.parentId || 
+                 (rfNode && (rfNode as any).parentNode !== (updatedNode.parentId || null));
+        });
+        
+        // 변경이 있을 경우에만 상태 업데이트
+        if (hasChanges) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[FlowCanvas] 부모-자식 관계가 변경되어 노드 상태 업데이트');
+          }
+          
+          // ReactFlow용 노드 배열 생성 (parentNode 속성 등 설정)
+          const nodesForReactFlow = prepareNodesForReactFlow(updatedNodes);
+          
+          // React Flow 내부 상태 직접 업데이트 (먼저)
+          setReactFlowNodes(nodesForReactFlow);
+          
+          // 약간의 지연 후 Zustand 상태 업데이트 (동기화 문제 방지)
+          setTimeout(() => {
+            setZustandNodes(updatedNodes);
+          }, 10);
+        }
+      } finally {
+        // 업데이트 완료 플래그 설정
+        updatingParentRelationsRef.current = false;
+        updateTimeoutRef.current = null;
+      }
+    }, 300); // 300ms 딜레이로 여러 변경이 연속적으로 일어날 경우 최종 상태에서만 업데이트
+    
+    // 컴포넌트 언마운트 시 타임아웃 정리
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
+      }
+    };
+  }, [nodes, setZustandNodes, getReactFlowNodes, setReactFlowNodes]);
 
   // Register React Flow API for external components to use
   const registerApi: OnInit<Node<NodeData>, Edge> = useCallback((reactFlowInstance: ReactFlowInstance<Node<NodeData>, Edge>) => {
@@ -345,8 +466,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       forceClearLocalState: () => {
         console.log('[FlowCanvas] Force clear local state via API');
         // 노드와 엣지를 비우고 캔버스 초기화
-        setNodes([]);
-        setEdges([]);
+        setZustandNodes([]);
+        setZustandEdges([]);
         setSelectedNodeIds([]);
         // 뷰 재설정
         reactFlowInstance.fitView();
@@ -357,7 +478,42 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     if (registerReactFlowApi) {
       registerReactFlowApi(minimalApi);
     }
-  }, [registerReactFlowApi, handleClearAll]);
+    
+    // React Flow가 초기화된 후 부모-자식 관계 한 번 더 확인
+    setTimeout(() => {
+      const currentNodes = getReactFlowNodes() as Node<NodeData>[];
+      console.log('[FlowCanvas] React Flow 초기화 후 부모-자식 관계 확인');
+      
+      // 모든 노드에 대해 부모-자식 관계 확인 및 업데이트
+      const updatedNodes = updateNodeParentRelationships(currentNodes);
+      
+      // 변경된 노드가 있는 경우만 업데이트
+      const hasChanges = updatedNodes.some((updatedNode, index) => {
+        const currentNode = currentNodes[index];
+        // parentId 뿐만 아니라 parentNode 속성도 확인
+        return updatedNode.parentId !== currentNode.parentId || 
+               (currentNode as any).parentNode !== (updatedNode.parentId || null);
+      });
+      
+      if (hasChanges) {
+        console.log('[FlowCanvas] 초기화 후 부모-자식 관계 변경 감지, 강제 업데이트');
+        
+        // 부모 노드 속성 보완
+        const nodesWithBothParents = updatedNodes.map(node => {
+          if (node.parentId) {
+            return {...node, parentNode: node.parentId};
+          }
+          return {...node, parentNode: null}; // parentId가 없으면 parentNode도 명시적으로 null로 설정
+        });
+        
+        // React Flow 상태 업데이트
+        setReactFlowNodes(nodesWithBothParents);
+        
+        // Zustand 상태 업데이트
+        setTimeout(() => setZustandNodes(nodesWithBothParents), 50);
+      }
+    }, 300); // 충분한 시간 여유
+  }, [registerReactFlowApi, handleClearAll, getReactFlowNodes, setReactFlowNodes]);
   
   return (
     <div 
@@ -369,8 +525,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onZustandNodesChange}
-        onEdgesChange={onZustandEdgesChange}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         onSelectionChange={handleSelectionChange}
         onConnect={handleConnect}
         multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
