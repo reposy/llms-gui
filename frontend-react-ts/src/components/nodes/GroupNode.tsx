@@ -55,7 +55,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     
     // 개발 모드에서만 로깅 - 성능 최적화
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[GroupNode] ID: ${id}, 전체 노드 수: ${allNodes.length}, 그룹에 속한 노드 수: ${combinedNodes.length}`);
+      // console.log(`[GroupNode] ID: ${id}, 전체 노드 수: ${allNodes.length}, 그룹에 속한 노드 수: ${combinedNodes.length}`);
     }
     
     const nodeIdsInGroup = new Set(combinedNodes.map(n => n.id));
@@ -105,9 +105,9 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     );
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[handleRunGroup] 그룹 ${id} 내부의 루트 노드:`, 
-        internalRootNodes.map(n => ({ id: n.id, type: n.type }))
-      );
+      // console.log(`[handleRunGroup] 그룹 ${id} 내부의 루트 노드:`, 
+      //   internalRootNodes.map(n => ({ id: n.id, type: n.type }))
+      // );
     }
     
     const executionGraph = getExecutionGraph();
