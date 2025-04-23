@@ -30,6 +30,13 @@ export interface FlowExecutionState {
   nodeStates: Record<string, any>;
 }
 
+// React Flow Node 타입에 부모 관계 타입을 명시적으로 추가
+export interface ExtendedNodeProps {
+  parentId?: string;  // 부모 노드 ID (React Flow의 parentNode와 일관성을 위해 사용)
+  // parentNode 속성은 내부적으로만 사용되므로 타입에서 제거
+  // React Flow 전달 시 필요한 경우 parentId를 parentNode로 복사하는 헬퍼 함수 사용
+}
+
 // 공통 노드 데이터 타입
 export interface BaseNodeData {
   label?: string;

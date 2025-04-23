@@ -175,11 +175,15 @@ export const createNewNode = (
   type: NodeType,
   position: { x: number; y: number }
 ): Node<NodeData> => {
+  console.log(`[createNewNode] Creating new node of type: ${type} at position:`, position);
+  
   // Generate a unique ID for the node
   const newNodeId = `${type}-${crypto.randomUUID()}`;
+  console.log(`[createNewNode] Generated new node ID: ${newNodeId}`);
   
   // Get the default data for the node type
   const defaultData = createDefaultNodeData(type);
+  console.log(`[createNewNode] Created default data for ${type} node:`, defaultData);
   
   // Create the base node
   const newNode: Node<NodeData> = {
@@ -193,8 +197,10 @@ export const createNewNode = (
   if (type === 'group') {
     newNode.style = { width: 1200, height: 700 }; // Increased from 1000x600 to 1200x700 for even more space
     newNode.dragHandle = '.group-node-container'; // Allow dragging from the entire group node
+    console.log(`[createNewNode] Applied special properties for group node:`, newNode.style);
   }
 
+  console.log(`[createNewNode] Final node object:`, newNode);
   return newNode;
 };
 

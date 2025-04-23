@@ -201,9 +201,41 @@ export const getRootNodesFromSubset = (nodes: Node[], edges: Edge[], subsetNodeI
     (subsetNodeIds ? subsetNodeIds.has(e.target) : true)
   );
   
-  return targetNodes
+  // 그룹 노드와 비그룹 노드 분리
+  const groupNodes = targetNodes.filter(node => node.type === 'group');
+  const nonGroupNodes = targetNodes.filter(node => node.type !== 'group');
+  
+  // 그룹 노드 ID 집합 생성
+  const groupNodeIds = new Set(groupNodes.map(node => node.id));
+  
+  // 먼저 모든 루트 노드 찾기
+  const rootNodeIds = targetNodes
     .filter(node => !targetEdges.some(edge => edge.target === node.id))
     .map(node => node.id);
+    
+  // 그룹 노드가 자신을 루트 노드로 인식하지 않도록 필터링
+  // 그룹 노드의 ID가 루트 노드 목록에 있고, 해당 그룹 내에서 루트를 찾고 있는 경우
+  // (즉, subsetNodeIds에 그룹 ID가 포함되어 있거나 subsetNodeIds가 없는 경우)
+  const filteredRootNodeIds = rootNodeIds.filter(rootId => {
+    // 그룹 노드인 경우
+    if (groupNodeIds.has(rootId)) {
+      // 현재 이 그룹 내부의 루트 노드를 찾고 있는 경우
+      if (subsetNodeIds && subsetNodeIds.has(rootId)) {
+        return false; // 그룹은 자신의 내부에서 루트 노드가 될 수 없음
+      }
+    }
+    return true;
+  });
+  
+  if (process.env.NODE_ENV === 'development') {
+    // 필터링 전후 결과 비교를 위한 디버깅 로그
+    const removedIds = rootNodeIds.filter(id => !filteredRootNodeIds.includes(id));
+    if (removedIds.length > 0) {
+      console.log(`[getRootNodesFromSubset] 그룹 자기 참조 방지: 제외된 루트 노드 IDs: ${removedIds.join(', ')}`);
+    }
+  }
+  
+  return filteredRootNodeIds;
 };
 
 // Helper to check if a node is a root node (no incoming edges within its context)
