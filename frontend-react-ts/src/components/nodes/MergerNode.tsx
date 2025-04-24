@@ -1,5 +1,5 @@
 // src/components/nodes/MergerNode.tsx
-import React, { useState, useCallback, useEffect, Fragment } from 'react';
+import React, { useState, useCallback, useEffect, Fragment, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { MergerNodeData } from '../../types/nodes';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
@@ -100,37 +100,20 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
     resetItems();
   }, [id, resetItems]);
 
-  // Get items preview (up to 3 recent items)
-  const getItemsPreview = useCallback(() => {
+  // Basic item preview rendering (optional, could be removed entirely from node)
+  const getSimpleItemsPreview = useCallback(() => {
     if (!items || items.length === 0) return null;
-    
-    const previewItems = items.slice(-3); // Get last 3 items
-    
+
+    // Show only the last item as a simple preview, or adjust as needed
+    const lastItem = items[items.length - 1];
+    const previewText = typeof lastItem === 'string' ? lastItem : JSON.stringify(lastItem);
+
     return (
-      <div className="w-full mt-2 p-2 bg-slate-50 dark:bg-slate-700/30 rounded text-xs">
-        <div className="font-medium text-slate-700 dark:text-slate-200 mb-1">Recent items:</div>
-        {previewItems.map((item: any, index: number) => (
-          <div 
-            key={index} 
-            className="truncate text-slate-600 dark:text-slate-300 opacity-90 text-[10px]"
-            title={typeof item === 'string' ? item : JSON.stringify(item)}
-          >
-            {typeof item === 'string' 
-              ? (item.length > 25 ? `${item.substring(0, 25)}...` : item)
-              : (JSON.stringify(item).length > 25 
-                  ? `${JSON.stringify(item).substring(0, 25)}...` 
-                  : JSON.stringify(item))
-            }
-          </div>
-        ))}
-        {items.length > 3 && (
-          <div className="text-slate-500 dark:text-slate-400 italic text-[10px] mt-1">
-            ...and {items.length - 3} more item(s)
-          </div>
-        )}
-      </div>
+        <div className="w-full mt-1 p-1.5 bg-slate-50 dark:bg-slate-700/30 rounded text-xs truncate text-slate-500 dark:text-slate-400" title={previewText}>
+            Last item: {previewText.length > 30 ? `${previewText.substring(0, 30)}...` : previewText}
+        </div>
     );
-  }, [items]);
+}, [items]);
 
   return (
     <div className={clsx(
@@ -220,19 +203,19 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
                     <Listbox.Option
                       key={format.value}
                       value={format.value}
-                      className={({ active, selected }) =>
+                      className={({ active, selected: itemSelected }) =>
                         clsx(
                           "cursor-pointer select-none relative px-3 py-1.5",
                           active ? "bg-primary-50 dark:bg-primary-700/30 text-primary-700 dark:text-primary-200" : "text-slate-700 dark:text-slate-200",
-                          selected && "bg-primary-50 dark:bg-primary-800/40"
+                          itemSelected && "bg-primary-50 dark:bg-primary-800/40"
                         )
                       }
                     >
-                      {({ selected }) => (
+                      {({ selected: itemSelected }) => (
                         <div>
                           <span className={clsx(
                             "block truncate",
-                            selected ? "font-medium text-primary-700 dark:text-primary-300" : "font-normal"
+                            itemSelected ? "font-medium text-primary-700 dark:text-primary-300" : "font-normal"
                           )}>
                             {format.label}
                           </span>
@@ -252,67 +235,40 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
         {/* Separator input - only shown for Join with Separator format */}
         {outputFormat === 'joinToString' && (
           <div className="w-full mb-3">
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+            <label htmlFor={`${id}-separator`} className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
               Separator
             </label>
             <input
+              id={`${id}-separator`}
               type="text"
               value={separator}
               onChange={handleSeparatorChange}
-              className="w-full px-3 py-1.5 text-xs rounded-md bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-500 shadow-sm hover:border-primary-400 dark:hover:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              placeholder="Enter separator"
+              className="w-full px-2 py-1 text-xs rounded-md bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-500 shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
         )}
         
-        {/* Items management */}
-        <div className="w-full mb-3">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-              Accumulated Items
-            </label>
-            
-            {/* Reset button */}
-            <button
-              className={clsx(
-                "px-2 py-0.5 text-xs rounded transition-colors border",
-                itemCount > 0
-                  ? "bg-white dark:bg-slate-700 text-primary-600 hover:bg-primary-50 border-primary-200 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:border-primary-800/30"
-                  : "bg-white dark:bg-slate-700 text-slate-400 border-slate-200 dark:text-slate-400 dark:border-slate-600 cursor-not-allowed opacity-50"
-              )}
-              onClick={handleResetClick}
-              disabled={itemCount === 0}
-            >
-              Reset
-            </button>
-          </div>
-          
-          {/* Items preview */}
-          {itemCount > 0 ? getItemsPreview() : (
-            <div className="w-full p-2 bg-slate-50 dark:bg-slate-700/30 rounded text-xs text-slate-400 dark:text-slate-400 italic">
-              No items accumulated yet
-            </div>
-          )}
-        </div>
+        {/* Optional: Show a very simple preview like last item */}
+        {itemCount > 0 && getSimpleItemsPreview()}
         
         {/* Node status indicator */}
-        {nodeState && (
-          <div className={clsx(
-            "mt-1 text-xs px-2 py-1 rounded-full w-full text-center",
-            nodeState.status === 'running' && "bg-blue-50 dark:bg-blue-800/30 text-blue-600 dark:text-blue-300",
-            nodeState.status === 'success' && "bg-green-50 dark:bg-green-800/30 text-green-600 dark:text-green-300",
-            nodeState.status === 'error' && "bg-red-50 dark:bg-red-800/30 text-red-600 dark:text-red-300",
-            nodeState.status === 'idle' && "bg-slate-50 dark:bg-slate-700/30 text-slate-500 dark:text-slate-300"
+        <div className="mt-3 w-full text-center">
+          <span className={clsx(
+            "text-xs px-2 py-0.5 rounded-full",
+            nodeState.status === 'success' ? "bg-green-100 dark:bg-green-800/40 text-green-700 dark:text-green-300" :
+            nodeState.status === 'error' ? "bg-red-100 dark:bg-red-800/40 text-red-700 dark:text-red-300" :
+            nodeState.status === 'running' ? "bg-blue-100 dark:bg-blue-800/40 text-blue-700 dark:text-blue-300" :
+            "bg-slate-100 dark:bg-slate-600/40 text-slate-500 dark:text-slate-300"
           )}>
-            {nodeState.status === 'running' && 'Processing...'}
-            {nodeState.status === 'success' && 'Success'}
-            {nodeState.status === 'error' && 'Error'}
-            {nodeState.status === 'idle' && 'Ready'}
-          </div>
-        )}
+            {nodeState.status || 'Ready'}
+          </span>
+          {nodeState.status === 'error' && 
+            <div className="mt-1 text-xs text-red-500 dark:text-red-400 truncate" title={nodeState.error || ''}>{nodeState.error}</div>
+          }
+        </div>
       </div>
     </div>
   );
 };
 
-export default MergerNode; 
+export default React.memo(MergerNode); 
