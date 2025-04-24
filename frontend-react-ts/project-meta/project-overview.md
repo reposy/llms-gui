@@ -286,8 +286,7 @@ export class MyNode extends Node {
 - execute(input) 시 API 호출 결과(json)를 그대로 리턴 (input은 현재 무시)
 
 ### JSON Extractor 노드
-- execute(input) 시 input이 json 문자열이면 지정 속성값 리턴
-- 값이 없거나 json이 아니면 null 또는 안내 메시지 리턴
+- execute(input) 시 input이 json이면 속성값, 아니면 null/안내
 
 ### Conditional 노드
 - execute(input) 시 조건이 참이면 오른쪽 child, 거짓이면 아래쪽 child로 체이닝
@@ -311,7 +310,7 @@ export class MyNode extends Node {
 | **API/Crawler**| input 무시, API 결과 json return |
 | **JSON Extractor** | input이 json이면 속성값, 아니면 null/안내 |
 | **Conditional**| 조건 참: 오른쪽 child, 거짓: 아래쪽 child |
-| **Group**      | 포함 루트노드들에 process(input), 중복 실행 방지 |
+| **Group**      | 포함된 내부 노드들의 실행 플로우를 트리거하고, 완료 후 내부 리프 노드들의 최종 결과들을 배열로 취합하여 외부로 전달. (내부 실행은 표준 `process` 체이닝 사용) |
 
 ---
 

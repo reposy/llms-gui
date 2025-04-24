@@ -129,7 +129,7 @@ abstract class Node {
 
 🔸 NodeFactory (`src/core/NodeFactory.ts`)
 
-노드 타입 문자열과 속성 정보를 받아 실제 노드 클래스 인스턴스를 생성하고 반환합니다. 노드 타입 추가 시 이 Factory 수정이 필요합니다.
+노드 타입 문자열과 속성 정보를 받아 실제 노드 클래스 인스턴스를 생성하고 반환합니다. 노드 타입 추가 시 이 Factory 수정이 필요합니다. `FlowRunner` 등에서 노드 인스턴스 생성 시, 현재 플로우의 전체 `nodes`, `edges` 및 `nodeFactory` 자신을 `property`에 주입하여 노드가 실행 중 자신의 관계(부모/자식)를 파악할 수 있도록 지원합니다.
 
 🔹 FlowExecutionContext (`src/core/FlowExecutionContext.ts`)
 
