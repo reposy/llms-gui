@@ -127,20 +127,21 @@ export const FlowEditor = () => {
     setSelectedNodeIdForSidebar(nodeIds);
   }, [selectedNodeIdForSidebar]);
 
-  const selectedNode = useMemo(() => {
-    if (selectedNodeIdForSidebar && selectedNodeIdForSidebar.length > 0) {
-      return nodes.find(n => n.id === selectedNodeIdForSidebar[0]);
+  // Determine if exactly one node is selected
+  const singleNodeSelectedId = useMemo(() => {
+    if (selectedNodeIdForSidebar && selectedNodeIdForSidebar.length === 1) {
+      return selectedNodeIdForSidebar[0];
     }
     return null;
-  }, [nodes, selectedNodeIdForSidebar]);
+  }, [selectedNodeIdForSidebar]);
 
-  const isGroupSelected = useMemo(() => {
-    if (selectedNodeIdForSidebar && selectedNodeIdForSidebar.length === 1) {
-      const node = nodes.find(n => n.id === selectedNodeIdForSidebar[0]);
-      return node?.type === 'group';
+  // Find the single selected node (if any)
+  const singleSelectedNode = useMemo(() => {
+    if (singleNodeSelectedId) {
+      return nodes.find(n => n.id === singleNodeSelectedId);
     }
-    return false;
-  }, [nodes, selectedNodeIdForSidebar]);
+    return null;
+  }, [nodes, singleNodeSelectedId]);
 
   const handleAddNodesToGroup = useCallback(() => {
     if (!selectedGroup || selectedNodesToAdd.length === 0) return;
@@ -220,10 +221,19 @@ export const FlowEditor = () => {
         </div>
 
         <div className="flex-none w-80 border-l border-gray-200 bg-white shadow-lg z-10 overflow-y-auto">
-          {isGroupSelected ? (
-            <GroupDetailSidebar selectedNodeIds={selectedNodeIds} />
+          {/* Render sidebar only if exactly one node is selected */}
+          {singleSelectedNode ? (
+            // Decide which sidebar based on the single selected node's type
+            singleSelectedNode.type === 'group' ? (
+              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
+            ) : (
+              <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
+            )
           ) : (
-            <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} />
+            // Render a placeholder or nothing when no node or multiple nodes are selected
+            <div className="p-4 text-center text-gray-500">
+              Select a single node to configure.
+            </div>
           )}
         </div>
       </div>
