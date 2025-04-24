@@ -19,7 +19,7 @@ import { OutputConfig } from './OutputConfig';
 import { InputNodeConfig } from './InputNodeConfig';
 import { ConditionalNodeConfig } from './ConditionalNodeConfig';
 import { GroupNodeConfig } from './GroupNodeConfig';
-import { MergerNodeConfig } from './MergerNodeConfig';
+import MergerConfig from './MergerConfig';
 import { WebCrawlerNodeConfig } from './WebCrawlerNodeConfig';
 
 // 디버깅 모드 설정
@@ -81,8 +81,8 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
       return <GroupNodeConfig nodeId={id} data={data as GroupNodeData} />;
     
     case 'merger':
-      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering MergerNodeConfig');
-      return <MergerNodeConfig nodeId={id} data={data as MergerNodeData} />;
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering MergerConfig');
+      return <MergerConfig selectedNode={selectedNode as Node<MergerNodeData>} />;
     
     case 'web-crawler':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');
