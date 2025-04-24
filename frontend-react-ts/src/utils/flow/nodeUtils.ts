@@ -248,97 +248,101 @@ export function getIntersectingGroupId(
  * @returns 업데이트된 노드 배열
  */
 export function updateNodeParentRelationships(nodes: Node<NodeData>[]): Node<NodeData>[] {
-  // 그룹 노드만 필터링
+  // 그룹 노드만 미리 필터링 (잠재적 부모로 사용)
   const groupNodes = nodes.filter(node => node.type === 'group');
-  
+
   if (groupNodes.length === 0) {
     // 그룹 노드가 없으면 변경 없음
     return nodes;
   }
-  
-  // 먼저 그룹 노드들을 모아둡니다 (React Flow에서는 부모가 자식보다 먼저 와야 함)
-  let updatedNodes = [...groupNodes];
-  
-  // 비그룹 노드만 필터링하여 처리
-  const nonGroupNodes = nodes.filter(node => node.type !== 'group');
-  
-  // 모든 비그룹 노드를 순회하며 부모-자식 관계 업데이트
-  const processedNonGroupNodes = nonGroupNodes.map(node => {
+
+  // 모든 노드를 순회하며 부모 업데이트
+  const updatedNodesWithParents = nodes.map(node => {
     // 현재 부모 ID 저장
     const currentParentId = node.parentId;
-    
-    // 노드 중심점 계산을 위한 노드 위치 (절대 좌표)
     let absolutePosition = { ...node.position };
+
+    // 현재 부모가 있으면 절대 좌표 계산 (기존 로직과 유사하게)
     if (currentParentId) {
-      // 현재 부모가 있으면 절대 좌표 계산
+      // nodes 배열에서 현재 부모를 찾아야 함
       const parentNode = nodes.find(n => n.id === currentParentId);
       if (parentNode) {
         absolutePosition = relativeToAbsolutePosition(node.position, parentNode.position);
       }
     }
-    
-    // 노드 중심점 계산
+
+    // 노드 중심점 계산 (기존 로직)
     const nodeWidth = node.width || 150;
     const nodeHeight = node.height || 50;
     const nodeCenterX = absolutePosition.x + nodeWidth / 2;
     const nodeCenterY = absolutePosition.y + nodeHeight / 2;
-    
-    // 노드가 속한 그룹 찾기
+
+    // 노드가 속하게 될 새로운 부모 그룹 찾기
     let newParentId: string | undefined = undefined;
     let intersectingGroupNode = null;
-    
+
+    // 모든 '그룹' 노드를 잠재적 부모로 검사
     for (const groupNode of groupNodes) {
-      // 그룹 경계 계산
+      // 자기 자신을 부모로 삼을 수 없음
+      if (node.id === groupNode.id) continue;
+
+      // 그룹 경계 계산 (기존 로직)
       const groupLeft = groupNode.position.x;
       const groupTop = groupNode.position.y;
-      const groupWidth = groupNode.width || 1200;
+      const groupWidth = groupNode.width || 1200; // 그룹 크기 기본값 조정 가능
       const groupHeight = groupNode.height || 700;
       const groupRight = groupLeft + groupWidth;
       const groupBottom = groupTop + groupHeight;
-      
-      // 노드 중심점이 그룹 내부에 있는지 확인
+
+      // 노드 중심점이 다른 그룹 내부에 있는지 확인
       const isInside = (
         nodeCenterX >= groupLeft &&
         nodeCenterX <= groupRight &&
         nodeCenterY >= groupTop &&
         nodeCenterY <= groupBottom
       );
-      
+
       if (isInside) {
         newParentId = groupNode.id;
         intersectingGroupNode = groupNode;
-        break;
+        break; // 가장 안쪽 그룹 하나만 찾으면 됨 (겹쳐있는 경우)
       }
     }
-    
-    // 부모 ID가 변경된 경우에만 업데이트
+
+    // 부모 ID가 변경되었는지 확인하고 노드 업데이트
     if (currentParentId !== newParentId) {
       if (newParentId && intersectingGroupNode) {
-        // 그룹에 추가될 때: 절대 좌표 -> 상대 좌표 변환
+        // 그룹에 추가됨: 절대 좌표 -> 상대 좌표 변환
         const relativePosition = absoluteToRelativePosition(absolutePosition, intersectingGroupNode.position);
-        
-        return {
-          ...node,
-          parentId: newParentId,
-          position: relativePosition
+        console.log(`[updateNodeParentRelationships] Node ${node.id} added to group ${newParentId}`);
+        return { 
+          ...node, 
+          parentId: newParentId, 
+          position: relativePosition, 
+          // parentNode는 prepareNodesForReactFlow에서 설정하므로 여기서 제거 가능 
         };
       } else if (currentParentId) {
-        // 그룹에서 제거될 때: 이미 절대 좌표로 변환했으므로 그대로 사용
-        return {
-          ...node,
-          parentId: undefined,
-          parentNode: null, // 명시적으로 parentNode 속성도 제거
-          position: absolutePosition
-        };
+         // 그룹에서 제거됨: 절대 좌표 사용 (이미 계산됨)
+         console.log(`[updateNodeParentRelationships] Node ${node.id} removed from group ${currentParentId}`);
+         return { 
+           ...node, 
+           parentId: undefined, 
+           parentNode: null, // 명시적으로 제거 
+           position: absolutePosition 
+         };
       }
     }
-    
-    // 변경 없음
+
+    // 부모 변경 없음, 기존 노드 반환
+    // 단, 절대 좌표가 계산되었다면 위치 업데이트는 필요할 수 있음 (부모는 그대로지만 부모 위치가 바뀐 경우 등)
+    // 하지만 이 함수는 parentId 변경에 초점을 맞추므로 여기서는 기존 노드 반환
     return node;
   });
-  
-  // 업데이트된 노드 배열에 비그룹 노드 추가 (순서 중요: 그룹 노드가 먼저 와야 함)
-  updatedNodes = [...updatedNodes, ...processedNonGroupNodes];
-  
-  return updatedNodes;
+
+  // 최종적으로 React Flow 요구사항에 맞게 그룹 노드를 앞으로 정렬
+  const finalGroupNodes = updatedNodesWithParents.filter(node => node.type === 'group');
+  const finalNonGroupNodes = updatedNodesWithParents.filter(node => node.type !== 'group');
+
+  // 정렬된 배열 반환
+  return [...finalGroupNodes, ...finalNonGroupNodes];
 } 

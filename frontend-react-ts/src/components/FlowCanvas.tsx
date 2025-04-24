@@ -408,67 +408,35 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         // 부모-자식 관계 업데이트
         const updatedNodes = updateNodeParentRelationships(nodes);
         
-        // Compare the result of the parent update with the *current* Zustand nodes
+        // Check if the calculated correct state differs from the current Zustand state regarding parentId
         const hasChanges = updatedNodes.some((updatedNode, index) => {
-          if (index >= nodes.length || index >= updatedNodes.length) {
-              console.warn('[DEBUG] Node array length mismatch during parent comparison.');
-              return true; // Treat length mismatch as change
-          }
-
-          const originalNode = nodes[index];
-          // Check if only parentId differs, ignoring other potential object differences
-          // Ensure both nodes being compared actually exist
-          if (!originalNode || !updatedNode) {
-               console.warn(`[DEBUG] Null node encountered during comparison at index ${index}`);
-               return false; // Avoid errors, treat as no change if a node is missing
-          }
-          // Explicitly compare parentId, handling undefined/null consistently
-          const originalParentId = originalNode.parentId || undefined;
-          const updatedParentId = updatedNode.parentId || undefined;
-          return originalParentId !== updatedParentId;
+           const originalNode = nodes[index];
+           // Add checks for node existence to prevent errors
+           if (!originalNode || !updatedNode) {
+             console.warn('[DEBUG] Node mismatch during parent comparison, assuming change.');
+             return true; // Treat mismatch as change for safety
+           }
+           const originalParentId = originalNode.parentId || undefined;
+           const updatedParentId = updatedNode.parentId || undefined;
+           return originalParentId !== updatedParentId;
         });
 
-        // Get current React Flow nodes *once*
-        const currentReactFlowNodes = getReactFlowNodes() as Node<NodeData>[];
-
         if (hasChanges) {
-          console.log('[DEBUG] Parent relationship changed based on Zustand comparison. Updating both RF and Zustand...');
-
-          // Crucially, setZustandNodes should receive updatedNodes, which now contains the correct parentIds
+          // If the calculated state requires changes in Zustand:
+          console.log('[DEBUG] Parent relationship requires update based on node positions. Updating Zustand and React Flow...');
+          // 1. Update Zustand
+          setZustandNodes(updatedNodes);
+          // 2. Update React Flow based on the newly corrected Zustand state
           const nodesForReactFlow = prepareNodesForReactFlow(updatedNodes);
           setReactFlowNodes(nodesForReactFlow);
-          console.log('[DEBUG] React Flow nodes set after Zustand change.');
-
-          // 약간의 지연 후 Zustand 상태 업데이트 (동기화 문제 방지)
-          setTimeout(() => {
-            console.log('[DEBUG] Setting Zustand nodes after parentId change.');
-            setZustandNodes(updatedNodes);
-          }, 10);
+          console.log('[DEBUG] Zustand and React Flow updated.');
         } else {
-          // If parentId hasn't changed in Zustand, check if React Flow's state needs correcting.
-          const rfNodesNeedSync = currentReactFlowNodes.some(rfNode => {
-            // Find the corresponding node in the *original* Zustand state
-            const zustandNode = nodes.find(n => n.id === rfNode.id);
-            if (!zustandNode) return false; // No matching Zustand node? Skip.
-
-            // Check if parentNode in RF mismatches parentId in Zustand
-            const rfParentNode = (rfNode as any).parentNode || undefined;
-            const zustandParentId = zustandNode.parentId || undefined;
-            return rfParentNode !== zustandParentId;
-          });
-
-          if (rfNodesNeedSync) {
-               console.log('[DEBUG] React Flow parentNode out of sync. Updating React Flow ONLY...');
-               // Prepare nodes based on the *current* (unchanged parentId) Zustand state
-               const nodesForReactFlow = prepareNodesForReactFlow(nodes); // Use original nodes
-               setReactFlowNodes(nodesForReactFlow);
-               // DO NOT update Zustand state here, as parentId didn't change.
-          } else {
-               console.log('[DEBUG] No parent relationship changes detected in Zustand or React Flow.');
-          }
+          // If updateNodeParentRelationships determined no changes are needed compared to Zustand:
+          // We assume React Flow will be consistent or become consistent based on the nodes prop.
+          // Avoid trying to force-sync React Flow's internal state here, as it caused a loop.
+          console.log('[DEBUG] No parent relationship changes needed based on node positions.');
         }
       } finally {
-        // 업데이트 완료 플래그 설정
         console.log('[DEBUG] Finished parent relationship update check.');
         updatingParentRelationsRef.current = false;
         updateTimeoutRef.current = null;
