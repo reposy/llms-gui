@@ -121,8 +121,20 @@ export class GroupNode extends Node {
       this.context?.log(`${this.type}(${this.id}): All internal root branches finished processing.`);
       // ------------------------------------------------------------------
       
-      // 3. Return accumulated results 
-      // Results are accumulated in this.items during _processInternalNodeAndCollectLeafResult calls
+      // 3. Collect results from internal leaf nodes
+      this.items = []; // Reset items before collecting final results
+      for (const leafNodeId of internalLeafNodeIds) {
+        // Get the potentially accumulated array of outputs for this leaf node
+        const leafOutputs = this.context?.getOutput(leafNodeId);
+        if (Array.isArray(leafOutputs) && leafOutputs.length > 0) {
+          this.context?.log(`${this.type}(${this.id}): Collecting ${leafOutputs.length} results for leaf node ${leafNodeId}`);
+          this.items.push(...leafOutputs); // Spread the results into the group's items
+        } else {
+          // Log if a leaf node didn't produce output (or context returned non-array)
+          this.context?.log(`${this.type}(${this.id}): No output collected for leaf node ${leafNodeId}.`);
+        }
+      }
+      
       this.context?.log(`${this.type}(${this.id}): Finished executing group, returning collected ${this.items.length} results.`);
       return this.items; // Return the array of results collected from leaf nodes
 
@@ -182,23 +194,6 @@ export class GroupNode extends Node {
         // Execute the node's logic and trigger downstream processing via its process method
         await nodeInstance.process(input);
         this.context?.log(`${this.type}(${this.id}): Finished processing internal node ${nodeId}.`);
-
-
-        // --- Accumulate result if this node is a leaf and was successful ---
-        const nodeStatus = this.context?.getNodeState(nodeId); 
-        // Check if this node is a leaf node within the group and finished successfully
-        if (nodeStatus === 'success' && internalLeafNodeIds.has(nodeId)) {
-            const output = this.context?.getOutput(nodeId); // Get the result stored in the context
-            if (output !== null && output !== undefined) {
-                this.context?.log(`${this.type}(${this.id}): Leaf node ${nodeId} finished successfully, adding its result to group output.`);
-                this.items.push(output); // Add the leaf node's result to the group's items array
-            } else {
-                 this.context?.log(`${this.type}(${this.id}): Leaf node ${nodeId} finished successfully but had null/undefined output. Not adding to group output.`);
-            }
-        } else if (internalLeafNodeIds.has(nodeId)) { // Log if a leaf node didn't succeed
-            this.context?.log(`${this.type}(${this.id}): Leaf node ${nodeId} did not finish successfully (status: ${nodeStatus}). Not adding result.`);
-        }
-        // --- Result accumulation logic ends ---
 
     } catch (error) {
         // This catch block handles errors specifically from creating or calling process on nodeInstance

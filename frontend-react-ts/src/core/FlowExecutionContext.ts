@@ -47,9 +47,9 @@ export class FlowExecutionContext implements ExecutionContext {
   iterationItem?: any;
 
   /**
-   * Output store for nodes
+   * Output store for nodes - now stores an array of outputs per node.
    */
-  private outputs: Map<string, any> = new Map();
+  private outputs: Map<string, any[]> = new Map();
 
   private logs: string[] = [];
   private nodeState: Map<string, { status: 'init' | 'running' | 'success' | 'error', result?: any, error?: Error }> = new Map();
@@ -102,12 +102,12 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Get the output value for a node
+   * Get the array of output values for a node.
    * @param nodeId ID of the node
-   * @returns The output value or undefined if not found
+   * @returns The array of output values, or an empty array if none found.
    */
-  getOutput(nodeId: string): any {
-    return this.outputs.get(nodeId);
+  getOutput(nodeId: string): any[] {
+    return this.outputs.get(nodeId) || [];
   }
 
   /**
@@ -135,15 +135,17 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Mark a node as successful with a result
+   * Mark a node as successful with a result.
+   * Note: Stores the single 'result' in the global node state,
+   * even if multiple results are accumulated in the context's output array.
    * @param nodeId ID of the node
-   * @param result The result to store
+   * @param result The *latest* result to store for status display
    */
   markNodeSuccess(nodeId: string, result: any) {
     this.log(`Marking node ${nodeId} as successful`);
-    setNodeState(nodeId, { 
-      status: 'success', 
-      result, 
+    setNodeState(nodeId, {
+      status: 'success',
+      result,
       error: undefined,
       executionId: this.executionId,
       // Include iteration metadata in node state
@@ -170,14 +172,24 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Store the output of a node in the context
+   * Store the output of a node in the context. Appends to existing outputs if any.
    * @param nodeId The node ID
-   * @param output The node output
+   * @param output The node output to append
    */
   storeOutput(nodeId: string, output: any): void {
     this.log(`Storing output for node ${nodeId}`);
-    
-    // If output is complex, provide a summary
+
+    // --- Result Accumulation Logic ---
+    let outputArray = this.outputs.get(nodeId);
+    if (!outputArray) {
+      outputArray = [];
+      this.outputs.set(nodeId, outputArray);
+    }
+    outputArray.push(output);
+    this.log(`Appended output for node ${nodeId}. Total outputs for this node in context: ${outputArray.length}`);
+    // --- End Accumulation Logic ---
+
+    // Log a summary of the *current* output being added
     let outputSummary = '';
     if (Array.isArray(output)) {
       outputSummary = `Array with ${output.length} items`;
@@ -188,31 +200,25 @@ export class FlowExecutionContext implements ExecutionContext {
     } else {
       outputSummary = String(output);
     }
-    
-    this.log(`Node ${nodeId} output: ${outputSummary}`);
-    
-    // Store in execution context outputs
-    this.outputs.set(nodeId, output);
-    
-    // Update node state in the store
+    this.log(`Node ${nodeId} current output item: ${outputSummary}`);
+
+    // Update node state in the store with the *latest* output
     this.markNodeSuccess(nodeId, output);
-    
-    // Also update the nodeContentStore to make the result visible in the UI
+
+    // Update the nodeContentStore with the *latest* output for UI
     try {
       // Use dynamic import to avoid circular dependencies
       import('../store/useNodeContentStore').then(({ setNodeContent, getNodeContent }) => {
         // Get existing content first
         const existingContent = getNodeContent(nodeId);
-        
         // Update content with result
-        setNodeContent(nodeId, { 
+        setNodeContent(nodeId, {
           ...existingContent,
-          content: output, // Store the output in the content field
-          responseContent: output, // Also store in responseContent for backwards compatibility
-          outputTimestamp: Date.now() // Add timestamp to force UI updates
+          content: output,
+          responseContent: output,
+          outputTimestamp: Date.now()
         });
-        
-        this.log(`Updated node content store for node ${nodeId}`);
+        this.log(`Updated node content store for node ${nodeId} (latest output)`);
       }).catch(err => {
         console.error(`Failed to update node content store: ${err}`);
       });
