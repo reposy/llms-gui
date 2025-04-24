@@ -125,3 +125,40 @@ async process(input: any) {
 ⸻
 
 위 가이드를 기반으로 CURSOR는 명확하게 정의된 요구사항과 목표를 참조하여 프로젝트를 진행하고 문제를 해결할 수 있습니다.
+
+*   `GroupNode.ts`: `execute` 메서드는 그룹 내부 노드들의 실행을 관리합니다. `FlowRunner`로부터 전달받은 전체 `nodes`, `edges` 정보를 바탕으로 그룹 내부에 속한 노드와 엣지만 필터링하여 내부 실행 그래프를 구성하고, 내부 루트 노드를 찾아 각 노드의 표준 `process` 메서드를 호출합니다. 모든 내부 실행이 완료된 후(`Promise.all` 사용), 그룹 내부의 리프 노드들의 최종 결과를 `FlowExecutionContext`로부터 수집하여 배열(`items`)로 반환합니다. 이 `items` 배열은 그룹 노드의 기본 `process` 메서드를 통해 외부로 연결된 노드에 전달됩니다.
+
+## 🔄 노드 실행 흐름과 상태 관리
+
+노드 실행 및 상태 관리를 올바르게 구현하려면 다음 패턴을 따르세요 (`src/core/Node.ts`, `src/core/FlowExecutionContext.ts` 참조):
+
+1. **실행 컨텍스트 활용**
+   ```typescript
+   // 노드 실행 시 컨텍스트를 통한 상태 업데이트
+   async execute(input: any): Promise<any> {
+     try {
+       // 실행 중 상태로 표시
+       this.context?.markNodeRunning(this.id);
+       
+       // 결과 처리 및 저장
+       const result = await this.processLogic(input);
+       this.context?.storeOutput(this.id, result);
+       
+       return result;
+     } catch (error) {
+       // 오류 처리
+       this.context?.markNodeError(this.id, error.message);
+       return null; // 실행 중단
+     }
+   }
+   ```
+
+2. **자식 노드 결정 방식**
+   - 루트 노드는 시작점이며, 자식 노드를 통해 실행이 전파됩니다.
+   - 자식 노드는 엣지 구조를 통해 결정됩니다: `source → target` (주로 `useExecutionGraphStore` 활용)
+   - 각 노드의 결과값은 자식 노드의 입력으로 사용됩니다.
+
+3. **디버깅 및 로깅 표준**
+   - 모든 중요 단계는 `context.log()` 메서드를 사용하여 기록
+   - 오류 발생 시 명확한 메시지와 함께 `markNodeError` 호출
+   - 디버깅 데이터는 `context.storeNodeData()`로 저장

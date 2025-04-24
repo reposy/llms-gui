@@ -12,6 +12,8 @@ import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
+import { useNodeStateStore } from '../../store/useNodeStateStore';
+import { runFlow } from '../../core/FlowRunner';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
@@ -21,7 +23,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   
   const allNodes = useNodes();
   const allEdges = useEdges();
-  const { nodes, edges } = useFlowStructureStore();
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
@@ -30,8 +31,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const { 
     label, 
     isCollapsed, 
-    toggleCollapse,
-    handleLabelChange 
   } = useGroupNodeData({ nodeId: id });
 
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
@@ -78,105 +77,56 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     };
   }, []);
 
-  const runNodesInGroup = useCallback((
-    executionContext: FlowExecutionContext, 
-    nodesInGroupList: Node[],
-    edgesList: any[],
-    nodesList: any[]
-  ) => {
-    // 그룹 내 노드 ID 집합
-    const nodeIdsInGroup = new Set(nodesInGroupList.map(n => n.id));
-    
-    // 그룹 내 작업을 처리할 실행 컨텍스트 생성
-    executionContext.log(`그룹 ${id} 내부의 노드 실행 시작`);
-    
-    // 먼저 그룹 노드 자신을 running 상태로 표시
-    executionContext.markNodeRunning(id);
-    
-    // 그룹 내 엣지만 필터링
-    const edgesInGroup = edgesList.filter(edge => 
-      nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target)
-    );
-    
-    // 그룹 내부의 루트 노드 찾기 (그룹 노드 자신은 제외)
-    const internalRootNodes = nodesInGroupList.filter(node => 
-      // 들어오는 엣지가 없는 노드를 찾음
-      !edgesInGroup.some(edge => edge.target === node.id)
-    );
-    
-    if (process.env.NODE_ENV === 'development') {
-      // console.log(`[handleRunGroup] 그룹 ${id} 내부의 루트 노드:`, 
-      //   internalRootNodes.map(n => ({ id: n.id, type: n.type }))
-      // );
-    }
-    
-    const executionGraph = getExecutionGraph();
-    const nodeFactory = new NodeFactory();
-    registerAllNodeTypes();
-    
-    // 각 루트 노드에 대해 처리
-    const rootPromises = internalRootNodes.map(rootNode => {
-      const nodeInstance = nodeFactory.create(
-        rootNode.id,
-        rootNode.type as string,
-        rootNode.data,
-        executionContext
-      );
-      
-      nodeInstance.property = {
-        ...nodeInstance.property,
-        nodes: nodesList,
-        edges: edgesList,
-        nodeFactory,
-        executionGraph
-      };
-      
-      return nodeInstance.process({}).catch((error: Error) => {
-        console.error(`그룹 ${id} 내 노드 ${rootNode.id} 실행 오류:`, error);
-        executionContext.markNodeError(rootNode.id, error.message);
-      });
-    });
-    
-    // 모든 루트 노드 실행 완료 후 그룹 노드 성공 상태로 표시
-    return Promise.all(rootPromises)
-      .then(() => {
-        executionContext.log(`그룹 ${id} 내부의 모든 노드 실행 완료`);
-        executionContext.markNodeSuccess(id, { message: "그룹 내 노드 실행 완료" });
-      })
-      .catch(error => {
-        executionContext.log(`그룹 ${id} 실행 중 오류 발생: ${error.message}`);
-        executionContext.markNodeError(id, error.message);
-      });
-  }, [id]);
-
   const handleRunGroup = useCallback(() => {
     if (isRunning) return;
     
-    const executionId = `exec-${uuidv4()}`;
-    const executionContext = new FlowExecutionContext(executionId);
-    executionContextRef.current = executionContext;
+    // Get the current nodes and edges from the store
+    const { nodes: currentNodes, edges: currentEdges } = useFlowStructureStore.getState();
     
-    // 그룹 노드 자신이 아닌 그룹 내부의 노드들을 실행하도록 설정
-    executionContext.setTriggerNode(id);
+    console.log(`[GroupNode] ${id}: Triggering execution of group via runFlow`);
     
-    buildExecutionGraphFromFlow(nodes, edges);
+    // --- REPLACE complex internal logic with a call to runFlow --- 
+    // The runFlow function will handle creating the context, 
+    // finding the correct starting node (this group node), 
+    // creating its instance (with proper properties like nodes, edges, factory),
+    // and calling its process() method.
+    // Note: Now we pass the group's ID as the startNodeId.
+    runFlow(currentNodes, currentEdges, id).catch((error: Error) => {
+      console.error(`Error running flow triggered by group ${id}:`, error);
+      // Optionally, mark the group node as error in the UI state
+      // This requires access to FlowExecutionContext or similar mechanism outside runFlow
+      // For now, just log the error.
+    });
+    // -----------------------------------------------------------
     
-    // 그룹 노드 자체는 항상 런닝 상태로 표시
-    const groupNode = nodes.find(n => n.id === id);
-    if (!groupNode) {
-      executionContext.log(`그룹 ${id}를 찾을 수 없습니다.`);
-      return;
-    }
+    // // --- OLD LOGIC TO BE REMOVED --- 
+    // const executionId = `exec-${uuidv4()}`;
+    // const executionContext = new FlowExecutionContext(executionId);
+    // executionContextRef.current = executionContext;
     
-    // 그룹 내부의 실제 루트 노드들을 직접 찾아서 실행
-    if (nodesInGroup.length > 0) {
-      runNodesInGroup(executionContext, nodesInGroup, allEdges, nodes);
-    } else {
-      // 그룹 내 노드가 없는 경우
-      executionContext.log(`그룹 ${id}에 실행할 노드가 없습니다.`);
-      executionContext.markNodeSuccess(id, { message: "그룹 내 노드 없음" });
-    }
-  }, [id, isRunning, nodes, edges, nodesInGroup, allEdges, runNodesInGroup]);
+    // // 그룹 노드 자신이 아닌 그룹 내부의 노드들을 실행하도록 설정
+    // executionContext.setTriggerNode(id);
+    
+    // buildExecutionGraphFromFlow(nodes, edges);
+    
+    // // 그룹 노드 자체는 항상 런닝 상태로 표시
+    // const groupNode = nodes.find(n => n.id === id);
+    // if (!groupNode) {
+    //   executionContext.log(`그룹 ${id}를 찾을 수 없습니다.`);
+    //   return;
+    // }
+    
+    // // 그룹 내부의 실제 루트 노드들을 직접 찾아서 실행
+    // if (nodesInGroup.length > 0) {
+    //   runNodesInGroup(executionContext, nodesInGroup, allEdges, nodes);
+    // } else {
+    //   // 그룹 내 노드가 없는 경우
+    //   executionContext.log(`그룹 ${id}에 실행할 노드가 없습니다.`);
+    //   executionContext.markNodeSuccess(id, { message: "그룹 내 노드 없음" });
+    // }
+    // --- END OF OLD LOGIC --- 
+
+  }, [id, isRunning]); // Removed dependencies related to old logic
   
   const handleSelectGroup = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
