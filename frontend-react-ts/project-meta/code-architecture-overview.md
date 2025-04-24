@@ -196,6 +196,7 @@ Zustand를 사용하여 애플리케이션의 주요 상태를 관리합니다. 
   - 그룹 단위 실행 기능 제공
   - 자식 노드의 절대 위치를 유지하면서 부모-자식 관계 설정
   - 그룹 이동 시 내부 모든 노드가 함께 이동
+  - **참고:** 기술적으로 그룹 노드 내부에 다른 그룹 노드를 포함시키는 중첩(nesting)이 가능할 수 있으나, 이는 현재 공식적으로 지원되거나 충분히 테스트된 시나리오는 아닙니다. 중첩 사용 시 예상치 못한 동작이 발생할 수 있습니다.
 - **Code Node**: JavaScript/Python 코드 실행 노드
   - 동적 코드 실행 및 데이터 처리
   - 입력 데이터 조작 및 변환
@@ -232,6 +233,7 @@ Group nodes allow organizing nodes into logical collections. Key implementation 
    - Both properties must be kept in sync to ensure consistent behavior
    - Group nodes are defined with type `'group'`
    - Child nodes must have relative positions calculated from the parent group
+   - **Note:** The mechanism technically allows nesting group nodes (a group inside another group), however, this is not an officially supported or fully tested feature at this time. Unexpected behavior may occur with nested groups.
 
 2. **Position Handling**:
    - When a node is added to a group, its position must be converted from absolute to relative

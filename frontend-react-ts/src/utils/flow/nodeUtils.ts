@@ -1,5 +1,5 @@
-import { Node, Edge } from '@xyflow/react';
-import { NodeData } from '../../types/nodes';
+import { Node, Position, XYPosition, Edge } from '@xyflow/react';
+import { GroupNodeData, LLMNodeData, NodeData } from '../../types/nodes';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -80,7 +80,7 @@ export function addNodeToGroup(
   nodes: Node<NodeData>[]
 ): Node<NodeData>[] {
   // 노드들을 구분합니다
-  const groupNodes = nodes.filter(n => n.type === 'group');
+  const groupNodes = nodes.filter(n => n.type === 'group' && n.id !== node.id);
   const nonGroupNodes = nodes.filter(n => n.type !== 'group' && n.id !== node.id);
   
   // 절대 좌표를 상대 좌표로 변환
@@ -95,7 +95,11 @@ export function addNodeToGroup(
   };
   
   // 그룹이 먼저 오는 순서로 반환 (React Flow 요구사항)
-  return [...groupNodes, ...nonGroupNodes, updatedNode];
+  if (updatedNode.type === 'group') {
+    return [...groupNodes, updatedNode, ...nonGroupNodes];
+  } else {
+    return [...groupNodes, ...nonGroupNodes, updatedNode];
+  }
 }
 
 /**
@@ -114,18 +118,14 @@ export function removeNodeFromGroup(
   }
   
   // 노드들을 구분합니다
-  const groupNodes = nodes.filter(n => n.type === 'group');
+  const groupNodes = nodes.filter(n => n.type === 'group' && n.id !== node.id);
   const nonGroupNodes = nodes.filter(n => n.type !== 'group' && n.id !== node.id);
   
-  // 현재 부모 노드를 찾습니다
-  const parentNode = nodes.find(n => n.id === node.parentId);
+  // 수정: handleNodeDragStop에서 이미 절대 좌표를 계산해서 전달해주므로, 여기서는 재계산하지 않음.
+  // node.position이 이미 올바른 절대 좌표라고 가정합니다.
+  const absolutePosition = node.position; 
   
-  // 상대 좌표를 절대 좌표로 변환 (부모가 있는 경우)
-  const absolutePosition = parentNode 
-    ? relativeToAbsolutePosition(node.position, parentNode.position)
-    : node.position;
-  
-  // 업데이트된 노드 생성
+  // 업데이트된 노드 생성 (parentId 및 parentNode 제거)
   const updatedNode = {
     ...node,
     parentId: undefined,
@@ -133,8 +133,14 @@ export function removeNodeFromGroup(
     position: absolutePosition
   };
   
-  // 그룹이 먼저 오는 순서로 반환
-  return [...groupNodes, ...nonGroupNodes, updatedNode];
+  // 그룹이 먼저 오는 순서로 반환하되, updatedNode의 타입에 따라 위치 결정
+  if (updatedNode.type === 'group') {
+    // 업데이트된 노드가 그룹이면 다른 그룹들과 함께 앞쪽에 배치
+    return [...groupNodes, updatedNode, ...nonGroupNodes];
+  } else {
+    // 업데이트된 노드가 그룹이 아니면 다른 비그룹 노드들과 함께 뒤쪽에 배치
+    return [...groupNodes, ...nonGroupNodes, updatedNode];
+  }
 }
 
 /**
@@ -345,4 +351,18 @@ export function updateNodeParentRelationships(nodes: Node<NodeData>[]): Node<Nod
 
   // 정렬된 배열 반환
   return [...finalGroupNodes, ...finalNonGroupNodes];
-} 
+}
+
+/**
+ * Sorts nodes for rendering, ensuring group nodes come before other nodes.
+ * This helps React Flow render groups correctly so children appear inside them.
+ */
+export const sortNodesForRendering = (nodes: Node[]): Node[] => {
+  return [...nodes].sort((a, b) => {
+    const isAGroup = a.type === 'group';
+    const isBGroup = b.type === 'group';
+    if (isAGroup && !isBGroup) return -1; // a (group) comes before b (non-group)
+    if (!isAGroup && isBGroup) return 1;  // b (group) comes before a (non-group)
+    return 0; // Keep original order for nodes of the same type (group/non-group)
+  });
+}; 

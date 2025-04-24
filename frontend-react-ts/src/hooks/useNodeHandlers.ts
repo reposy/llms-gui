@@ -22,7 +22,9 @@ import {
   getIntersectingGroupId, 
   absoluteToRelativePosition, 
   relativeToAbsolutePosition,
-  prepareNodesForReactFlow 
+  prepareNodesForReactFlow,
+  addNodeToGroup,
+  removeNodeFromGroup
 } from '../utils/flow/nodeUtils';
 
 // Define SelectionModifierKey type directly
@@ -43,6 +45,7 @@ interface UseNodeHandlersReturn {
 
 export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): UseNodeHandlersReturn {
   const { getNodes, getEdges, setNodes: setReactFlowNodes } = useReactFlow();
+  const { nodes, setNodes: setZustandNodes } = useFlowStructureStore();
   
   // Add refs to track modifier key states
   const isShiftPressed = useRef(false);
@@ -103,7 +106,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
       console.log(`[syncDraggedNodePositionsToZustand] Syncing positions for ${draggedNodes.length} nodes`);
     }
     
-    const currentNodes = useFlowStructureStore.getState().nodes;
+    const currentNodes = nodes;
     const draggedNodeIds = new Set(draggedNodes.map(n => n.id));
     
     const updatedNodes = currentNodes.map(node => {
@@ -118,7 +121,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
     });
     
     setZustandNodes(updatedNodes);
-  }, []);
+  }, [nodes, setZustandNodes]);
 
   // Handle new connections
   const handleConnect = useCallback((connection: Connection) => {
@@ -152,118 +155,66 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, draggedNode: Node<NodeData>) => {
       if (process.env.NODE_ENV === 'development') {
-        // console.log(`[handleNodeDragStop] 노드 드래그 종료: id=${draggedNode.id}, type=${draggedNode.type}, position=(${draggedNode.position.x}, ${draggedNode.position.y})`);
+        // console.log(`[NodeDragStop] 노드 드래그 멈춤: ${draggedNode.id}`);
       }
-      
-      const nodes = getNodes() as Node<NodeData>[];
-      
-      // 1. 현재 노드의 절대 위치 계산 (그룹 내부에 있는 경우 상대 위치를 절대 위치로 변환)
+
+      // 1. Get the current state from the hook/store
+      const currentNodes = nodes; // Use current Zustand nodes
+
+      // 2. Find the potential parent group based on current position
+      // Calculate absolute position first, as draggedNode.position might be relative if already in a group
       let absolutePosition = { ...draggedNode.position };
       if (draggedNode.parentId) {
-        const parentNode = nodes.find(n => n.id === draggedNode.parentId);
+        const parentNode = currentNodes.find(n => n.id === draggedNode.parentId);
         if (parentNode) {
-          absolutePosition = relativeToAbsolutePosition(draggedNode.position, parentNode.position);
+            absolutePosition = relativeToAbsolutePosition(draggedNode.position, parentNode.position);
         }
       }
-      
-      // 2. 노드가 그룹 내부에 있는지 확인
-      const intersectingGroupId = getIntersectingGroupId(draggedNode, nodes);
+      const intersectingGroupId = getIntersectingGroupId(draggedNode, currentNodes);
+
+      // 3. Compare with the node's current parentId
       const currentParentId = draggedNode.parentId;
-      
-      if (process.env.NODE_ENV === 'development') {
-        // console.log(`[handleNodeDragStop] 현재 부모: ${currentParentId || '없음'}, 교차하는 그룹: ${intersectingGroupId || '없음'}`);
-      }
-      
-      // 3. 부모 관계 변경 시에만 처리
+
+      // 4. Update Zustand state ONLY if the parent relationship has changed
       if (currentParentId !== intersectingGroupId) {
-        if (process.env.NODE_ENV === 'development') {
-          // console.log(`[NodeDragStop] 노드 ${draggedNode.id}의 부모 변경: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
-        }
-        
+        console.log(`[NodeDragStop] Parent changed for ${draggedNode.id}: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
         let updatedNodes;
-        
+
         if (intersectingGroupId) {
-          // 노드가 그룹에 추가됨
-          const groupNode = nodes.find(n => n.id === intersectingGroupId);
+          // Node added to a group
+          const groupNode = currentNodes.find(n => n.id === intersectingGroupId);
           if (groupNode) {
-            if (process.env.NODE_ENV === 'development') {
-              // console.log(`[handleNodeDragStop] 노드 ${draggedNode.id}를 그룹 ${intersectingGroupId}에 추가합니다.`);
-            }
-            
-            // 그룹 노드와 비그룹 노드 분리
-            const groupNodes = nodes.filter(n => n.type === 'group');
-            const nonGroupNodes = nodes.filter(n => n.type !== 'group' && n.id !== draggedNode.id);
-            
-            // 절대 좌표를 그룹 기준 상대 좌표로 변환
-            const relativePosition = absoluteToRelativePosition(absolutePosition, groupNode.position);
-            
-            if (process.env.NODE_ENV === 'development') {
-              // console.log(`[handleNodeDragStop] 좌표 변환: 절대(${absolutePosition.x}, ${absolutePosition.y}) -> 상대(${relativePosition.x}, ${relativePosition.y})`);
-            }
-            
-            // 업데이트된 노드 생성
-            const updatedDraggedNode = {
-              ...draggedNode,
-              parentId: intersectingGroupId,
-              position: relativePosition
-            };
-            
-            // 노드 배열 구성 (그룹 -> 비그룹 -> 변경된 노드)
-            updatedNodes = [...groupNodes, ...nonGroupNodes, updatedDraggedNode];
+            // Use utility function to handle state update (includes sorting)
+            updatedNodes = addNodeToGroup({ ...draggedNode, position: absolutePosition }, groupNode, currentNodes);
           } else {
-            // 그룹을 찾을 수 없음
-            updatedNodes = nodes;
+            console.warn(`[NodeDragStop] Intersecting group ${intersectingGroupId} not found!`);
+            updatedNodes = currentNodes; // No change if group not found
           }
-        } else if (currentParentId) {
-          // 노드가 그룹에서 제거됨
-          if (process.env.NODE_ENV === 'development') {
-            // console.log(`[handleNodeDragStop] 노드 ${draggedNode.id}를 그룹 ${currentParentId}에서 제거합니다.`);
-          }
-          
-          // 그룹과 비그룹 노드 분리
-          const groupNodes = nodes.filter(n => n.type === 'group');
-          const nonGroupNodes = nodes.filter(n => n.type !== 'group' && n.id !== draggedNode.id);
-          
-          // 업데이트된 노드 생성 (절대 좌표 사용)
-          const updatedDraggedNode = {
-            ...draggedNode,
-            parentId: undefined,
-            parentNode: null,
-            position: absolutePosition
-          };
-          
-          // 노드 배열 구성 (그룹 -> 비그룹 -> 변경된 노드)
-          updatedNodes = [...groupNodes, ...nonGroupNodes, updatedDraggedNode];
         } else {
-          // 부모 변경 없음, 위치만 업데이트
-          if (process.env.NODE_ENV === 'development') {
-            // console.log(`[handleNodeDragStop] 부모 변경이 없으나, 위치는 업데이트합니다.`);
-          }
-          updatedNodes = nodes;
+          // Node removed from a group
+          // Use utility function to handle state update (includes sorting)
+          updatedNodes = removeNodeFromGroup({ ...draggedNode, position: absolutePosition }, currentNodes);
         }
-        
-        // 4. 상태 업데이트: React Flow -> Zustand
-        if (process.env.NODE_ENV === 'development') {
-          // console.log(`[handleNodeDragStop] React Flow와 Zustand 상태 업데이트`);
-        }
-        
-        // React Flow에 전달하기 전에 parentNode 속성 설정
-        const nodesForReactFlow = prepareNodesForReactFlow(updatedNodes);
-        
-        // React Flow 내부 상태 먼저 업데이트
-        setReactFlowNodes(nodesForReactFlow);
-        
-        // 그 다음 Zustand 상태 업데이트 (React Flow의 parentNode 속성을 제거하고 단일 방식 사용)
+
+        // Directly update Zustand state with the new correctly structured array
         setZustandNodes(updatedNodes);
+        console.log('[NodeDragStop] Updated Zustand state with new parent relationship.');
+
+        // --- 제거: React Flow 상태 직접 업데이트 로직 ---
+        // const nodesForReactFlow = prepareNodesForReactFlow(updatedNodes);
+        // setReactFlowNodes(nodesForReactFlow);
+        // console.log('[NodeDragStop] Updated React Flow state.');
+
       } else {
-        // 단순 위치 변경만 있는 경우
         if (process.env.NODE_ENV === 'development') {
-          // console.log(`[handleNodeDragStop] 부모 변경 없음, 위치만 업데이트: 노드 ${draggedNode.id}`);
+          // console.log(`[NodeDragStop] 노드 ${draggedNode.id}의 부모 변경 없음.`);
         }
-        setZustandNodes(nodes);
+        // If parent hasn't changed, we might still need to update the node's position
+        // if it was dragged within the same group or outside any group.
+        // React Flow's onNodesChange should handle this position update automatically.
       }
     },
-    [getNodes, setReactFlowNodes]
+    [nodes, setZustandNodes, getIntersectingGroupId, addNodeToGroup, removeNodeFromGroup] // Include Zustand setter and utils in dependencies
   );
 
   // Handle selection drag stop

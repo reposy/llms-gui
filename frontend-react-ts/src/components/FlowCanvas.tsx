@@ -21,7 +21,7 @@ import { useClipboard } from '../hooks/useClipboard';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flow/flowUtils';
-import { updateNodeParentRelationships, prepareNodesForReactFlow } from '../utils/flow/nodeUtils';
+import { updateNodeParentRelationships, prepareNodesForReactFlow, relativeToAbsolutePosition, getIntersectingGroupId, addNodeToGroup, isNodeInGroup, sortNodesForRendering } from '../utils/flow/nodeUtils';
 // Import Zustand store & actions
 import { 
   useFlowStructureStore,
@@ -288,79 +288,50 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         return;
       }
 
+      // Use project directly if available
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
-      
-      console.log(`[onDrop] 노드 타입 ${nodeType} 드롭됨, 위치=(${position.x}, ${position.y})`);
-      
-      // 1. 먼저 새 노드 생성
+
+      console.log(`[onDrop] Node type ${nodeType} dropped at absolute position=(${position.x}, ${position.y})`);
+
+      // 1. Create the new node with absolute position
       const newNode = createNewNode(nodeType, position);
-      console.log(`[onDrop] 새 노드 생성: id=${newNode.id}, type=${newNode.type}`);
-      
-      // 2. 드롭 위치에 그룹 노드가 있는지 확인
-      const groupNodes = nodes.filter(node => node.type === 'group');
-      console.log(`[onDrop] 그룹 노드 개수: ${groupNodes.length}`);
-      
-      let parentGroupId = null;
-      let parentGroupNode = null;
-      
-      // 그룹 노드들을 순회하며 새 노드가 그룹 내에 위치하는지 확인
-      for (const groupNode of groupNodes) {
-        const groupWidth = groupNode.width || 1200;
-        const groupHeight = groupNode.height || 700;
-        // 그룹 노드의 영역을 계산 (position, width, height 사용)
-        if (
-          position.x >= groupNode.position.x && 
-          position.x <= groupNode.position.x + groupWidth &&
-          position.y >= groupNode.position.y && 
-          position.y <= groupNode.position.y + groupHeight
-        ) {
-          // 이 그룹 노드 내부에 드롭됨
-          parentGroupId = groupNode.id;
-          parentGroupNode = groupNode;
-          console.log(`[onDrop] 드롭 위치가 그룹 ${groupNode.id} 내부에 있음. 경계=(${groupNode.position.x}, ${groupNode.position.y}, ${groupNode.position.x + groupWidth}, ${groupNode.position.y + groupHeight})`);
-          break;
+
+      // 2. Get current nodes from Zustand
+      const currentNodes = nodes;
+
+      // 3. Check if the drop position intersects with any group
+      // Temporarily add the new node to check intersection
+      const tempNodeForCheck = { ...newNode, width: 150, height: 50 }; // Use default/estimated dimensions
+      const intersectingGroupId = getIntersectingGroupId(tempNodeForCheck, currentNodes);
+
+      let updatedNodes;
+
+      if (intersectingGroupId) {
+        console.log(`[onDrop] Dropped inside group ${intersectingGroupId}. Adding node to group.`);
+        const groupNode = currentNodes.find(n => n.id === intersectingGroupId);
+        if (groupNode) {
+          // Use addNodeToGroup utility which handles relative positioning and sorting
+          updatedNodes = addNodeToGroup(newNode, groupNode, currentNodes);
         } else {
-          console.log(`[onDrop] 드롭 위치가 그룹 ${groupNode.id} 내부에 없음. 경계=(${groupNode.position.x}, ${groupNode.position.y}, ${groupNode.position.x + groupWidth}, ${groupNode.position.y + groupHeight})`);
+          console.warn(`[onDrop] Intersecting group ${intersectingGroupId} not found! Adding node to root.`);
+          // Fallback: Add node without parent, but ensure sorting
+          updatedNodes = sortNodesForRendering([...currentNodes, newNode]);
         }
-      }
-      
-      // 3. 부모 그룹이 발견되면 parentId 설정 및 좌표 변환
-      if (parentGroupId && parentGroupNode) {
-        console.log(`[onDrop] 노드 ${newNode.id}에 부모 그룹 ${parentGroupId} 설정`);
-        
-        // 절대 좌표를 부모 기준의 상대 좌표로 변환
-        const absoluteX = position.x;
-        const absoluteY = position.y;
-        const relativeX = absoluteX - parentGroupNode.position.x;
-        const relativeY = absoluteY - parentGroupNode.position.y;
-        
-        console.log(`[onDrop] 좌표 변환: 절대(${absoluteX}, ${absoluteY}) -> 상대(${relativeX}, ${relativeY})`);
-        
-        // 부모 ID 및 상대 좌표 설정
-        newNode.parentId = parentGroupId;
-        // React Flow 내부 속성도 설정 
-        (newNode as any).parentNode = parentGroupId; 
-        newNode.position = {
-          x: relativeX, 
-          y: relativeY
-        };
       } else {
-        console.log(`[onDrop] 노드 ${newNode.id}에 부모 그룹 없음`);
+        console.log(`[onDrop] Dropped outside any group. Adding node to root.`);
+        // Add node without parent, ensure sorting
+        updatedNodes = sortNodesForRendering([...currentNodes, newNode]);
       }
-      
-      // 4. 노드 배열 재정렬하여 그룹 노드가 자식 노드보다 앞에 오도록 함
-      const existingGroupNodes = [...nodes.filter(n => n.type === 'group')];
-      const existingNonGroupNodes = [...nodes.filter(n => n.type !== 'group')];
-      
-      // 업데이트된 노드 배열: 그룹 -> 기존 일반 노드 -> 새 노드
-      const updatedNodes = [...existingGroupNodes, ...existingNonGroupNodes, newNode];
-      console.log(`[onDrop] Zustand 상태 업데이트: 노드 ${newNode.id} 추가됨. parentId=${newNode.parentId || '없음'}`);
+
+      // 4. Update Zustand state directly
       setZustandNodes(updatedNodes);
+      console.log('[onDrop] Updated Zustand state with new node.');
+
     },
-    [screenToFlowPosition, setZustandNodes, nodes]
+    [screenToFlowPosition, nodes, setZustandNodes, getIntersectingGroupId, addNodeToGroup, sortNodesForRendering] // Include dependencies
   );
   
   // Selection consistency check - run only once after initial mount
@@ -385,72 +356,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       setReactFlowNodes(processedNodes);
     }
   }, []);
-
-  // 노드의 부모-자식 관계를 업데이트하는 효과
-  const updatingParentRelationsRef = useRef(false);
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    // 이미 업데이트 중이거나 노드가 없으면 건너뜀
-    if (updatingParentRelationsRef.current || nodes.length === 0) return;
-    
-    // 이전 타임아웃이 있으면 취소
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-    }
-    
-    // 짧은 지연 후 업데이트 수행 (연속적인 변경이 일어날 경우 마지막 변경 후에만 실행)
-    updateTimeoutRef.current = setTimeout(() => {
-      // 업데이트 플래그 설정
-      updatingParentRelationsRef.current = true;
-      console.log('[DEBUG] Starting parent relationship update check...');
-      try {
-        // 부모-자식 관계 업데이트
-        const updatedNodes = updateNodeParentRelationships(nodes);
-        
-        // Check if the calculated correct state differs from the current Zustand state regarding parentId
-        const hasChanges = updatedNodes.some((updatedNode, index) => {
-           const originalNode = nodes[index];
-           // Add checks for node existence to prevent errors
-           if (!originalNode || !updatedNode) {
-             console.warn('[DEBUG] Node mismatch during parent comparison, assuming change.');
-             return true; // Treat mismatch as change for safety
-           }
-           const originalParentId = originalNode.parentId || undefined;
-           const updatedParentId = updatedNode.parentId || undefined;
-           return originalParentId !== updatedParentId;
-        });
-
-        if (hasChanges) {
-          // If the calculated state requires changes in Zustand:
-          console.log('[DEBUG] Parent relationship requires update based on node positions. Updating Zustand and React Flow...');
-          // 1. Update Zustand
-          setZustandNodes(updatedNodes);
-          // 2. Update React Flow based on the newly corrected Zustand state
-          const nodesForReactFlow = prepareNodesForReactFlow(updatedNodes);
-          setReactFlowNodes(nodesForReactFlow);
-          console.log('[DEBUG] Zustand and React Flow updated.');
-        } else {
-          // If updateNodeParentRelationships determined no changes are needed compared to Zustand:
-          // We assume React Flow will be consistent or become consistent based on the nodes prop.
-          // Avoid trying to force-sync React Flow's internal state here, as it caused a loop.
-          console.log('[DEBUG] No parent relationship changes needed based on node positions.');
-        }
-      } finally {
-        console.log('[DEBUG] Finished parent relationship update check.');
-        updatingParentRelationsRef.current = false;
-        updateTimeoutRef.current = null;
-      }
-    }, 300); // 300ms 딜레이로 여러 변경이 연속적으로 일어날 경우 최종 상태에서만 업데이트
-    
-    // 컴포넌트 언마운트 시 타임아웃 정리
-    return () => {
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
-        updateTimeoutRef.current = null;
-      }
-    };
-  }, [nodes, setZustandNodes, getReactFlowNodes, setReactFlowNodes]);
 
   // Register React Flow API for external components to use
   const registerApi: OnInit<Node<NodeData>, Edge> = useCallback((reactFlowInstance: ReactFlowInstance<Node<NodeData>, Edge>) => {
