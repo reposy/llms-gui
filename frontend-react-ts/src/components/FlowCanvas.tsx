@@ -19,6 +19,10 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+// 노드 타입 정의를 위한 타입 별칭 추가
+type FlowNode = Node<NodeData>;
+type FlowEdge = Edge;
+
 // Import custom hooks
 import { useClipboard } from '../hooks/useClipboard';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
@@ -85,7 +89,7 @@ const defaultViewport = { x: 0, y: 0, zoom: 1 };
 // API exported to parent components
 export interface FlowCanvasApi {
   clearNodes: () => void;
-  reactFlowInstance?: ReactFlowInstance<Node<NodeData>, Edge>;
+  reactFlowInstance?: ReactFlowInstance<FlowNode, FlowEdge>;
   forceClearLocalState?: () => void;
 }
 
@@ -102,7 +106,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   children
 }) => {
   const reactFlowRef = useRef<HTMLDivElement>(null);
-  const reactFlowInstanceRef = useRef<ReactFlowInstance<Node<NodeData>, Edge> | null>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
   const didNormalizeRef = useRef<boolean>(false);
   const isRestoringHistoryRef = useRef<boolean>(false);
   
@@ -306,7 +310,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         y: event.clientY,
       });
 
-      // 1. Create the base new node
+      // 1. Create the base new node with absolute position
       const newNodeBase = createNewNode(nodeType, dropPosition);
 
       // 2. Get current nodes from Zustand
@@ -326,7 +330,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       if (intersectingGroupId) {
         const parentGroup = currentNodes.find(n => n.id === intersectingGroupId);
         if (parentGroup) {
-          // Convert to position relative to parent (React Flow standard)
+          // Convert to position relative to parent
           const relativePosition = absoluteToRelativePosition(
             dropPosition,
             parentGroup.position
@@ -337,13 +341,15 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
             ...newNodeBase,
             position: relativePosition,
             parentId: intersectingGroupId,
-            parentNode: intersectingGroupId, // React Flow uses this property internally
+            parentNode: intersectingGroupId, // Explicitly set for React Flow
           };
           
-          console.log(`[onDrop] Node dropped inside group ${intersectingGroupId}. Using relative position:`, relativePosition);
+          console.log(`[onDrop] Node dropped inside group ${intersectingGroupId}. Using relative position:`, 
+            { absolute: dropPosition, relative: relativePosition });
         } else {
           // Fallback if parent group not found (shouldn't happen)
           finalNodeData = newNodeBase;
+          console.warn(`[onDrop] Intersecting group ${intersectingGroupId} not found!`);
         }
       } else {
         // Node dropped directly on the canvas, use absolute position
@@ -357,7 +363,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       }
 
       // 5. Update Zustand with the new node
-      setZustandNodes([...currentNodes, finalNodeData as Node<NodeData>]);
+      setZustandNodes([...currentNodes, finalNodeData as FlowNode]);
       
       // 6. Set the new node as selected
       setSelectedNodeIds([finalNodeData.id]);
@@ -391,7 +397,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   }, []);
 
   // ✨ Prepare nodes for React Flow using useMemo for reactivity
-  const nodes = useMemo(() => {
+  const nodes = useMemo<FlowNode[]>(() => {
     console.log("[FlowCanvas] Preparing nodes for React Flow with parent-child relationships");
     
     // 1. Update all parent-child relationships to ensure consistency
@@ -406,14 +412,14 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     });
     
     // 2. Sort nodes to ensure proper rendering order (parents before children)
-    return sortNodesForRendering(nodesWithUpdatedParents);
+    return sortNodesForRendering(nodesWithUpdatedParents) as FlowNode[];
   }, [zustandNodes]);
   
   // For now, edges don't need special preparation
-  const edges = zustandEdges;
+  const edges = zustandEdges as FlowEdge[];
 
   // Register React Flow API for external components to use
-  const registerApi: OnInit<Node<NodeData>, Edge> = useCallback((reactFlowInstance: ReactFlowInstance<Node<NodeData>, Edge>) => {
+  const registerApi: OnInit<FlowNode, FlowEdge> = useCallback((reactFlowInstance: ReactFlowInstance<FlowNode, FlowEdge>) => {
     console.log('[FlowCanvas] Registering React Flow API:', reactFlowInstance);
     if (!reactFlowInstance) {
       console.error('[FlowCanvas] Attempted to register null API');
@@ -451,7 +457,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <ReactFlow<any, any>
+      <ReactFlow<FlowNode, FlowEdge>
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { 
   Connection, 
   Edge, 
@@ -6,10 +6,7 @@ import {
   addEdge,
   useReactFlow,
   getConnectedEdges,
-  useStore,
-  NodeChange,
-  NodeMouseHandler,
-  OnNodesChange
+  NodeMouseHandler
 } from '@xyflow/react'; 
 import { NodeData } from '../types/nodes';
 import { 
@@ -27,9 +24,6 @@ import {
   removeNodeFromGroup
 } from '../utils/flow/nodeUtils';
 
-// Define SelectionModifierKey type directly
-type SelectionModifierKey = 'ctrl' | 'shift' | 'none';
-
 interface UseNodeHandlersParams {
   onNodeSelect?: (nodeIds: string[] | null) => void;
 }
@@ -43,85 +37,50 @@ interface UseNodeHandlersReturn {
   handleNodeClick: NodeMouseHandler;
 }
 
+/**
+ * Calculate absolute position for a node, accounting for parent groups
+ */
+function getNodeAbsolutePosition(
+  node: Node<NodeData>, 
+  allNodes: Node<NodeData>[]
+): { x: number, y: number } {
+  if (!node.parentId) return { ...node.position };
+  
+  const parentNode = allNodes.find(n => n.id === node.parentId);
+  return parentNode 
+    ? relativeToAbsolutePosition(node.position, parentNode.position) 
+    : { ...node.position };
+}
+
+/**
+ * Update a node's parent relationship
+ */
+function updateNodeParentRelationship(
+  node: Node<NodeData>, 
+  newParentId: string | null, 
+  allNodes: Node<NodeData>[]
+): Node<NodeData>[] {
+  const absolutePosition = getNodeAbsolutePosition(node, allNodes);
+  const nodeWithAbsPos = { ...node, position: absolutePosition };
+  
+  if (newParentId) {
+    const groupNode = allNodes.find(n => n.id === newParentId);
+    if (!groupNode) {
+      console.warn(`[updateNodeParentRelationship] Group ${newParentId} not found!`);
+      return allNodes;
+    }
+    
+    console.log(`[NodeDragStop] Adding node ${node.id} to group ${newParentId}`);
+    return addNodeToGroup(nodeWithAbsPos, groupNode, allNodes);
+  } else {
+    console.log(`[NodeDragStop] Removing node ${node.id} from group ${node.parentId}`);
+    return removeNodeFromGroup(nodeWithAbsPos, allNodes);
+  }
+}
+
 export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): UseNodeHandlersReturn {
   const { getNodes, getEdges, setNodes: setReactFlowNodes } = useReactFlow();
   const { nodes, setNodes: setZustandNodes } = useFlowStructureStore();
-  
-  // Add refs to track modifier key states
-  const isShiftPressed = useRef(false);
-  const isCtrlPressed = useRef(false);
-  
-  // Set up keyboard listeners to track modifier key states
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        isShiftPressed.current = true;
-      }
-      if (e.key === 'Control' || e.key === 'Meta') { // Meta for Mac
-        isCtrlPressed.current = true;
-      }
-    };
-    
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        isShiftPressed.current = false;
-      }
-      if (e.key === 'Control' || e.key === 'Meta') {
-        isCtrlPressed.current = false;
-      }
-    };
-    
-    // Handle focus/blur events to reset modifier states when window loses focus
-    const handleBlur = () => {
-      isShiftPressed.current = false;
-      isCtrlPressed.current = false;
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', handleBlur);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, []);
-
-  // Helper to determine which modifier key is active
-  const getActiveModifierKey = (): SelectionModifierKey => {
-    if (isShiftPressed.current) return 'shift';
-    if (isCtrlPressed.current) return 'ctrl';
-    return 'none';
-  };
-
-  /**
-   * Shared helper function to sync dragged node positions to Zustand.
-   * Only syncs `position`, not `positionAbsolute`.
-   */
-  const syncDraggedNodePositionsToZustand = useCallback((draggedNodes: Node<NodeData>[]) => {
-    if (draggedNodes.length === 0) return;
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[syncDraggedNodePositionsToZustand] Syncing positions for ${draggedNodes.length} nodes`);
-    }
-    
-    const currentNodes = nodes;
-    const draggedNodeIds = new Set(draggedNodes.map(n => n.id));
-    
-    const updatedNodes = currentNodes.map(node => {
-      const draggedVersion = draggedNodes.find(dn => dn.id === node.id);
-      if (draggedVersion) {
-        return {
-          ...node, 
-          position: draggedVersion.position, 
-        };
-      }
-      return node; 
-    });
-    
-    setZustandNodes(updatedNodes);
-  }, [nodes, setZustandNodes]);
 
   // Handle new connections
   const handleConnect = useCallback((connection: Connection) => {
@@ -154,67 +113,24 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   // Handle node drag stop
   const handleNodeDragStop = useCallback(
     (event: React.MouseEvent, draggedNode: Node<NodeData>) => {
-      if (process.env.NODE_ENV === 'development') {
-        // console.log(`[NodeDragStop] 노드 드래그 멈춤: ${draggedNode.id}`);
-      }
-
-      // 1. Get the current state from the hook/store
-      const currentNodes = nodes; // Use current Zustand nodes
-
-      // 2. Find the potential parent group based on current position
-      // Calculate absolute position first, as draggedNode.position might be relative if already in a group
-      let absolutePosition = { ...draggedNode.position };
-      if (draggedNode.parentId) {
-        const parentNode = currentNodes.find(n => n.id === draggedNode.parentId);
-        if (parentNode) {
-            absolutePosition = relativeToAbsolutePosition(draggedNode.position, parentNode.position);
-        }
-      }
-      const intersectingGroupId = getIntersectingGroupId(draggedNode, currentNodes);
-
-      // 3. Compare with the node's current parentId
+      // Find the group node that the dragged node intersects with
+      const intersectingGroupId = getIntersectingGroupId(draggedNode, nodes);
       const currentParentId = draggedNode.parentId;
 
-      // 4. Update Zustand state ONLY if the parent relationship has changed
+      // Update state only if parent relationship has changed
       if (currentParentId !== intersectingGroupId) {
         console.log(`[NodeDragStop] Parent changed for ${draggedNode.id}: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
-        let updatedNodes;
-
-        if (intersectingGroupId) {
-          // Node added to a group
-          const groupNode = currentNodes.find(n => n.id === intersectingGroupId);
-          if (groupNode) {
-            // Use utility function to handle state update (includes sorting)
-            updatedNodes = addNodeToGroup({ ...draggedNode, position: absolutePosition }, groupNode, currentNodes);
-          } else {
-            console.warn(`[NodeDragStop] Intersecting group ${intersectingGroupId} not found!`);
-            updatedNodes = currentNodes; // No change if group not found
-          }
-        } else {
-          // Node removed from a group
-          // Use utility function to handle state update (includes sorting)
-          updatedNodes = removeNodeFromGroup({ ...draggedNode, position: absolutePosition }, currentNodes);
-        }
-
-        // Directly update Zustand state with the new correctly structured array
+        
+        // Update node parent relationship
+        const updatedNodes = updateNodeParentRelationship(draggedNode, intersectingGroupId, nodes);
         setZustandNodes(updatedNodes);
-        console.log('[NodeDragStop] Updated Zustand state with new parent relationship.');
-
-        // --- 제거: React Flow 상태 직접 업데이트 로직 ---
-        // const nodesForReactFlow = prepareNodesForReactFlow(updatedNodes);
-        // setReactFlowNodes(nodesForReactFlow);
-        // console.log('[NodeDragStop] Updated React Flow state.');
-
       } else {
-        if (process.env.NODE_ENV === 'development') {
-          // console.log(`[NodeDragStop] 노드 ${draggedNode.id}의 부모 변경 없음.`);
-        }
-        // If parent hasn't changed, we might still need to update the node's position
-        // if it was dragged within the same group or outside any group.
-        // React Flow's onNodesChange should handle this position update automatically.
+        // If parent hasn't changed, we don't need to do anything
+        // React Flow's onNodesChange will handle position updates
+        console.log(`[NodeDragStop] Node ${draggedNode.id} position changed but parent remains the same`);
       }
     },
-    [nodes, setZustandNodes, getIntersectingGroupId, addNodeToGroup, removeNodeFromGroup] // Include Zustand setter and utils in dependencies
+    [nodes, setZustandNodes]
   );
 
   // Handle selection drag stop
@@ -226,56 +142,59 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   // Handle edges delete
   const handleEdgesDelete = useCallback((edgesToDelete: Edge[]) => {
     if (edgesToDelete.length === 0) return;
+    
     const edgeIdsToDelete = new Set(edgesToDelete.map(e => e.id));
     const currentEdges = getEdges();
     const nextEdges = currentEdges.filter((edge) => !edgeIdsToDelete.has(edge.id));
+    
     setZustandEdges(nextEdges);
   }, [getEdges]);
 
   // Handle nodes delete with updated type handling
   const handleNodesDelete = useCallback((nodesToDelete: Node<NodeData>[]) => {
     if (nodesToDelete.length === 0) return;
+    
+    // Process node deletion
     const nodeIdsToDelete = new Set(nodesToDelete.map(n => n.id));
     const currentNodes = getNodes() as Node<NodeData>[]; 
     const currentEdges = getEdges();
+    
+    // Remove deleted nodes
     const remainingNodes = currentNodes.filter(node => !nodeIdsToDelete.has(node.id));
+    
+    // Remove connected edges
     const connectedEdges = getConnectedEdges(nodesToDelete, currentEdges);
     const connectedEdgeIds = new Set(connectedEdges.map(e => e.id));
     const remainingEdges = currentEdges.filter(edge => !connectedEdgeIds.has(edge.id));
+    
+    // Update state
     setZustandNodes(remainingNodes);
     setZustandEdges(remainingEdges);
     
-    // 선택 상태 업데이트 로직 - 타입 안전하게 수정
+    // Update selection state
     const currentSelectedIds = useFlowStructureStore.getState().selectedNodeIds;
     
-    // 배열 타입 처리
-    if (Array.isArray(currentSelectedIds)) {
-      const newSelectedIds = currentSelectedIds.filter(id => !nodeIdsToDelete.has(id));
-      if (newSelectedIds.length !== currentSelectedIds.length) {
-        setSelectedNodeIds(newSelectedIds); 
-        
-        // onNodeSelect 호출 시 타입 안전성 확보
-        if (onNodeSelect) {
-          if (newSelectedIds.length > 0) {
-            onNodeSelect(newSelectedIds);
-          } else {
-            onNodeSelect(null);
-          }
-        }
-      }
-    } 
-    // 단일 ID 문자열 처리
-    else if (typeof currentSelectedIds === 'string' && nodeIdsToDelete.has(currentSelectedIds)) {
-      setSelectedNodeIds([]); // 빈 배열로 변경
+    // Standardize to array format
+    const currentSelectedArray = Array.isArray(currentSelectedIds) 
+      ? currentSelectedIds 
+      : (typeof currentSelectedIds === 'string' ? [currentSelectedIds] : []);
+    
+    // Filter out deleted nodes
+    const newSelectedIds = currentSelectedArray.filter(id => !nodeIdsToDelete.has(id));
+    const selectionChanged = newSelectedIds.length !== currentSelectedArray.length;
+    
+    // Update selection if needed
+    if (selectionChanged) {
+      setSelectedNodeIds(newSelectedIds);
       if (onNodeSelect) {
-        onNodeSelect(null);
+        onNodeSelect(newSelectedIds.length > 0 ? newSelectedIds : null);
       }
     }
   }, [getNodes, getEdges, onNodeSelect]);
 
-  // 노드 클릭 핸들러
+  // Node click handler
   const handleNodeClick: NodeMouseHandler = useCallback((event, node) => {
-    // 단일 노드 ID를 배열로 변환하여 전달
+    // Pass single node ID as array
     if (onNodeSelect) {
       onNodeSelect([node.id]);
     }
