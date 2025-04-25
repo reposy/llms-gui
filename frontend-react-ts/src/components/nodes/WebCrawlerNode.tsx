@@ -18,7 +18,7 @@ import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeConten
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   // Use useNodeContent hook to get the latest content
-  const { content: crawlerData } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
+  const { content: crawlerData, updateContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
 
   // Get node execution state
   const nodeState = useNodeState(id);
@@ -81,10 +81,10 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // TODO: Implement label update in the store if needed
-    console.log(`Update label for node ${nodeId} to ${newLabel}`);
-    // Example: setNodeContent(nodeId, { label: newLabel });
-  }, []);
+    // Update the label in the Zustand store
+    updateContent({ label: newLabel });
+    console.log(`Updated label for node ${nodeId} to ${newLabel} in store`);
+  }, [updateContent]);
   
   // Handle toggle view
   const handleToggleView = useCallback(() => {
