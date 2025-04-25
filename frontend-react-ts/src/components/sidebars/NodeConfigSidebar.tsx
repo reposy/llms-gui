@@ -3,6 +3,7 @@ import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
 import { Node } from '@xyflow/react'; // Import Node type
 import { NodeData } from '../../types/nodes'; // Import NodeData type
+import { useNodeContent } from '../../store/useNodeContentStore';
 
 // Enable debugging logs
 const DEBUG_LOGS = false; // Disable logs for cleaner output, enable if needed
@@ -37,6 +38,12 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
       });
     }
   }, [selectedNodes, selectedNodeIds]);
+
+  // Get the latest content for the selected node from the store
+  const { content: selectedNodeContent } = useNodeContent(
+    primarySelectedNode?.id || '',
+    primarySelectedNode?.type
+  );
 
   // If no nodes are selected or the sidebar is not open, render nothing
   if (selectedNodes.length === 0 || !isOpen) return null;
@@ -74,16 +81,19 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
     console.log('[NodeConfigSidebar] Rendering sidebar for node:', {
       id: primarySelectedNode?.id,
       type: primarySelectedNode?.type,
-      label: primarySelectedNode?.data?.label
     });
   }
+
+  // Determine the title label
+  const titleLabel = selectedNodeContent?.label || 
+                     (primarySelectedNode?.type 
+                       ? primarySelectedNode.type.charAt(0).toUpperCase() + primarySelectedNode.type.slice(1) 
+                       : 'Node');
 
   return (
     <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-6 border-l border-gray-200 flex flex-col">
       <h2 className="text-xl font-semibold text-gray-800 mb-6 border-b pb-3">
-        {/* Improve title display */}
-        {primarySelectedNode?.data?.label || 
-         (primarySelectedNode?.type ? primarySelectedNode.type.charAt(0).toUpperCase() + primarySelectedNode.type.slice(1) : 'Node') + ' Configuration'}
+        {titleLabel + ' Configuration'}
       </h2>
       {/* Pass the correctly typed selectedNode */}
       <ConfigFactory selectedNode={primarySelectedNode as Node<NodeData>} /> 
