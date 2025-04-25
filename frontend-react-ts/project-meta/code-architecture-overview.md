@@ -11,7 +11,7 @@
 
 ⸻
 
-📦 디렉터리 및 파일 구조 (2024-07 기준 업데이트)
+📦 디렉터리 및 파일 구조
 frontend-react-ts/
 ├── src/
 │   ├── components/           # React UI 컴포넌트
@@ -267,3 +267,154 @@ const intersectingGroupId = getIntersectingGroupId(draggedNode, allNodes);
 // Preparing nodes for React Flow with parent-child relationship handling
 const nodesForReactFlow = prepareNodesForReactFlow(nodes);
 ```
+
+## 코드 리팩토링 가이드라인
+
+새로운 코드를 작성하거나 기존 코드를 리팩토링할 때 다음 원칙을 따릅니다:
+
+### 1. 단일 책임 원칙(SRP)
+
+- **함수 분리**: 각 함수는 하나의 명확한 책임만 가지도록 합니다.
+- **복잡한 함수 분해**: 큰 함수는 작고 재사용 가능한 단위로 분해합니다.
+- **예시**: `handleNodeDragStop` 함수의 내부 로직을 `getNodeAbsolutePosition`, `updateNodeParentRelationship` 등의 함수로 분리
+
+```typescript
+// ❌ 여러 책임이 혼합된 함수
+function handleNodeDragStop(event, draggedNode) {
+  // 1. 절대 위치 계산
+  let absolutePosition = { ...draggedNode.position };
+  if (draggedNode.parentId) {
+    // ... 부모 노드 찾고 절대 위치 계산
+  }
+  
+  // 2. 교차 그룹 확인
+  const intersectingGroupId = getIntersectingGroupId(draggedNode, nodes);
+  
+  // 3. 부모 관계 변경 및 상태 업데이트
+  // ... 많은 조건부 로직
+}
+
+// ✅ 단일 책임을 가진 함수들로 분리
+function getNodeAbsolutePosition(node, allNodes) {
+  // 절대 위치 계산 로직만 담당
+}
+
+function updateNodeParentRelationship(node, newParentId, allNodes) {
+  // 부모-자식 관계 업데이트 로직만 담당
+}
+
+function handleNodeDragStop(event, draggedNode) {
+  // 높은 수준의 조정만 담당, 세부 로직은 위 함수들로 위임
+  const intersectingGroupId = getIntersectingGroupId(draggedNode, nodes);
+  if (draggedNode.parentId !== intersectingGroupId) {
+    const updatedNodes = updateNodeParentRelationship(draggedNode, intersectingGroupId, nodes);
+    setZustandNodes(updatedNodes);
+  }
+}
+```
+
+### 2. 타입 안전성
+
+- **엄격한 타입 검사**: TypeScript의 정적 타입 시스템을 최대한 활용합니다.
+- **타입 단언 제한적 사용**: `as` 키워드는 불가피한 경우에만 제한적으로 사용합니다.
+- **외부 라이브러리 타입 통합**: 외부 라이브러리 타입과의 통합에 주의합니다(예: React Flow의 `parentNode` 속성).
+
+```typescript
+// ❌ 타입 안전성이 부족한 코드
+return {
+  ...node,
+  parentNode: groupNode.id // TypeScript 오류: 'parentNode' 속성이 타입에 존재하지 않음
+};
+
+// ✅ 타입 안전성이 향상된 코드
+const updatedNode = {
+  ...node,
+  parentId: groupNode.id
+} as Node<NodeData>;
+
+// 불가피한 경우에만 타입 단언 사용
+(updatedNode as any).parentNode = groupNode.id;
+```
+
+### 3. 코드 가독성
+
+- **명확한 변수명과 함수명**: 이름만으로 목적과 기능을 이해할 수 있어야 합니다.
+- **일관된 로깅**: 디버깅을 위한 로그 메시지는 일관된 형식을 사용합니다.
+- **복잡한 조건문 단순화**: 중첩된 조건문은 가독성을 해치므로 헬퍼 함수나 명확한 변수로 추출합니다.
+
+```typescript
+// ❌ 복잡한 조건문 체인
+if (Array.isArray(currentSelectedIds)) {
+  const newSelectedIds = currentSelectedIds.filter(id => !nodeIdsToDelete.has(id));
+  if (newSelectedIds.length !== currentSelectedIds.length) {
+    setSelectedNodeIds(newSelectedIds);
+    if (onNodeSelect) {
+      if (newSelectedIds.length > 0) {
+        onNodeSelect(newSelectedIds);
+      } else {
+        onNodeSelect(null);
+      }
+    }
+  }
+} else if (typeof currentSelectedIds === 'string' && nodeIdsToDelete.has(currentSelectedIds)) {
+  setSelectedNodeIds([]);
+  if (onNodeSelect) {
+    onNodeSelect(null);
+  }
+}
+
+// ✅ 표준화 및 단순화된 코드
+const currentSelectedArray = Array.isArray(currentSelectedIds) 
+  ? currentSelectedIds 
+  : (typeof currentSelectedIds === 'string' ? [currentSelectedIds] : []);
+
+const newSelectedIds = currentSelectedArray.filter(id => !nodeIdsToDelete.has(id));
+const selectionChanged = newSelectedIds.length !== currentSelectedArray.length;
+
+if (selectionChanged) {
+  setSelectedNodeIds(newSelectedIds);
+  onNodeSelect?.(newSelectedIds.length > 0 ? newSelectedIds : null);
+}
+```
+
+### 4. 불필요한 코드 제거
+
+- **미사용 함수 제거**: 호출되지 않는 함수와 변수는 코드베이스에서 제거합니다.
+- **중복 코드 통합**: 반복되는 패턴은 공통 유틸리티 함수로 추출합니다.
+- **코드 냄새 지속적 점검**: 과도한 주석, 불필요한 복잡성, 죽은 코드 등을 지속적으로 점검합니다.
+
+```typescript
+// ❌ 미사용 코드와 이벤트 리스너
+const isShiftPressed = useRef(false);
+const isCtrlPressed = useRef(false);
+
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // ... 키 이벤트 처리
+  };
+  window.addEventListener('keydown', handleKeyDown);
+  // ... 다른 이벤트 리스너들
+  
+  return () => {
+    window.removeEventListener('keydown', handleKeyDown);
+    // ... 정리 로직
+  };
+}, []);
+
+// 실제로 사용되지 않는 함수
+const getActiveModifierKey = useCallback(() => {
+  // ... 수정자 키 상태 반환
+}, []);
+
+// ✅ 코드베이스 간소화 - 사용되지 않는 코드 제거
+// 미사용 함수와 이벤트 리스너를 완전히
+// 제거하여 코드베이스를 깔끔하게 유지
+```
+
+### 5. 테스트 가능성
+
+- **작은 함수**: 작고 집중된 함수는 테스트하기 쉽습니다.
+- **의존성 격리**: 함수의 부작용과 외부 의존성을 명확히 합니다.
+- **인자 명시**: 함수가 필요로 하는 모든 데이터를 명시적인 인자로 전달합니다.
+
+이러한 가이드라인을 따르면 코드베이스의 품질과 유지보수성이 지속적으로 향상될 것입니다.
