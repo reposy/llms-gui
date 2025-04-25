@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo } from 'react';
 import { 
   ReactFlow,
   MiniMap,
@@ -12,7 +12,10 @@ import {
   ConnectionLineType,
   ReactFlowInstance,
   OnInit,
-  OnSelectionChangeParams
+  OnSelectionChangeParams,
+  OnNodesDelete,
+  OnNodeDrag,
+  SelectionDragHandler
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -21,7 +24,16 @@ import { useClipboard } from '../hooks/useClipboard';
 import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flow/flowUtils';
-import { updateNodeParentRelationships, prepareNodesForReactFlow, relativeToAbsolutePosition, getIntersectingGroupId, addNodeToGroup, isNodeInGroup, sortNodesForRendering } from '../utils/flow/nodeUtils';
+import { 
+  updateNodeParentRelationships, 
+  prepareNodesForReactFlow, 
+  relativeToAbsolutePosition,
+  getIntersectingGroupId,
+  absoluteToRelativePosition,
+  addNodeToGroup,
+  isNodeInGroup,
+  sortNodesForRendering
+} from '../utils/flow/nodeUtils';
 // Import Zustand store & actions
 import { 
   useFlowStructureStore,
@@ -98,8 +110,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   const { screenToFlowPosition, getNodes: getReactFlowNodes, setNodes: setReactFlowNodes } = useReactFlow();
   
   // Use Zustand for flow structure instead of local state
-  const nodes = useNodes();
-  const edges = useEdges();
+  const zustandNodes = useNodes();
+  const zustandEdges = useEdges();
   
   // 실행 취소/다시 실행 상태
   const canUndo = useCanUndo();
@@ -132,12 +144,12 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   
   // 선택된 노드를 삭제하는 핸들러
   const handleDeleteSelectedNodes = useCallback(() => {
-    const selectedNodes = nodes.filter(node => node.selected);
+    const selectedNodes = zustandNodes.filter(node => node.selected);
     if (selectedNodes.length > 0) {
       console.log(`[FlowCanvas] 선택된 ${selectedNodes.length}개 노드 삭제`);
       handleNodesDelete(selectedNodes as Node<NodeData>[]);
     }
-  }, [nodes, handleNodesDelete]);
+  }, [zustandNodes, handleNodesDelete]);
   
   // 직접 키보드 이벤트 처리 로직 추가
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
@@ -288,50 +300,70 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         return;
       }
 
-      // Use project directly if available
-      const position = screenToFlowPosition({
+      // Calculate the drop position in flow coordinates (absolute)
+      const dropPosition = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
 
-      console.log(`[onDrop] Node type ${nodeType} dropped at absolute position=(${position.x}, ${position.y})`);
-
-      // 1. Create the new node with absolute position
-      const newNode = createNewNode(nodeType, position);
+      // 1. Create the base new node
+      const newNodeBase = createNewNode(nodeType, dropPosition);
 
       // 2. Get current nodes from Zustand
-      const currentNodes = nodes;
+      const currentNodes = zustandNodes;
 
       // 3. Check if the drop position intersects with any group
-      // Temporarily add the new node to check intersection
-      const tempNodeForCheck = { ...newNode, width: 150, height: 50 }; // Use default/estimated dimensions
+      const tempNodeForCheck = { 
+        ...newNodeBase, 
+        width: 150,  // Use default width for hit-testing
+        height: 50   // Use default height for hit-testing
+      }; 
       const intersectingGroupId = getIntersectingGroupId(tempNodeForCheck, currentNodes);
 
-      let updatedNodes;
+      let finalNodeData;
 
+      // 4. If dropped inside a group, convert position to relative coordinates
       if (intersectingGroupId) {
-        console.log(`[onDrop] Dropped inside group ${intersectingGroupId}. Adding node to group.`);
-        const groupNode = currentNodes.find(n => n.id === intersectingGroupId);
-        if (groupNode) {
-          // Use addNodeToGroup utility which handles relative positioning and sorting
-          updatedNodes = addNodeToGroup(newNode, groupNode, currentNodes);
+        const parentGroup = currentNodes.find(n => n.id === intersectingGroupId);
+        if (parentGroup) {
+          // Convert to position relative to parent (React Flow standard)
+          const relativePosition = absoluteToRelativePosition(
+            dropPosition,
+            parentGroup.position
+          );
+          
+          // Create node with relative position and set parent
+          finalNodeData = {
+            ...newNodeBase,
+            position: relativePosition,
+            parentId: intersectingGroupId,
+            parentNode: intersectingGroupId, // React Flow uses this property internally
+          };
+          
+          console.log(`[onDrop] Node dropped inside group ${intersectingGroupId}. Using relative position:`, relativePosition);
         } else {
-          console.warn(`[onDrop] Intersecting group ${intersectingGroupId} not found! Adding node to root.`);
-          // Fallback: Add node without parent, but ensure sorting
-          updatedNodes = sortNodesForRendering([...currentNodes, newNode]);
+          // Fallback if parent group not found (shouldn't happen)
+          finalNodeData = newNodeBase;
         }
       } else {
-        console.log(`[onDrop] Dropped outside any group. Adding node to root.`);
-        // Add node without parent, ensure sorting
-        updatedNodes = sortNodesForRendering([...currentNodes, newNode]);
+        // Node dropped directly on the canvas, use absolute position
+        finalNodeData = {
+          ...newNodeBase,
+          parentId: undefined,
+          parentNode: undefined, // Explicitly set to undefined for clarity
+        };
+        
+        console.log(`[onDrop] Node dropped on canvas. Using absolute position:`, dropPosition);
       }
 
-      // 4. Update Zustand state directly
-      setZustandNodes(updatedNodes);
-      console.log('[onDrop] Updated Zustand state with new node.');
-
+      // 5. Update Zustand with the new node
+      setZustandNodes([...currentNodes, finalNodeData as Node<NodeData>]);
+      
+      // 6. Set the new node as selected
+      setSelectedNodeIds([finalNodeData.id]);
+      onNodeSelect([finalNodeData.id]);
     },
-    [screenToFlowPosition, nodes, setZustandNodes, getIntersectingGroupId, addNodeToGroup, sortNodesForRendering] // Include dependencies
+    [zustandNodes, screenToFlowPosition, setZustandNodes, setSelectedNodeIds, onNodeSelect]
   );
   
   // Selection consistency check - run only once after initial mount
@@ -346,16 +378,39 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     }
     
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 의존성 배열을 비워 마운트 시 한 번만 실행
+  }, []); // Keep dependency array empty for mount only
 
   // 컴포넌트가 마운트될 때 한 번 처리하는 효과
   useEffect(() => {
     // 마운트 시 한 번 React Flow에 맞게 노드를 처리
     if (nodes.length > 0) {
-      const processedNodes = prepareNodesForReactFlow(nodes);
-      setReactFlowNodes(processedNodes);
+      // No longer need explicit setReactFlowNodes here,
+      // useMemo handles passing prepared nodes initially.
+      // console.log("[FlowCanvas Mount] Initial nodes prepared by useMemo.");
     }
   }, []);
+
+  // ✨ Prepare nodes for React Flow using useMemo for reactivity
+  const nodes = useMemo(() => {
+    console.log("[FlowCanvas] Preparing nodes for React Flow with parent-child relationships");
+    
+    // 1. Update all parent-child relationships to ensure consistency
+    const nodesWithUpdatedParents = zustandNodes.map(node => {
+      // Ensure parentNode matches parentId for React Flow
+      if (node.parentId) {
+        return { ...node, parentNode: node.parentId };
+      } else {
+        // Explicitly set parentNode to null if no parentId
+        return { ...node, parentNode: null, parentId: undefined };
+      }
+    });
+    
+    // 2. Sort nodes to ensure proper rendering order (parents before children)
+    return sortNodesForRendering(nodesWithUpdatedParents);
+  }, [zustandNodes]);
+  
+  // For now, edges don't need special preparation
+  const edges = zustandEdges;
 
   // Register React Flow API for external components to use
   const registerApi: OnInit<Node<NodeData>, Edge> = useCallback((reactFlowInstance: ReactFlowInstance<Node<NodeData>, Edge>) => {
@@ -387,42 +442,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     if (registerReactFlowApi) {
       registerReactFlowApi(minimalApi);
     }
-    
-    // React Flow가 초기화된 후 부모-자식 관계 한 번 더 확인
-    setTimeout(() => {
-      const currentNodes = getReactFlowNodes() as Node<NodeData>[];
-      console.log('[FlowCanvas] React Flow 초기화 후 부모-자식 관계 확인');
-      
-      // 모든 노드에 대해 부모-자식 관계 확인 및 업데이트
-      const updatedNodes = updateNodeParentRelationships(currentNodes);
-      
-      // 변경된 노드가 있는 경우만 업데이트
-      const hasChanges = updatedNodes.some((updatedNode, index) => {
-        const currentNode = currentNodes[index];
-        // parentId 뿐만 아니라 parentNode 속성도 확인
-        return updatedNode.parentId !== currentNode.parentId || 
-               (currentNode as any).parentNode !== (updatedNode.parentId || null);
-      });
-      
-      if (hasChanges) {
-        console.log('[FlowCanvas] 초기화 후 부모-자식 관계 변경 감지, 강제 업데이트');
-        
-        // 부모 노드 속성 보완
-        const nodesWithBothParents = updatedNodes.map(node => {
-          if (node.parentId) {
-            return {...node, parentNode: node.parentId};
-          }
-          return {...node, parentNode: null}; // parentId가 없으면 parentNode도 명시적으로 null로 설정
-        });
-        
-        // React Flow 상태 업데이트
-        setReactFlowNodes(nodesWithBothParents);
-        
-        // Zustand 상태 업데이트
-        setTimeout(() => setZustandNodes(nodesWithBothParents), 50);
-      }
-    }, 300); // 충분한 시간 여유
-  }, [registerReactFlowApi, handleClearAll, getReactFlowNodes, setReactFlowNodes]);
+  }, [registerReactFlowApi, handleClearAll, getReactFlowNodes]);
   
   return (
     <div 
@@ -431,7 +451,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <ReactFlow
+      <ReactFlow<any, any>
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
