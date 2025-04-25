@@ -3,6 +3,8 @@ import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 
 interface GroupInfoBoxProps {
   groupNode?: Node<GroupNodeData>;
+  label: string;
+  type?: string;
   sourceNode?: Node<InputNodeData>;
   sourceNodeId?: string;
   status: 'idle' | 'running' | 'success' | 'error' | 'skipped';
@@ -13,6 +15,8 @@ interface GroupInfoBoxProps {
 
 export const GroupInfoBox: React.FC<GroupInfoBoxProps> = ({
   groupNode,
+  label,
+  type,
   sourceNode,
   sourceNodeId,
   status,
@@ -26,7 +30,7 @@ export const GroupInfoBox: React.FC<GroupInfoBoxProps> = ({
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-800 mb-1 flex-shrink-0">
-        Group: {groupNode?.data?.label || groupId}
+        {label || 'Group'} {type ? `| ${type}` : ''}
       </h2>
       <p className="text-xs text-gray-500 mb-3 flex-shrink-0">
         Source: {sourceNode?.data.label || sourceNodeId || 'Not configured'} ({inputItemsCount} items)

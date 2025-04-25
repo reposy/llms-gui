@@ -38,7 +38,11 @@ export const EditableNodeLabel: React.FC<Props> = React.memo(({
     setIsEditing(false);
     const trimmedLabel = labelDraft.trim();
     if (trimmedLabel !== initialLabel) {
+      console.log(`[EditableNodeLabel] Calling onLabelUpdate for ${nodeId} with label:`, trimmedLabel || placeholderLabel);
       onLabelUpdate(nodeId, trimmedLabel || placeholderLabel);
+    } else {
+      // Optionally revert draft if no change
+      // setLabelDraft(initialLabel);
     }
   }, [initialLabel, labelDraft, nodeId, onLabelUpdate, placeholderLabel]);
 

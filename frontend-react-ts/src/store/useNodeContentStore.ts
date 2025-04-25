@@ -426,12 +426,12 @@ export function useNodeContent<T extends NodeContent = NodeContent>(
     (state) => state.getNodeContent<T>(nodeId, nodeType)
   );
   
-  const updateContentFunc = useNodeContentStore((state) => state.setNodeContent);
+  const updateStoreContent = useNodeContentStore(state => state.setNodeContent);
   
-  // 노드 ID를 자동으로 전달하는 래퍼 함수
-  const updateContent = useCallback((newContent: Partial<T>) => {
-    updateContentFunc<T>(nodeId, newContent);
-  }, [nodeId, updateContentFunc]);
+  const updateContent = useCallback((newContentUpdate: Partial<T>) => {
+    console.log(`[useNodeContent hook] updateContent called for ${nodeId}. Passing to store:`, newContentUpdate);
+    updateStoreContent(nodeId, newContentUpdate);
+  }, [nodeId, updateStoreContent]);
 
   return {
     content,

@@ -11,6 +11,8 @@ import GroupInfoBox from '../group/GroupInfoBox';
 import GroupNodesList from '../group/GroupNodesList';
 import GroupResultList from '../group/GroupResultList';
 import GroupExecutionToolbar from '../group/GroupExecutionToolbar';
+// Import useGroupNodeData hook
+import { useGroupNodeData } from '../../hooks/useGroupNodeData';
 
 interface GroupDetailSidebarProps {
   selectedNodeIds: string[];
@@ -37,6 +39,9 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   const groupNode = allNodes.find((node: Node<NodeData>) => node.id === selectedNodeId) as Node<GroupNodeData> | undefined;
   const sourceNodeId = groupNode?.data.iterationConfig?.sourceNodeId;
   const sourceNode = allNodes.find((node: Node<NodeData>) => node.id === sourceNodeId) as Node<InputNodeData> | undefined;
+
+  // Get the latest label using the hook
+  const { label } = useGroupNodeData({ nodeId: selectedNodeId || '' });
 
   // Get results from node state
   const groupResults = nodeState.result as GroupExecutionItemResult[] | undefined;
@@ -70,6 +75,8 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
       {/* Group info and execution status */}
       <GroupInfoBox 
         groupNode={groupNode}
+        label={label}
+        type={groupNode?.type}
         sourceNode={sourceNode}
         sourceNodeId={sourceNodeId}
         status={nodeState.status}
