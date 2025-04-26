@@ -8,6 +8,7 @@ import { JsonExtractorNode } from './JsonExtractorNode';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { WebCrawlerNode } from './WebCrawlerNode';
 import { MergerNode } from './MergerNode';
+import { HTMLParserNode } from './HTMLParserNode';
 
 // Factory function that creates node objects based on type
 type NodeFactoryFn = (id: string, property: Record<string, any>, context?: FlowExecutionContext) => any;
@@ -91,6 +92,16 @@ export function registerAllNodeTypes() {
       ...property
     };
     return new MergerNode(id, mergerProperty, context);
+  });
+
+  // Register HTML Parser node type
+  registerNodeType('html-parser', (id, property, context) => {
+    // Ensure required HTML Parser properties exist with defaults
+    const htmlParserProperty = {
+      extractionRules: property.extractionRules || [],
+      ...property
+    };
+    return new HTMLParserNode(id, htmlParserProperty, context);
   });
 
   // ConditionalNode, GroupNode, JsonExtractorNode, WebCrawlerNode

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
-import { FileLikeObject, HTTPMethod } from '../types/nodes';
+import { FileLikeObject, HTTPMethod, ExtractionRule } from '../types/nodes';
 
 /**
  * 노드 컨텐츠의 기본 인터페이스
@@ -56,6 +56,13 @@ export interface WebCrawlerNodeContent extends BaseNodeContent {
   timeout?: number;
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
   headers?: Record<string, string>;
+}
+
+/**
+ * HTML Parser 노드 콘텐츠
+ */
+export interface HTMLParserNodeContent extends BaseNodeContent {
+  extractionRules?: ExtractionRule[];
 }
 
 /**
@@ -118,6 +125,7 @@ export type NodeContent =
   | MergerNodeContent
   | JSONExtractorNodeContent
   | GroupNodeContent
+  | HTMLParserNodeContent
   | BaseNodeContent;
 
 /**
@@ -166,6 +174,13 @@ export function createDefaultNodeContent(type: string): NodeContent {
         isDirty: false,
         label: 'Web Crawler'
       } as WebCrawlerNodeContent;
+
+    case 'html-parser':
+      return {
+        extractionRules: [],
+        isDirty: false,
+        label: 'HTML Parser'
+      } as HTMLParserNodeContent;
 
     case 'api':
       return {
@@ -444,4 +459,9 @@ export {
   useNodeContent as useInputNodeContent,
   getNodeContent as getInputNodeContent,
   setNodeContent as setInputNodeContent
+};
+
+// Update NodeContentRecord to include HTMLParserNodeContent
+export type NodeContentRecord = {
+  [nodeId: string]: LLMNodeContent | HTMLParserNodeContent | InputNodeContent | WebCrawlerNodeContent | OutputNodeContent | APINodeContent | any;
 }; 

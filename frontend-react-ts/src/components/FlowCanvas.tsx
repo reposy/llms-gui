@@ -61,6 +61,7 @@ import GroupNode from './nodes/GroupNode';
 import { ConditionalNode } from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
 import WebCrawlerNode from './nodes/WebCrawlerNode';
+import HTMLParserNode from './HTMLParserNode';
 import { NodeData, NodeType } from '../types/nodes';
 
 // Custom wrapper to remove default React Flow node styling
@@ -80,7 +81,8 @@ const nodeTypes: Record<string, React.ComponentType<any>> = {
   group: GroupNode,
   conditional: ConditionalNode,
   merger: MergerNode,
-  'web-crawler': WebCrawlerNode
+  'web-crawler': WebCrawlerNode,
+  'html-parser': HTMLParserNode
 };
 
 // Default viewport

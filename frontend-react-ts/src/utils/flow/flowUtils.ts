@@ -1,5 +1,5 @@
 import { Node, Edge } from '@xyflow/react';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData } from '../../types/nodes';
+import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData, HTMLParserNodeData } from '../../types/nodes';
 import { ExecutableNode } from '../../core/ExecutableNode';
 
 // Constants for node positioning
@@ -145,6 +145,13 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         includeHtml: false,
         outputFormat: 'text'
       } as WebCrawlerNodeData; // Cast to WebCrawlerNodeData
+    case 'html-parser': // Add case for HTML parser node
+      return {
+        ...baseData,
+        type: 'html-parser',
+        label: 'HTML Parser',
+        extractionRules: [] // Initialize with empty extraction rules
+      } as HTMLParserNodeData; // Cast to HTMLParserNodeData
     default:
       // If an unknown type is passed, it's an error.
       // This ensures the function always returns a valid NodeData type or throws.

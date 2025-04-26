@@ -2,10 +2,20 @@ import { Node, Edge } from '@xyflow/react';
 import { NodeViewMode } from '../store/viewModeStore';
 // import { LLMMode } from '../api/llm'; // Remove deleted import
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger' | 'web-crawler';
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger' | 'web-crawler' | 'html-parser';
 export type OutputFormat = 'json' | 'text';
 export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 export type LLMMode = 'text' | 'vision'; // Define LLMMode directly here
+
+// Define ExtractionRule interface
+export interface ExtractionRule {
+  id?: string;
+  name: string;
+  target: 'text' | 'html' | 'attribute';
+  selector: string;
+  attribute_name?: string;
+  multiple: boolean;
+}
 
 // Define a FileLikeObject type for file content
 export interface FileLikeObject {
@@ -158,6 +168,13 @@ export interface WebCrawlerNodeData extends BaseNodeData {
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
 }
 
+// HTML Parser Node 데이터 인터페이스
+export interface HTMLParserNodeData extends BaseNodeData {
+  type: 'html-parser';
+  label?: string;
+  extractionRules?: ExtractionRule[];
+}
+
 // Update NodeData union type
 export type NodeData = 
   | LLMNodeData 
@@ -168,7 +185,8 @@ export type NodeData =
   | GroupNodeData
   | ConditionalNodeData
   | MergerNodeData
-  | WebCrawlerNodeData;
+  | WebCrawlerNodeData
+  | HTMLParserNodeData;
 
 export interface FlowState {
   nodes: Node<NodeData>[];

@@ -22,6 +22,8 @@ import { StatusBar } from './StatusBar';
 import { runFlow } from '../core/FlowRunner';
 import { v4 as uuidv4 } from 'uuid';
 import { addNodeToGroup } from '../utils/flow/nodeUtils';
+import HTMLParserNode from './HTMLParserNode';
+import HTMLParserNodeConfig from './HTMLParserNodeConfig';
 
 export const FlowEditor = () => {
   const nodes = useNodes();
