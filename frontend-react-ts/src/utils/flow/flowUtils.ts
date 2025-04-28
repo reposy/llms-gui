@@ -395,21 +395,24 @@ export function getInputNodes(nodes: Node[], edges: Edge[]): Node[] {
 }
 
 /**
- * Get all root node IDs (nodes with no incoming connections)
- * These are typically the starting points for flow execution
+ * Finds all root nodes in a given set of nodes and edges.
+ * Root nodes are those with no incoming edges.
+ * Handles Group nodes correctly (a Group node can be a root, but nodes inside it are not global roots).
  * 
- * @param nodes Array of nodes in the flow
- * @param edges Array of edges connecting the nodes
- * @returns Array of node IDs that have no incoming connections
+ * @param nodes Array of all nodes
+ * @param edges Array of all edges
+ * @returns Array of root node IDs
  */
-export function getRootNodeIds(nodes: Node[], edges: Edge[]): string[] {
-  // Find all nodes that are targets of edges (have incoming connections)
-  const nodesWithIncoming = new Set(edges.map(edge => edge.target));
+export function getRootNodeIds(nodes: Node<NodeData>[], edges: Edge[]): string[] {
+  const incomingTargets = new Set(edges.map(edge => edge.target));
   
-  // Return IDs of nodes that don't have incoming connections
-  return nodes
-    .filter(node => !nodesWithIncoming.has(node.id))
-    .map(node => node.id);
+  const rootNodes = nodes.filter(node => {
+    // A node is a root if it has no incoming edges AND it is not inside a group node
+    // (Nodes inside groups are handled by the group execution logic)
+    return !incomingTargets.has(node.id) && !node.parentNode; // Check parentNode for group membership
+  });
+
+  return rootNodes.map(node => node.id);
 }
 
 /**

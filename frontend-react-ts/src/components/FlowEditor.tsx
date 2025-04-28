@@ -6,7 +6,7 @@ import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
-import { createNewNode, calculateNodePosition } from '../utils/flow/flowUtils';
+import { createNewNode, calculateNodePosition, getRootNodeIds } from '../utils/flow/flowUtils';
 import { setNodeContent, NodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { 
   useNodes, 
@@ -96,13 +96,42 @@ export const FlowEditor = () => {
 
   const handleRunFlow = useCallback(async () => {
     setIsExecuting(true);
+    console.log('[FlowEditor] Run Flow button clicked.');
+    
+    // 1. Identify all root nodes in the current flow
+    const rootNodeIds = getRootNodeIds(nodes, edges);
+    console.log(`[FlowEditor] Identified ${rootNodeIds.length} root nodes:`, rootNodeIds);
+
+    if (rootNodeIds.length === 0) {
+      console.warn('[FlowEditor] No root nodes found to execute.');
+      setIsExecuting(false);
+      return; // No need to proceed if there are no roots
+    }
+
+    // 2. Trigger execution for each root node asynchronously
+    const executionPromises = rootNodeIds.map((rootId: string) => {
+      console.log(`[FlowEditor] Initiating execution for root node: ${rootId}`);
+      // runFlow already handles its own errors internally and logs them
+      return runFlow(nodes, edges, rootId); 
+    });
+
+    // 3. Wait for all triggered executions to settle (complete or fail)
     try {
-      // console.log('[FlowEditor] Running flow directly through FlowRunner...');
-      await runFlow(nodes, edges); 
+      const results = await Promise.allSettled(executionPromises);
+      console.log('[FlowEditor] All root node executions settled.', results);
+      // Log detailed results if needed (check results[i].status === 'fulfilled' or 'rejected')
+      results.forEach((result: PromiseSettledResult<void>, index: number) => {
+        if (result.status === 'rejected') {
+          console.error(`[FlowEditor] Execution starting from root node ${rootNodeIds[index]} failed:`, result.reason);
+        }
+      });
     } catch (error) {
-      console.error('Flow execution error:', error);
+      // This catch block might not be strictly necessary if runFlow handles all errors,
+      // but kept for safety with Promise.allSettled (though allSettled itself doesn't reject)
+      console.error('[FlowEditor] Unexpected error during Promise.allSettled:', error);
     } finally {
       setIsExecuting(false);
+      console.log('[FlowEditor] Finished handling all root node executions.');
     }
   }, [nodes, edges]);
 
