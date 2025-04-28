@@ -1,5 +1,6 @@
 import { Node } from '@xyflow/react';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
+import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils';
 
 interface GroupInfoBoxProps {
   groupNode?: Node<GroupNodeData>;
@@ -25,12 +26,13 @@ export const GroupInfoBox: React.FC<GroupInfoBoxProps> = ({
   totalItems,
 }) => {
   const inputItemsCount = sourceNode?.data.items?.length ?? 0;
+  const headerText = formatNodeHeaderText(type || 'group', label);
   const groupId = groupNode?.id || '';
   
   return (
     <>
       <h2 className="text-lg font-semibold text-gray-800 mb-1 flex-shrink-0">
-        {label || 'Group'} {type ? `| ${type}` : ''}
+        {headerText}
       </h2>
       <p className="text-xs text-gray-500 mb-3 flex-shrink-0">
         Source: {sourceNode?.data.label || sourceNodeId || 'Not configured'} ({inputItemsCount} items)

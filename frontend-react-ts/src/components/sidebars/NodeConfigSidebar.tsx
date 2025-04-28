@@ -4,6 +4,7 @@ import { useNodes } from '../../store/useFlowStructureStore';
 import { Node } from '@xyflow/react'; // Import Node type
 import { NodeData } from '../../types/nodes'; // Import NodeData type
 import { useNodeContent } from '../../store/useNodeContentStore';
+import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils'; // Import the common utility function
 
 // Enable debugging logs
 const DEBUG_LOGS = false; // Disable logs for cleaner output, enable if needed
@@ -84,16 +85,11 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
     });
   }
 
-  // Determine the title label
-  const titleLabel = selectedNodeContent?.label || 
-                     (primarySelectedNode?.type 
-                       ? primarySelectedNode.type.charAt(0).toUpperCase() + primarySelectedNode.type.slice(1) 
-                       : 'Node');
-
-  // Compute header text: for LLM nodes use "{label} | {TYPE}", otherwise append "Configuration"
-  const headerText = primarySelectedNode?.type === 'llm'
-    ? `${titleLabel} | ${primarySelectedNode.type.toUpperCase()}`
-    : `${titleLabel} Configuration`;
+  // Generate header text using the common utility function
+  const headerText = formatNodeHeaderText(
+    primarySelectedNode?.type || '', 
+    selectedNodeContent?.label
+  );
 
   return (
     <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-6 border-l border-gray-200 flex flex-col">
