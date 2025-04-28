@@ -105,6 +105,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     <NodeErrorBoundary nodeId={id}>
       <div 
         className={clsx(
+          "relative",
           "node-container rounded-lg border-2 shadow-sm w-72",
           selected ? "border-blue-500" : "border-blue-300",
           hasError ? "border-red-500" : ""
