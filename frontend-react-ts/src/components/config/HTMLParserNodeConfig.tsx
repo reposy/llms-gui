@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Button } from "../ui/button";
-import { Icons } from "../Icons";
+import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "../Icons";
 import { ExtractionRule } from "../../types/nodes";
 import { useNodeContent, useNodeContentStore } from "../../store/useNodeContentStore";
 import { NodeHeader } from "../nodes/shared/NodeHeader";
@@ -35,6 +35,12 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   const [temporaryRule, setTemporaryRule] = useState<ExtractionRule | null>(null);
   const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"rules" | "dom">("rules");
+  
+  // State for DOM text search
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchResults, setSearchResults] = useState<string[]>([]); // Stores paths of matching elements
+  const [currentSearchResultIndex, setCurrentSearchResultIndex] = useState<number>(-1);
+  const domTreeContainerRef = useRef<HTMLDivElement>(null); // Ref for scrolling
   
   // Find the source node ID connected to the target handle of this node
   const sourceNodeId = useMemo(() => {
@@ -175,6 +181,138 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setTemporaryRule(null);
     setEditingRuleIndex(null);
   };
+
+  // Function to perform text search within the parsed DOM
+  const performSearch = useCallback(() => {
+    if (!parsedDOM || !searchQuery) {
+      setSearchResults([]);
+      setCurrentSearchResultIndex(-1);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const results: string[] = [];
+
+    function traverseDOM(element: Element | null, path = "") {
+      if (!element) return;
+
+      const tagName = safeGetTagName(element);
+      if (!tagName) return;
+
+      const currentPath = path ? `${path}/${results.length}-${tagName}` : `${results.length}-${tagName}`; // Use results.length for unique path component during search
+
+      try {
+        if (element.textContent?.toLowerCase().includes(query)) {
+          // To get the *actual* path used by renderDOMTree, we need a slightly different approach.
+          // Let's recalculate path based on depth here (less efficient but simpler for now)
+          function calculatePath(el: Element | null, currentDepth = 0): string | null {
+              if (!el) return null;
+              const elTagName = safeGetTagName(el);
+              if (!elTagName) return null;
+              if (el === element) return `${currentDepth}-${elTagName}`;
+
+              let parentPath: string | null = null;
+              if (el.parentElement) {
+                  parentPath = calculatePath(el.parentElement, currentDepth -1); // This depth logic is flawed, needs fixing
+              }
+               // FIXME: Path calculation needs rework to match renderDOMTree exactly.
+               // For now, using a placeholder or skipping path storage.
+              // results.push(currentPath); // Temporarily use the flawed path or skip
+               results.push(generateSelector(element)); // Store selector as placeholder for path
+
+          }
+          // calculatePath(element);
+        }
+      } catch (e) {
+        console.error("Error accessing textContent during search:", e);
+      }
+
+      const children = safeGetChildren(element);
+      children.forEach(child => traverseDOM(child, currentPath));
+    }
+
+    // FIXME: The path generation within traverseDOM needs to exactly match renderDOMTree's path generation.
+    // This is complex. A better approach might be to modify renderDOMTree/DOMTreeView to report paths
+    // or attach paths as data attributes during render, then query those.
+
+    // Temporary workaround: Query all elements and filter by text content.
+    const allElements = parsedDOM.querySelectorAll('*');
+    const matchingPaths: string[] = [];
+    const tempPathMap = new Map<Element, string>();
+
+    // Need to reconstruct the path generation from renderDOMTree accurately
+    function buildPathMap(element: Element | null, depth = 0, path = "") {
+        if (!element) return;
+        const tagName = safeGetTagName(element);
+        if (!tagName) return;
+        const currentPath = path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`;
+        tempPathMap.set(element, currentPath);
+        const children = safeGetChildren(element);
+        children.forEach((child, index) => buildPathMap(child, depth + 1, currentPath));
+    }
+
+    if (parsedDOM.documentElement) {
+        buildPathMap(parsedDOM.documentElement);
+        allElements.forEach(el => {
+            try {
+                if (el.textContent?.toLowerCase().includes(query)) {
+                    const path = tempPathMap.get(el);
+                    if (path) {
+                        matchingPaths.push(path);
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        });
+    }
+
+    setSearchResults(matchingPaths);
+    setCurrentSearchResultIndex(matchingPaths.length > 0 ? 0 : -1);
+    console.log("Search results (paths):", matchingPaths);
+     // Scroll to the first result if found
+    if (matchingPaths.length > 0) {
+      // highlightAndScrollToResult(0, matchingPaths); // Call scroll function
+    }
+  }, [parsedDOM, searchQuery]);
+
+  // Function to handle search input changes (debounced)
+  // TODO: Implement debouncing for performance
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    // Trigger search immediately for now, add debounce later
+    // Clear previous results immediately
+    setSearchResults([]);
+    setCurrentSearchResultIndex(-1);
+    // Basic immediate search call:
+    // if (e.target.value.length > 1) { // Only search if query is long enough
+    //  performSearch(e.target.value); // Pass query directly
+    // }
+  };
+
+  // Handle search execution (e.g., on button click or debounced input)
+  const handleSearch = () => {
+    performSearch();
+  };
+
+  // Function to navigate search results
+  const navigateResults = (direction: 'prev' | 'next') => {
+    if (searchResults.length === 0) return;
+
+    let nextIndex = currentSearchResultIndex;
+    if (direction === 'next') {
+      nextIndex = (currentSearchResultIndex + 1) % searchResults.length;
+    } else {
+      nextIndex = (currentSearchResultIndex - 1 + searchResults.length) % searchResults.length;
+    }
+    setCurrentSearchResultIndex(nextIndex);
+    // highlightAndScrollToResult(nextIndex, searchResults); // Call scroll function
+  };
+
+  // TODO: Implement highlightAndScrollToResult function
+  // This function needs to:
+  // 1. Get the path from searchResults[index]
+  // 2. Find the corresponding element in the DOM Tree view (might need refs in DOMTreeView)
+  // 3. Call element.scrollIntoView()
+  // 4. Update a state variable passed to DOMTreeView to highlight the element
 
   // 입력 필드 스타일 - LLM 노드와 일관된 스타일
   const inputClass = "w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900";
@@ -380,6 +518,30 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
             </div>
           ) : (
             <>
+              {/* Search UI */}
+              <div className="flex items-center space-x-2 p-2 border rounded-md bg-gray-50">
+                <input
+                  type="text"
+                  placeholder="텍스트로 DOM 검색..."
+                  value={searchQuery}
+                  onChange={handleSearchInputChange}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()} // Search on Enter
+                  className={`${inputClass} text-sm flex-grow`}
+                />
+                <Button size="sm" variant="ghost" onClick={() => navigateResults('prev')} disabled={searchResults.length <= 1} title="이전 결과">
+                  <ChevronLeftIcon className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-gray-600 min-w-[40px] text-center">
+                  {searchResults.length > 0 ? `${currentSearchResultIndex + 1} / ${searchResults.length}` : '0 / 0'}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => navigateResults('next')} disabled={searchResults.length <= 1} title="다음 결과">
+                  <ChevronRightIcon className="h-4 w-4" />
+                </Button>
+                <Button size="sm" onClick={handleSearch} disabled={!searchQuery} title="검색">
+                  <SearchIcon className="h-4 w-4" />
+                </Button>
+              </div>
+
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium text-gray-700">DOM 구조</h4>
                 {generatedSelector && (
@@ -391,13 +553,14 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
               </div>
               
               {/* DOM 트리 표시 - Use the new component */}
-              <div className="border rounded-md p-2 bg-white h-64 overflow-y-auto">
+              <div ref={domTreeContainerRef} className="border rounded-md p-2 bg-white h-64 overflow-y-auto scroll-smooth">
                 <div className="text-xs text-gray-500 mb-2">요소를 클릭하여 선택하세요.</div>
                 {parsedDOM && parsedDOM.documentElement && (
                   <DOMTreeNode 
                     element={parsedDOM.documentElement} 
                     selectedElementPath={selectedElementPath} 
                     onElementSelect={handleElementSelect} 
+                    highlightedPath={searchResults[currentSearchResultIndex]}
                   />
                 )}
               </div>
