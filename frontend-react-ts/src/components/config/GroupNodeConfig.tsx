@@ -35,7 +35,7 @@ export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }
         <input
           type="text"
           value={label}
-          onChange={(e) => handleLabelChange(e.target.value)}
+          onChange={(e) => handleLabelChange(nodeId, e.target.value)}
           onKeyDown={handleKeyDown}
           className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-white text-gray-900 dark:text-gray-900"
           placeholder="Group label"
