@@ -17,6 +17,7 @@ frontend-react-ts/
 │   ├── components/           # React UI 컴포넌트
 │   │   ├── nodes/            # 각 노드 타입별 UI 컴포넌트 (InputNode.tsx, LLMNode.tsx 등)
 │   │   ├── config/           # 노드 설정 패널 UI 컴포넌트
+│   │   │   └── DOMTreeView.tsx # HTML 구조 탐색기 뷰 컴포넌트 (HTMLParserNodeConfig에서 사용)
 │   │   ├── sidebars/         # 사이드바 UI 컴포넌트
 │   │   ├── shared/           # 여러 컴포넌트에서 재사용되는 UI 요소
 │   │   ├── FlowEditor.tsx    # 메인 플로우 편집기 UI
@@ -65,6 +66,7 @@ frontend-react-ts/
 │   │   ├── ui/               # UI 인터랙션 (클립보드, 선택, 히스토리)
 │   │   ├── data/             # 데이터 처리, 파일, 가져오기/내보내기
 │   │   ├── storage/          # 저장소 (IndexedDB 등)
+│   │   ├── domUtils.ts       # DOM 관련 안전한 접근 및 조작 유틸리티
 │   │   ├── web/              # 웹, 크롤링, URL
 │   │   ├── llm/              # LLM 관련 유틸리티 (현재 비어있음)
 │   │   └── misc/             # 기타 유틸리티 (현재 비어있음)
@@ -118,9 +120,9 @@ abstract class Node {
     *   `FlowExecutionContext`를 사용하여 상태 업데이트 및 로깅 수행
 3.  **`getChildNodes()`** (`Node.ts`, `useExecutionGraphStore.ts` 등): 자식 노드 검색
     *   현재는 `useExecutionGraphStore`를 통해 엣지 기반으로 동적으로 찾아 인스턴스화하는 방식이 주로 사용될 것으로 예상됩니다. (구현 확인 필요)
-4.  **`FlowRunner.executeFlow()`**: 플로우 실행 시작점
+4.  **`FlowRunner.executeFlow()` / `runFlow()`**: 플로우 실행 시작점
     *   `FlowExecutionContext` 생성
-    *   실행 그래프 기반으로 루트 노드 식별 및 `process({})` 호출
+    *   주어진 `startNodeId` 가 있으면 해당 노드부터 실행, 없으면 모든 루트 노드(`utils/flow/flowUtils.ts`의 `getRootNodeIds` 사용)를 찾아 각각의 실행 흐름을 시작합니다. (`FlowEditor.tsx`의 '플로우 실행' 버튼 로직 참조)
 5.  **`FlowExecutionContext`**: 실행 컨텍스트 관리
     *   실행 상태 관리 (`markNodeRunning`, `markNodeSuccess`, `markNodeError`)
     *   결과 저장 (`storeOutput`) 및 조회 (`getOutput`)

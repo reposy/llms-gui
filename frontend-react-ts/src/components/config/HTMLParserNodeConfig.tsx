@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Icons } from "../Icons";
 import { ExtractionRule } from "../../types/nodes";
 import { useNodeContent, useNodeContentStore } from "../../store/useNodeContentStore";
 import { NodeHeader } from "../nodes/shared/NodeHeader";
 import { useFlowStructureStore } from "../../store/useFlowStructureStore";
-import { getNodeState } from "../../store/useNodeStateStore";
+import { useNodeState } from "../../store/useNodeStateStore";
+import { safeGetTagName, safeGetClassList, safeGetChildren, generateSelector } from "../../utils/domUtils";
+import DOMTreeNode from './DOMTreeView';
 
 interface HTMLParserNodeConfigProps {
   nodeId: string;
@@ -34,222 +36,63 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"rules" | "dom">("rules");
   
-  // 입력 노드 찾기
+  // Find the source node ID connected to the target handle of this node
+  const sourceNodeId = useMemo(() => {
+    const incomingEdge = edges.find(edge => edge.target === nodeId);
+    return incomingEdge?.source;
+  }, [nodeId, edges]);
+
+  // Get the state of the source node to access its result
+  const sourceNodeState = useNodeState(sourceNodeId || '');
+  
+  // Effect to parse HTML content when source node result changes
   useEffect(() => {
-    const findHtmlInput = () => {
-      // 현재 노드로 들어오는 엣지 찾기
-      const incomingEdges = edges.filter(edge => edge.target === nodeId);
-      if (incomingEdges.length === 0) return null;
-      
-      // 소스 노드 ID 가져오기
-      const sourceNodeId = incomingEdges[0].source;
-      
-      // 노드 상태 가져오기
-      const nodeState = getNodeState(sourceNodeId);
-      if (!nodeState || !nodeState.result) return null;
-      
-      // HTML 내용 추출
-      let html = "";
-      const result = nodeState.result;
-      
+    // HTML 내용 추출 로직 (소스 노드 상태에서 result 가져오기)
+    let html = "";
+    if (sourceNodeState && sourceNodeState.result) {
+      const result = sourceNodeState.result;
       if (typeof result === 'string') {
         html = result;
-      } else if (result.html) {
+      } else if (typeof result === 'object' && result !== null && result.html) {
         html = result.html;
-      } else if (result.text && result.text.includes("<")) {
+      } else if (typeof result === 'object' && result !== null && result.text && typeof result.text === 'string' && result.text.includes("<")) {
         html = result.text;
       }
-      
-      return html;
-    };
-    
-    const html = findHtmlInput();
-    if (html) {
+    }
+
+    if (html && html !== htmlContent) { // Update only if HTML actually changed
+      console.log("[HTMLParserNodeConfig] Received new HTML content from source node:", sourceNodeId);
       setHtmlContent(html);
       try {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
+        // Check for parser error (often indicated by a specific tag)
+        if (doc.getElementsByTagName('parsererror').length > 0) {
+            throw new Error("Browser parser error encountered.");
+        }
         setParsedDOM(doc);
         setDomError("");
-      } catch (error) {
-        setDomError("HTML 파싱 중 오류가 발생했습니다.");
+      } catch (error: any) {
+        const errorMessage = `HTML 파싱 중 오류: ${error.message || '알 수 없는 오류'}`;
+        setDomError(errorMessage);
+        setParsedDOM(null); // Clear previous valid DOM if parsing fails
         console.error("HTML 파싱 오류:", error);
       }
+    } else if (!html && htmlContent) {
+      // Clear content if source node provides no HTML
+      console.log("[HTMLParserNodeConfig] Source node provided no HTML content, clearing parser.");
+      setHtmlContent("");
+      setParsedDOM(null);
+      setDomError("");
     }
-  }, [nodeId, edges]);
+  }, [sourceNodeId, sourceNodeState, htmlContent]);
   
-  // 안전하게 태그 이름 가져오기
-  const safeGetTagName = (element: Element | null): string => {
-    if (!element) return "";
-    
-    try {
-      if (element.tagName) {
-        return element.tagName.toLowerCase();
-      }
-    } catch (e) {
-      console.error("태그 이름 접근 오류:", e);
-    }
-    
-    return "";
-  };
-  
-  // 안전하게 클래스 목록 가져오기
-  const safeGetClassList = (element: Element | null): string[] => {
-    if (!element) return [];
-    
-    try {
-      if (element.classList) {
-        return Array.from(element.classList);
-      }
-    } catch (e) {
-      console.error("클래스 목록 접근 오류:", e);
-    }
-    
-    return [];
-  };
-  
-  // 안전하게 자식 요소 배열 가져오기
-  const safeGetChildren = (element: Element | null): Element[] => {
-    if (!element) return [];
-    
-    try {
-      if (element.children) {
-        return Array.from(element.children);
-      }
-    } catch (e) {
-      console.error("자식 요소 접근 오류:", e);
-    }
-    
-    return [];
-  };
-  
-  // 요소에서 CSS 선택자 생성
-  const generateSelector = (element: Element): string => {
-    if (!element) return "";
-    
-    const tagName = safeGetTagName(element);
-    if (!tagName) return "";
-    
-    let selector = tagName;
-    
-    // ID 추가
-    try {
-      if (element.id) {
-        selector = `${selector}#${element.id}`;
-        return selector; // ID가 있으면 충분히 고유함
-      }
-    } catch (e) {
-      console.error("ID 접근 오류:", e);
-    }
-    
-    // 클래스 추가
-    const classList = safeGetClassList(element);
-    if (classList.length > 0) {
-      const classes = classList.join('.');
-      selector = `${selector}.${classes}`;
-    }
-    
-    return selector;
-  };
-  
-  // DOM 트리 렌더링 함수
-  const renderDOMTree = (element: Element | null, depth = 0, path = "", maxDepth = 3) => {
-    if (!element || depth > maxDepth) return null;
-    
-    const tagName = safeGetTagName(element);
-    if (!tagName) return null;
-    
-    const isHead = tagName === 'head';
-    const currentPath = path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`;
-    
-    // HEAD 태그 내부는 접기
-    if (isHead && depth > 0) {
-      return (
-        <div 
-          className="ml-4 py-1 pl-2 flex items-center text-gray-500 cursor-pointer hover:bg-gray-100 rounded-md" 
-          key={`${tagName}-${depth}-head`}
-        >
-          <span className="text-xs mr-1">▶</span>
-          <span className="text-xs font-mono">{`<${tagName}> [접힘]`}</span>
-        </div>
-      );
-    }
-    
-    // 자식 요소 렌더링
-    const children = safeGetChildren(element);
-    let childrenElements = null;
-    
-    if (children.length > 0) {
-      childrenElements = (
-        <div className="ml-4">
-          {children.map((child, index) => 
-            renderDOMTree(child, depth + 1, currentPath, maxDepth)
-          )}
-        </div>
-      );
-    }
-    
-    // 텍스트 내용 축약 (너무 길면 잘라냄)
-    let textContent = "";
-    try {
-      textContent = element.textContent?.trim() || "";
-      if (textContent && textContent.length > 30) {
-        textContent = `${textContent.substring(0, 30)}...`;
-      }
-    } catch (e) {
-      console.error("텍스트 내용 접근 오류:", e);
-    }
-    
-    // 태그 특성 표시 (ID, 클래스 등)
-    let attributes = "";
-    try {
-      if (element.id) {
-        attributes += ` id="${element.id}"`;
-      }
-      
-      const classList = safeGetClassList(element);
-      if (classList.length > 0) {
-        attributes += ` class="${classList.join(' ')}"`;
-      }
-    } catch (e) {
-      console.error("속성 접근 오류:", e);
-    }
-    
-    return (
-      <div key={`${tagName}-${depth}-${Math.random()}`}>
-        <div 
-          className={`py-1 pl-2 flex items-center cursor-pointer hover:bg-gray-100 rounded-md ${selectedElementPath === currentPath ? 'bg-blue-100' : ''}`} 
-          onClick={() => {
-            setSelectedElementPath(currentPath);
-            const selector = generateSelector(element);
-            setGeneratedSelector(selector);
-            
-            try {
-              setSelectedElementPreview(element.outerHTML || `<${tagName}${attributes}>${element.innerHTML || ""}</${tagName}>`);
-            } catch (e) {
-              console.error("HTML 접근 오류:", e);
-              setSelectedElementPreview(`<${tagName}${attributes}></${tagName}>`);
-            }
-          }}
-        >
-          {children.length > 0 ? (
-            <span className="text-xs mr-1 text-gray-500">▼</span>
-          ) : (
-            <div className="w-4"></div>
-          )}
-          <span className="text-xs font-mono text-gray-700">
-            {`<${tagName}${attributes}>`}
-          </span>
-          {textContent && (
-            <span className="text-xs ml-2 text-gray-500 truncate max-w-[150px]">
-              {textContent}
-            </span>
-          )}
-        </div>
-        {childrenElements}
-      </div>
-    );
-  };
+  // Callback function for when an element is selected in the DOM tree view
+  const handleElementSelect = useCallback((path: string, selector: string, preview: string) => {
+    setSelectedElementPath(path);
+    setGeneratedSelector(selector);
+    setSelectedElementPreview(preview);
+  }, []);
   
   // 선택기로 요소 사용하기
   const useSelectedElement = () => {
@@ -547,10 +390,16 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                 )}
               </div>
               
-              {/* DOM 트리 표시 */}
+              {/* DOM 트리 표시 - Use the new component */}
               <div className="border rounded-md p-2 bg-white h-64 overflow-y-auto">
                 <div className="text-xs text-gray-500 mb-2">요소를 클릭하여 선택하세요.</div>
-                {parsedDOM && parsedDOM.documentElement && renderDOMTree(parsedDOM.documentElement)}
+                {parsedDOM && parsedDOM.documentElement && (
+                  <DOMTreeNode 
+                    element={parsedDOM.documentElement} 
+                    selectedElementPath={selectedElementPath} 
+                    onElementSelect={handleElementSelect} 
+                  />
+                )}
               </div>
               
               {/* 선택된 요소 정보 */}
