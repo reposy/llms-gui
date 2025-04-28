@@ -90,10 +90,15 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
                        ? primarySelectedNode.type.charAt(0).toUpperCase() + primarySelectedNode.type.slice(1) 
                        : 'Node');
 
+  // Compute header text: for LLM nodes use "{label} | {TYPE}", otherwise append "Configuration"
+  const headerText = primarySelectedNode?.type === 'llm'
+    ? `${titleLabel} | ${primarySelectedNode.type.toUpperCase()}`
+    : `${titleLabel} Configuration`;
+
   return (
     <div className="w-80 bg-white shadow-lg h-full overflow-y-auto p-6 border-l border-gray-200 flex flex-col">
       <h2 className="text-xl font-semibold text-gray-800 mb-6 border-b pb-3">
-        {titleLabel + ' Configuration'}
+        {headerText}
       </h2>
       {/* Pass the correctly typed selectedNode */}
       <ConfigFactory selectedNode={primarySelectedNode as Node<NodeData>} /> 
