@@ -17,7 +17,7 @@ export const EditableNodeLabel: React.FC<Props> = React.memo(({
   onLabelUpdate,
   placeholderLabel = 'Node',
   labelClassName = 'font-bold',
-  inputClassName = 'px-1 py-0.5 text-sm font-bold border rounded focus:outline-none focus:ring-1',
+  inputClassName = 'px-1 py-0.5 text-sm font-bold border rounded focus:outline-none focus:ring-1 bg-white text-gray-900',
   editingInputWidthFactor = 8,
 }) => {
   const [isEditing, setIsEditing] = useState(false);

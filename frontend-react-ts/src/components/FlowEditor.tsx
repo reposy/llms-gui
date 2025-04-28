@@ -20,10 +20,7 @@ import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
 import { runFlow } from '../core/FlowRunner';
-import { v4 as uuidv4 } from 'uuid';
 import { addNodeToGroup } from '../utils/flow/nodeUtils';
-import HTMLParserNode from './HTMLParserNode';
-import HTMLParserNodeConfig from './HTMLParserNodeConfig';
 
 export const FlowEditor = () => {
   const nodes = useNodes();
@@ -233,7 +230,7 @@ export const FlowEditor = () => {
           {singleSelectedNode ? (
             // Decide which sidebar based on the single selected node's type
             singleSelectedNode.type === 'group' ? (
-              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
+              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar as string[]} /> // Assert as string[] since singleSelectedNode ensures it's not null
             ) : (
               <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
             )
