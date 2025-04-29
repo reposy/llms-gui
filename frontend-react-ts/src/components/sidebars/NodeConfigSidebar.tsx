@@ -4,6 +4,7 @@ import { useNodes } from '../../store/useFlowStructureStore';
 import { Node } from '@xyflow/react'; // Import Node type
 import { NodeData } from '../../types/nodes'; // Import NodeData type
 import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeState } from '../../store/useNodeStateStore'; // Import useNodeState
 import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils'; // Import the common utility function
 
 // Enable debugging logs
@@ -45,6 +46,9 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
     primarySelectedNode?.id || '',
     primarySelectedNode?.type
   );
+
+  // Get the state of the selected node
+  const nodeState = useNodeState(primarySelectedNode?.id || ''); // Get node state
 
   // If no nodes are selected or the sidebar is not open, render nothing
   if (selectedNodes.length === 0 || !isOpen) return null;
@@ -98,6 +102,33 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
       </h2>
       {/* Pass the correctly typed selectedNode */}
       <ConfigFactory selectedNode={primarySelectedNode as Node<NodeData>} /> 
+      
+      {/* Section: Last Execution Result */}
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <h3 className="text-md font-semibold text-gray-800 mb-3">Last Execution Result</h3>
+        <div className="text-sm space-y-2">
+          {nodeState.status === 'running' && (
+            <p className="text-blue-600 italic">Running...</p>
+          )}
+          {nodeState.status === 'error' && (
+            <p className="text-red-600">Error: {nodeState.error}</p>
+          )}
+          {(nodeState.status === 'success' || nodeState.status === 'idle') && (
+            nodeState.result !== null && nodeState.result !== undefined ? (
+              <pre className="text-xs font-mono bg-gray-50 border border-gray-300 rounded-md p-3 overflow-auto max-h-[200px] whitespace-pre-wrap">
+                {typeof nodeState.result === 'string' 
+                  ? nodeState.result 
+                  : JSON.stringify(nodeState.result, null, 2)}
+              </pre>
+            ) : (
+              <p className="text-gray-400 italic">No execution results available.</p>
+            )
+          )}
+          {(nodeState.status === undefined || nodeState.status === 'idle' && (nodeState.result === null || nodeState.result === undefined)) && (
+            <p className="text-gray-400 italic">Node has not run yet.</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }; 

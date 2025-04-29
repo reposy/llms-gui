@@ -9,6 +9,13 @@ import { useNodeState } from "../../store/useNodeStateStore";
 import { safeGetTagName, safeGetClassList, safeGetChildren, generateSelector } from "../../utils/domUtils";
 import DOMTreeNode from './DOMTreeView';
 
+// Define structure for path steps
+interface PathStep {
+  level: number;
+  tag: string;
+  details: string; // For potential future use (ID, classes)
+}
+
 interface HTMLParserNodeConfigProps {
   nodeId: string;
 }
@@ -44,6 +51,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   const [generatedSelector, setGeneratedSelector] = useState<string>("");
   const [selectedElementPreview, setSelectedElementPreview] = useState<string>("");
   const [domError, setDomError] = useState<string>("");
+  const [selectedElementPathSteps, setSelectedElementPathSteps] = useState<PathStep[]>([]); // New state for path steps
   
   // 임시 상태 관리
   const [temporaryRule, setTemporaryRule] = useState<ExtractionRule | null>(null);
@@ -127,6 +135,22 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setSelectedElementPath(path);
     setGeneratedSelector(selector);
     setSelectedElementPreview(preview);
+
+    // Parse the path string into steps
+    const steps: PathStep[] = [];
+    if (path) {
+      const parts = path.split('/');
+      parts.forEach(part => {
+        const match = part.match(/^(\d+)-(.+)$/);
+        if (match) {
+          const level = parseInt(match[1], 10) + 1;
+          const tag = match[2];
+          // Placeholder for details, could be enhanced later
+          steps.push({ level, tag, details: '' }); 
+        }
+      });
+    }
+    setSelectedElementPathSteps(steps);
   }, []);
   
   // 선택기로 요소 사용하기
@@ -138,7 +162,8 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       name: `element_${Date.now().toString().slice(-4)}`,
       selector: generatedSelector,
       target: "text",
-      multiple: false
+      multiple: false,
+      pathSteps: selectedElementPathSteps
     };
     
     // 새 규칙으로 설정
@@ -403,62 +428,25 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       {/* 추출 규칙 뷰 */}
       {viewMode === "rules" && (
         <>
-          {!temporaryRule && (
-            <>
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    추출 규칙
-                  </label>
-                  <Button size="sm" variant="outline" onClick={handleAddRule}>
-                    <span className="mr-1">+</span>
-                    규칙 추가
-                  </Button>
-                </div>
+          {/* Section Header and Add Button */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                추출 규칙
+              </label>
+              {/* Show Add button only when not adding/editing */}
+              {!temporaryRule && (
+                <Button size="sm" variant="outline" onClick={handleAddRule}>
+                  <span className="mr-1">+</span>
+                  규칙 추가
+                </Button>
+              )}
+            </div>
+          </div>
 
-                {!content?.extractionRules || content.extractionRules.length === 0 ? (
-                  <div className="text-sm text-gray-500 text-center py-4 border border-dashed border-gray-300 rounded-md bg-gray-50">
-                    추출 규칙이 없습니다. 규칙을 추가해 주세요.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {content.extractionRules.map((rule: ExtractionRule, index: number) => (
-                      <div 
-                        key={index} 
-                        className="flex justify-between items-center p-2 bg-gray-50 rounded-md hover:bg-gray-100 border border-gray-200"
-                      >
-                        <div>
-                          <div className="font-medium text-gray-900">{rule.name || "이름 없음"}</div>
-                          <div className="text-xs text-gray-500">
-                            {rule.target === 'text' ? '텍스트' : rule.target === 'html' ? 'HTML' : '속성'} | {rule.selector}
-                          </div>
-                        </div>
-                        <div className="flex space-x-1">
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => handleEditRule(index)}
-                          >
-                            <span>✎</span>
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => handleDeleteRule(index)}
-                          >
-                            <span>✕</span>
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
+          {/* Add/Edit Rule Form (Conditionally Visible) */}
           {temporaryRule && (
-            <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
+            <div className="bg-gray-50 p-3 rounded-md border border-gray-200 mb-4"> {/* Added mb-4 */}
               <h4 className="text-md font-medium mb-2 text-gray-900">
                 {editingRuleIndex !== null ? "규칙 수정" : "규칙 추가"}
               </h4>
@@ -496,16 +484,30 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                 <label htmlFor="cssSelector" className="block text-sm font-medium text-gray-700 mb-1">
                   CSS 선택자
                 </label>
-                <div className="relative">
-                  <input
-                    id="cssSelector"
-                    className={inputClass}
-                    type="text"
-                    value={temporaryRule.selector}
-                    onChange={(e) => handleRuleChange({ ...temporaryRule, selector: e.target.value })}
-                    placeholder="예: article .content, ul li, .post h1"
-                  />
-                </div>
+                {temporaryRule.pathSteps && temporaryRule.pathSteps.length > 0 ? (
+                  // Display path steps if available (read-only)
+                  <div className="text-sm font-mono bg-gray-100 p-2 border border-gray-300 rounded text-gray-700 space-y-0.5 text-[11px] leading-tight">
+                    {temporaryRule.pathSteps.map((step) => (
+                      <div key={step.level}>Lv{step.level}: {step.tag} {step.details}</div>
+                    ))}
+                    {/* Show the generated selector below for reference */}
+                    <div className="mt-1 pt-1 border-t border-gray-200 text-gray-500">
+                      {temporaryRule.selector}
+                    </div> 
+                  </div>
+                ) : (
+                  // Fallback to input field if no path steps
+                  <div className="relative">
+                    <input
+                      id="cssSelector"
+                      className={inputClass}
+                      type="text"
+                      value={temporaryRule.selector}
+                      onChange={(e) => handleRuleChange({ ...temporaryRule, selector: e.target.value })}
+                      placeholder="예: article .content, ul li, .post h1"
+                    />
+                  </div>
+                )}
               </div>
               
               {temporaryRule.target === "attribute" && (
@@ -547,6 +549,49 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                   저장
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Rule List (Always Visible) */}
+          {!content?.extractionRules || content.extractionRules.length === 0 ? (
+            <div className="text-sm text-gray-500 text-center py-4 border border-dashed border-gray-300 rounded-md bg-gray-50">
+              추출 규칙이 없습니다. 규칙을 추가해 주세요.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {content.extractionRules.map((rule: ExtractionRule, index: number) => (
+                <div 
+                  key={index} 
+                  className="flex justify-between items-center p-2 bg-gray-50 rounded-md hover:bg-gray-100 border border-gray-200"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{rule.name || "이름 없음"}</div>
+                    <div className="text-xs text-gray-500">
+                      {rule.target === 'text' ? '텍스트' : rule.target === 'html' ? 'HTML' : '속성'} | {rule.selector}
+                    </div>
+                  </div>
+                  <div className="flex space-x-1">
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={() => handleEditRule(index)}
+                      // Disable edit/delete when form is active for another rule
+                      disabled={temporaryRule !== null && editingRuleIndex !== index}
+                    >
+                      <span>✎</span>
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={() => handleDeleteRule(index)}
+                      // Disable edit/delete when form is active
+                      disabled={temporaryRule !== null} 
+                    >
+                      <span>✕</span>
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </>
@@ -619,16 +664,30 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
               
               {/* 선택된 요소 정보 */}
               {generatedSelector && (
-                <div className="border rounded-md p-3 bg-gray-50">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">선택된 요소</h4>
+                <div className="border rounded-md p-3 bg-gray-50 space-y-3"> {/* Added space-y-3 */}
+                  <h4 className="text-sm font-medium text-gray-700">선택된 요소</h4>
                   
-                  <div className="mb-2">
+                  {/* Display Path Steps */}
+                  {selectedElementPathSteps.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-600 mb-1">경로:</div>
+                      <div className="text-sm font-mono bg-white p-1 border rounded text-gray-800 space-y-0.5 text-[11px] leading-tight">
+                        {selectedElementPathSteps.map((step) => (
+                          <div key={step.level}>Lv{step.level}: {step.tag} {step.details}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Display CSS Selector */}
+                  <div>
                     <div className="text-xs font-medium text-gray-600">CSS 선택자:</div>
-                    <div className="text-sm font-mono bg-white p-1 border rounded">
+                    <div className="text-sm font-mono bg-white p-1 border rounded text-gray-800 text-[11px] leading-tight">
                       {generatedSelector}
                     </div>
                   </div>
                   
+                  {/* Display Preview */}
                   <div>
                     <div className="text-xs font-medium text-gray-600">미리보기:</div>
                     <div className="text-xs font-mono bg-white p-1 border rounded max-h-24 overflow-y-auto">

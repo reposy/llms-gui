@@ -15,6 +15,7 @@ export interface ExtractionRule {
   selector: string;
   attribute_name?: string;
   multiple: boolean;
+  pathSteps?: { level: number; tag: string; details: string }[]; // Optional: Path steps from DOM selection
 }
 
 // Define a FileLikeObject type for file content
@@ -273,3 +274,7 @@ export type NodeTypeMap = {
   conditional: ConditionalNodeContent;
   group: GroupNodeContent;
 };
+
+export interface LLMNodeContent extends NodeContent {
+  // ... existing code ...
+}
