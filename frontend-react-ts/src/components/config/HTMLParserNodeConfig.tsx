@@ -17,6 +17,20 @@ interface HTMLParserNodeConfigProps {
  * HTML 파서 노드 설정 컴포넌트
  * LLM 노드와 유사한 구조로 구현
  */
+
+// Helper function to get ancestor paths from a full path
+const getAncestorPaths = (path: string): string[] => {
+  if (!path) return [];
+  const parts = path.split('/');
+  const ancestors: string[] = [];
+  let currentAncestorPath = '';
+  for (let i = 0; i < parts.length; i++) {
+    currentAncestorPath = currentAncestorPath ? `${currentAncestorPath}/${parts[i]}` : parts[i];
+    ancestors.push(currentAncestorPath);
+  }
+  return ancestors;
+};
+
 export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ nodeId }) => {
   // 노드 컨텐츠 가져오기
   const { content } = useNodeContent(nodeId);
@@ -82,7 +96,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     }
 
     if (html && html !== htmlContent) { // Update only if HTML actually changed
-      console.log("[HTMLParserNodeConfig] Received new HTML content from source node:", sourceNodeId);
+      // console.log("[HTMLParserNodeConfig] Received new HTML content from source node:", sourceNodeId); // Keep commented out
       setHtmlContent(html);
       try {
         const parser = new DOMParser();
@@ -97,11 +111,10 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         const errorMessage = `HTML 파싱 중 오류: ${error.message || '알 수 없는 오류'}`;
         setDomError(errorMessage);
         setParsedDOM(null); // Clear previous valid DOM if parsing fails
-        console.error("HTML 파싱 오류:", error);
+        console.error("HTML 파싱 오류:", error); // Keep error log
       }
     } else if (!html && htmlContent) {
-      // Clear content if source node provides no HTML
-      console.log("[HTMLParserNodeConfig] Source node provided no HTML content, clearing parser.");
+      // console.log("[HTMLParserNodeConfig] Source node provided no HTML content, clearing parser."); // Keep commented out
       setHtmlContent("");
       setParsedDOM(null);
       setDomError("");
@@ -227,21 +240,30 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
 
     if (parsedDOM.documentElement) {
         buildPathMap(parsedDOM.documentElement);
+        const addedPaths = new Set<string>(); // Keep track of added parent paths
         allElements.forEach(el => {
+            const path = tempPathMap.get(el);
+            if (!path) return; // Skip if path couldn't be determined
+            
             try {
-                if (el.textContent?.toLowerCase().includes(query)) {
-                    const path = tempPathMap.get(el);
-                    if (path) {
+                const outerHTML = el.outerHTML;
+                if (outerHTML && outerHTML.toLowerCase().includes(query)) {
+                   if (!addedPaths.has(path)) { // Check if path already added
                         matchingPaths.push(path);
+                        addedPaths.add(path);
+                        // Log match details based on outerHTML check
+                        console.log(`[Search Match] Path: ${path}, Tag: ${safeGetTagName(el)}, Reason: outerHTML contains query`); 
                     }
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                 console.warn(`Error processing element outerHTML for search at path: ${path}`, el, e);
+            }
         });
     }
 
     setSearchResults(matchingPaths);
     setCurrentSearchResultIndex(matchingPaths.length > 0 ? 0 : -1);
-    
+    console.log("[Search Result Paths]:", matchingPaths); // Keep this log to see all paths
      // Scroll to the first result if found
     if (matchingPaths.length > 0) {
       // highlightAndScrollToResult(0, matchingPaths); // Call scroll function
@@ -324,6 +346,25 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       });
     }
   }, [parsedDOM]);
+
+  // Effect to expand ancestors when search result changes
+  useEffect(() => {
+    if (currentSearchResultIndex >= 0 && searchResults.length > 0) {
+      const highlightedPath = searchResults[currentSearchResultIndex];
+      if (highlightedPath) {
+        const ancestors = getAncestorPaths(highlightedPath);
+        // console.log("[HTMLParserNodeConfig] Expanding ancestors for path:", highlightedPath, ancestors); // Remove ancestor log
+        setExpandedPaths(prev => {
+          const pathsToAdd = ancestors.filter(p => !prev.has(p));
+          if (pathsToAdd.length > 0) {
+            // Only create new Set if changes are needed
+            return new Set([...prev, ...pathsToAdd]);
+          }
+          return prev; // No change, return previous set
+        });
+      }
+    }
+  }, [currentSearchResultIndex, searchResults]); // Depend on index and results
 
   // 입력 필드 스타일 - LLM 노드와 일관된 스타일
   const inputClass = "w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900";
@@ -613,4 +654,4 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       )}
     </div>
   );
-}; 
+};
