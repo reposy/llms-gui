@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 import { useNodeStateStore } from '../../store/useNodeStateStore';
 import { runFlow } from '../../core/FlowRunner';
+import { EditableNodeLabel } from './shared/EditableNodeLabel';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
@@ -31,6 +32,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const { 
     label, 
     isCollapsed, 
+    handleLabelChange,
   } = useGroupNodeData({ nodeId: id });
 
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
@@ -171,7 +173,13 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
             'group-node-header'
           )}
         >
-          <span>{label}</span>
+          <EditableNodeLabel
+            nodeId={id}
+            initialLabel={label}
+            placeholderLabel="Group"
+            onLabelUpdate={handleLabelChange}
+            labelClassName="text-xs text-orange-800 font-medium mr-2"
+          />
           <button
             onClick={(e) => {
               e.stopPropagation();

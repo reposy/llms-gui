@@ -175,7 +175,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
       {/* Result 영역 추가 */}
       <div className="mt-4">
         <label className="text-xs font-medium text-gray-600">Result:</label>
-        <div className="llm-node-result border border-gray-200 rounded p-2 min-h-[40px] bg-gray-50 text-xs text-gray-800">
+        <div className="llm-node-result border border-gray-200 rounded p-2 min-h-[40px] bg-gray-50 text-xs text-gray-800 overflow-hidden line-clamp-3">
           {responseContent ? responseContent : <span className="text-gray-400">No result yet.</span>}
         </div>
       </div>

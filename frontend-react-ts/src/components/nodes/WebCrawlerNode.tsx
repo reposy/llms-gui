@@ -14,10 +14,11 @@ import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
+import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeContentStore';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
-  // Cast data prop internally
-  const crawlerData = data as WebCrawlerNodeData;
+  // Use useNodeContent hook to get the latest content
+  const { content: crawlerData, updateContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
 
   // Get node execution state
   const nodeState = useNodeState(id);
@@ -80,10 +81,10 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // TODO: Implement label update in the store if needed
-    console.log(`Update label for node ${nodeId} to ${newLabel}`);
-    // Example: setNodeContent(nodeId, { label: newLabel });
-  }, []);
+    // Update the label in the Zustand store
+    updateContent({ label: newLabel });
+    console.log(`Updated label for node ${nodeId} to ${newLabel} in store`);
+  }, [updateContent]);
   
   // Handle toggle view
   const handleToggleView = useCallback(() => {
@@ -104,6 +105,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     <NodeErrorBoundary nodeId={id}>
       <div 
         className={clsx(
+          "relative",
           "node-container rounded-lg border-2 shadow-sm w-72",
           selected ? "border-blue-500" : "border-blue-300",
           hasError ? "border-red-500" : ""
@@ -126,7 +128,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
           <div className="p-3 space-y-3">
             <div className="text-xs">
               <span className="font-semibold">URL:</span> 
-              <span className="ml-1 font-mono text-blue-600 break-all">{displayUrl}</span>
+              <span className="ml-1 font-mono text-blue-600">{displayUrl}</span>
             </div>
             
             {crawlerData.waitForSelector && (

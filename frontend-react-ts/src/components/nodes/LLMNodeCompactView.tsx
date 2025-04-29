@@ -55,7 +55,7 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   }
 
   return (
-    <div className="flex flex-col space-y-2">
+    <div className="flex flex-col space-y-2 relative pb-4">
       <div className="flex items-center justify-between">
         <div className="flex-1 text-sm font-medium truncate">
           {label || data.label || 'LLM Node'}
@@ -98,6 +98,20 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
           {nodeState.error}
         </div>
       )}
+
+      {/* Expand Button - Placed at the bottom right */}
+      <button 
+        onClick={(e) => { 
+          e.stopPropagation(); // Prevent node selection/drag
+          onToggleView(); 
+        }}
+        className="absolute bottom-1 right-1 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+        title="Expand node"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 0h-4m4 0l-5-5" />
+        </svg>
+      </button>
     </div>
   );
 }; 

@@ -278,14 +278,16 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
         )}
       </div>
 
-      {/* Execution Result (if available) */}
-      {executionState?.status === 'success' && executionState?.result && (
+      {/* Full Execution Result (if available) - Moved below Prompt */}
+      {(executionState?.status === 'success' || executionState?.result) && (
         <div>
-          <ConfigLabel>Result</ConfigLabel>
+          <ConfigLabel>Full Result</ConfigLabel>
           <div className="p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 font-mono text-sm max-h-40 overflow-auto whitespace-pre-wrap">
-            {typeof executionState.result === 'string' 
-              ? executionState.result 
-              : JSON.stringify(executionState.result, null, 2)}
+            {executionState.result !== null && executionState.result !== undefined
+              ? (typeof executionState.result === 'string' 
+                  ? executionState.result 
+                  : JSON.stringify(executionState.result, null, 2))
+              : <span className="text-gray-400 italic">No result available.</span>}
           </div>
         </div>
       )}

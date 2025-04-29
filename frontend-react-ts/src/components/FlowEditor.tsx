@@ -6,7 +6,7 @@ import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
-import { createNewNode, calculateNodePosition } from '../utils/flow/flowUtils';
+import { createNewNode, calculateNodePosition, getRootNodeIds } from '../utils/flow/flowUtils';
 import { setNodeContent, NodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { 
   useNodes, 
@@ -20,7 +20,6 @@ import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
 import { runFlow } from '../core/FlowRunner';
-import { v4 as uuidv4 } from 'uuid';
 import { addNodeToGroup } from '../utils/flow/nodeUtils';
 
 export const FlowEditor = () => {
@@ -97,13 +96,42 @@ export const FlowEditor = () => {
 
   const handleRunFlow = useCallback(async () => {
     setIsExecuting(true);
+    console.log('[FlowEditor] Run Flow button clicked.');
+    
+    // 1. Identify all root nodes in the current flow
+    const rootNodeIds = getRootNodeIds(nodes, edges);
+    console.log(`[FlowEditor] Identified ${rootNodeIds.length} root nodes:`, rootNodeIds);
+
+    if (rootNodeIds.length === 0) {
+      console.warn('[FlowEditor] No root nodes found to execute.');
+      setIsExecuting(false);
+      return; // No need to proceed if there are no roots
+    }
+
+    // 2. Trigger execution for each root node asynchronously
+    const executionPromises = rootNodeIds.map((rootId: string) => {
+      console.log(`[FlowEditor] Initiating execution for root node: ${rootId}`);
+      // runFlow already handles its own errors internally and logs them
+      return runFlow(nodes, edges, rootId); 
+    });
+
+    // 3. Wait for all triggered executions to settle (complete or fail)
     try {
-      // console.log('[FlowEditor] Running flow directly through FlowRunner...');
-      await runFlow(nodes, edges); 
+      const results = await Promise.allSettled(executionPromises);
+      console.log('[FlowEditor] All root node executions settled.', results);
+      // Log detailed results if needed (check results[i].status === 'fulfilled' or 'rejected')
+      results.forEach((result: PromiseSettledResult<void>, index: number) => {
+        if (result.status === 'rejected') {
+          console.error(`[FlowEditor] Execution starting from root node ${rootNodeIds[index]} failed:`, result.reason);
+        }
+      });
     } catch (error) {
-      console.error('Flow execution error:', error);
+      // This catch block might not be strictly necessary if runFlow handles all errors,
+      // but kept for safety with Promise.allSettled (though allSettled itself doesn't reject)
+      console.error('[FlowEditor] Unexpected error during Promise.allSettled:', error);
     } finally {
       setIsExecuting(false);
+      console.log('[FlowEditor] Finished handling all root node executions.');
     }
   }, [nodes, edges]);
 
@@ -208,6 +236,12 @@ export const FlowEditor = () => {
             <button onClick={() => handleAddNode('merger')} title="Add Merger Node" className="w-full aspect-square rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-1 text-xs font-medium p-1"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" /><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4" /></svg>Merger</button>
             <button onClick={() => handleAddNode('json-extractor')} title="Add JSON Extractor Node" className="w-full aspect-square rounded-xl bg-gradient-to-br from-pink-500 to-pink-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-1 text-xs font-medium p-1"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>JSON</button>
             <button onClick={() => handleAddNode('web-crawler' as NodeType)} title="Add Web Crawler Node" className="w-full aspect-square rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-1 text-xs font-medium p-1"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101" /></svg>Crawler</button>
+            <button onClick={() => handleAddNode('html-parser')} title="Add HTML Parser Node" className="w-full aspect-square rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex flex-col items-center justify-center gap-1 text-xs font-medium p-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              HTML Parser
+            </button>
         </div>
 
         <div className="flex-1 relative bg-gray-100">
@@ -225,7 +259,7 @@ export const FlowEditor = () => {
           {singleSelectedNode ? (
             // Decide which sidebar based on the single selected node's type
             singleSelectedNode.type === 'group' ? (
-              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
+              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar as string[]} /> // Assert as string[] since singleSelectedNode ensures it's not null
             ) : (
               <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
             )

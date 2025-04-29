@@ -21,6 +21,7 @@ import { ConditionalNodeConfig } from './ConditionalNodeConfig';
 import { GroupNodeConfig } from './GroupNodeConfig';
 import MergerConfig from './MergerConfig';
 import { WebCrawlerNodeConfig } from './WebCrawlerNodeConfig';
+import { HTMLParserNodeConfig } from './HTMLParserNodeConfig';
 
 // 디버깅 모드 설정
 const DEBUG_LOGS = false;
@@ -87,6 +88,10 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
     case 'web-crawler':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');
       return <WebCrawlerNodeConfig nodeId={id} />;
+    
+    case 'html-parser':
+      if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering HTMLParserNodeConfig');
+      return <HTMLParserNodeConfig nodeId={id} />;
     
     default:
       if (DEBUG_LOGS) console.log(`[ConfigFactory] No config for node type: ${type}`);

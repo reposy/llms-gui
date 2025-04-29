@@ -28,15 +28,12 @@ export const useGroupNodeData = ({
   const isCollapsed = content.isCollapsed || false;
 
   /**
-   * Handle label change with deep equality check
+   * Handle label change to match EditableNodeLabel signature
    */
-  const handleLabelChange = useCallback((newLabel: string) => {
-    if (isEqual(newLabel, label)) {
-      console.log(`[GroupNode ${nodeId}] Skipping label update - no change (deep equal)`);
-      return;
-    }
+  const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
+    console.log(`[GroupNode ${nodeId}] Handling label change with new label:`, newLabel);
     updateContent({ label: newLabel });
-  }, [nodeId, label, updateContent]);
+  }, [nodeId, updateContent]);
 
   /**
    * Toggle collapse state with deep equality check
