@@ -21,7 +21,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   // 노드 컨텐츠 가져오기
   const { content } = useNodeContent(nodeId);
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
-  const { nodes, setStructureNodes, edges } = useFlowStructureStore();
+  const { nodes, edges } = useFlowStructureStore();
   
   // 파싱된 HTML 및 DOM 관련 상태
   const [htmlContent, setHtmlContent] = useState<string>("");
@@ -41,6 +41,21 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   const [searchResults, setSearchResults] = useState<string[]>([]); // Stores paths of matching elements
   const [currentSearchResultIndex, setCurrentSearchResultIndex] = useState<number>(-1);
   const domTreeContainerRef = useRef<HTMLDivElement>(null); // Ref for scrolling
+  
+  // State for expanded DOM nodes
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
+    // Initially expand the root (html) and maybe the body
+    const initialPaths = new Set<string>();
+    if (parsedDOM?.documentElement) {
+      const htmlPath = `0-${safeGetTagName(parsedDOM.documentElement)}`;
+      initialPaths.add(htmlPath);
+      const body = parsedDOM.body;
+      if (body) {
+        initialPaths.add(`${htmlPath}/1-${safeGetTagName(body)}`);
+      }
+    }
+    return initialPaths;
+  });
   
   // Find the source node ID connected to the target handle of this node
   const sourceNodeId = useMemo(() => {
@@ -95,6 +110,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
   // Callback function for when an element is selected in the DOM tree view
   const handleElementSelect = useCallback((path: string, selector: string, preview: string) => {
+    // Restore state updates
     setSelectedElementPath(path);
     setGeneratedSelector(selector);
     setSelectedElementPreview(preview);
@@ -119,16 +135,16 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
   // 업데이트 핸들러
   const handleLabelChange = (newLabel: string) => {
-    // 노드 콘텐츠 업데이트
+    // 노드 콘텐츠 업데이트 (이것만으로 충분)
     setNodeContent(nodeId, { label: newLabel });
     
-    // Flow Structure에서 노드 라벨도 업데이트
-    const updatedNodes = nodes.map(node => 
-      node.id === nodeId
-        ? { ...node, data: { ...node.data, label: newLabel } }
-        : node
-    );
-    setStructureNodes(updatedNodes);
+    // Flow Structure 노드 라벨 업데이트 제거
+    // const updatedNodes = nodes.map(node => 
+    //   node.id === nodeId
+    //     ? { ...node, data: { ...node.data, label: newLabel } } 
+    //     : node
+    // );
+    // setStructureNodes(updatedNodes);
   };
 
   const handleAddRule = () => {
@@ -193,49 +209,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     const query = searchQuery.toLowerCase();
     const results: string[] = [];
 
-    function traverseDOM(element: Element | null, path = "") {
-      if (!element) return;
-
-      const tagName = safeGetTagName(element);
-      if (!tagName) return;
-
-      const currentPath = path ? `${path}/${results.length}-${tagName}` : `${results.length}-${tagName}`; // Use results.length for unique path component during search
-
-      try {
-        if (element.textContent?.toLowerCase().includes(query)) {
-          // To get the *actual* path used by renderDOMTree, we need a slightly different approach.
-          // Let's recalculate path based on depth here (less efficient but simpler for now)
-          function calculatePath(el: Element | null, currentDepth = 0): string | null {
-              if (!el) return null;
-              const elTagName = safeGetTagName(el);
-              if (!elTagName) return null;
-              if (el === element) return `${currentDepth}-${elTagName}`;
-
-              let parentPath: string | null = null;
-              if (el.parentElement) {
-                  parentPath = calculatePath(el.parentElement, currentDepth -1); // This depth logic is flawed, needs fixing
-              }
-               // FIXME: Path calculation needs rework to match renderDOMTree exactly.
-               // For now, using a placeholder or skipping path storage.
-              // results.push(currentPath); // Temporarily use the flawed path or skip
-               results.push(generateSelector(element)); // Store selector as placeholder for path
-
-          }
-          // calculatePath(element);
-        }
-      } catch (e) {
-        console.error("Error accessing textContent during search:", e);
-      }
-
-      const children = safeGetChildren(element);
-      children.forEach(child => traverseDOM(child, currentPath));
-    }
-
-    // FIXME: The path generation within traverseDOM needs to exactly match renderDOMTree's path generation.
-    // This is complex. A better approach might be to modify renderDOMTree/DOMTreeView to report paths
-    // or attach paths as data attributes during render, then query those.
-
-    // Temporary workaround: Query all elements and filter by text content.
+    // Keep the temporary workaround using querySelectorAll
     const allElements = parsedDOM.querySelectorAll('*');
     const matchingPaths: string[] = [];
     const tempPathMap = new Map<Element, string>();
@@ -267,7 +241,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
 
     setSearchResults(matchingPaths);
     setCurrentSearchResultIndex(matchingPaths.length > 0 ? 0 : -1);
-    console.log("Search results (paths):", matchingPaths);
+    
      // Scroll to the first result if found
     if (matchingPaths.length > 0) {
       // highlightAndScrollToResult(0, matchingPaths); // Call scroll function
@@ -314,22 +288,54 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   // 3. Call element.scrollIntoView()
   // 4. Update a state variable passed to DOMTreeView to highlight the element
 
+  // Function to toggle node expansion
+  const toggleExpand = useCallback((path: string) => {
+    setExpandedPaths(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(path)) {
+        // Collapse: remove the path and all its descendants
+        newSet.forEach(p => {
+          if (p.startsWith(path)) {
+            newSet.delete(p);
+          }
+        });
+      } else {
+        // Expand: add the path
+        newSet.add(path);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Update initial expanded paths when DOM changes
+  useEffect(() => {
+    if (parsedDOM?.documentElement) {
+      const htmlPath = `0-${safeGetTagName(parsedDOM.documentElement)}`;
+      const body = parsedDOM.body;
+      let bodyPath = "";
+      if (body) {
+         bodyPath = `${htmlPath}/1-${safeGetTagName(body)}`;
+      }
+      setExpandedPaths(prev => {
+          const newSet = new Set(prev); // Keep existing expanded states if possible
+          if (!newSet.has(htmlPath)) newSet.add(htmlPath);
+          if (bodyPath && !newSet.has(bodyPath)) newSet.add(bodyPath);
+          return newSet;
+      });
+    }
+  }, [parsedDOM]);
+
   // 입력 필드 스타일 - LLM 노드와 일관된 스타일
   const inputClass = "w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900";
 
   return (
     <div className="p-4 space-y-4">
       <div className="space-y-1">
-        <h3 className="text-lg font-bold">HTML Parser Configuration</h3>
-        <p className="text-sm text-gray-500">CSS 선택자로 HTML에서 데이터를 추출합니다.</p>
-      </div>
-      
-      <div className="space-y-1">
-        <label htmlFor="nodeName" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="nodeLabelInput" className="block text-sm font-medium text-gray-700">
           노드 이름
         </label>
         <input
-          id="nodeName"
+          id="nodeLabelInput"
           className={inputClass}
           type="text"
           value={content?.label || ''}
@@ -375,7 +381,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {content.extractionRules.map((rule, index) => (
+                    {content.extractionRules.map((rule: ExtractionRule, index: number) => (
                       <div 
                         key={index} 
                         className="flex justify-between items-center p-2 bg-gray-50 rounded-md hover:bg-gray-100 border border-gray-200"
@@ -518,28 +524,30 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
             </div>
           ) : (
             <>
-              {/* Search UI */}
-              <div className="flex items-center space-x-2 p-2 border rounded-md bg-gray-50">
+              {/* Search UI - Adjust layout */}
+              <div className="flex flex-col space-y-2 p-2 border rounded-md bg-gray-50">
                 <input
                   type="text"
                   placeholder="텍스트로 DOM 검색..."
                   value={searchQuery}
                   onChange={handleSearchInputChange}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearch()} // Search on Enter
-                  className={`${inputClass} text-sm flex-grow`}
+                  className={`${inputClass} text-sm w-full`}
                 />
-                <Button size="sm" variant="ghost" onClick={() => navigateResults('prev')} disabled={searchResults.length <= 1} title="이전 결과">
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </Button>
-                <span className="text-xs text-gray-600 min-w-[40px] text-center">
-                  {searchResults.length > 0 ? `${currentSearchResultIndex + 1} / ${searchResults.length}` : '0 / 0'}
-                </span>
-                <Button size="sm" variant="ghost" onClick={() => navigateResults('next')} disabled={searchResults.length <= 1} title="다음 결과">
-                  <ChevronRightIcon className="h-4 w-4" />
-                </Button>
-                <Button size="sm" onClick={handleSearch} disabled={!searchQuery} title="검색">
-                  <SearchIcon className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center justify-end space-x-1">
+                  <Button size="sm" variant="ghost" onClick={() => navigateResults('prev')} disabled={searchResults.length <= 1} title="이전 결과">
+                    <ChevronLeftIcon className="h-4 w-4" />
+                  </Button>
+                  <span className="text-xs text-gray-600 min-w-[40px] text-center">
+                    {searchResults.length > 0 ? `${currentSearchResultIndex + 1} / ${searchResults.length}` : '0 / 0'}
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => navigateResults('next')} disabled={searchResults.length <= 1} title="다음 결과">
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" onClick={handleSearch} disabled={!searchQuery} title="검색">
+                    <SearchIcon className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="flex items-center justify-between">
@@ -552,7 +560,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                 )}
               </div>
               
-              {/* DOM 트리 표시 - Use the new component */}
+              {/* DOM 트리 표시 - Pass new props */}
               <div ref={domTreeContainerRef} className="border rounded-md p-2 bg-white h-64 overflow-y-auto scroll-smooth">
                 <div className="text-xs text-gray-500 mb-2">요소를 클릭하여 선택하세요.</div>
                 {parsedDOM && parsedDOM.documentElement && (
@@ -561,6 +569,9 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                     selectedElementPath={selectedElementPath} 
                     onElementSelect={handleElementSelect} 
                     highlightedPath={searchResults[currentSearchResultIndex]}
+                    expandedPaths={expandedPaths} // Pass expanded state
+                    toggleExpand={toggleExpand} // Pass toggle function
+                    // Initial depth and path remain the same
                   />
                 )}
               </div>
