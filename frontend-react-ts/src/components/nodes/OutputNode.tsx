@@ -102,12 +102,12 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
 
   // Log state just before rendering
   const displayContent = renderContentForDisplay();
-  console.log(`[OutputNode ${id}] Rendering:`, {
-    status: nodeState?.status,
-    result: nodeState?.result,
-    format: format,
-    displayContent: displayContent
-  });
+  // console.log(`[OutputNode ${id}] Rendering:`, { // Comment out rendering log
+  //   status: nodeState?.status,
+  //   result: nodeState?.result,
+  //   format: format,
+  //   displayContent: displayContent
+  // });
 
   return (
     <NodeErrorBoundary nodeId={id}>

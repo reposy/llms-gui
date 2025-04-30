@@ -35,10 +35,11 @@ export const useExecutionGraphStore = createWithEqualityFn<ExecutionGraphState>(
         levels.set(node.level, count + 1);
       });
       
-      console.log(`[ExecutionGraphStore] Graph levels: ${maxLevel + 1}`);
-      levels.forEach((count, level) => {
-        console.log(`[ExecutionGraphStore] Level ${level}: ${count} nodes`);
-      });
+      // Comment out detailed level logging
+      // console.log(`[ExecutionGraphStore] Graph levels: ${maxLevel + 1}`);
+      // levels.forEach((count, level) => {
+      //   console.log(`[ExecutionGraphStore] Level ${level}: ${count} nodes`);
+      // });
       
       set({ graph });
     },

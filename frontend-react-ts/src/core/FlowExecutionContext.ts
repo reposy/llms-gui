@@ -126,8 +126,7 @@ export class FlowExecutionContext implements ExecutionContext {
   markNodeRunning(nodeId: string) {
     const message = `Marking node ${nodeId} as running`;
     this.log(message);
-    // Add forced log for testing
-    console.warn(`[FORCED LOG FROM markNodeRunning] ${message}`); 
+    // Remove forced log for testing
     setNodeState(nodeId, { 
       status: 'running', 
       executionId: this.executionId,

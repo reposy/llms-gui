@@ -66,7 +66,7 @@ export class WebCrawlerNode extends Node {
       });
       
       // Log the full backend response for debugging
-      console.log('Backend response:', result);
+      // console.log('Backend response:', result); // Comment out full response log
 
       // Check if crawling utility returned null (network error, etc.)
       if (result === null) {
