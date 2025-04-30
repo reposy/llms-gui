@@ -4,7 +4,6 @@ import { WebCrawlerNodeData } from '../../types/nodes';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
-import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
@@ -15,6 +14,8 @@ import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/u
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 import { useNodeContent, WebCrawlerNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
+import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
+import { NodeStatus } from '../../types/execution';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   // Use useNodeContent hook to get the latest content
@@ -109,6 +110,12 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     );
   }, []);
   
+  // Map node state status to the expected type for NodeStatusIndicator
+  const nodeStatus: NodeStatus = 
+    (nodeState?.status && ['running', 'success', 'error'].includes(nodeState.status))
+    ? nodeState.status as NodeStatus
+    : 'idle';
+
   // Format URL for display
   const displayUrl = crawlerData.url 
     ? (crawlerData.url.length > 30 ? crawlerData.url.substring(0, 27) + '...' : crawlerData.url)
@@ -127,6 +134,11 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
           hasError ? "border-red-500" : ""
         )}
       >
+        {/* Status Indicator - Positioned top-right */}
+        <div className="absolute top-2 right-2 z-10">
+          <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
+        </div>
+
         <NodeHeader 
           nodeId={id}
           label={crawlerData.label || "Web Crawler"}
@@ -174,13 +186,6 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
             )}
           </div>
         </NodeBody>
-        
-        <NodeFooter>
-          {/* Actions or status indicators */}
-          {isRunning && (
-            <div className="text-xs text-blue-500">Processing...</div>
-          )}
-        </NodeFooter>
         
         {/* Input handle */}
         <Handle
