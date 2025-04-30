@@ -17,6 +17,9 @@ import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
+import { useNodeContentStore } from '../../store/useNodeContentStore';
+import { setNodeContent } from '../../store/useNodeContentStore';
+import { setNodes } from '../../store/useFlowStructureStore';
 
 interface Props {
   id: string;
@@ -32,6 +35,8 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
+  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodesLocal = useFlowStructureStore(state => state.setNodes);
   
   // Get from Zustand store instead of Redux
   const viewMode = useNodeViewMode(id);
@@ -57,8 +62,24 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
 
   // Encapsulate label update logic
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // Implement label update logic if needed, or leave as a no-op
-  }, []);
+    // 1. Update NodeContentStore (config state)
+    setNodeContentLocal(nodeId, { label: newLabel });
+
+    // 2. Update FlowStructureStore (React Flow rendering state)
+    const updatedNodes = nodes.map(node =>
+      node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              label: newLabel
+            }
+          }
+        : node
+    );
+    setNodesLocal(updatedNodes);
+    console.log(`[JSONExtractorNode] Updated label for node ${nodeId} in both stores.`);
+  }, [nodes, setNodesLocal, setNodeContentLocal]);
 
   const handleRun = useCallback(() => {
     // Create execution context

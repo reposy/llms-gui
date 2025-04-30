@@ -7,6 +7,9 @@ import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { Listbox, Transition } from '@headlessui/react';
+import { EditableNodeLabel } from './shared/EditableNodeLabel';
+import { useNodeContentStore } from '../../store/useNodeContentStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 // Type for props
 interface MergerNodeProps {
@@ -46,6 +49,10 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
   
   // Use the merger node data hook
   const { items, itemCount, resetItems } = useMergerNodeData({ nodeId: id });
+  
+  // Get functions from stores
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const { nodes, setNodes } = useFlowStructureStore(state => ({ nodes: state.nodes, setNodes: state.setNodes }));
   
   // Cast data to runtime type for property access
   const runtimeData = data as RuntimeMergerNodeData;
@@ -93,6 +100,27 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
     
     // Implement separator update logic if needed, or leave as a no-op
   }, []);
+
+  // Handle label update (Implement the standard pattern)
+  const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
+    // 1. Update NodeContentStore
+    setNodeContent(updatedNodeId, { label: newLabel });
+
+    // 2. Update FlowStructureStore
+    const updatedNodes = nodes.map(node =>
+      node.id === updatedNodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              label: newLabel
+            }
+          }
+        : node
+    );
+    setNodes(updatedNodes);
+    console.log(`[MergerNode] Updated label for node ${updatedNodeId} in both stores.`);
+  }, [nodes, setNodes, setNodeContent]);
 
   // Handle reset button click
   const handleResetClick = useCallback(() => {
@@ -170,7 +198,13 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
       {/* Node content */}
       <div className="flex flex-col items-center w-full">
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 w-full flex justify-between items-center">
-          <span>{data.label || 'Merger'}</span>
+          <EditableNodeLabel 
+            nodeId={id} 
+            initialLabel={data.label || 'Merger'} 
+            placeholderLabel="Merger"
+            onLabelUpdate={handleLabelUpdate}
+            labelClassName="text-sm font-semibold text-slate-700 dark:text-slate-200"
+          />
           <span className={clsx(
             "text-xs px-2 py-0.5 rounded-full",
             itemCount > 0

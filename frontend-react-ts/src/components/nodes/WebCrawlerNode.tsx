@@ -11,10 +11,10 @@ import { VIEW_MODES } from '../../store/viewModeStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeContentStore';
+import { useNodeContent, WebCrawlerNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   // Use useNodeContent hook to get the latest content
@@ -30,6 +30,8 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Get flow structure
   const { nodes, edges } = useFlowStructureStore();
+  // Get the setNodes function from the store
+  const setNodes = useFlowStructureStore(state => state.setNodes); // Directly use the setNodes from the hook
   
   // Handle run button click
   const handleRun = useCallback(() => {
@@ -81,10 +83,24 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // Update the label in the Zustand store
-    updateContent({ label: newLabel });
-    console.log(`Updated label for node ${nodeId} to ${newLabel} in store`);
-  }, [updateContent]);
+    // 1. Update NodeContentStore (config state)
+    setNodeContentGlobal(nodeId, { label: newLabel }); // Use imported setNodeContent
+
+    // 2. Update FlowStructureStore (React Flow rendering state)
+    const updatedNodes = nodes.map(node =>
+      node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              label: newLabel
+            }
+          }
+        : node
+    );
+    setNodes(updatedNodes); // Use setNodes obtained from the hook
+    console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
+  }, [nodes, setNodes, updateContent]); // Add nodes and setNodes to dependencies, keep updateContent for potential future use or remove if unused by setNodeContentGlobal directly
   
   // Handle toggle view
   const handleToggleView = useCallback(() => {

@@ -9,6 +9,8 @@ import { NodeBody } from './shared/NodeBody';
 import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
 import { useConditionalNodeData } from '../../hooks/useConditionalNodeData';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useNodeContentStore } from '../../store/useNodeContentStore';
 
 export const ConditionalNode: React.FC<NodeProps> = memo(({ id, data, selected, isConnectable = true }) => {
   // Cast data to ConditionalNodeData where needed
@@ -26,9 +28,27 @@ export const ConditionalNode: React.FC<NodeProps> = memo(({ id, data, selected, 
     updateConditionalContent,
   } = useConditionalNodeData({ nodeId: id });
 
-  const handleLabelUpdate = useCallback((newLabel: string) => {
-    updateConditionalContent({ label: newLabel });
-  }, [updateConditionalContent]);
+  // Get functions from stores
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const { nodes, setNodes } = useFlowStructureStore(state => ({ nodes: state.nodes, setNodes: state.setNodes }));
+
+  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
+    setNodeContent(nodeId, { label: newLabel });
+
+    const updatedNodes = nodes.map(node =>
+      node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              label: newLabel
+            }
+          }
+        : node
+    );
+    setNodes(updatedNodes);
+    console.log(`[ConditionalNode] Updated label for node ${nodeId} in both stores.`);
+  }, [nodes, setNodes, setNodeContent]);
 
   const handleConditionTypeChangeEvent = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = event.target.value as ConditionType;

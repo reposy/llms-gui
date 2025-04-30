@@ -15,6 +15,7 @@ import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useE
 import { useNodeStateStore } from '../../store/useNodeStateStore';
 import { runFlow } from '../../core/FlowRunner';
 import { EditableNodeLabel } from './shared/EditableNodeLabel';
+import { useNodeContentStore, setNodeContent } from '../../store/useNodeContentStore';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
@@ -30,10 +31,12 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const executionContextRef = useRef<FlowExecutionContext | null>(null);
   
   const { 
-    label, 
+    label: initialLabel,
     isCollapsed, 
-    handleLabelChange,
   } = useGroupNodeData({ nodeId: id });
+
+  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodesLocal = useFlowStructureStore(state => state.setNodes);
 
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
     // Check both parentId and parentNode properties to support both formats
@@ -143,6 +146,28 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     }
   }, [id, setNodes]);
 
+  // --- Define LOCAL label update handler --- 
+  const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
+    // 1. Update NodeContentStore (config state)
+    setNodeContentLocal(updatedNodeId, { label: newLabel });
+
+    // 2. Update FlowStructureStore (React Flow rendering state)
+    const updatedNodes = allNodes.map(node => 
+      node.id === updatedNodeId
+        ? { 
+            ...node, 
+            data: { 
+              ...node.data, 
+              label: newLabel 
+            } 
+          } 
+        : node
+    );
+    setNodesLocal(updatedNodes); // Use the function obtained from the store hook
+    console.log(`[GroupNode] Updated label for node ${updatedNodeId} in both stores.`);
+  }, [allNodes, setNodesLocal, setNodeContentLocal]); // Add dependencies
+  // --- End LOCAL handler ---
+
   return (
     <>
       <NodeResizer
@@ -175,9 +200,9 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         >
           <EditableNodeLabel
             nodeId={id}
-            initialLabel={label}
+            initialLabel={initialLabel}
             placeholderLabel="Group"
-            onLabelUpdate={handleLabelChange}
+            onLabelUpdate={handleLabelUpdate}
             labelClassName="text-xs text-orange-800 font-medium mr-2"
           />
           <button
