@@ -4,7 +4,7 @@ import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, ChevronUpIcon } from "..
 import { ExtractionRule } from "../../types/nodes";
 import { useNodeContent, useNodeContentStore } from "../../store/useNodeContentStore";
 import { NodeHeader } from "../nodes/shared/NodeHeader";
-import { useFlowStructureStore } from "../../store/useFlowStructureStore";
+import { useFlowStructureStore, setNodes } from "../../store/useFlowStructureStore";
 import { useNodeState } from "../../store/useNodeStateStore";
 import { safeGetTagName, safeGetClassList, safeGetChildren, generateSelector } from "../../utils/domUtils";
 import DOMTreeNode from './DOMTreeView';
@@ -43,7 +43,6 @@ const getAncestorPaths = (path: string): string[] => {
 };
 
 export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ nodeId }) => {
-  // 노드 컨텐츠 가져오기
   const { content } = useNodeContent(nodeId);
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
   const { nodes, edges } = useFlowStructureStore();
@@ -223,19 +222,6 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   };
   
   // 업데이트 핸들러
-  const handleLabelChange = (newLabel: string) => {
-    // 노드 콘텐츠 업데이트 (이것만으로 충분)
-    setNodeContent(nodeId, { label: newLabel });
-    
-    // Flow Structure 노드 라벨 업데이트 제거
-    // const updatedNodes = nodes.map(node => 
-    //   node.id === nodeId
-    //     ? { ...node, data: { ...node.data, label: newLabel } } 
-    //     : node
-    // );
-    // setStructureNodes(updatedNodes);
-  };
-
   const handleAddRule = () => {
     setTemporaryRule({
       name: "",
@@ -507,20 +493,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
 
   return (
     <div className="p-4 space-y-4">
-      <div className="space-y-1">
-        <label htmlFor="nodeLabelInput" className="block text-sm font-medium text-gray-700">
-          노드 이름
-        </label>
-        <input
-          id="nodeLabelInput"
-          className={inputClass}
-          type="text"
-          value={content?.label || ''}
-          onChange={(e) => handleLabelChange(e.target.value)}
-        />
-      </div>
-      
-      {/* 탭 네비게이션 */}
+      {/* Tab Navigation */}
       <div className="flex border-b">
         <button
           className={`px-4 py-2 text-sm font-medium ${viewMode === "rules" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"}`}
@@ -536,7 +509,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         </button>
       </div>
       
-      {/* 추출 규칙 뷰 */}
+      {/* Rules View */}
       {viewMode === "rules" && (
         <>
           {/* Section Header and Add Button */}
@@ -708,7 +681,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         </>
       )}
       
-      {/* DOM 구조 탐색 뷰 */}
+      {/* DOM Explorer View */}
       {viewMode === "dom" && (
         <div className="space-y-4">
           {!htmlContent ? (

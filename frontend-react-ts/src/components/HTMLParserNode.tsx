@@ -1,18 +1,23 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { useNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { HTMLParserNodeContent } from '../store/useNodeContentStore';
+import { HTMLParserNodeContent, ExtractionRule } from '../store/useNodeContentStore';
 import NodeErrorBoundary from './nodes/NodeErrorBoundary';
 import { getNodeState } from '../store/useNodeStateStore';
 import clsx from 'clsx';
 import { EditableNodeLabel } from './nodes/shared/EditableNodeLabel';
+import { useFlowStructureStore, setNodes } from '../store/useFlowStructureStore';
 
 /**
  * HTML Parser 노드의 UI 컴포넌트
  */
 export function HTMLParserNode({ id, selected, data }: NodeProps) {
-  const { extractionRules, label } = useNodeContent<HTMLParserNodeContent>(id);
+  const { content } = useNodeContent<HTMLParserNodeContent>(id);
+  const extractionRules = content?.extractionRules;
+  const label = content?.label;
+  
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const currentNodes = useFlowStructureStore(state => state.nodes);
   const nodeState = getNodeState(id);
   
   // 결과 데이터 가져오기
@@ -22,8 +27,22 @@ export function HTMLParserNode({ id, selected, data }: NodeProps) {
   const hasError = nodeStatus === 'error';
   const errorMessage = nodeState?.error;
 
-  const handleLabelUpdate = (nodeId: string, newLabel: string) => {
-    setNodeContent(nodeId, { label: newLabel });
+  const handleLabelUpdate = (updatedNodeId: string, newLabel: string) => {
+    setNodeContent(updatedNodeId, { label: newLabel });
+
+    const updatedNodes = currentNodes.map(node => 
+      node.id === updatedNodeId
+        ? { 
+            ...node, 
+            data: { 
+              ...node.data,
+              label: newLabel
+            } 
+          } 
+        : node
+    );
+    setNodes(updatedNodes);
+    console.log(`[HTMLParserNode] Updated label for node ${updatedNodeId} in both stores.`);
   };
 
   const displayContent = () => {
@@ -36,7 +55,7 @@ export function HTMLParserNode({ id, selected, data }: NodeProps) {
       <div className="mb-2">
         <div className="text-sm font-medium mb-1">추출 규칙:</div>
         <div className="text-xs overflow-y-auto max-h-32 bg-gray-50 p-2 rounded">
-          {extractionRules.map((rule, index) => (
+          {extractionRules.map((rule: ExtractionRule, index: number) => (
             <div key={index} className="mb-1 pb-1 border-b border-gray-200 last:border-0">
               <div className="flex justify-between">
                 <span className="font-medium">{rule.name}:</span>
@@ -44,7 +63,7 @@ export function HTMLParserNode({ id, selected, data }: NodeProps) {
               </div>
               <div className="text-xs text-gray-700">{rule.selector}</div>
               <div className="text-xs text-gray-500">
-                {rule.target === 'attribute' ? `속성: ${rule.attribute_name}` : `대상: ${rule.target}`}
+                {rule.target === 'attribute' ? `속성: ${rule.attribute_name || ''}` : `대상: ${rule.target}`}
               </div>
             </div>
           ))}
