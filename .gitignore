@@ -45,6 +45,7 @@ htmlcov/
 # Project-specific
 flow-*.json
 *.local
+/import/
 
 # Misc
 .tmp/
