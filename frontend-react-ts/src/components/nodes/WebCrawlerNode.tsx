@@ -16,6 +16,7 @@ import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useE
 import { useNodeContent, WebCrawlerNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';
+import { runFlow } from '../../core/FlowRunner';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   // Use useNodeContent hook to get the latest content
@@ -32,53 +33,15 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   // Get flow structure
   const { nodes, edges } = useFlowStructureStore();
   // Get the setNodes function from the store
-  const setNodes = useFlowStructureStore(state => state.setNodes); // Directly use the setNodes from the hook
+  const setNodes = useFlowStructureStore(state => state.setNodes);
   
-  // Handle run button click
+  // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {
-    // Create execution context
-    const executionId = `exec-${uuidv4()}`;
-    const executionContext = new FlowExecutionContext(executionId);
-    
-    // Set trigger node
-    executionContext.setTriggerNode(id);
-    
-    console.log(`[WebCrawlerNode] Starting execution for node ${id}`);
-    
-    // Build execution graph
-    buildExecutionGraphFromFlow(nodes, edges);
-    const executionGraph = getExecutionGraph();
-    
-    // Create node factory
-    const nodeFactory = new NodeFactory();
-    registerAllNodeTypes();
-    
-    // Find the node data
-    const node = nodes.find(n => n.id === id);
-    if (!node) {
-      console.error(`[WebCrawlerNode] Node ${id} not found.`);
-      return;
-    }
-    
-    // Create the node instance
-    const nodeInstance = nodeFactory.create(
-      id,
-      node.type as string,
-      node.data,
-      executionContext
-    );
-    
-    // Attach graph structure reference to the node property
-    nodeInstance.property = {
-      ...nodeInstance.property,
-      nodes,
-      edges,
-      executionGraph
-    };
-    
-    // Execute the node
-    nodeInstance.process({}).catch(error => {
-      console.error(`[WebCrawlerNode] Error executing node ${id}:`, error);
+    console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
+    // Call runFlow with the current node's ID as the startNodeId
+    runFlow(nodes, edges, id).catch((error: Error) => {
+        console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
+        // Optionally, mark the node as error in UI state here if needed
     });
   }, [id, nodes, edges]);
   

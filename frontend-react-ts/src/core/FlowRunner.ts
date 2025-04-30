@@ -94,6 +94,9 @@ export class FlowRunner {
           executionGraph // Add the execution graph to allow for dynamic relationship resolution
         };
         
+        // Mark the node as running
+        context.markNodeRunning(nodeIdToExecute);
+
         // Execute the node with an empty input object
         await nodeInstance.process({});
         
