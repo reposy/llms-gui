@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Button } from "../ui/button";
-import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "../Icons";
+import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, ChevronUpIcon } from "../Icons";
 import { ExtractionRule } from "../../types/nodes";
 import { useNodeContent, useNodeContentStore } from "../../store/useNodeContentStore";
 import { NodeHeader } from "../nodes/shared/NodeHeader";
@@ -8,6 +8,8 @@ import { useFlowStructureStore } from "../../store/useFlowStructureStore";
 import { useNodeState } from "../../store/useNodeStateStore";
 import { safeGetTagName, safeGetClassList, safeGetChildren, generateSelector } from "../../utils/domUtils";
 import DOMTreeNode from './DOMTreeView';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Input } from "../ui/input";
 
 // Define structure for path steps
 interface PathStep {
@@ -19,6 +21,8 @@ interface PathStep {
 interface HTMLParserNodeConfigProps {
   nodeId: string;
 }
+
+type SearchTarget = "TEXT" | "CLASS" | "ID"; // Define search target types
 
 /**
  * HTML 파서 노드 설정 컴포넌트
@@ -60,9 +64,10 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
   // State for DOM text search
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [searchResults, setSearchResults] = useState<string[]>([]); // Stores paths of matching elements
+  const [searchResults, setSearchResults] = useState<string[]>([]);
   const [currentSearchResultIndex, setCurrentSearchResultIndex] = useState<number>(-1);
-  const domTreeContainerRef = useRef<HTMLDivElement>(null); // Ref for scrolling
+  const domTreeContainerRef = useRef<HTMLDivElement>(null);
+  const [searchTarget, setSearchTarget] = useState<SearchTarget>("TEXT");
   
   // State for expanded DOM nodes
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
@@ -129,29 +134,75 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     }
   }, [sourceNodeId, sourceNodeState, htmlContent]);
   
-  // Callback function for when an element is selected in the DOM tree view
+  // Add helper function to find element by path (needed for auto-selection)
+  const findElementByPath = (rootElement: Element | null, targetPath: string): Element | null => {
+      if (!rootElement || !targetPath) return null;
+  
+      const pathParts = targetPath.split('/');
+      let currentElement: Element | null = rootElement;
+  
+      // Check root matches the first part of the path
+      const rootTag = safeGetTagName(rootElement);
+      const rootPathPart = `0-${rootTag}`;
+      if (pathParts.length === 0 || pathParts[0] !== rootPathPart) {
+          console.warn("Root path mismatch", pathParts[0], rootPathPart);
+          return null; // Path doesn't start from the provided root
+      }
+  
+      for (let i = 1; i < pathParts.length; i++) {
+          if (!currentElement) return null;
+          const part = pathParts[i];
+          const match = part.match(/^(\d+)-(.+)$/);
+          if (!match) return null; // Invalid path part format
+  
+          const childIndex = parseInt(match[1], 10);
+          // const childTagName = match[2]; // Tag name check might be redundant if index is reliable
+  
+          // Get only element children
+          const children = Array.from(safeGetChildren(currentElement)).filter(node => node.nodeType === Node.ELEMENT_NODE);
+          
+          if (childIndex >= children.length) {
+              console.warn("Child index out of bounds", childIndex, children.length, currentElement);
+              return null; // Index out of bounds
+          }
+  
+          const nextElement = children[childIndex] as Element;
+          currentElement = nextElement;
+      }
+  
+      return currentElement;
+  };
+
+  // Callback function for element selection (Updated Level Calculation)
   const handleElementSelect = useCallback((path: string, selector: string, preview: string) => {
-    // Restore state updates
     setSelectedElementPath(path);
     setGeneratedSelector(selector);
     setSelectedElementPreview(preview);
 
-    // Parse the path string into steps
+    // Calculate path steps with correct level based on path depth
     const steps: PathStep[] = [];
     if (path) {
       const parts = path.split('/');
-      parts.forEach(part => {
+      parts.forEach((part, index) => { // Use index to determine level
         const match = part.match(/^(\d+)-(.+)$/);
         if (match) {
-          const level = parseInt(match[1], 10) + 1;
+          const level = index + 1; // Level is index + 1
           const tag = match[2];
-          // Placeholder for details, could be enhanced later
-          steps.push({ level, tag, details: '' }); 
+          const siblingIndex = parseInt(match[1], 10);
+          // Add sibling index to details for clarity
+          steps.push({ level, tag, details: `(index: ${siblingIndex})` }); 
         }
       });
     }
     setSelectedElementPathSteps(steps);
-  }, []);
+    
+    // Expand ancestors (existing logic)
+    if (path) { // Only expand if a valid path is selected
+        const ancestors = getAncestorPaths(path);
+        setExpandedPaths(prev => new Set([...prev, ...ancestors, path]));
+    }
+
+  }, [setExpandedPaths]); 
   
   // 선택기로 요소 사용하기
   const useSelectedElement = () => {
@@ -236,7 +287,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setEditingRuleIndex(null);
   };
 
-  // Function to perform text search within the parsed DOM
+  // Function to perform search (Optimized scrolling/highlighting)
   const performSearch = useCallback(() => {
     if (!parsedDOM || !searchQuery) {
       setSearchResults([]);
@@ -246,75 +297,110 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
 
     const query = searchQuery.toLowerCase();
     const results: string[] = [];
+    const addedPaths = new Set<string>();
 
-    // Keep the temporary workaround using querySelectorAll
-    const allElements = parsedDOM.querySelectorAll('*');
-    const matchingPaths: string[] = [];
-    const tempPathMap = new Map<Element, string>();
+    const elements = parsedDOM.querySelectorAll('*'); 
+    const elementPathMap = new Map<Element, string>();
 
-    // Need to reconstruct the path generation from renderDOMTree accurately
     function buildPathMap(element: Element | null, depth = 0, path = "") {
-        if (!element) return;
-        const tagName = safeGetTagName(element);
-        if (!tagName) return;
-        const currentPath = path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`;
-        tempPathMap.set(element, currentPath);
-        const children = safeGetChildren(element);
-        children.forEach((child, index) => buildPathMap(child, depth + 1, currentPath));
-    }
+      if (!element) return;
+      const tagName = safeGetTagName(element);
+      const newPath = path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`;
+      elementPathMap.set(element, newPath);
 
+      const children = safeGetChildren(element);
+      if (children) {
+        Array.from(children).forEach((child, index) => {
+          if (child.nodeType === Node.ELEMENT_NODE) {
+            buildPathMap(child as Element, index, newPath);
+          }
+        });
+      }
+    }
     if (parsedDOM.documentElement) {
         buildPathMap(parsedDOM.documentElement);
-        const addedPaths = new Set<string>(); // Keep track of added parent paths
-        allElements.forEach(el => {
-            const path = tempPathMap.get(el);
-            if (!path) return; // Skip if path couldn't be determined
-            
-            try {
-                const outerHTML = el.outerHTML;
-                if (outerHTML && outerHTML.toLowerCase().includes(query)) {
-                   if (!addedPaths.has(path)) { // Check if path already added
-                        matchingPaths.push(path);
-                        addedPaths.add(path);
-                        // Log match details based on outerHTML check
-                        console.log(`[Search Match] Path: ${path}, Tag: ${safeGetTagName(el)}, Reason: outerHTML contains query`); 
-                    }
-                }
-            } catch (e) {
-                 console.warn(`Error processing element outerHTML for search at path: ${path}`, el, e);
-            }
-        });
     }
 
-    setSearchResults(matchingPaths);
-    setCurrentSearchResultIndex(matchingPaths.length > 0 ? 0 : -1);
-    console.log("[Search Result Paths]:", matchingPaths); // Keep this log to see all paths
-     // Scroll to the first result if found
-    if (matchingPaths.length > 0) {
-      // highlightAndScrollToResult(0, matchingPaths); // Call scroll function
+    elements.forEach(element => {
+      const path = elementPathMap.get(element);
+      if (!path || addedPaths.has(path)) {
+          return; 
+      }
+
+      let isMatch = false;
+      
+      switch (searchTarget) {
+        case "TEXT":
+          // --- MODIFIED LOGIC for direct text match ---
+          let directMatch = false;
+          for (const childNode of Array.from(element.childNodes)) {
+            if (childNode.nodeType === Node.TEXT_NODE && childNode.textContent?.toLowerCase().includes(query)) {
+              directMatch = true;
+              break; 
+            }
+          }
+          if (directMatch) {
+            isMatch = true;
+          }
+          // --- END MODIFIED LOGIC ---
+          break;
+        case "CLASS":
+          if (element.className && typeof element.className === 'string' && element.className.toLowerCase().includes(query)) {
+            isMatch = true;
+          }
+          break;
+        case "ID":
+          if (element.id && element.id.toLowerCase().includes(query)) {
+            isMatch = true;
+          }
+          break;
+        default:
+          break;
+      }
+
+      if (isMatch) {
+        results.push(path);
+        addedPaths.add(path);
+      }
+    });
+
+    setSearchResults(results);
+    const newIndex = results.length > 0 ? 0 : -1;
+    setCurrentSearchResultIndex(newIndex); // Update index, DOMTreeView useEffect will handle scroll/highlight
+    console.log("[Search Result Paths based on ", searchTarget, "]:", results); 
+
+    // Auto-select the first result if found
+    if (newIndex !== -1 && results.length > 0) {
+      const firstResultPath = results[newIndex];
+      const targetElement = findElementByPath(parsedDOM.documentElement, firstResultPath);
+      if (targetElement) {
+          const selector = generateSelector(targetElement);
+          const preview = targetElement.outerHTML || '';
+          // Call handleElementSelect to update selection and trigger expansion
+          handleElementSelect(firstResultPath, selector, preview); 
+      } else {
+         console.warn("Could not find element for path:", firstResultPath); 
+         handleElementSelect("", "", ""); // Clear selection if element not found
+      }
+    } else {
+        handleElementSelect("", "", ""); // Clear selection if no results
     }
-  }, [parsedDOM, searchQuery]);
+
+  }, [parsedDOM, searchQuery, searchTarget, setExpandedPaths, handleElementSelect, findElementByPath]); // Added findElementByPath dependency
 
   // Function to handle search input changes (debounced)
-  // TODO: Implement debouncing for performance
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
-    // Trigger search immediately for now, add debounce later
-    // Clear previous results immediately
     setSearchResults([]);
     setCurrentSearchResultIndex(-1);
-    // Basic immediate search call:
-    // if (e.target.value.length > 1) { // Only search if query is long enough
-    //  performSearch(e.target.value); // Pass query directly
-    // }
   };
 
-  // Handle search execution (e.g., on button click or debounced input)
+  // ADD BACK: Handle search execution (on button click or Enter)
   const handleSearch = () => {
-    performSearch();
+    performSearch(); 
   };
 
-  // Function to navigate search results
+  // Function to navigate search results (Optimized scrolling/highlighting)
   const navigateResults = (direction: 'prev' | 'next') => {
     if (searchResults.length === 0) return;
 
@@ -324,16 +410,25 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     } else {
       nextIndex = (currentSearchResultIndex - 1 + searchResults.length) % searchResults.length;
     }
-    setCurrentSearchResultIndex(nextIndex);
-    // highlightAndScrollToResult(nextIndex, searchResults); // Call scroll function
+    setCurrentSearchResultIndex(nextIndex); // Update index, DOMTreeView useEffect will handle scroll/highlight
+    
+    // Auto-select the element at the new index
+    const nextPath = searchResults[nextIndex];
+    if (nextPath && parsedDOM?.documentElement) {
+        const targetElement = findElementByPath(parsedDOM.documentElement, nextPath);
+        if (targetElement) {
+            const selector = generateSelector(targetElement);
+            const preview = targetElement.outerHTML || '';
+            // Call handleElementSelect to update selection and trigger expansion
+            handleElementSelect(nextPath, selector, preview); 
+        } else {
+            console.warn("Could not find element for path during navigation:", nextPath);
+            handleElementSelect("", "", ""); // Clear selection if element not found
+        }
+    } else {
+        handleElementSelect("", "", ""); // Clear selection if path is invalid
+    }
   };
-
-  // TODO: Implement highlightAndScrollToResult function
-  // This function needs to:
-  // 1. Get the path from searchResults[index]
-  // 2. Find the corresponding element in the DOM Tree view (might need refs in DOMTreeView)
-  // 3. Call element.scrollIntoView()
-  // 4. Update a state variable passed to DOMTreeView to highlight the element
 
   // Function to toggle node expansion
   const toggleExpand = useCallback((path: string) => {
@@ -372,27 +467,43 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     }
   }, [parsedDOM]);
 
-  // Effect to expand ancestors when search result changes
-  useEffect(() => {
-    if (currentSearchResultIndex >= 0 && searchResults.length > 0) {
-      const highlightedPath = searchResults[currentSearchResultIndex];
-      if (highlightedPath) {
-        const ancestors = getAncestorPaths(highlightedPath);
-        // console.log("[HTMLParserNodeConfig] Expanding ancestors for path:", highlightedPath, ancestors); // Remove ancestor log
-        setExpandedPaths(prev => {
-          const pathsToAdd = ancestors.filter(p => !prev.has(p));
-          if (pathsToAdd.length > 0) {
-            // Only create new Set if changes are needed
-            return new Set([...prev, ...pathsToAdd]);
-          }
-          return prev; // No change, return previous set
-        });
-      }
-    }
-  }, [currentSearchResultIndex, searchResults]); // Depend on index and results
-
   // 입력 필드 스타일 - LLM 노드와 일관된 스타일
   const inputClass = "w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900";
+
+  // Handler for search target change
+  const handleSearchTargetChange = (value: string) => {
+      setSearchTarget(value as SearchTarget);
+      // Trigger search immediately when target changes for better UX
+      if(searchQuery) { // Only trigger if there's an existing query
+          performSearch(); 
+      }
+  };
+
+  // --- NEW: Handler to select parent element ---
+  const handleSelectParent = () => {
+      if (!selectedElementPath || !parsedDOM?.documentElement) return;
+
+      // Check if it's already the root
+      const rootPath = `0-${safeGetTagName(parsedDOM.documentElement ?? null)}`;
+      if (selectedElementPath === rootPath) return; // Cannot go above root
+
+      const lastSlashIndex = selectedElementPath.lastIndexOf('/');
+      if (lastSlashIndex === -1) return; // Should not happen if not root
+
+      const parentPath = selectedElementPath.substring(0, lastSlashIndex);
+      if (!parentPath) return; // Safety check
+
+      const parentElement = findElementByPath(parsedDOM.documentElement, parentPath);
+
+      if (parentElement) {
+          const selector = generateSelector(parentElement);
+          const preview = parentElement.outerHTML || '';
+          handleElementSelect(parentPath, selector, preview);
+      } else {
+          console.warn("Could not find parent element for path:", parentPath);
+      }
+  };
+  // --- END NEW Handler ---
 
   return (
     <div className="p-4 space-y-4">
@@ -610,16 +721,34 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
             </div>
           ) : (
             <>
-              {/* Search UI - Adjust layout */}
+              {/* Search UI - Add Select above Input */}
               <div className="flex flex-col space-y-2 p-2 border rounded-md bg-gray-50">
+                {/* ADDED: Search Target Select */}
+                <div className="flex items-center space-x-2">
+                    <label htmlFor="searchTargetSelect" className="text-sm font-medium text-gray-700 flex-shrink-0">검색 대상:</label>
+                    <Select value={searchTarget} onValueChange={handleSearchTargetChange}>
+                        <SelectTrigger id="searchTargetSelect" className="h-9 w-auto min-w-[120px]"> {/* Adjusted width */} 
+                            <SelectValue placeholder="검색 대상 선택" />
+                        </SelectTrigger>
+                        <SelectContent className="w-auto"> 
+                            {/* Add whitespace-nowrap to prevent text wrapping */}
+                            <SelectItem value="TEXT" className="whitespace-nowrap">TEXT (내용)</SelectItem>
+                            <SelectItem value="CLASS" className="whitespace-nowrap">CLASS (클래스)</SelectItem>
+                            <SelectItem value="ID" className="whitespace-nowrap">ID (아이디)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Existing Search Input */}
                 <input
                   type="text"
-                  placeholder="텍스트로 DOM 검색..."
+                  placeholder="검색어 입력..."
                   value={searchQuery}
                   onChange={handleSearchInputChange}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()} // Search on Enter
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()} 
                   className={`${inputClass} text-sm w-full`}
                 />
+                {/* Existing Search Navigation Buttons */}
                 <div className="flex items-center justify-end space-x-1">
                   <Button size="sm" variant="ghost" onClick={() => navigateResults('prev')} disabled={searchResults.length <= 1} title="이전 결과">
                     <ChevronLeftIcon className="h-4 w-4" />
@@ -657,29 +786,45 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                     highlightedPath={searchResults[currentSearchResultIndex]}
                     expandedPaths={expandedPaths} // Pass expanded state
                     toggleExpand={toggleExpand} // Pass toggle function
-                    // Initial depth and path remain the same
                   />
                 )}
               </div>
               
-              {/* 선택된 요소 정보 */}
+              {/* Selected Element Info (Adjust Button Placement) */}
               {generatedSelector && (
-                <div className="border rounded-md p-3 bg-gray-50 space-y-3"> {/* Added space-y-3 */}
+                <div className="border rounded-md p-3 bg-gray-50 space-y-3">
+                  {/* Title */} 
                   <h4 className="text-sm font-medium text-gray-700">선택된 요소</h4>
                   
-                  {/* Display Path Steps */}
-                  {selectedElementPathSteps.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-600 mb-1">경로:</div>
-                      <div className="text-sm font-mono bg-white p-1 border rounded text-gray-800 space-y-0.5 text-[11px] leading-tight">
-                        {selectedElementPathSteps.map((step) => (
-                          <div key={step.level}>Lv{step.level}: {step.tag} {step.details}</div>
-                        ))}
-                      </div>
+                  {/* Path Display with Select Parent Button */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-gray-600">경로:</span>
+                        {/* Add Select Parent button */}
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={handleSelectParent} 
+                            disabled={!selectedElementPath || selectedElementPath === `0-${safeGetTagName(parsedDOM?.documentElement ?? null)}`}
+                            title="부모 요소 선택"
+                            className="p-1 h-auto"
+                        >
+                            <ChevronUpIcon className="h-4 w-4" />
+                        </Button>
                     </div>
-                  )}
+                    {/* Path Steps List */} 
+                    <div className="text-sm font-mono bg-white p-1 border rounded text-gray-800 space-y-0.5 text-[11px] leading-tight max-h-24 overflow-y-auto">
+                      {selectedElementPathSteps.length > 0 ? (
+                          selectedElementPathSteps.map((step) => (
+                            <div key={`${step.level}-${step.tag}-${step.details}`}>{`Lv${step.level}: ${step.tag} ${step.details || ''}`}</div>
+                          ))
+                      ) : (
+                          <div className="text-gray-400 italic">경로 정보 없음</div>
+                      )}
+                    </div>
+                  </div>
 
-                  {/* Display CSS Selector */}
+                  {/* CSS Selector Display */}
                   <div>
                     <div className="text-xs font-medium text-gray-600">CSS 선택자:</div>
                     <div className="text-sm font-mono bg-white p-1 border rounded text-gray-800 text-[11px] leading-tight">
@@ -687,12 +832,20 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                     </div>
                   </div>
                   
-                  {/* Display Preview */}
+                  {/* Preview Display */}
                   <div>
                     <div className="text-xs font-medium text-gray-600">미리보기:</div>
                     <div className="text-xs font-mono bg-white p-1 border rounded max-h-24 overflow-y-auto">
                       <pre className="whitespace-pre-wrap">{selectedElementPreview}</pre>
                     </div>
+                  </div>
+
+                  {/* Use Button (Moved to the end, right-aligned) */}
+                  <div className="flex justify-end mt-2">
+                      <Button size="sm" variant="outline" onClick={useSelectedElement}>
+                          <span className="mr-1">✓</span>
+                          이 요소 사용하기
+                      </Button>
                   </div>
                 </div>
               )}
