@@ -6,6 +6,15 @@ import { LLMRequestParams } from '../services/llm/types.ts';
 import { filterImageFiles, hasImageExtension } from '../utils/data/fileUtils.ts';
 
 /**
+ * Represents the prepared inputs for the LLM service call.
+ */
+interface PreparedLlmInputs {
+  finalPrompt: string;
+  inputFileObjects: File[] | undefined;
+  textInputs: string[]; // Keep track of extracted text for validation purposes
+}
+
+/**
  * LLM node for generating text via LLM providers
  */
 export class LlmNode extends Node {
@@ -83,94 +92,207 @@ export class LlmNode extends Node {
   }
 
   /**
+   * Validates that required node properties (provider, model) are set.
+   * @returns An error message string if validation fails, otherwise null.
+   */
+  private _validateRequiredProperties(): string | null {
+      const provider = this.property?.provider;
+      const model = this.property?.model;
+
+      if (!provider || !model) {
+          const errorMsg = "Missing required properties: provider or model.";
+          this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}. Properties were: ${JSON.stringify(this.property)}`);
+          return errorMsg;
+      }
+      return null; // Validation passed
+  }
+
+  /**
+   * Prepares the final prompt, image file objects, and extracted text inputs
+   * based on the input data, mode, and base prompt.
+   * @param input The raw input to the node.
+   * @param mode The execution mode ('text' or 'vision').
+   * @param basePrompt The initial prompt string from node properties.
+   * @returns An object containing the prepared inputs.
+   */
+  private _prepareLlmInputs(input: any, mode: 'text' | 'vision', basePrompt: string): PreparedLlmInputs {
+      let finalPrompt = basePrompt;
+      let inputFileObjects: File[] | undefined = undefined;
+      let textInputs: string[] = [];
+
+      // 1. Input is Array
+      if (Array.isArray(input)) {
+          this.context?.log(`${this.type}(${this.id}): Input is Array.`);
+          if (mode === 'vision') {
+              const imageFiles: File[] = [];
+              input.forEach(item => {
+                  if (typeof item === 'string') {
+                      textInputs.push(item);
+                  } else if (item instanceof File && item.type.startsWith('image/')) {
+                      imageFiles.push(item);
+                  } else if (item instanceof File) {
+                      this.context?.log(`${this.type}(${this.id}): Skipping non-image file in vision mode: ${item.name}`);
+                  }
+              });
+              inputFileObjects = imageFiles;
+
+              if (textInputs.length > 0) {
+                  const combinedTextInput = textInputs.join('\n');
+                  finalPrompt = this.resolvePrompt(combinedTextInput);
+              } else {
+                  finalPrompt = basePrompt; // Use original if no text found
+              }
+              this.context?.log(`${this.type}(${this.id}): Vision mode (Array) - Found ${inputFileObjects?.length ?? 0} images, ${textInputs.length} text pieces.`);
+          } else { // mode === 'text'
+              finalPrompt = this.resolvePrompt(input); // resolvePrompt handles array for text mode
+          }
+
+      // 2. Input is File
+      } else if (input instanceof File) {
+          this.context?.log(`${this.type}(${this.id}): Input is File: ${input.name}`);
+          if (mode === 'vision') {
+              if (input.type.startsWith('image/')) {
+                  inputFileObjects = [input];
+                  finalPrompt = basePrompt; // Use original prompt for single image
+              } else {
+                  // Treat non-image file as text input (using filename)
+                  const filenameText = input.name;
+                  textInputs.push(filenameText);
+                  finalPrompt = this.resolvePrompt(filenameText);
+                  inputFileObjects = []; // No image file to pass
+                  this.context?.log(`${this.type}(${this.id}): Vision mode (File) - Input File is not an image, treating as text.`);
+              }
+          } else { // mode === 'text'
+              finalPrompt = this.resolvePrompt(input); // resolvePrompt uses filename for text mode
+          }
+
+      // 3. Input is String
+      } else if (typeof input === 'string') {
+          this.context?.log(`${this.type}(${this.id}): Input is String.`);
+          textInputs.push(input); // Treat string as text input regardless of mode
+          finalPrompt = this.resolvePrompt(input);
+          inputFileObjects = []; // Cannot use string as image input
+          if (mode === 'vision' && hasImageExtension(input)) {
+               this.context?.log(`${this.type}(${this.id}): Vision mode (String) - Warning: Image path string received, cannot process as image. Treated as text.`);
+          }
+
+      // 4. Input is Object (and not File or Array)
+      } else if (input && typeof input === 'object') {
+          this.context?.log(`${this.type}(${this.id}): Input is Object.`);
+          // Treat object as text input (resolvePrompt handles stringification)
+          const objectAsString = JSON.stringify(input, null, 2); // Example stringification
+          textInputs.push(objectAsString); // Store the stringified version
+          finalPrompt = this.resolvePrompt(input);
+          inputFileObjects = []; // Cannot use plain object as image input
+          if (mode === 'vision') {
+              this.context?.log(`${this.type}(${this.id}): Vision mode (Object) - Treating object as text.`);
+          }
+
+      // 5. Other Input Types (null, undefined, number, boolean)
+      } else {
+          this.context?.log(`${this.type}(${this.id}): Input is ${typeof input}.`);
+          const stringifiedInput = String(input ?? ''); // Convert to string
+          textInputs.push(stringifiedInput); // Store the stringified version
+          finalPrompt = this.resolvePrompt(input); // resolvePrompt handles stringification
+          inputFileObjects = []; // Cannot use this type as image input
+          if (mode === 'vision') {
+               this.context?.log(`${this.type}(${this.id}): Vision mode (${typeof input}) - Treating as text.`);
+          }
+      }
+
+      return { finalPrompt, inputFileObjects, textInputs };
+  }
+
+  /**
+   * Validates the prepared inputs, especially for vision mode.
+   * Checks if vision mode was intended but ended up with no usable content.
+   * @param mode The execution mode ('text' or 'vision').
+   * @param originalInput The original input passed to the execute method.
+   * @param preparedInputs The result from _prepareLlmInputs.
+   * @returns An error message string if validation fails, otherwise null.
+   */
+  private _validatePreparedInputs(
+      mode: 'text' | 'vision',
+      originalInput: any,
+      preparedInputs: PreparedLlmInputs
+  ): string | null {
+      const { inputFileObjects, textInputs } = preparedInputs;
+
+      if (mode === 'vision' && (!inputFileObjects || inputFileObjects.length === 0)) {
+          // Case 1: Input was an array, but yielded neither images nor text.
+          if (Array.isArray(originalInput) && textInputs.length === 0) {
+              return "Vision mode received array input but found neither valid image files nor text content.";
+          }
+          // Case 2: Input was a single file, but it wasn't an image type.
+          if (originalInput instanceof File && !originalInput.type.startsWith('image/')) {
+              return `Vision mode received a file (${originalInput.name}) that is not an image.`;
+          }
+          // Log if proceeding without images, but text was extracted from non-array/file inputs
+          if (!Array.isArray(originalInput) && !(originalInput instanceof File) && textInputs.length > 0) {
+              this.context?.log(`${this.type}(${this.id}): Vision mode proceeding with text only (input was not Array or File).`);
+          }
+          // Log if proceeding without images, but text was extracted from an array
+          else if (Array.isArray(originalInput) && textInputs.length > 0) {
+               this.context?.log(`${this.type}(${this.id}): Vision mode proceeding with text only (no images found in array).`);
+          }
+      }
+      // If it's text mode, or vision mode with images/text, validation passes
+      return null;
+  }
+
+  /**
    * Execute the LLM node
    * @param input The input to process
    * @returns The LLM response text or null on error
    */
   async execute(input: any): Promise<string | null> {
-    this.context?.log(`${this.type}(${this.id}): Entering execute`); 
+    this.context?.log(`${this.type}(${this.id}): Entering execute`);
     this.context?.markNodeRunning(this.id);
 
-    // --- Get properties and validate --- 
-    const currentProps = this.property;
-    const provider = currentProps?.provider;
-    const model = currentProps?.model;
-    const mode = currentProps.mode ?? 'text';
-    const prompt = currentProps.prompt ?? '';
-    
-    if (!provider || !model) {
-      const errorMsg = "Missing required properties: provider or model.";
-      this.context?.markNodeError(this.id, errorMsg);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}. Properties were: ${JSON.stringify(currentProps)}`);
-      return null;
+    // 1. Validate required properties
+    const propError = this._validateRequiredProperties();
+    if (propError) {
+        this.context?.markNodeError(this.id, propError);
+        return null;
     }
-    this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
+
+    const mode = this.property.mode ?? 'text';
+    const basePrompt = this.property.prompt ?? '';
+    this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${this.property.provider}, Model: ${this.property.model}`);
 
     try {
-      // --- Prepare input files (for vision) and final prompt --- 
-      let inputFileObjects: File[] | undefined = undefined;
-      let finalPrompt = prompt;
+      // 2. Prepare inputs based on type and mode
+      const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
 
-      if (mode === 'vision') {
-        let inputArray: any[] = [];
-        if (Array.isArray(input)) {
-            inputArray = input;
-        } else if (input instanceof File) {
-            inputArray = [input];
-        } else if (typeof input === 'string' && hasImageExtension(input)) {
-            // Handle string paths? Needs access to File object.
-            this.context?.log(`${this.type}(${this.id}): Warning - Image path string received, cannot process for vision without File.`);
-            // Ensure inputArray remains empty or as previously determined if we can't process strings
-            inputArray = inputArray || []; 
-        } else {
-           // Handle other non-file/array inputs for vision
-           this.context?.log(`${this.type}(${this.id}): Vision mode selected, but input is not a File, array, or recognized image path string. Input type: ${typeof input}`);
-           inputArray = inputArray || [];
-        }
-
-        // Use the utility function to filter image files
-        inputFileObjects = filterImageFiles(inputArray);
-        
-        if (inputFileObjects.length > 0) {
-            this.context?.log(`${this.type}(${this.id}): Found ${inputFileObjects.length} image file(s) for vision mode.`);
-        } else {
-            this.context?.log(`${this.type}(${this.id}): No valid *image* File objects found for vision mode.`);
-        }
-        // In vision mode, use the original prompt
-
-      } else { // mode === 'text'
-        finalPrompt = this.resolvePrompt(input);
-        this.context?.log(`${this.type}(${this.id}): Resolved prompt: ${finalPrompt.substring(0, 50)}...`);
+      // 3. Validate the prepared inputs
+      const inputError = this._validatePreparedInputs(mode, input, preparedInputs);
+      if (inputError) {
+          this.context?.log(`${this.type}(${this.id}): Error - ${inputError}`);
+          this.context?.markNodeError(this.id, inputError);
+          return null;
       }
 
-      // --- Validate vision input and prepare LLM params --- 
-      // Check if vision mode is selected but no valid File objects were found
-      if (mode === 'vision' && (!inputFileObjects || inputFileObjects.length === 0)) {
-        const errorMsg = "Vision mode requires valid image file input, but none were found.";
-        this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
-        this.context?.markNodeError(this.id, errorMsg);
-        return null;
-      }
+      const { finalPrompt, inputFileObjects } = preparedInputs;
 
+      // 4. Prepare LLM parameters
       const params: LLMRequestParams = {
-        provider,
-        model,
+        provider: this.property.provider!, // Already validated non-null
+        model: this.property.model!,     // Already validated non-null
         prompt: finalPrompt,
-        temperature: currentProps.temperature ?? 0.7,
-        ollamaUrl: currentProps.ollamaUrl,
-        openaiApiKey: currentProps.openaiApiKey,
-        // Pass the File objects directly to the service
-        images: inputFileObjects 
+        temperature: this.property.temperature ?? 0.7,
+        ollamaUrl: this.property.ollamaUrl,
+        openaiApiKey: this.property.openaiApiKey,
+        images: inputFileObjects // Pass the File objects directly to the service
       };
-      this.context?.log(`${this.type}(${this.id}): Calling llmService with ${params.images?.length ?? 0} file object(s)...`);
+      this.context?.log(`${this.type}(${this.id}): Calling llmService with final prompt: "${finalPrompt.substring(0, 50)}..." and ${params.images?.length ?? 0} file object(s).`);
 
-      // --- Call LLM Service --- 
+      // 5. Call LLM Service
       const llmResult = await runLLM(params);
       if (!llmResult) { throw new Error('LLM service returned null.'); }
 
-      // --- Process and prepend prefix to the result --- 
+      // 6. Process and prepend prefix to the result
       let resultText = llmResult.response;
-      const prefix = this._getResultPrefix(input);
+      const prefix = this._getResultPrefix(input); // Prefix based on original input type
       if (prefix) {
         resultText = prefix + resultText;
         this.context?.log(`${this.type}(${this.id}): Prepended prefix: ${prefix.substring(0, 50)}...`);
@@ -178,6 +300,7 @@ export class LlmNode extends Node {
 
       this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
       this.context?.storeOutput(this.id, resultText);
+      this.context?.markNodeSuccess(this.id, resultText); // Mark success after storing output
       return resultText;
 
     } catch (error) {
