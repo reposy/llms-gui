@@ -95,7 +95,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   // Effect to parse HTML content when source node result changes
   useEffect(() => {
     // HTML 내용 추출 로직 (소스 노드 상태에서 result 가져오기)
-    let html = "";
+      let html = "";
     if (sourceNodeState && sourceNodeState.result) {
       const result = sourceNodeState.result;
       if (typeof result === 'string') {
@@ -159,7 +159,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
           // Get only element children
           const children = Array.from(safeGetChildren(currentElement)).filter(node => node.nodeType === Node.ELEMENT_NODE);
-          
+    
           if (childIndex >= children.length) {
               console.warn("Child index out of bounds", childIndex, children.length, currentElement);
               return null; // Index out of bounds
@@ -175,7 +175,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   // Callback function for element selection (Updated Level Calculation)
   const handleElementSelect = useCallback((path: string, selector: string, preview: string) => {
     setSelectedElementPath(path);
-    setGeneratedSelector(selector);
+            setGeneratedSelector(selector);
     setSelectedElementPreview(preview);
 
     // Calculate path steps with correct level based on path depth
@@ -513,20 +513,20 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       {viewMode === "rules" && (
         <>
           {/* Section Header and Add Button */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700">
-                추출 규칙
-              </label>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    추출 규칙
+                  </label>
               {/* Show Add button only when not adding/editing */}
               {!temporaryRule && (
-                <Button size="sm" variant="outline" onClick={handleAddRule}>
-                  <span className="mr-1">+</span>
-                  규칙 추가
-                </Button>
+                  <Button size="sm" variant="outline" onClick={handleAddRule}>
+                    <span className="mr-1">+</span>
+                    규칙 추가
+                  </Button>
               )}
-            </div>
-          </div>
+                        </div>
+                      </div>
 
           {/* Add/Edit Rule Form (Conditionally Visible) */}
           {temporaryRule && (
@@ -581,16 +581,16 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                   </div>
                 ) : (
                   // Fallback to input field if no path steps
-                  <div className="relative">
-                    <input
-                      id="cssSelector"
-                      className={inputClass}
-                      type="text"
-                      value={temporaryRule.selector}
-                      onChange={(e) => handleRuleChange({ ...temporaryRule, selector: e.target.value })}
-                      placeholder="예: article .content, ul li, .post h1"
-                    />
-                  </div>
+                <div className="relative">
+                  <input
+                    id="cssSelector"
+                    className={inputClass}
+                    type="text"
+                    value={temporaryRule.selector}
+                    onChange={(e) => handleRuleChange({ ...temporaryRule, selector: e.target.value })}
+                    placeholder="예: article .content, ul li, .post h1"
+                  />
+                </div>
                 )}
               </div>
               
@@ -839,4 +839,4 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       )}
     </div>
   );
-};
+}; 

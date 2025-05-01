@@ -75,8 +75,8 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
   const renderContentForDisplay = () => {
     if (nodeState?.status === 'success') {
       if (nodeState.result !== null && nodeState.result !== undefined) {
-        return formatResultBasedOnFormat(nodeState.result, format);
-      }
+      return formatResultBasedOnFormat(nodeState.result, format);
+    }
       return '결과 없음'; // Success but result is null/undefined
     }
     if (nodeState?.status === 'running') return '처리 중...';
@@ -160,7 +160,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
           {/* Header with format toggle and download button */}
           <div className="flex justify-between items-center px-3 py-1.5 bg-gray-50 border-b rounded-t-md">
             <div className="flex items-center space-x-1">
-              <button 
+              <button
                 onClick={() => handleFormatChange('json')} 
                 className={clsx(
                   'px-2 py-0.5 rounded text-xs font-medium',
@@ -169,7 +169,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
               >
                 JSON
               </button>
-              <button 
+              <button
                 onClick={() => handleFormatChange('text')} 
                 className={clsx(
                   'px-2 py-0.5 rounded text-xs font-medium',
@@ -179,25 +179,25 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
                 TEXT
               </button>
             </div>
-            <button 
-              onClick={handleDownload}
+              <button
+                onClick={handleDownload}
               title="Download Result"
               className="text-gray-400 hover:text-purple-600 disabled:text-gray-300 disabled:cursor-not-allowed p-0.5 rounded hover:bg-gray-200"
-              disabled={nodeState?.status !== 'success' || nodeState.result === null || nodeState.result === undefined}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-            </button>
-          </div>
+                disabled={nodeState?.status !== 'success' || nodeState.result === null || nodeState.result === undefined}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </button>
+            </div>
 
           {/* Content Area */}
-          <pre 
+            <pre 
             className="text-xs font-mono p-3 overflow-auto max-h-[200px] bg-white rounded-b-md break-words whitespace-pre-wrap"
             style={{ minHeight: '50px' }}
-          >
+            >
             {displayContent}
-          </pre>
+            </pre>
         </div>
       </div>
     </NodeErrorBoundary>

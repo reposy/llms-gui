@@ -78,7 +78,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     (nodeState?.status && ['running', 'success', 'error'].includes(nodeState.status))
     ? nodeState.status as NodeStatus
     : 'idle';
-
+  
   // Format URL for display
   const displayUrl = crawlerData.url 
     ? (crawlerData.url.length > 30 ? crawlerData.url.substring(0, 27) + '...' : crawlerData.url)

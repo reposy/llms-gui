@@ -97,7 +97,7 @@ export class FlowRunner {
         
         // Mark the node as running
         context.markNodeRunning(nodeIdToExecute);
-
+        
         // Execute the node with an empty input object
         await nodeInstance.process({});
         

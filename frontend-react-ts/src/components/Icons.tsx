@@ -24,7 +24,7 @@ export const TrashIcon = (props: IconProps) => (
       <line x1="14" y1="11" x2="14" y2="17" />
     </svg>
 );
-
+  
 export const PenLineIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -42,7 +42,7 @@ export const PenLineIcon = (props: IconProps) => (
       <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
 );
-
+  
 export const CheckIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -59,7 +59,7 @@ export const CheckIcon = (props: IconProps) => (
       <polyline points="20 6 9 17 4 12" />
     </svg>
 );
-
+  
 export const PlusIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -77,7 +77,7 @@ export const PlusIcon = (props: IconProps) => (
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
 );
-
+  
 export const XIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -95,7 +95,7 @@ export const XIcon = (props: IconProps) => (
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
 );
-
+  
 export const CopyIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -113,7 +113,7 @@ export const CopyIcon = (props: IconProps) => (
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </svg>
 );
-
+  
 export const ChevronDownIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -130,7 +130,7 @@ export const ChevronDownIcon = (props: IconProps) => (
       <polyline points="6 9 12 15 18 9" />
     </svg>
 );
-
+  
 export const ChevronUpIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -147,7 +147,7 @@ export const ChevronUpIcon = (props: IconProps) => (
       <polyline points="18 15 12 9 6 15" />
     </svg>
 );
-
+  
 export const SettingsIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -165,7 +165,7 @@ export const SettingsIcon = (props: IconProps) => (
       <circle cx="12" cy="12" r="3" />
     </svg>
 );
-
+  
 export const InfoIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -184,7 +184,7 @@ export const InfoIcon = (props: IconProps) => (
       <line x1="12" y1="8" x2="12.01" y2="8" />
     </svg>
 );
-
+  
 export const AlertIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
@@ -203,7 +203,7 @@ export const AlertIcon = (props: IconProps) => (
       <line x1="12" y1="16" x2="12.01" y2="16" />
     </svg>
 );
-
+  
 export const HelpIcon = (props: IconProps) => (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 

@@ -285,7 +285,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
           <div className="p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 font-mono text-sm max-h-40 overflow-auto whitespace-pre-wrap">
             {executionState.result !== null && executionState.result !== undefined
               ? (typeof executionState.result === 'string' 
-                  ? executionState.result 
+              ? executionState.result 
                   : JSON.stringify(executionState.result, null, 2))
               : <span className="text-gray-400 italic">No result available.</span>}
           </div>

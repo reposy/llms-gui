@@ -468,7 +468,7 @@ export {
 // Update NodeContentRecord to include HTMLParserNodeContent
 export type NodeContentRecord = {
   [nodeId: string]: LLMNodeContent | HTMLParserNodeContent | InputNodeContent | WebCrawlerNodeContent | OutputNodeContent | APINodeContent | any;
-};
+}; 
 
 // --- Export ExtractionRule interface --- 
 export interface ExtractionRule {
