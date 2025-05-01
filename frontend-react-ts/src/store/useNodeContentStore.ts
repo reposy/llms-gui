@@ -51,14 +51,16 @@ export interface OutputNodeContent extends BaseNodeContent {
 }
 
 /**
- * WebCrawler 노드 컨텐츠
+ * Represents the content specific to a Web Crawler node.
  */
-export interface WebCrawlerNodeContent extends BaseNodeContent {
-  url: string;
-  waitForSelector?: string;
-  extractSelectors?: Record<string, string>;
+export interface WebCrawlerNodeContent {
+  type: 'web-crawler';
+  label: string;
+  url?: string;
+  waitForSelectorOnPage?: string;
+  iframeSelector?: string;
+  waitForSelectorInIframe?: string;
   timeout?: number;
-  outputFormat?: 'full' | 'text' | 'extracted' | 'html';
   headers?: Record<string, string>;
 }
 
@@ -133,9 +135,9 @@ export type NodeContent =
   | BaseNodeContent;
 
 /**
- * 모든 노드 타입의 기본값을 제공하는 팩토리 함수
+ * Creates the default content for a given node type.
  */
-export function createDefaultNodeContent(type: string): NodeContent {
+export function createDefaultNodeContent(type: string, id: string): NodeContent {
   switch (type) {
     case 'input':
       return {
@@ -169,15 +171,15 @@ export function createDefaultNodeContent(type: string): NodeContent {
 
     case 'web-crawler':
       return {
+        type: 'web-crawler',
+        label: `Web Crawler ${id.substring(0, 4)}`,
         url: '',
-        waitForSelector: 'body',
-        extractSelectors: {},
-        timeout: 3000,
-        outputFormat: 'html',
+        waitForSelectorOnPage: '',
+        iframeSelector: '',
+        waitForSelectorInIframe: '',
+        timeout: 30000,
         headers: {},
-        isDirty: false,
-        label: 'Web Crawler'
-      } as WebCrawlerNodeContent;
+      } satisfies WebCrawlerNodeContent;
 
     case 'html-parser':
       return {
@@ -232,10 +234,8 @@ export function createDefaultNodeContent(type: string): NodeContent {
       } as GroupNodeContent;
 
     default:
-      return {
-        isDirty: false,
-        label: 'Node'
-      } as BaseNodeContent;
+      console.warn(`Creating default content for unknown node type: ${type}`);
+      return { type: 'unknown', label: `Node ${id.substring(0, 4)}` } as any;
   }
 }
 
@@ -343,7 +343,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
         
         // 컨텐츠가 없고 노드 타입이 제공되었다면 기본값 생성
         if (nodeType) {
-          return createDefaultNodeContent(nodeType) as T;
+          return createDefaultNodeContent(nodeType, nodeId) as T;
         }
         
         // 둘 다 없으면 빈 객체 반환
