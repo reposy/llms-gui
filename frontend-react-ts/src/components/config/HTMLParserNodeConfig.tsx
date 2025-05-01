@@ -22,7 +22,8 @@ interface HTMLParserNodeConfigProps {
   nodeId: string;
 }
 
-type SearchTarget = "TEXT" | "CLASS" | "ID"; // Define search target types
+// Add 'CSS' to the SearchTarget type
+type SearchTarget = "TEXT" | "CLASS" | "ID" | "CSS"; // Define search target types
 
 /**
  * HTML 파서 노드 설정 컴포넌트
@@ -41,6 +42,35 @@ const getAncestorPaths = (path: string): string[] => {
   }
   return ancestors;
 };
+
+// Restore the generatePathForElement function
+function generatePathForElement(element: Element, root: Element | null):
+string {
+    if (!root || !element || !root.contains(element)) {
+        return '';
+    }
+
+    let path = '';
+    let current: Element | null = element;
+
+    while (current && current !== root.parentElement) { // Stop before documentElement's parent
+        const parent = current.parentElement;
+        if (!parent) break;
+
+        const tagName = safeGetTagName(current) || 'unknown';
+        // Get only element siblings to calculate index correctly
+        const siblings = Array.from(parent.children).filter(node => node.nodeType === Node.ELEMENT_NODE);
+        const index = siblings.indexOf(current);
+        
+        const pathPart = `${index}-${tagName}`;
+        path = path ? `${pathPart}/${path}` : pathPart;
+        
+        if (current === root) break; // Stop once root is processed
+
+        current = parent;
+    }
+    return path;
+}
 
 export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ nodeId }) => {
   const { content } = useNodeContent(nodeId);
@@ -281,98 +311,88 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       return;
     }
 
-    const query = searchQuery.toLowerCase();
-    const results: string[] = [];
-    const addedPaths = new Set<string>();
+    const query = searchTarget === 'TEXT' || searchTarget === 'CLASS' || searchTarget === 'ID' 
+                  ? searchQuery.toLowerCase() 
+                  : searchQuery; // Keep original case for CSS selectors
+    let foundElements: Element[] = [];
 
-    const elements = parsedDOM.querySelectorAll('*'); 
-    const elementPathMap = new Map<Element, string>();
-
-    function buildPathMap(element: Element | null, depth = 0, path = "") {
-      if (!element) return;
-      const tagName = safeGetTagName(element);
-      const newPath = path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`;
-      elementPathMap.set(element, newPath);
-
-      const children = safeGetChildren(element);
-      if (children) {
-        Array.from(children).forEach((child, index) => {
-          if (child.nodeType === Node.ELEMENT_NODE) {
-            buildPathMap(child as Element, index, newPath);
-          }
-        });
+    // Use querySelectorAll for CSS search directly
+    if (searchTarget === 'CSS') {
+      try {
+        // Use parsedDOM.body or parsedDOM.documentElement as the base for querySelectorAll
+        const baseElement = parsedDOM.body || parsedDOM.documentElement;
+        if (baseElement) {
+          foundElements = Array.from(baseElement.querySelectorAll(query));
+        }
+      } catch (e) {
+        console.error("Invalid CSS selector:", query, e);
+        setDomError(`Invalid CSS selector: ${query}`); // Show error to user
+        setSearchResults([]);
+        setCurrentSearchResultIndex(-1);
+        return; // Stop search if selector is invalid
       }
-    }
-    if (parsedDOM.documentElement) {
-        buildPathMap(parsedDOM.documentElement);
-    }
-
-    elements.forEach(element => {
-      const path = elementPathMap.get(element);
-      if (!path || addedPaths.has(path)) {
-          return; 
-      }
-
-      let isMatch = false;
-      
-      switch (searchTarget) {
-        case "TEXT":
-          // --- MODIFIED LOGIC for direct text match ---
-          let directMatch = false;
-          for (const childNode of Array.from(element.childNodes)) {
-            if (childNode.nodeType === Node.TEXT_NODE && childNode.textContent?.toLowerCase().includes(query)) {
-              directMatch = true;
-              break; 
+      setDomError(""); // Clear previous errors if selector is valid
+    } else {
+      // Existing logic for TEXT, CLASS, ID search (iterating through all elements)
+      const allElements = parsedDOM.querySelectorAll('*'); 
+      foundElements = Array.from(allElements).filter(element => {
+        let isMatch = false;
+        switch (searchTarget) {
+          case "TEXT":
+            let directMatch = false;
+            for (const childNode of Array.from(element.childNodes)) {
+              if (childNode.nodeType === Node.TEXT_NODE && childNode.textContent?.toLowerCase().includes(query)) {
+                directMatch = true;
+                break; 
+              }
             }
-          }
-          if (directMatch) {
-            isMatch = true;
-          }
-          // --- END MODIFIED LOGIC ---
-          break;
-        case "CLASS":
-          if (element.className && typeof element.className === 'string' && element.className.toLowerCase().includes(query)) {
-            isMatch = true;
-          }
-          break;
-        case "ID":
-          if (element.id && element.id.toLowerCase().includes(query)) {
-            isMatch = true;
-          }
-          break;
-        default:
-          break;
-      }
+            if (directMatch) isMatch = true;
+            break;
+          case "CLASS":
+            if (element.className && typeof element.className === 'string' && element.className.toLowerCase().includes(query)) {
+              isMatch = true;
+            }
+            break;
+          case "ID":
+            if (element.id && element.id.toLowerCase().includes(query)) {
+              isMatch = true;
+            }
+            break;
+        }
+        return isMatch;
+      });
+    }
 
-      if (isMatch) {
-        results.push(path);
-        addedPaths.add(path);
-      }
-    });
+    // Generate paths for found elements
+    const rootElement = parsedDOM.documentElement;
+    const results = foundElements
+                      .map(el => generatePathForElement(el, rootElement))
+                      .filter((path): path is string => !!path && path !== ''); // Filter out empty/null paths
+    
+    const uniqueResults = Array.from(new Set(results)); // Ensure unique paths
 
-    setSearchResults(results);
-    const newIndex = results.length > 0 ? 0 : -1;
-    setCurrentSearchResultIndex(newIndex); // Update index, DOMTreeView useEffect will handle scroll/highlight
-    console.log("[Search Result Paths based on ", searchTarget, "]:", results); 
+    setSearchResults(uniqueResults);
+    const newIndex = uniqueResults.length > 0 ? 0 : -1;
+    setCurrentSearchResultIndex(newIndex);
+    console.log(`[Search Results: ${searchTarget}]`, uniqueResults); 
 
     // Auto-select the first result if found
-    if (newIndex !== -1 && results.length > 0) {
-      const firstResultPath = results[newIndex];
-      const targetElement = findElementByPath(parsedDOM.documentElement, firstResultPath);
+    if (newIndex !== -1 && uniqueResults.length > 0) {
+      const firstResultPath = uniqueResults[newIndex];
+      const targetElement = findElementByPath(rootElement, firstResultPath);
       if (targetElement) {
-          const selector = generateSelector(targetElement);
+          const selector = generateSelector(targetElement); // Use utility function
           const preview = targetElement.outerHTML || '';
-          // Call handleElementSelect to update selection and trigger expansion
           handleElementSelect(firstResultPath, selector, preview); 
       } else {
          console.warn("Could not find element for path:", firstResultPath); 
-         handleElementSelect("", "", ""); // Clear selection if element not found
+         handleElementSelect("", "", ""); 
       }
     } else {
-        handleElementSelect("", "", ""); // Clear selection if no results
+        handleElementSelect("", "", ""); 
     }
 
-  }, [parsedDOM, searchQuery, searchTarget, setExpandedPaths, handleElementSelect, findElementByPath]); // Added findElementByPath dependency
+  }, [parsedDOM, searchQuery, searchTarget, setExpandedPaths, handleElementSelect, findElementByPath]); // Keep findElementByPath dependency
 
   // Function to handle search input changes (debounced)
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -708,6 +728,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                             <SelectItem value="TEXT" className="whitespace-nowrap">TEXT (내용)</SelectItem>
                             <SelectItem value="CLASS" className="whitespace-nowrap">CLASS (클래스)</SelectItem>
                             <SelectItem value="ID" className="whitespace-nowrap">ID (아이디)</SelectItem>
+                            <SelectItem value="CSS" className="whitespace-nowrap">CSS (선택자)</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>

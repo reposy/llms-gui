@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { crawling } from '../utils/web/crawling.ts';
-import { WebCrawlerNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { WebCrawlerNodeContent } from '../store/useNodeContentStore.ts';
 
 /**
  * Web Crawler node that fetches a web page and returns its HTML content
@@ -30,80 +30,71 @@ export class WebCrawlerNode extends Node {
    */
   async execute(input: any): Promise<string | null> {
     this.context?.log(`${this.type}(${this.id}): Executing`);
+    this.context?.markNodeRunning(this.id);
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent<WebCrawlerNodeContent>(this.id, this.type);
-    
-    const { 
-      url,
-      waitForSelector, // Still useful to ensure page is ready
-      timeout = 5000, // Frontend timeout in ms
-      headers // Get headers from content
-    } = nodeContent;
+    const props = this.property || {};
+    let targetUrl = props.url || '';
 
-    // Use input as URL if url property is empty and input is a valid URL string
-    let targetUrl = url;
-    if (!targetUrl && typeof input === 'string' && input.startsWith('http')) {
-      targetUrl = input;
-      this.context?.log(`${this.type}(${this.id}): Using input as URL: ${targetUrl}`);
-    } else if (!targetUrl) {
-      const errorMsg = "URL is required for WebCrawlerNode.";
-      this.context?.markNodeError(this.id, errorMsg);
+    // If input is a string, assume it's a URL and override the node's URL property
+    if (typeof input === 'string' && input.trim() !== '') {
+        try {
+            new URL(input); // Validate if input is a URL
+            targetUrl = input;
+            this.context?.log(`${this.type}(${this.id}): Using input string as target URL: ${targetUrl}`);
+        } catch (e) {
+            this.context?.log(`${this.type}(${this.id}): Input string is not a valid URL, using node property URL.`);
+        }
+    }
+
+    if (!targetUrl) {
+      const errorMsg = "URL is required but not provided either in node properties or as input.";
       this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      this.context?.markNodeError(this.id, errorMsg);
       return null;
     }
 
-    this.context?.log(`${this.type}(${this.id}): Crawling URL: ${targetUrl} for full HTML`);
-
     try {
-      // Call crawling utility, explicitly requesting HTML
+      this.context?.log(`${this.type}(${this.id}): Calling backend crawler service for URL: ${targetUrl}`);
+      
+      // Use the imported 'crawling' utility to call the backend API
+      // Pass the parameters according to the backend request model
       const result = await crawling({
         url: targetUrl,
-        selector: waitForSelector, // Pass selector (for waiting)
-        waitBeforeLoad: timeout, // Pass timeout in ms (util converts to seconds)
-        headers: headers, // Pass headers
-        include_html: true // Explicitly request HTML
+        waitForSelectorOnPage: props.waitForSelectorOnPage,
+        iframeSelector: props.iframeSelector,
+        waitForSelectorInIframe: props.waitForSelectorInIframe,
+        timeout: props.timeout || 30000,
+        headers: props.headers || {},
+        include_html: true, // Always request HTML
       });
-      
-      // Log the full backend response for debugging
-      // console.log('Backend response:', result); // Comment out full response log
 
-      // Check if crawling utility returned null (network error, etc.)
+      // Check if the utility itself failed (e.g., network error)
       if (result === null) {
-        this.context?.log(`${this.type}(${this.id}): Crawling utility failed.`);
-        // Error already marked by crawling utility or within it
-        // Ensure node state is error if not already set
-        if (this.context?.getNodeState(this.id) !== 'error') {
-          this.context?.markNodeError(this.id, "Crawling utility failed to fetch data.");
-        }
-        return null;
+          // Assuming the `crawling` utility handles logging and marking node error on network failure
+          this.context?.log(`${this.type}(${this.id}): Frontend crawling utility failed (e.g., network error).`);
+          // Ensure error state is set if utility didn't
+          if (this.context?.getNodeState(this.id)?.status !== 'error') {
+              this.context?.markNodeError(this.id, 'Frontend API call failed');
+          }
+          return null;
       }
-      
-      // Check backend status from the returned object
-      if (result.status !== 'success') {
-         const errorMessage = result.error || "Backend crawling failed.";
-         this.context?.log(`${this.type}(${this.id}): Backend error - ${errorMessage}`);
-         this.context?.markNodeError(this.id, errorMessage);
-         return null;
-      }
-      
-      // Extract HTML content from the result
-      const htmlContent = result.html;
-      
-      if (!htmlContent) {
-        this.context?.log(`${this.type}(${this.id}): Crawling successful, but no HTML content received.`);
-        this.context?.markNodeError(this.id, "Crawling successful but HTML content was missing in response.");
-        return null;
-      }
-      
-      this.context?.log(`${this.type}(${this.id}): Crawling successful, received HTML content (length: ${htmlContent.length}).`);
-      this.context?.storeOutput(this.id, htmlContent); // Store the raw HTML string
-      return htmlContent; // Return the raw HTML string
 
+      // Check the status returned from the backend API
+      if (result.status === 'success' && result.html) {
+        this.context?.log(`${this.type}(${this.id}): Backend crawling successful, received HTML content (length: ${result.html.length}).`);
+        this.context?.storeOutput(this.id, result.html);
+        this.context?.markNodeSuccess(this.id, result.html); // Store HTML as result
+        return result.html;
+      } else {
+        const errorMsg = result.error || 'Backend crawling failed or did not return HTML content.';
+        this.context?.log(`${this.type}(${this.id}): Backend crawling failed - ${errorMsg}`);
+        this.context?.markNodeError(this.id, errorMsg);
+        return null;
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.markNodeError(this.id, errorMessage);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
+      this.context?.log(`${this.type}(${this.id}): Error during frontend crawl execution logic - ${errorMessage}`);
+      this.context?.markNodeError(this.id, `Frontend Execution Error: ${errorMessage}`);
       return null;
     }
   }

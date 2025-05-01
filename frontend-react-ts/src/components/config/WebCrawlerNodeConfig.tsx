@@ -16,7 +16,9 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
   
   // Local state for form fields
   const [url, setUrl] = useState(content.url || '');
-  const [waitForSelector, setWaitForSelector] = useState(content.waitForSelector || '');
+  const [waitForSelectorOnPage, setWaitForSelectorOnPage] = useState(content.waitForSelectorOnPage || '');
+  const [iframeSelector, setIframeSelector] = useState(content.iframeSelector || '');
+  const [waitForSelectorInIframe, setWaitForSelectorInIframe] = useState(content.waitForSelectorInIframe || '');
   const [timeout, setTimeout] = useState(content.timeout || 30000);
   // Headers state
   const [headers, setHeaders] = useState<Record<string, string>>(content.headers || {});
@@ -26,7 +28,9 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
   // Sync local state if content from store changes
   React.useEffect(() => {
     setUrl(content.url || '');
-    setWaitForSelector(content.waitForSelector || '');
+    setWaitForSelectorOnPage(content.waitForSelectorOnPage || '');
+    setIframeSelector(content.iframeSelector || '');
+    setWaitForSelectorInIframe(content.waitForSelectorInIframe || '');
     setTimeout(content.timeout || 30000);
     setHeaders(content.headers || {});
   }, [content]);
@@ -41,10 +45,22 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
     handleUpdateField('url', newUrl);
   }, [handleUpdateField]);
   
-  const handleWaitSelectorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWaitSelectorOnPageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newWaitSelector = e.target.value;
-    setWaitForSelector(newWaitSelector);
-    handleUpdateField('waitForSelector', newWaitSelector);
+    setWaitForSelectorOnPage(newWaitSelector);
+    handleUpdateField('waitForSelectorOnPage', newWaitSelector);
+  }, [handleUpdateField]);
+  
+  const handleIframeSelectorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newIframeSelector = e.target.value;
+    setIframeSelector(newIframeSelector);
+    handleUpdateField('iframeSelector', newIframeSelector);
+  }, [handleUpdateField]);
+  
+  const handleWaitForSelectorInIframeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSelector = e.target.value;
+    setWaitForSelectorInIframe(newSelector);
+    handleUpdateField('waitForSelectorInIframe', newSelector);
   }, [handleUpdateField]);
   
   const handleTimeoutChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,21 +115,54 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <p className="mt-1 text-xs text-gray-500">URL of the web page to crawl</p>
         </div>
         
-        {/* Wait Selector Input */}
+        {/* Wait Selector on Page Input */}
         <div>
-          <label htmlFor="wait-selector" className="block text-xs font-medium text-gray-700">Wait for Selector (Optional)</label>
+          <label htmlFor="wait-selector-page" className="block text-xs font-medium text-gray-700">Wait for Selector on Page (Optional)</label>
           <input
-            id="wait-selector"
+            id="wait-selector-page"
             type="text"
-            value={waitForSelector}
-            onChange={handleWaitSelectorChange}
+            value={waitForSelectorOnPage}
+            onChange={handleWaitSelectorOnPageChange}
             placeholder=".main-content, body"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
           />
-          <p className="mt-1 text-xs text-gray-500">Optional CSS selector to wait for before returning HTML</p>
+          <p className="mt-1 text-xs text-gray-500">Optional CSS selector to wait for on the main page before checking iframe</p>
         </div>
         
+        {/* IFrame Selector Input */}
+        <div>
+          <label htmlFor="iframe-selector" className="block text-xs font-medium text-gray-700">IFrame Selector (Optional)</label>
+          <input
+            id="iframe-selector"
+            type="text"
+            value={iframeSelector}
+            onChange={handleIframeSelectorChange}
+            placeholder="#entryIframe, iframe[name='content']"
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
+          />
+          <p className="mt-1 text-xs text-gray-500">Optional CSS selector for the iframe to target</p>
+        </div>
+
+        {/* Added: Wait for Selector in IFrame Input */}
+        <div>
+          <label htmlFor="wait-selector-iframe" className="block text-xs font-medium text-gray-700">Wait for Selector in IFrame (Optional)</label>
+          <input
+            id="wait-selector-iframe"
+            type="text"
+            value={waitForSelectorInIframe}
+            onChange={handleWaitForSelectorInIframeChange}
+            placeholder="#_title, .article-body"
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
+            disabled={!iframeSelector}
+          />
+          <p className={`mt-1 text-xs ${iframeSelector ? 'text-gray-500' : 'text-gray-400'}`}>
+            Optional CSS selector to wait for inside the specified iframe
+          </p>
+        </div>
+
         {/* Timeout Input */}
         <div>
           <label htmlFor="timeout" className="block text-xs font-medium text-gray-700">Timeout (ms)</label>
@@ -123,12 +172,12 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             value={timeout}
             onChange={handleTimeoutChange}
             min="1000"
-            max="60000"
+            max="120000"
             step="1000"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
           />
-          <p className="mt-1 text-xs text-gray-500">Maximum time to wait in milliseconds</p>
+          <p className="mt-1 text-xs text-gray-500">Maximum total time to wait in milliseconds</p>
         </div>
 
         {/* REMOVED: Output Format Selector */}

@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, Dict, Any, List
 from services.web_crawler import crawl_webpage
 from services.html_parser import ExtractionRule, parse_html_content
@@ -19,30 +19,37 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # CORS 설정
+origins = [
+    "http://localhost:5173", # Default Vite dev server port
+    "http://127.0.0.1:5173",
+    # Add other origins if necessary (e.g., production frontend URL)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 실제 운영 환경에서는 구체적인 origin을 지정해야 합니다
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], # Allows all methods
+    allow_headers=["*"], # Allows all headers
 )
 
 class WebCrawlerRequest(BaseModel):
-    url: str
-    wait_for_selector: Optional[str] = None
-    extract_selectors: Optional[Dict[str, str]] = None
-    timeout: Optional[int] = 30000 # Expect timeout in milliseconds, default 30000ms
+    url: HttpUrl
+    waitForSelectorOnPage: Optional[str] = Field(None, alias='waitForSelectorOnPage')
+    iframeSelector: Optional[str] = Field(None, alias='iframeSelector')
+    waitForSelectorInIframe: Optional[str] = Field(None, alias='waitForSelectorInIframe')
+    timeout: int = 30000
     headers: Optional[Dict[str, str]] = None
-    include_html: bool = False
+    include_html: bool = True
 
 class WebCrawlerResponse(BaseModel):
     url: str
+    status: str
+    error: Optional[str] = None
     title: Optional[str] = None
     text: Optional[str] = None
     html: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
-    status: str
-    error: Optional[str] = None
 
 # HTML Parser API endpoint
 class HtmlParseRequest(BaseModel):
@@ -58,29 +65,34 @@ class HtmlParseResponse(BaseModel):
 async def root():
     return {"message": "Hello World"}
 
-@app.post("/api/web-crawler/fetch")
-async def fetch_webpage(request: WebCrawlerRequest) -> WebCrawlerResponse:
+@app.post("/api/web-crawler/fetch", response_model=WebCrawlerResponse)
+async def fetch_webpage_content(request: WebCrawlerRequest):
+    logger.info(f"Received crawl request for URL: {request.url}")
+    logger.info(f"Request details: iframe={request.iframeSelector}, waitPage={request.waitForSelectorOnPage}, waitIframe={request.waitForSelectorInIframe}")
     try:
         result = await crawl_webpage(
-            url=request.url,
-            wait_for_selector=request.wait_for_selector,
-            extract_selectors=request.extract_selectors,
+            url=str(request.url),
+            iframe_selector=request.iframeSelector,
+            wait_for_selector_on_page=request.waitForSelectorOnPage,
+            wait_for_selector_in_iframe=request.waitForSelectorInIframe,
             timeout=request.timeout,
             headers=request.headers,
             include_html=request.include_html
         )
-        return WebCrawlerResponse(**result)
-    
+        
+        logger.info(f"Crawl for {request.url} finished with status: {result.get('status')}")
+        return result
+        
     except Exception as e:
-        # Consistent error handling for the remaining endpoint
+        logger.exception(f"Unhandled exception during crawl request for {request.url}: {e}")
         return WebCrawlerResponse(
-            url=request.url,
+            url=str(request.url),
+            status="error",
+            error=f"Internal Server Error: {str(e)}",
             title=None,
             text=None,
             html=None,
-            extracted_data=None,
-            status="error",
-            error=f"Unhandled exception in API handler: {str(e)}"
+            extracted_data=None
         )
 
 @app.post("/api/html-parser/parse", response_model=HtmlParseResponse)
