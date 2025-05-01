@@ -102,7 +102,13 @@ export const useOutputNodeData = (nodeId: string) => {
             return data;
           } else {
             // Attempt to stringify non-string data for text format
-            try { return JSON.stringify(data); } catch { return String(data); }
+            try { 
+              // Use pretty-printing for objects even in text mode for better readability
+              return JSON.stringify(data, null, 2); 
+            } catch { 
+              // Fallback to String() only if stringify fails
+              return String(data); 
+            }
           }
       }
     } catch (error) {

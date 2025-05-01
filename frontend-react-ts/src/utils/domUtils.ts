@@ -54,46 +54,49 @@ export const safeGetChildren = (element: Element | null): Element[] => {
 };
 
 /**
- * Generates a CSS selector for a given element (basic implementation).
- * Prefers ID, then falls back to tag name + classes.
- * @param element The DOM element.
- * @returns A generated CSS selector string, or an empty string if generation fails.
+ * Generates a robust CSS selector for a given element using tag names and :nth-child().
+ * Creates a path like html > body > div:nth-child(1) > p:nth-child(3)
+ * @param element The target DOM element.
+ * @returns A generated CSS selector string representing the path, or an empty string if generation fails.
  */
-export const generateSelector = (element: Element): string => {
+export const generateSelector = (element: Element | null): string => {
   if (!element) return "";
-  
-  const tagName = safeGetTagName(element);
-  if (!tagName) return "";
-  
-  let selector = tagName;
-  
-  // Prefer ID if available
-  try {
-    if (element.id) {
-      // Basic check for valid CSS ID characters (simplified)
-      if (/^[a-zA-Z0-9_-]+$/.test(element.id)) {
-         selector = `${tagName}#${element.id}`;
-         // Consider ID unique enough for this basic implementation
-         return selector; 
-      } else {
-         console.warn(`Element ID "${element.id}" contains invalid characters for CSS selector, omitting ID.`);
+
+  const pathParts: string[] = [];
+  let currentElement: Element | null = element;
+
+  while (currentElement) {
+    const tagName = safeGetTagName(currentElement);
+    if (!tagName) break; 
+
+    let part = tagName;
+    const parent = currentElement.parentElement;
+
+    // Calculate :nth-child() if it has a parent and is not the html element itself
+    if (parent && tagName !== 'html') {
+      // Get all element children of the parent
+      const siblings = Array.from(parent.children);
+      let nthIndex = -1;
+      // Find the index of the current element among its siblings
+      for(let i = 0; i < siblings.length; i++) {
+          if (siblings[i] === currentElement) {
+              nthIndex = i + 1; // :nth-child is 1-based
+              break;
+          }
       }
+      if (nthIndex > 0) {
+        part = `${part}:nth-child(${nthIndex})`;
+      } 
+      // else: Something went wrong finding the element among siblings, fallback to just tag
     }
-  } catch (e) {
-    console.error("Error accessing element ID:", e);
+
+    pathParts.push(part);
+
+    if (tagName === 'html') break; 
+    currentElement = parent; // Move up to the parent
   }
-  
-  // Add classes if no suitable ID
-  const classList = safeGetClassList(element);
-  if (classList.length > 0) {
-    // Filter potentially invalid class names (e.g., starting with a digit, though CSS4 allows it)
-    const validClasses = classList.filter(cls => /^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(cls));
-    if (validClasses.length > 0) {
-        const classes = validClasses.join('.');
-        selector = `${selector}.${classes}`;
-    }
-  }
-  
-  // Basic fallback to just tag name if no ID or valid classes
-  return selector;
+
+  // Reverse the array and join with ' > ' 
+  if (pathParts.length === 0) return "";
+  return pathParts.reverse().join(' > ');
 }; 

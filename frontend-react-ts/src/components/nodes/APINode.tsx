@@ -11,6 +11,8 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
+import { useNodeContentStore, setNodeContent } from '../../store/useNodeContentStore';
+import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
 
 interface Props {
   id: string;
@@ -40,7 +42,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     content,
     url,
     method,
-    label,
+    label: initialLabel,
     requestBodyType,
     requestBody,
     requestHeaders,
@@ -52,7 +54,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     isDirty,
     handleUrlChange,
     handleMethodChange,
-    handleLabelChange,
     handleRequestBodyTypeChange,
     handleRequestBodyChange,
     handleHeadersChange,
@@ -70,6 +71,28 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const [isComposing, setIsComposing] = useState(false);
   const [isEditingUrl, setIsEditingUrl] = useState(false);
   const [isEditingParams, setIsEditingParams] = useState(false);
+
+  const currentNodes = useFlowStructureStore(state => state.nodes);
+  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodesLocal = useFlowStructureStore(state => state.setNodes);
+
+  const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
+    setNodeContentLocal(updatedNodeId, { label: newLabel });
+
+    const updatedNodes = currentNodes.map(node => 
+      node.id === updatedNodeId
+        ? { 
+            ...node, 
+            data: { 
+              ...node.data, 
+              label: newLabel 
+            } 
+          } 
+        : node
+    );
+    setNodesLocal(updatedNodes);
+    console.log(`[APINode] Updated label for node ${updatedNodeId} in both stores.`);
+  }, [currentNodes, setNodesLocal, setNodeContentLocal]);
 
   const buildParamDrafts = useCallback((params: Record<string, string> = {}) => {
     const drafts: QueryParamDrafts = {};
@@ -162,10 +185,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     updateContent({ queryParams: newParams });
     setIsEditingParams(false);
   }, [queryParams, updateContent]);
-
-  const handleApiLabelUpdate = useCallback((passedNodeId: string, newLabel: string) => {
-    handleLabelChange(newLabel);
-  }, [handleLabelChange]);
 
   const handleApiRun = useCallback(() => {
     executeApiCall();
@@ -357,15 +376,15 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
         )}>
           <NodeHeader
             nodeId={id}
-            label={label || 'API Call'} 
-            placeholderLabel="API Call Node"
+            label={initialLabel}
+            placeholderLabel="API Call"
             isRootNode={isRootNode}
             isRunning={isRunning}
             isContentDirty={isDirty}
             viewMode={viewMode}
             themeColor="purple"
             onRun={handleApiRun}
-            onLabelUpdate={handleApiLabelUpdate}
+            onLabelUpdate={handleLabelUpdate}
             onToggleView={handleToggleView}
           />
           

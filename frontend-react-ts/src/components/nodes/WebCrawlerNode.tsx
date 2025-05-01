@@ -4,17 +4,19 @@ import { WebCrawlerNodeData } from '../../types/nodes';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
-import { NodeFooter } from './shared/NodeFooter';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeContentStore';
+import { useNodeContent, WebCrawlerNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
+import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
+import { NodeStatus } from '../../types/execution';
+import { runFlow } from '../../core/FlowRunner';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   // Use useNodeContent hook to get the latest content
@@ -30,61 +32,39 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Get flow structure
   const { nodes, edges } = useFlowStructureStore();
+  // Get the setNodes function from the store
+  const setNodes = useFlowStructureStore(state => state.setNodes);
   
-  // Handle run button click
+  // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {
-    // Create execution context
-    const executionId = `exec-${uuidv4()}`;
-    const executionContext = new FlowExecutionContext(executionId);
-    
-    // Set trigger node
-    executionContext.setTriggerNode(id);
-    
-    console.log(`[WebCrawlerNode] Starting execution for node ${id}`);
-    
-    // Build execution graph
-    buildExecutionGraphFromFlow(nodes, edges);
-    const executionGraph = getExecutionGraph();
-    
-    // Create node factory
-    const nodeFactory = new NodeFactory();
-    registerAllNodeTypes();
-    
-    // Find the node data
-    const node = nodes.find(n => n.id === id);
-    if (!node) {
-      console.error(`[WebCrawlerNode] Node ${id} not found.`);
-      return;
-    }
-    
-    // Create the node instance
-    const nodeInstance = nodeFactory.create(
-      id,
-      node.type as string,
-      node.data,
-      executionContext
-    );
-    
-    // Attach graph structure reference to the node property
-    nodeInstance.property = {
-      ...nodeInstance.property,
-      nodes,
-      edges,
-      executionGraph
-    };
-    
-    // Execute the node
-    nodeInstance.process({}).catch(error => {
-      console.error(`[WebCrawlerNode] Error executing node ${id}:`, error);
+    console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
+    // Call runFlow with the current node's ID as the startNodeId
+    runFlow(nodes, edges, id).catch((error: Error) => {
+        console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
+        // Optionally, mark the node as error in UI state here if needed
     });
   }, [id, nodes, edges]);
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // Update the label in the Zustand store
-    updateContent({ label: newLabel });
-    console.log(`Updated label for node ${nodeId} to ${newLabel} in store`);
-  }, [updateContent]);
+    // 1. Update NodeContentStore (config state)
+    setNodeContentGlobal(nodeId, { label: newLabel }); // Use imported setNodeContent
+
+    // 2. Update FlowStructureStore (React Flow rendering state)
+    const updatedNodes = nodes.map(node =>
+      node.id === nodeId
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              label: newLabel
+            }
+          }
+        : node
+    );
+    setNodes(updatedNodes); // Use setNodes obtained from the hook
+    console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
+  }, [nodes, setNodes, updateContent]); // Add nodes and setNodes to dependencies, keep updateContent for potential future use or remove if unused by setNodeContentGlobal directly
   
   // Handle toggle view
   const handleToggleView = useCallback(() => {
@@ -92,6 +72,12 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
       current === VIEW_MODES.COMPACT ? VIEW_MODES.EXPANDED : VIEW_MODES.COMPACT
     );
   }, []);
+  
+  // Map node state status to the expected type for NodeStatusIndicator
+  const nodeStatus: NodeStatus = 
+    (nodeState?.status && ['running', 'success', 'error'].includes(nodeState.status))
+    ? nodeState.status as NodeStatus
+    : 'idle';
   
   // Format URL for display
   const displayUrl = crawlerData.url 
@@ -111,6 +97,11 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
           hasError ? "border-red-500" : ""
         )}
       >
+        {/* Status Indicator - Positioned top-right */}
+        <div className="absolute top-2 right-2 z-10">
+          <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
+        </div>
+
         <NodeHeader 
           nodeId={id}
           label={crawlerData.label || "Web Crawler"}
@@ -158,13 +149,6 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
             )}
           </div>
         </NodeBody>
-        
-        <NodeFooter>
-          {/* Actions or status indicators */}
-          {isRunning && (
-            <div className="text-xs text-blue-500">Processing...</div>
-          )}
-        </NodeFooter>
         
         {/* Input handle */}
         <Handle

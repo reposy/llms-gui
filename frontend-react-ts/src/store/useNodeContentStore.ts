@@ -3,6 +3,10 @@ import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
 import { FileLikeObject, HTTPMethod, ExtractionRule } from '../types/nodes';
+import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
+import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
+// Import ExtractionRule type here as well if needed, or ensure it's exported from the store
+// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
 
 /**
  * 노드 컨텐츠의 기본 인터페이스
@@ -465,3 +469,15 @@ export {
 export type NodeContentRecord = {
   [nodeId: string]: LLMNodeContent | HTMLParserNodeContent | InputNodeContent | WebCrawlerNodeContent | OutputNodeContent | APINodeContent | any;
 }; 
+
+// --- Export ExtractionRule interface --- 
+export interface ExtractionRule {
+  id?: string;
+  name: string;
+  target: 'text' | 'html' | 'attribute';
+  selector: string;
+  attribute_name?: string;
+  multiple: boolean;
+  pathSteps?: { level: number; tag: string; details: string }[]; 
+}
+// --- End Export --- 

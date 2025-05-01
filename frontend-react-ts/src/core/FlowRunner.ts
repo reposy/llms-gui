@@ -34,7 +34,8 @@ export class FlowRunner {
     // Build the execution graph to ensure accurate node relationships
     buildExecutionGraphFromFlow(nodes, edges);
     const executionGraph = getExecutionGraph();
-    context.log(`Built execution graph with ${executionGraph.size} nodes`);
+    // Comment out redundant log
+    // context.log(`Built execution graph with ${executionGraph.size} nodes`);
     
     // Determine the starting nodes
     let nodesToExecuteIds: string[] = [];
@@ -93,6 +94,9 @@ export class FlowRunner {
           nodeFactory,
           executionGraph // Add the execution graph to allow for dynamic relationship resolution
         };
+        
+        // Mark the node as running
+        context.markNodeRunning(nodeIdToExecute);
         
         // Execute the node with an empty input object
         await nodeInstance.process({});

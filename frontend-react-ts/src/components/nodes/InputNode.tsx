@@ -14,7 +14,7 @@ import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
 import { InputModeToggle } from '../input/InputModeToggle';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
 import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
@@ -98,11 +98,29 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   // Check the length of the incomingConnections array
   const isRootNode = incomingConnections.length === 0;
 
-  // Handle label update via NodeHeader (or similar component)
-  const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // Use setNodeContent directly as the consolidated hook doesn't expose it by default
-    setNodeContent(nodeId, { label: newLabel }); 
-  }, [setNodeContent]);
+  // Get nodes for updating structure store
+  const currentNodes = useFlowStructureStore(state => state.nodes); 
+
+  // Handle label update (Modified to update both stores)
+  const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
+    // 1. Update NodeContentStore
+    setNodeContent(updatedNodeId, { label: newLabel });
+    
+    // 2. Update FlowStructureStore
+    const updatedNodes = currentNodes.map(node => 
+      node.id === updatedNodeId
+        ? { 
+            ...node, 
+            data: { 
+              ...node.data, 
+              label: newLabel 
+            } 
+          } 
+        : node
+    );
+    setNodes(updatedNodes);
+    console.log(`[InputNode] Updated label for node ${updatedNodeId} in both stores.`);
+  }, [currentNodes, setNodeContent, setNodes]);
 
   // Handle running the input node
   const handleRun = useCallback(() => {
