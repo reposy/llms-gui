@@ -111,31 +111,35 @@ export class HTMLParserNode extends Node {
     // Define logger specific to this execution context
     const log = (message: string) => this.context?.log(`${this.type}(${this.id}): ${message}`);
     
-    try {
+    // try...catch is now handled by Node.process
+    // try { // REMOVED try
       log('실행 시작');
-      this.context?.markNodeRunning(this.id);
+      // REMOVED: this.context?.markNodeRunning(this.id);
 
       // Extract HTML content using the helper function
       const htmlContent = getHtmlContentFromInput(input, log);
 
-      // If no valid HTML content, return the original input
+      // If no valid HTML content, stop processing this branch
       if (!htmlContent || htmlContent.trim().length === 0) {
-        log('유효한 HTML 콘텐츠를 찾을 수 없어 원본 입력을 그대로 반환합니다');
-        this.context?.storeOutput(this.id, input);
-        this.context?.markNodeSuccess(this.id, input); // Consider if this should be error or warning
-        return input;
+        log('유효한 HTML 콘텐츠를 찾을 수 없습니다. 브랜치 실행을 중단합니다.');
+        // Returning null will stop propagation in the new Node.process
+        return null;
+        // REMOVED: this.context?.storeOutput(this.id, input);
+        // REMOVED: this.context?.markNodeSuccess(this.id, input);
+        // REMOVED: return input;
       }
 
       // 최신 노드 설정 가져오기
       const nodeContent = useNodeContentStore.getState().getNodeContent<HTMLParserNodeContent>(this.id, this.type);
       const extractionRules = nodeContent.extractionRules || [];
 
+      // If no rules, maybe return the HTML itself or null?
+      // Returning the HTML makes it act like a pass-through if no rules defined.
       if (extractionRules.length === 0) {
-        log('경고 - 추출 규칙이 정의되지 않았습니다, 추출된 HTML 콘텐츠를 반환합니다');
-        // Return the processed HTML content if no rules are defined
-        this.context?.storeOutput(this.id, htmlContent); 
-        this.context?.markNodeSuccess(this.id, htmlContent);
-        return htmlContent;
+        log('경고 - 추출 규칙이 정의되지 않았습니다. 추출된 HTML 콘텐츠를 반환합니다.');
+        // REMOVED: this.context?.storeOutput(this.id, htmlContent);
+        // REMOVED: this.context?.markNodeSuccess(this.id, htmlContent);
+        return htmlContent; // Return HTML content directly
       }
 
       // 클라이언트 사이드에서 직접 파싱
@@ -148,7 +152,12 @@ export class HTMLParserNode extends Node {
         if (!rule.selector) continue;
         
         const elements = extractFromHTML(htmlContent, rule.selector);
-        if (!elements || elements.length === 0) {
+        // If querySelectorAll throws (invalid selector), extractFromHTML returns null
+        if (elements === null) {
+           throw new Error(`Invalid CSS selector in rule '${rule.name}': ${rule.selector}`);
+        }
+        
+        if (elements.length === 0) {
           result[rule.name] = rule.multiple ? [] : '';
           continue;
         }
@@ -166,17 +175,20 @@ export class HTMLParserNode extends Node {
         }
       }
 
-      // 결과 저장 및 반환
+      // 결과 반환
       log('실행 성공, 데이터 추출됨');
-      this.context?.storeOutput(this.id, result);
-      this.context?.markNodeSuccess(this.id, result);
-      console.log(">>>>>>>>", result)
-      return result;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      log(`오류 - ${errorMessage}`);
-      this.context?.markNodeError(this.id, errorMessage);
-      return input; // 오류 발생해도 체이닝 가능하도록 원본 입력 반환
-    }
+      // REMOVED: this.context?.storeOutput(this.id, result);
+      // REMOVED: this.context?.markNodeSuccess(this.id, result);
+      // console.log(">>>>>>>>", result) // Keep console log for debugging if needed
+      return result; // Return the result object
+
+    // } catch (error) { // REMOVED catch
+      // Error is now thrown and caught by Node.process
+      // const errorMessage = error instanceof Error ? error.message : String(error);
+      // log(`오류 - ${errorMessage}`);
+      // REMOVED: this.context?.markNodeError(this.id, errorMessage);
+      // throw error; // Re-throw
+      // REMOVED: return input; // Removed - let Node.process handle error propagation
+    // }
   }
 } 

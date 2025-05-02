@@ -59,9 +59,8 @@ export class ApiNode extends Node {
       this.context?.log(`${this.type}(${this.id}): Using input as URL: ${targetUrl}`);
     } else if (!targetUrl) {
       const errorMsg = "URL is required for ApiNode.";
-      this.context?.markNodeError(this.id, errorMsg);
       this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
-      return null;
+      throw new Error(errorMsg);
     }
     
     // Determine the request body
@@ -93,24 +92,15 @@ export class ApiNode extends Node {
 
     this.context?.log(`${this.type}(${this.id}): Calling API: ${method} ${targetUrl}`);
 
-    try {
-      const result = await callApi({
-        url: targetUrl,
-        method: method as HTTPMethod,
-        headers: finalHeaders,
-        body: requestBody,
-        queryParams
-      });
-      
-      this.context?.log(`${this.type}(${this.id}): API call successful, result type: ${typeof result}`);
-      this.context?.storeOutput(this.id, result);
-      return result;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.markNodeError(this.id, errorMessage);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
-      return null;
-    }
+    const result = await callApi({
+      url: targetUrl,
+      method: method as HTTPMethod,
+      headers: finalHeaders,
+      body: requestBody,
+      queryParams
+    });
+    
+    this.context?.log(`${this.type}(${this.id}): API call successful, result type: ${typeof result}`);
+    return result;
   }
 } 

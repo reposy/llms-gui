@@ -247,67 +247,56 @@ export class LlmNode extends Node {
    */
   async execute(input: any): Promise<string | null> {
     this.context?.log(`${this.type}(${this.id}): Entering execute`);
-    this.context?.markNodeRunning(this.id);
 
     // 1. Validate required properties
     const propError = this._validateRequiredProperties();
     if (propError) {
-        this.context?.markNodeError(this.id, propError);
-        return null;
+        throw new Error(propError);
     }
 
     const mode = this.property.mode ?? 'text';
     const basePrompt = this.property.prompt ?? '';
     this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${this.property.provider}, Model: ${this.property.model}`);
 
-    try {
-      // 2. Prepare inputs based on type and mode
-      const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
+    // 2. Prepare inputs based on type and mode
+    const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
 
-      // 3. Validate the prepared inputs
-      const inputError = this._validatePreparedInputs(mode, input, preparedInputs);
-      if (inputError) {
-          this.context?.log(`${this.type}(${this.id}): Error - ${inputError}`);
-          this.context?.markNodeError(this.id, inputError);
-          return null;
-      }
-
-      const { finalPrompt, inputFileObjects } = preparedInputs;
-
-      // 4. Prepare LLM parameters
-      const params: LLMRequestParams = {
-        provider: this.property.provider!, // Already validated non-null
-        model: this.property.model!,     // Already validated non-null
-        prompt: finalPrompt,
-        temperature: this.property.temperature ?? 0.7,
-        ollamaUrl: this.property.ollamaUrl,
-        openaiApiKey: this.property.openaiApiKey,
-        images: inputFileObjects // Pass the File objects directly to the service
-      };
-      this.context?.log(`${this.type}(${this.id}): Calling llmService with final prompt: "${finalPrompt.substring(0, 50)}..." and ${params.images?.length ?? 0} file object(s).`);
-
-      // 5. Call LLM Service
-      const llmResult = await runLLM(params);
-      if (!llmResult) { throw new Error('LLM service returned null.'); }
-
-      // 6. Process and prepend prefix to the result
-      let resultText = llmResult.response;
-      const prefix = this._getResultPrefix(input); // Prefix based on original input type
-      if (prefix) {
-        resultText = prefix + resultText;
-        this.context?.log(`${this.type}(${this.id}): Prepended prefix: ${prefix.substring(0, 50)}...`);
-      }
-
-      this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
-      this.context?.storeOutput(this.id, resultText);
-      this.context?.markNodeSuccess(this.id, resultText); // Mark success after storing output
-      return resultText;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.markNodeError(this.id, errorMessage);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
-      return null;
+    // 3. Validate the prepared inputs
+    const inputError = this._validatePreparedInputs(mode, input, preparedInputs);
+    if (inputError) {
+        this.context?.log(`${this.type}(${this.id}): Error - ${inputError}`);
+        throw new Error(inputError);
     }
+
+    const { finalPrompt, inputFileObjects } = preparedInputs;
+
+    // 4. Prepare LLM parameters
+    const params: LLMRequestParams = {
+      provider: this.property.provider!, // Already validated non-null
+      model: this.property.model!,     // Already validated non-null
+      prompt: finalPrompt,
+      temperature: this.property.temperature ?? 0.7,
+      ollamaUrl: this.property.ollamaUrl,
+      openaiApiKey: this.property.openaiApiKey,
+      images: inputFileObjects // Pass the File objects directly to the service
+    };
+    this.context?.log(`${this.type}(${this.id}): Calling llmService with final prompt: "${finalPrompt.substring(0, 50)}..." and ${params.images?.length ?? 0} file object(s).`);
+
+    // 5. Call LLM Service
+    const llmResult = await runLLM(params);
+    if (llmResult === null || llmResult === undefined) {
+         throw new Error('LLM service returned null or undefined unexpectedly.');
+    }
+
+    // 6. Process and prepend prefix to the result
+    let resultText = llmResult.response;
+    const prefix = this._getResultPrefix(input); // Prefix based on original input type
+    if (prefix) {
+      resultText = prefix + resultText;
+      this.context?.log(`${this.type}(${this.id}): Prepended prefix: ${prefix.substring(0, 50)}...`);
+    }
+
+    this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
+    return resultText;
   }
 } 

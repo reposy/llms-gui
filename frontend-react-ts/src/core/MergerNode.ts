@@ -44,47 +44,63 @@ export class MergerNode extends Node {
     this.context?.log(`${this.type}(${this.id}): Executing`);
     
     // Get the latest content (strategy, keys) directly from the store
+    // Note: Strategy and keys seem unused in the current simple merge logic,
+    // but keeping the retrieval for potential future use.
     const nodeContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
-    const strategy = nodeContent.strategy || 'array'; // Default strategy
-    const keys = nodeContent.keys || [];
+    // const strategy = nodeContent.strategy || 'array'; // Default strategy
+    // const keys = nodeContent.keys || [];
 
-    this.context?.log(`${this.type}(${this.id}): Strategy: ${strategy}, Input type: ${typeof input}`);
+    this.context?.log(`${this.type}(${this.id}): Received input type: ${typeof input}`);
 
-    // Add the received input to the internal collection
+    // --- Start Modified Logic --- 
+    let itemsToOutput: any[] = []; // Initialize an empty array for the output of this execution
+
     if (input !== null && input !== undefined) {
-      this.collectedItems.push(input);
-      this.context?.log(`${this.type}(${this.id}): Added input. Total items: ${this.collectedItems.length}`);
+      if (Array.isArray(input)) {
+        // If input is an array, spread its elements into the output array
+        itemsToOutput.push(...input);
+        this.context?.log(`${this.type}(${this.id}): Input is an array. Adding ${input.length} elements.`);
+      } else {
+        // If input is not an array, push the input itself as a single element
+        itemsToOutput.push(input);
+        this.context?.log(`${this.type}(${this.id}): Input is not an array. Adding 1 element.`);
+      }
+      
+      // --- Keep the logic to update the persistent collectedItems --- 
+      // This assumes collectedItems should store the history of *raw* inputs received.
+      // If collectedItems should store the *processed* items (like itemsToOutput),
+      // this part needs adjustment.
+      this.collectedItems.push(input); // Store the original input
+      this.context?.log(`${this.type}(${this.id}): Added raw input to persistent collection. Total raw inputs: ${this.collectedItems.length}`);
+      useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
+      // --- End Persistent Collection Update --- 
+      
     } else {
       this.context?.log(`${this.type}(${this.id}): Received null/undefined input, not adding.`);
+      // If input is null/undefined, should we return an empty array or null?
+      // Returning an empty array seems consistent with the type signature Promise<any[] | null>
+      // and the goal of always producing an array output when possible.
     }
 
-    // Update the store with the current collected items
-    // This allows the UI to reflect the merged items progressively
-    useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
-    
-    // Store the current collection in the execution context output as well
-    this.context?.storeOutput(this.id, [...this.collectedItems]);
+    this.context?.log(`${this.type}(${this.id}): Returning processed output array with ${itemsToOutput.length} items for this execution.`);
+    return itemsToOutput; // Return the processed array for downstream nodes
+    // --- End Modified Logic --- 
 
-    // Merger node inherently collects inputs. It doesn't immediately pass data onwards
-    // unless specifically designed to do so based on some condition (e.g., number of inputs).
-    // For now, we assume it collects all inputs until the flow completes
-    // and the final collected array might be used by subsequent nodes if the flow
-    // triggers them AFTER all inputs have potentially arrived at the merger.
-    // A common pattern is for Merger to be followed by a node triggered manually or by a final event.
-    
-    // For simplicity in this pass, let's make it return the *current* collection.
-    // This means downstream nodes will execute multiple times as items merge.
-    // A more robust implementation might require knowing when *all* potential inputs
-    // have arrived before propagating.
-    this.context?.log(`${this.type}(${this.id}): Returning current collection (${this.collectedItems.length} items)`);
-    return [...this.collectedItems]; // Return a copy of the array
-
-    // --- Alternative: Return null to prevent immediate downstream execution --- 
-    // this.context?.log(`${this.type}(${this.id}): Returning null to await more inputs.`);
-    // return null; 
-    // If returning null, a mechanism (e.g., a button on the Merger node UI, or 
-    // a separate "trigger" node) would be needed to push the final merged 
-    // result ([...this.collectedItems]) to the *actual* next node in the logical flow.
+    // --- Original Logic (commented out) --- 
+    // Add the received input to the internal collection
+    // if (input !== null && input !== undefined) {
+    //   this.collectedItems.push(input);
+    //   this.context?.log(`${this.type}(${this.id}): Added input. Total items: ${this.collectedItems.length}`);
+    // } else {
+    //   this.context?.log(`${this.type}(${this.id}): Received null/undefined input, not adding.`);
+    // }
+    // // Update the store with the current collected items
+    // useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
+    // // Store the current collection in the execution context output as well
+    // this.context?.storeOutput(this.id, [...this.collectedItems]);
+    // this.context?.log(`${this.type}(${this.id}): Returning current collection (${this.collectedItems.length} items)`);
+    // return [...this.collectedItems]; // Return a copy of the array
+    // --- End Original Logic --- 
   }
 
   /**
