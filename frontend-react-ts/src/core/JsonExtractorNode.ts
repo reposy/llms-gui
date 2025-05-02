@@ -78,11 +78,9 @@ export class JsonExtractorNode extends Node {
       
       if (result === undefined) {
         this.context?.log(`${this.type}(${this.id}): Path not found or extraction failed, returning default value`);
-        this.context?.storeOutput(this.id, defaultValue);
         return defaultValue;
       } else {
         this.context?.log(`${this.type}(${this.id}): Extraction successful`);
-        this.context?.storeOutput(this.id, result);
         return result;
       }
 
@@ -90,7 +88,6 @@ export class JsonExtractorNode extends Node {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.context?.markNodeError(this.id, errorMessage);
       this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
-      this.context?.storeOutput(this.id, defaultValue); // Store default value on error
       return defaultValue;
     }
   }

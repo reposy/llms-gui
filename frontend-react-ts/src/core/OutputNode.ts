@@ -94,11 +94,7 @@ export class OutputNode extends Node {
     useNodeContentStore.getState().setNodeContent(this.id, { content: outputData });
     this.context?.log(`${this.type}(${this.id}): Stored output in node content`);
     
-    // Store the output in the execution context as well
-    this.context?.storeOutput(this.id, outputData);
-
-    // Output node should pass the input through, so return the original input
-    // The formatted output is stored in the node content for display purposes.
-    return input;
+    // OutputNode는 형식화된 결과를 반환합니다.
+    return outputData;
   }
 } 

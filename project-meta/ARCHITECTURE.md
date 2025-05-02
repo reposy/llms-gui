@@ -84,16 +84,25 @@ Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리
 2.  **실행 트리거:** `useExecutionController`의 `executeFlow` 함수가 호출됩니다.
 3.  **실행 그래프 생성:** `useFlowStructureStore`의 노드와 엣지 정보를 바탕으로 실행 순서를 결정하는 실행 그래프(Directed Acyclic Graph, DAG)를 생성합니다.
 4.  **Flow Runner 실행:** `FlowRunner` (또는 유사한 실행 제어 로직)가 실행 그래프를 순회하며 각 노드를 순서대로 실행합니다.
-5.  **개별 노드 실행 (`Node.execute`):**
-    *   실행할 노드의 `execute` 메서드가 호출됩니다. 입력값은 이전 노드의 결과(`nodeState.result`)입니다.
-    *   `useNodeStateStore`를 통해 해당 노드의 상태를 'running'으로 업데이트합니다.
-    *   노드 타입에 따라 필요한 작업을 수행합니다.
+5.  **개별 노드 실행 (`Node.process` 및 `execute`):**
+    *   모든 노드는 `Node` 기본 클래스의 `process` 메소드로 실행됩니다.
+    *   `process`는 노드 상태를 'running'으로 변경하고, 해당 노드별로 구현된 `execute` 메소드를 호출합니다.
+    *   `execute` 메소드는 노드 타입에 따라 다음과 같은 작업을 수행합니다:
         *   **Frontend 처리:** `HTML Parser` 등은 브라우저에서 직접 로직을 수행합니다.
         *   **Backend 처리:** `Web Crawler`, `LLM`, `API` 등은 필요한 정보를 구성하여 백엔드 API를 호출하고 응답을 기다립니다.
-    *   실행이 완료되면 결과를 처리합니다.
-    *   `useNodeStateStore`를 통해 노드 상태를 'success' 또는 'error'로 업데이트하고, 결과 또는 오류 메시지를 저장합니다.
-6.  **결과 전달 (체이닝):** 성공적으로 실행된 노드의 결과(`nodeState.result`)는 다음 노드의 `execute` 메서드 호출 시 `input` 인자로 전달됩니다.
-7.  **UI 업데이트:** `useNodeStateStore`의 상태 변경은 해당 상태를 구독하는 UI 컴포넌트(노드 자체, 사이드바 등)에 자동으로 반영되어 실행 상태(색상 변경 등)와 결과가 사용자에게 표시됩니다.
+    *   `execute`가 결과를 반환하면, `process`는 결과를 `FlowExecutionContext.storeOutput`으로 저장하고 노드 상태를 'success'로 표시합니다.
+        *   결과가 배열인 경우, 각 요소는 개별적으로 `storeOutput`으로 저장됩니다.
+        *   결과가 단일 값인 경우, 해당 값이 그대로 `storeOutput`으로 저장됩니다.
+        *   결과 저장 후, `process`는 자식 노드들을 찾아 병렬로 실행합니다.
+6.  **결과 저장 및 전달 (`storeOutput`):**
+    *   모든 노드 결과는 `FlowExecutionContext`의 `storeOutput` 메소드를 통해 중앙에서 관리됩니다.
+    *   각 노드 ID에 대한 결과 배열(`Map<string, any[]>`)이 유지됩니다. 
+    *   새 결과가 들어오면 해당 노드의 결과 배열에 **추가**됩니다.
+    *   중앙 집중식 결과 저장은 데이터 흐름을 일관되게 유지하고, 노드 간 결과 전달을 단순화합니다.
+7.  **다음 노드 실행:**
+    *   자식 노드의 `process` 메소드를 실행할 때, 부모 노드의 **전체 실행 결과**가 입력으로 전달됩니다.
+    *   이는 부모 노드가 배열을 반환한 경우 중요합니다(자식 노드는 전체 배열을 받음).
+8.  **UI 업데이트:** 노드 상태와 결과 변경은 해당 상태를 구독하는 UI 컴포넌트(노드 자체, 사이드바 등)에 자동으로 반영됩니다.
 
 ### 4.2. 그룹 노드 실행
 
@@ -114,6 +123,15 @@ Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리
 *   노드 간 전달되는 데이터(`nodeState.result`)는 JavaScript의 기본 타입(문자열, 숫자, 불리언) 또는 복합 타입(객체, 배열)이 될 수 있습니다.
 *   특정 노드는 특정 형식의 입력을 기대할 수 있습니다 (예: `HTML Parser`는 HTML 문자열 또는 관련 객체, `JSON Extractor`는 객체 또는 JSON 문자열).
 *   `Output` 노드는 다양한 타입의 결과를 받아 설정된 포맷(JSON/TEXT)에 따라 문자열로 변환하여 표시합니다.
+
+### 4.4. 실행 결과 저장 모범 사례
+
+노드 개발 시 다음과 같은 모범 사례를 따르는 것이 중요합니다:
+
+1. **단일 진입점 원칙:** 노드 실행 결과는 오직 `execute` 메소드의 반환값으로 전달되어야 합니다. 노드는 `execute` 메소드 내에서 직접 `storeOutput`을 호출하지 않아야 합니다.
+2. **명확한 책임 분리:** 노드 로직(`execute`)과 결과 저장(`process`)의 책임을 분리합니다. 이렇게 하면 노드 개발자는 데이터 처리 로직에만 집중할 수 있습니다.
+3. **일관된 데이터 흐름:** 모든 노드가 같은 `process` → `execute` → 결과 반환 → `storeOutput` 흐름을 따르면 전체 시스템의 데이터 흐름이 일관되고 예측 가능해집니다.
+4. **디버깅 용이성:** 모든 결과가 같은 방식으로 저장되므로 문제 진단과 디버깅이 용이합니다.
 
 ## Frontend Deep Dive
 For implementation details about React component structure and state management:

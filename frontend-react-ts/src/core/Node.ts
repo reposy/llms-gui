@@ -157,25 +157,24 @@ export abstract class Node {
 
       // 3. 성공 처리 및 결과 저장
       if (output !== null && output !== undefined) {
-        // GroupNode의 경우, 반환된 배열의 각 요소를 저장
-        if (this.type === 'group' && Array.isArray(output)) {
+        // output이 배열이면, 각 요소를 개별적으로 storeOutput
+        if (Array.isArray(output)) {
           if (output.length > 0) {
-            this.context.log(`[Node:${this.id}] Group returned array with ${output.length} items. Storing each item.`);
+            this.context.log(`[Node:${this.id}] Execute returned an array with ${output.length} items. Storing each item.`);
             for (const item of output) {
-              // Group 노드의 ID로 각 아이템 저장 (후속 노드가 Group 결과 전체를 받도록)
+              // 각 아이템 저장
               this.context.storeOutput(this.id, item); 
             }
-            // Group 노드 자체의 성공 상태는 마지막 아이템으로 마크 (UI 표시용)
-            // 또는 전체 배열을 result로 저장할 수도 있음 - UI 요구사항에 따라 결정
-            this.context.markNodeSuccess(this.id, output); // 그룹 결과 전체를 success result로 저장
-            this.context.log(`[Node:${this.id}] Group marked success with array result.`);
+            // 성공 상태는 배열 전체로 마크 (UI 표시용)
+            this.context.markNodeSuccess(this.id, output); 
+            this.context.log(`[Node:${this.id}] Marked success with array result.`);
           } else {
-             this.context.log(`[Node:${this.id}] Group returned empty array.`);
+             this.context.log(`[Node:${this.id}] Execute returned empty array.`);
              this.context.markNodeSuccess(this.id, []); // 빈 배열로 성공 마크
           }
         } else {
-          // 다른 모든 노드 타입은 결과를 그대로 저장
-          this.context.log(`[Node:${this.id}] Storing single output.`);
+          // 배열이 아니면 output을 그대로 storeOutput
+          this.context.log(`[Node:${this.id}] Execute returned a single item. Storing it.`);
           this.context.storeOutput(this.id, output); 
           this.context.markNodeSuccess(this.id, output);
         }
@@ -186,7 +185,8 @@ export abstract class Node {
            this.context.log(`[Node:${this.id}] Executing ${children.length} child node(s) in parallel.`);
            const childPromises = children.map(child => {
              this.context?.log(`[Node:${this.id}] Triggering process for child ${child.id}`);
-             return child.process(output); // output을 다음 노드로 전달
+             // execute가 반환한 원본 output (배열 또는 단일값)을 그대로 전달
+             return child.process(output);
            });
            await Promise.all(childPromises); // 모든 자식 노드의 process 완료 대기
            this.context.log(`[Node:${this.id}] Finished executing child node(s).`);

@@ -13,7 +13,7 @@ interface MergerNodeProperty {
 
 /**
  * MergerNode accumulates inputs from multiple upstream nodes
- * and aggregates them according to a specified strategy.
+ * and returns the entire collection on each execution.
  */
 export class MergerNode extends Node {
   declare property: MergerNodeContent;
@@ -30,77 +30,51 @@ export class MergerNode extends Node {
     super(id, 'merger', property, context);
     // Initialize collectedItems from the store if needed, or ensure it starts empty
     const initialContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
-    this.collectedItems = initialContent?.items || [];
+    // Ensure stored items are treated as initial collection if they exist
+    this.collectedItems = initialContent?.items || []; 
     this.context?.log(`${this.type}(${this.id}): Initialized with ${this.collectedItems.length} items from store/default.`);
   }
 
   /**
-   * Execute the node's specific logic
-   * Always pushes input to Zustand's items array and returns the updated array
+   * Execute the node's specific logic.
+   * Adds the input (or its elements if it's an array) to the internal collection
+   * and returns the *entire* updated collection.
    * @param input The input to execute
-   * @returns The merged result
+   * @returns The entire accumulated array of items.
    */
-  async execute(input: any): Promise<any[] | null> {
+  async execute(input: any): Promise<any[] | null> { // Keep return type as potentially null if needed downstream, though likely always returns array
     this.context?.log(`${this.type}(${this.id}): Executing`);
-    
-    // Get the latest content (strategy, keys) directly from the store
-    // Note: Strategy and keys seem unused in the current simple merge logic,
-    // but keeping the retrieval for potential future use.
-    const nodeContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
-    // const strategy = nodeContent.strategy || 'array'; // Default strategy
-    // const keys = nodeContent.keys || [];
+
+    // Get latest config if needed for strategies (currently unused)
+    // const nodeContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
 
     this.context?.log(`${this.type}(${this.id}): Received input type: ${typeof input}`);
 
-    // --- Start Modified Logic --- 
-    let itemsToOutput: any[] = []; // Initialize an empty array for the output of this execution
-
     if (input !== null && input !== undefined) {
+      // Directly modify the member variable collectedItems
       if (Array.isArray(input)) {
-        // If input is an array, spread its elements into the output array
-        itemsToOutput.push(...input);
-        this.context?.log(`${this.type}(${this.id}): Input is an array. Adding ${input.length} elements.`);
+        // If input is an array, spread its elements into collectedItems
+        this.collectedItems.push(...input);
+        this.context?.log(`${this.type}(${this.id}): Input is an array. Added ${input.length} elements to collectedItems.`);
       } else {
         // If input is not an array, push the input itself as a single element
-        itemsToOutput.push(input);
-        this.context?.log(`${this.type}(${this.id}): Input is not an array. Adding 1 element.`);
+        this.collectedItems.push(input);
+        this.context?.log(`${this.type}(${this.id}): Input is not an array. Added 1 element to collectedItems.`);
       }
       
-      // --- Keep the logic to update the persistent collectedItems --- 
-      // This assumes collectedItems should store the history of *raw* inputs received.
-      // If collectedItems should store the *processed* items (like itemsToOutput),
-      // this part needs adjustment.
-      this.collectedItems.push(input); // Store the original input
-      this.context?.log(`${this.type}(${this.id}): Added raw input to persistent collection. Total raw inputs: ${this.collectedItems.length}`);
-      useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
-      // --- End Persistent Collection Update --- 
+      // --- Update Zustand store for UI display of accumulated items (Keep this) ---
+      this.context?.log(`${this.type}(${this.id}): Updating UI store. Total collected items: ${this.collectedItems.length}`);
+      useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] }); // Update store with a copy
+      // --- End UI Update ---
       
     } else {
       this.context?.log(`${this.type}(${this.id}): Received null/undefined input, not adding.`);
-      // If input is null/undefined, should we return an empty array or null?
-      // Returning an empty array seems consistent with the type signature Promise<any[] | null>
-      // and the goal of always producing an array output when possible.
+      // If input is null/undefined, do not modify collectedItems, just return current state
     }
 
-    this.context?.log(`${this.type}(${this.id}): Returning processed output array with ${itemsToOutput.length} items for this execution.`);
-    return itemsToOutput; // Return the processed array for downstream nodes
-    // --- End Modified Logic --- 
-
-    // --- Original Logic (commented out) --- 
-    // Add the received input to the internal collection
-    // if (input !== null && input !== undefined) {
-    //   this.collectedItems.push(input);
-    //   this.context?.log(`${this.type}(${this.id}): Added input. Total items: ${this.collectedItems.length}`);
-    // } else {
-    //   this.context?.log(`${this.type}(${this.id}): Received null/undefined input, not adding.`);
-    // }
-    // // Update the store with the current collected items
-    // useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
-    // // Store the current collection in the execution context output as well
-    // this.context?.storeOutput(this.id, [...this.collectedItems]);
-    // this.context?.log(`${this.type}(${this.id}): Returning current collection (${this.collectedItems.length} items)`);
-    // return [...this.collectedItems]; // Return a copy of the array
-    // --- End Original Logic --- 
+    // Return the *entire* current accumulated list
+    this.context?.log(`${this.type}(${this.id}): Returning current accumulated items (${this.collectedItems.length} items).`);
+    return [...this.collectedItems]; // Return a copy of the accumulated array
   }
 
   /**

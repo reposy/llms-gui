@@ -93,9 +93,6 @@ export class ConditionalNode extends Node {
       // Treat evaluation errors as false? Or return null?
       // For now, let it proceed as false.
     }
-
-    // Store the result of the condition evaluation
-    this.context?.storeOutput(this.id, conditionResult);
     
     // The actual branching logic happens in the getChildNodes method
     // which needs to be overridden for ConditionalNode.
