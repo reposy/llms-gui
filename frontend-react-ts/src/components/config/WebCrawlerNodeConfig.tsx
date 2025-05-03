@@ -2,7 +2,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 // Remove unused type if needed
 // import { WebCrawlerNodeData } from '../../types/nodes';
-import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeContentStore';
+import { useNodeContent } from '../../store/useNodeContentStore';
+import { WebCrawlerNodeContent } from '../../types/nodes';
 
 interface WebCrawlerNodeConfigProps {
   nodeId: string;
@@ -180,6 +181,21 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             onKeyDown={handleKeyDown}
           />
           <p className="mt-1 text-xs text-gray-500">Maximum total time to wait in milliseconds</p>
+        </div>
+
+        {/* NEW: Extract Element Selector Input */}
+        <div>
+          <label htmlFor="extract-selector" className="block text-xs font-medium text-gray-700">Extract Element Selector (Optional)</label>
+          <input
+            id="extract-selector"
+            type="text"
+            value={content?.extractElementSelector || ''} // Use optional chaining
+            onChange={(e) => handleUpdateField('extractElementSelector', e.target.value)}
+            placeholder=".content-area, #main-article"
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
+            onKeyDown={handleKeyDown}
+          />
+          <p className="mt-1 text-xs text-gray-500">If provided, only the inner HTML of the first matching element will be returned.</p>
         </div>
 
         {/* REMOVED: Output Format Selector */}

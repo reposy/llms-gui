@@ -9,6 +9,8 @@
  * @param params.timeout Optional time to wait in milliseconds (passed as timeout to backend)
  * @param params.headers Optional HTTP headers to include in the request
  * @param params.include_html Whether to include the full HTML in the response
+ * @param params.extract_element_selector Optional CSS selector to extract an element
+ * @param params.output_format Optional output format for the response
  * @returns Promise resolving to the backend response object or null if failed
  */
 export async function crawling({
@@ -18,7 +20,8 @@ export async function crawling({
   waitForSelectorInIframe,
   timeout = 30000, // Default timeout in ms
   headers,
-  include_html = true,
+  extract_element_selector,
+  output_format,
 }: {
   url: string;
   waitForSelectorOnPage?: string;
@@ -26,13 +29,15 @@ export async function crawling({
   waitForSelectorInIframe?: string;
   timeout?: number;
   headers?: Record<string, string>; 
-  include_html?: boolean;
+  extract_element_selector?: string;
+  output_format?: string;
 }): Promise<any | null> { 
   console.log(`[Crawler] Starting crawl request for URL: ${url}`);
   console.log(`[Crawler] Page Wait Selector: ${waitForSelectorOnPage || 'N/A'}`);
   console.log(`[Crawler] IFrame Selector: ${iframeSelector || 'N/A'}`);
   console.log(`[Crawler] IFrame Wait Selector: ${waitForSelectorInIframe || 'N/A'}`);
-  console.log(`[Crawler] Include HTML: ${include_html}`);
+  console.log(`[Crawler] Extract Element Selector: ${extract_element_selector || 'N/A'}`);
+  console.log(`[Crawler] Output Format: ${output_format || 'N/A'}`);
   console.log(`[Crawler] Timeout (ms): ${timeout}`);
 
   if (headers && Object.keys(headers).length > 0) {
@@ -56,7 +61,8 @@ export async function crawling({
         waitForSelectorInIframe: waitForSelectorInIframe,
         timeout: timeout, // Pass timeout in milliseconds
         headers: headers, // Pass headers
-        include_html: include_html, // Pass include_html flag
+        extractElementSelector: extract_element_selector,
+        outputFormat: output_format,
       }),
     });
     

@@ -1,44 +1,32 @@
-import { Node } from './Node';
+import type { NodeProps } from '@xyflow/react';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { crawling } from '../utils/web/crawling.ts';
-import { WebCrawlerNodeContent } from '../store/useNodeContentStore.ts';
+import { crawling } from '../utils/web/crawling';
+import { WebCrawlerNodeContent } from '../types/nodes';
+import { Node } from './Node';
 
 /**
- * Web Crawler node that fetches a web page and returns its HTML content
+ * Web Crawler node implementation.
  */
 export class WebCrawlerNode extends Node {
-  /**
-   * Type assertion for property (now referencing the store content type)
-   */
-  declare property: WebCrawlerNodeContent;
-
-  /**
-   * Constructor for WebCrawlerNode
-   */
-  constructor(
-    id: string,
-    property: Record<string, any> = {}, // Keep constructor signature generic
-    context?: FlowExecutionContext
-  ) {
-    super(id, 'web-crawler', property, context);
+  constructor(id: string, data: WebCrawlerNodeContent, context?: FlowExecutionContext) {
+    super(id, 'web-crawler', data, context);
   }
 
   /**
-   * Execute the node's specific logic
-   * @param input The input data that may contain URL override
-   * @returns The fetched HTML content as a string
+   * Executes the web crawler node.
+   * @param input Optional input, potentially a URL string.
+   * @returns The fetched HTML content as a string, or specific element HTML, or null on error.
    */
   async execute(input: any): Promise<string | null> {
     this.context?.log(`${this.type}(${this.id}): Executing`);
     this.context?.markNodeRunning(this.id);
 
-    const props = this.property || {};
-    let targetUrl = props.url || '';
+    const nodeContent = this.property as WebCrawlerNodeContent;
+    let targetUrl = nodeContent.url || '';
 
-    // If input is a string, assume it's a URL and override the node's URL property
     if (typeof input === 'string' && input.trim() !== '') {
         try {
-            new URL(input); // Validate if input is a URL
+            new URL(input);
             targetUrl = input;
             this.context?.log(`${this.type}(${this.id}): Using input string as target URL: ${targetUrl}`);
         } catch (e) {
@@ -56,36 +44,35 @@ export class WebCrawlerNode extends Node {
     try {
       this.context?.log(`${this.type}(${this.id}): Calling backend crawler service for URL: ${targetUrl}`);
       
-      // Use the imported 'crawling' utility to call the backend API
-      // Pass the parameters according to the backend request model
       const result = await crawling({
         url: targetUrl,
-        waitForSelectorOnPage: props.waitForSelectorOnPage,
-        iframeSelector: props.iframeSelector,
-        waitForSelectorInIframe: props.waitForSelectorInIframe,
-        timeout: props.timeout || 30000,
-        headers: props.headers || {},
-        include_html: true, // Always request HTML
+        waitForSelectorOnPage: nodeContent.waitForSelectorOnPage,
+        iframeSelector: nodeContent.iframeSelector,
+        waitForSelectorInIframe: nodeContent.waitForSelectorInIframe,
+        timeout: nodeContent.timeout || 30000,
+        headers: nodeContent.headers || {},
+        extract_element_selector: nodeContent.extractElementSelector,
+        output_format: nodeContent.outputFormat || 'html'
       });
 
-      // Check if the utility itself failed (e.g., network error)
       if (result === null) {
-          // Assuming the `crawling` utility handles logging and marking node error on network failure
           this.context?.log(`${this.type}(${this.id}): Frontend crawling utility failed (e.g., network error).`);
-          // Ensure error state is set if utility didn't
-          if (this.context?.getNodeState(this.id)?.status !== 'error') {
-              this.context?.markNodeError(this.id, 'Frontend API call failed');
+          if (typeof this.context?.getNodeState === 'function' && this.context.getNodeState(this.id)?.status !== 'error') {
+              this.context?.markNodeError?.(this.id, 'Frontend API call failed');
           }
           return null;
       }
 
-      // Check the status returned from the backend API
-      if (result.status === 'success' && result.html) {
-        this.context?.log(`${this.type}(${this.id}): Backend crawling successful, received HTML content (length: ${result.html.length}).`);
-        this.context?.markNodeSuccess(this.id, result.html); // Store HTML as result
-        return result.html;
+      if (result.status === 'success' && (result.extracted_content || result.html)) {
+          const contentToReturn = result.extracted_content ?? result.html;
+          const logMessage = result.extracted_content 
+              ? `Backend crawling successful, received extracted element content (length: ${contentToReturn?.length || 0}).`
+              : `Backend crawling successful, received HTML content (length: ${contentToReturn?.length || 0}).`;
+          this.context?.log(`${this.type}(${this.id}): ${logMessage}`);
+          this.context?.markNodeSuccess(this.id, contentToReturn);
+          return contentToReturn;
       } else {
-        const errorMsg = result.error || 'Backend crawling failed or did not return HTML content.';
+        const errorMsg = result.error || 'Backend crawling failed or did not return expected content.';
         this.context?.log(`${this.type}(${this.id}): Backend crawling failed - ${errorMsg}`);
         this.context?.markNodeError(this.id, errorMsg);
         return null;

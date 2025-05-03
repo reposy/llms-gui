@@ -290,3 +290,19 @@ export type NodeTypeMap = {
 export interface LLMNodeContent extends NodeContent {
   // ... existing code ...
 }
+
+/**
+ * Represents the content specific to a Web Crawler node.
+ */
+export interface WebCrawlerNodeContent extends BaseNodeContent {
+  url: string;
+  waitForSelectorOnPage?: string;
+  iframeSelector?: string;
+  waitForSelectorInIframe?: string;
+  timeout?: number;
+  headers?: Record<string, string>;
+  extractSelectors?: Record<string, string>; // For specific data extraction (key: name, value: selector)
+  extractElementSelector?: string; // New: Selector for extracting a specific element's HTML
+  outputFormat?: 'text' | 'html' | 'markdown' | 'json'; // Existing output format
+  // includeHtml?: boolean; // Likely deprecated by outputFormat
+}

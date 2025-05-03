@@ -8,8 +8,8 @@ import {
 
 interface DOMTreeViewProps {
   element: Element | null;
-  depth?: number;
-  path?: string;
+  parentPath?: string; // Path of the parent node
+  indexInParent?: number; // Index of this node within its parent's element children
   maxDepth?: number;
   selectedElementPath: string;
   onElementSelect: (path: string, selector: string, preview: string) => void;
@@ -20,8 +20,8 @@ interface DOMTreeViewProps {
 
 const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
   element,
-  depth = 0,
-  path = "",
+  parentPath = "",
+  indexInParent = 0,
   maxDepth = 3,
   selectedElementPath,
   onElementSelect,
@@ -32,7 +32,8 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const tagName = safeGetTagName(element);
-  const currentPath = element && tagName ? (path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`) : '';
+  const currentPathPart = element && tagName ? `${indexInParent}-${tagName}` : '';
+  const currentPath = parentPath ? `${parentPath}/${currentPathPart}` : currentPathPart;
 
   useEffect(() => {
     if (highlightedPath === currentPath && nodeRef.current) {
@@ -47,8 +48,11 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
   const isHighlighted = highlightedPath === currentPath;
   const isExpanded = expandedPaths.has(currentPath);
   const children = safeGetChildren(element);
+  const elementChildren = React.useMemo(() => children.filter(node => node.nodeType === Node.ELEMENT_NODE) as Element[], [children]);
 
-  if (isHead && depth > 0) {
+  const depth = currentPath.split('/').length -1;
+
+  if (isHead && depth > 0 && !isExpanded) {
     return (
       <div
         className="ml-4 py-1 pl-2 flex items-center text-gray-500 cursor-default rounded-md"
@@ -103,7 +107,7 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
   }
 
   return (
-    <div key={currentPath} ref={nodeRef}>
+    <div key={currentPath} ref={nodeRef} data-path={currentPath}>
       <div
         className={`py-1 pl-2 flex items-center cursor-pointer hover:bg-gray-100 rounded-md 
                     ${isSelected ? 'bg-blue-100 border border-blue-300' : ''} 
@@ -112,7 +116,7 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
           e.stopPropagation(); 
           e.preventDefault();
           handleSelect(); 
-          if (children.length > 0) {
+          if (elementChildren.length > 0) {
             toggleExpand(currentPath);
           }
         }}
@@ -121,7 +125,7 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
            className="text-xs mr-1 text-gray-500 cursor-pointer w-4 text-center" 
            onClick={handleToggleClick}
         >
-          {children.length > 0 ? (isExpanded ? '▼' : '▶') : ''}
+          {elementChildren.length > 0 ? (isExpanded ? '▼' : '▶') : ''}
         </span>
         <span className="text-xs font-mono text-gray-700">
           {`<${tagName}${attributes}>`}
@@ -133,14 +137,14 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
         )}
       </div>
       
-      {isExpanded && children.length > 0 && (
+      {isExpanded && elementChildren.length > 0 && (
         <div className="ml-4"> 
-          {children.map((child, index) => (
+          {elementChildren.map((child, index) => (
             <DOMTreeNode
               key={`${currentPath}-child-${index}`}
               element={child}
-              depth={depth + 1}
-              path={currentPath}
+              parentPath={currentPath}
+              indexInParent={index}
               maxDepth={maxDepth}
               selectedElementPath={selectedElementPath}
               onElementSelect={onElementSelect}
