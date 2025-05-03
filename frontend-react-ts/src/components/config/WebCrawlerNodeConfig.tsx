@@ -1,5 +1,5 @@
 // src/components/config/WebCrawlerNodeConfig.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 // Remove unused type if needed
 // import { WebCrawlerNodeData } from '../../types/nodes';
 import { useNodeContent, WebCrawlerNodeContent } from '../../store/useNodeContentStore';
@@ -15,24 +15,26 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
   } = useNodeContent<WebCrawlerNodeContent>(nodeId, 'web-crawler'); 
   
   // Local state for form fields
-  const [url, setUrl] = useState(content.url || '');
-  const [waitForSelectorOnPage, setWaitForSelectorOnPage] = useState(content.waitForSelectorOnPage || '');
-  const [iframeSelector, setIframeSelector] = useState(content.iframeSelector || '');
-  const [waitForSelectorInIframe, setWaitForSelectorInIframe] = useState(content.waitForSelectorInIframe || '');
-  const [timeout, setTimeout] = useState(content.timeout || 30000);
+  const [url, setUrl] = useState(content?.url || '');
+  const [waitForSelectorOnPage, setWaitForSelectorOnPage] = useState(content?.waitForSelectorOnPage || '');
+  const [iframeSelector, setIframeSelector] = useState(content?.iframeSelector || '');
+  const [waitForSelectorInIframe, setWaitForSelectorInIframe] = useState(content?.waitForSelectorInIframe || '');
+  const [timeout, setTimeout] = useState(content?.timeout || 30000);
   // Headers state
-  const [headers, setHeaders] = useState<Record<string, string>>(content.headers || {});
+  const [headers, setHeaders] = useState<Record<string, string>>(content?.headers || {});
   const [newHeaderKey, setNewHeaderKey] = useState('');
   const [newHeaderValue, setNewHeaderValue] = useState('');
 
   // Sync local state if content from store changes
-  React.useEffect(() => {
-    setUrl(content.url || '');
-    setWaitForSelectorOnPage(content.waitForSelectorOnPage || '');
-    setIframeSelector(content.iframeSelector || '');
-    setWaitForSelectorInIframe(content.waitForSelectorInIframe || '');
-    setTimeout(content.timeout || 30000);
-    setHeaders(content.headers || {});
+  useEffect(() => {
+    if (content) {
+      setUrl(content.url || '');
+      setWaitForSelectorOnPage(content.waitForSelectorOnPage || '');
+      setIframeSelector(content.iframeSelector || '');
+      setWaitForSelectorInIframe(content.waitForSelectorInIframe || '');
+      setTimeout(content.timeout || 30000);
+      setHeaders(content.headers || {});
+    }
   }, [content]);
   
   const handleUpdateField = useCallback((field: keyof WebCrawlerNodeContent, value: any) => {

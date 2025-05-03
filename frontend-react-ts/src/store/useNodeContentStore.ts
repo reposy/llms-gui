@@ -404,17 +404,34 @@ export const {
  * 특정 노드의 컨텐츠를 조회하고 업데이트하는 훅
  * @param nodeId 노드 ID
  * @param nodeType 노드 타입 (기본값 생성에 사용)
- * @returns 노드 컨텐츠와 업데이트 함수
+ * @returns 노드 컨텐츠와 업데이트 함수를 포함한 객체
  */
 export function useNodeContent<T extends NodeContent = NodeContent>(
   nodeId: string,
-  nodeType?: string
+  nodeType?: string // nodeType is now optional, but still useful for getNodeContent
 ) {
-  // Use shallow compare for selector to prevent unnecessary re-renders
-  return useNodeContentStore(useCallback(
-    (state) => state.getNodeContent<T>(nodeId, nodeType),
+  // Select the content using the store's getNodeContent
+  const contentSelector = useCallback(
+    (state: NodeContentState) => state.getNodeContent(nodeId, nodeType) as T, // Cast to T
     [nodeId, nodeType]
-  ), shallow);
+  );
+  const content = useNodeContentStore(contentSelector, shallow); // Use shallow compare
+
+  // Get the setNodeContent function from the store
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+
+  // Create a stable update function using useCallback
+  const updateContent = useCallback(
+    (partialContent: Partial<T>) => {
+      // Call the store's setNodeContent, ensuring type is passed if available
+      // The store's setNodeContent logic should handle default creation/merging
+      setNodeContent<T>(nodeId, { ...partialContent, type: nodeType || content?.type });
+    },
+    [nodeId, nodeType, setNodeContent, content?.type] // Add content.type as dependency
+  );
+
+  // Return the content and the memoized update function
+  return { content, updateContent };
 }
 
 // 하위 호환성을 위한 레거시 함수들
