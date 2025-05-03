@@ -274,22 +274,48 @@ export class InputNode extends Node {
     let newCommonItems = [...currentCommonItems];
     let updatePerformed = false;
 
+    // Filter items before applying them
+    // Filter out empty objects and null/undefined values
+    const validItemsToAdd = itemsToAdd.filter(item => {
+        const isEmptyObject = typeof item === 'object' && item !== null && Object.keys(item).length === 0;
+        const isNullOrUndefined = item === null || item === undefined;
+
+        if (isEmptyObject) {
+            context.log(`${this.type}(${this.id}): Filtering out empty object input.`);
+        }
+        if (isNullOrUndefined) {
+             context.log(`${this.type}(${this.id}): Filtering out null or undefined input.`);
+        }
+
+        return !isEmptyObject && !isNullOrUndefined; // Keep only valid items
+    });
+
+    if (validItemsToAdd.length === 0 && itemsToAdd.length > 0) { // Log only if filtering actually removed all items
+        context.log(`${this.type}(${this.id}): No valid items to apply after filtering.`);
+    }
+    
+    // Proceed only if there are valid items after filtering
+    if (validItemsToAdd.length === 0) {
+        return { newItems, newCommonItems, updatePerformed: false }; // Return early
+    }
+
+    // Apply ONLY validItemsToAdd
     if (chainingUpdateMode === 'common') {
-      newCommonItems.push(...itemsToAdd);
+      newCommonItems.push(...validItemsToAdd);
       updatePerformed = true;
-      context.log(`${this.type}(${this.id}): Appended to common items.`);
+      context.log(`${this.type}(${this.id}): Appended ${validItemsToAdd.length} valid item(s) to common items.`);
     } else if (chainingUpdateMode === 'replaceCommon') {
-      newCommonItems = itemsToAdd;
+      newCommonItems = validItemsToAdd;
       updatePerformed = true;
-      context.log(`${this.type}(${this.id}): Replaced common items.`);
+      context.log(`${this.type}(${this.id}): Replaced common items with ${validItemsToAdd.length} valid item(s).`);
     } else if (chainingUpdateMode === 'element') {
-      newItems.push(...itemsToAdd);
+      newItems.push(...validItemsToAdd);
       updatePerformed = true;
-      context.log(`${this.type}(${this.id}): Appended to element items.`);
+      context.log(`${this.type}(${this.id}): Appended ${validItemsToAdd.length} valid item(s) to element items.`);
     } else if (chainingUpdateMode === 'replaceElement') {
-      newItems = itemsToAdd;
+      newItems = validItemsToAdd;
       updatePerformed = true;
-      context.log(`${this.type}(${this.id}): Replaced element items.`);
+      context.log(`${this.type}(${this.id}): Replaced element items with ${validItemsToAdd.length} valid item(s).`);
     }
     // Note: chainingUpdateMode === 'none' is handled outside this method regarding logging.
     // No item update happens in that case.
