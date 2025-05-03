@@ -82,7 +82,6 @@ export class WebCrawlerNode extends Node {
       // Check the status returned from the backend API
       if (result.status === 'success' && result.html) {
         this.context?.log(`${this.type}(${this.id}): Backend crawling successful, received HTML content (length: ${result.html.length}).`);
-        this.context?.storeOutput(this.id, result.html);
         this.context?.markNodeSuccess(this.id, result.html); // Store HTML as result
         return result.html;
       } else {

@@ -13,7 +13,7 @@ interface MergerNodeProperty {
 
 /**
  * MergerNode accumulates inputs from multiple upstream nodes
- * and aggregates them according to a specified strategy.
+ * and returns the entire collection on each execution.
  */
 export class MergerNode extends Node {
   declare property: MergerNodeContent;
@@ -30,61 +30,51 @@ export class MergerNode extends Node {
     super(id, 'merger', property, context);
     // Initialize collectedItems from the store if needed, or ensure it starts empty
     const initialContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
-    this.collectedItems = initialContent?.items || [];
+    // Ensure stored items are treated as initial collection if they exist
+    this.collectedItems = initialContent?.items || []; 
     this.context?.log(`${this.type}(${this.id}): Initialized with ${this.collectedItems.length} items from store/default.`);
   }
 
   /**
-   * Execute the node's specific logic
-   * Always pushes input to Zustand's items array and returns the updated array
+   * Execute the node's specific logic.
+   * Adds the input (or its elements if it's an array) to the internal collection
+   * and returns the *entire* updated collection.
    * @param input The input to execute
-   * @returns The merged result
+   * @returns The entire accumulated array of items.
    */
-  async execute(input: any): Promise<any[] | null> {
+  async execute(input: any): Promise<any[] | null> { // Keep return type as potentially null if needed downstream, though likely always returns array
     this.context?.log(`${this.type}(${this.id}): Executing`);
-    
-    // Get the latest content (strategy, keys) directly from the store
-    const nodeContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
-    const strategy = nodeContent.strategy || 'array'; // Default strategy
-    const keys = nodeContent.keys || [];
 
-    this.context?.log(`${this.type}(${this.id}): Strategy: ${strategy}, Input type: ${typeof input}`);
+    // Get latest config if needed for strategies (currently unused)
+    // const nodeContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(this.id, this.type);
 
-    // Add the received input to the internal collection
+    this.context?.log(`${this.type}(${this.id}): Received input type: ${typeof input}`);
+
     if (input !== null && input !== undefined) {
-      this.collectedItems.push(input);
-      this.context?.log(`${this.type}(${this.id}): Added input. Total items: ${this.collectedItems.length}`);
+      // Directly modify the member variable collectedItems
+      if (Array.isArray(input)) {
+        // If input is an array, spread its elements into collectedItems
+        this.collectedItems.push(...input);
+        this.context?.log(`${this.type}(${this.id}): Input is an array. Added ${input.length} elements to collectedItems.`);
+      } else {
+        // If input is not an array, push the input itself as a single element
+        this.collectedItems.push(input);
+        this.context?.log(`${this.type}(${this.id}): Input is not an array. Added 1 element to collectedItems.`);
+      }
+      
+      // --- Update Zustand store for UI display of accumulated items (Keep this) ---
+      this.context?.log(`${this.type}(${this.id}): Updating UI store. Total collected items: ${this.collectedItems.length}`);
+      useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] }); // Update store with a copy
+      // --- End UI Update ---
+      
     } else {
       this.context?.log(`${this.type}(${this.id}): Received null/undefined input, not adding.`);
+      // If input is null/undefined, do not modify collectedItems, just return current state
     }
 
-    // Update the store with the current collected items
-    // This allows the UI to reflect the merged items progressively
-    useNodeContentStore.getState().setNodeContent(this.id, { items: [...this.collectedItems] });
-    
-    // Store the current collection in the execution context output as well
-    this.context?.storeOutput(this.id, [...this.collectedItems]);
-
-    // Merger node inherently collects inputs. It doesn't immediately pass data onwards
-    // unless specifically designed to do so based on some condition (e.g., number of inputs).
-    // For now, we assume it collects all inputs until the flow completes
-    // and the final collected array might be used by subsequent nodes if the flow
-    // triggers them AFTER all inputs have potentially arrived at the merger.
-    // A common pattern is for Merger to be followed by a node triggered manually or by a final event.
-    
-    // For simplicity in this pass, let's make it return the *current* collection.
-    // This means downstream nodes will execute multiple times as items merge.
-    // A more robust implementation might require knowing when *all* potential inputs
-    // have arrived before propagating.
-    this.context?.log(`${this.type}(${this.id}): Returning current collection (${this.collectedItems.length} items)`);
-    return [...this.collectedItems]; // Return a copy of the array
-
-    // --- Alternative: Return null to prevent immediate downstream execution --- 
-    // this.context?.log(`${this.type}(${this.id}): Returning null to await more inputs.`);
-    // return null; 
-    // If returning null, a mechanism (e.g., a button on the Merger node UI, or 
-    // a separate "trigger" node) would be needed to push the final merged 
-    // result ([...this.collectedItems]) to the *actual* next node in the logical flow.
+    // Return the *entire* current accumulated list
+    this.context?.log(`${this.type}(${this.id}): Returning current accumulated items (${this.collectedItems.length} items).`);
+    return [...this.collectedItems]; // Return a copy of the accumulated array
   }
 
   /**

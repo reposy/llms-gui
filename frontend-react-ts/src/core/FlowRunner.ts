@@ -5,6 +5,7 @@ import { NodeFactory } from './NodeFactory';
 import { getRootNodeIds } from '../utils/flow/flowUtils';
 import { registerAllNodeTypes } from './NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
+import { NodeData } from '../types/nodes';
 
 /**
  * FlowRunner handles the execution of a flow, starting from root nodes
@@ -13,14 +14,14 @@ export class FlowRunner {
   /**
    * Execute a flow starting from all root nodes or a specific node
    * 
-   * @param nodes Array of nodes in the flow
+   * @param nodes Array of nodes in the flow (Using ReactFlowNode type)
    * @param edges Array of edges connecting the nodes
    * @param nodeFactory Factory to create node instances
    * @param startNodeId Optional ID of a specific node to start execution from
    * @returns Promise that resolves when the relevant part of the flow has completed execution
    */
   static async executeFlow(
-    nodes: ReactFlowNode[], 
+    nodes: ReactFlowNode<NodeData>[],
     edges: Edge[], 
     nodeFactory: NodeFactory,
     startNodeId?: string // Optional start node ID
@@ -48,6 +49,7 @@ export class FlowRunner {
         return;
       }
     } else {
+      // Ensure getRootNodeIds is compatible with ReactFlowNode[]
       nodesToExecuteIds = getRootNodeIds(nodes, edges);
       if (nodesToExecuteIds.length === 0) {
         context.log('No root nodes found in the flow. Execution halted.');
@@ -106,8 +108,10 @@ export class FlowRunner {
         
         context.log(`Completed execution of node: ${nodeIdToExecute}`);
       } catch (error) {
-        context.log(`Error executing node ${nodeIdToExecute}: ${error}`);
-        // Continue with other nodes even if one fails
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        context.log(`Error executing node ${nodeIdToExecute}: ${errorMessage}`);
+        // Mark error state using context
+        context.markNodeError(nodeIdToExecute, errorMessage);
       }
     }
     
@@ -119,17 +123,21 @@ export class FlowRunner {
  * Simple helper function to run a flow
  * This creates the NodeFactory and registers all node types
  * 
- * @param nodes Array of nodes in the flow
+ * @param nodesFromStore Array of nodes, potentially from Zustand store (might need type assertion)
  * @param edges Array of edges connecting the nodes
  * @param startNodeId Optional ID of a specific node to start execution from
  * @returns Promise that resolves when the flow execution is complete
  */
 export async function runFlow(
-  nodes: ReactFlowNode[], 
+  nodesFromStore: ReactFlowNode<NodeData | any>[], // Be more flexible here initially
   edges: Edge[],
   startNodeId?: string // Optional start node ID
 ): Promise<void> {
-  // Create and initialize the node factory
+  // Explicitly ensure the nodes array conforms to ReactFlowNode<NodeData>[] for executeFlow
+  // This assumes the structure is correct but maybe the 'data' type is too generic initially.
+  // A safer cast might involve validation if types can truly mismatch.
+  const nodes: ReactFlowNode<NodeData>[] = nodesFromStore as ReactFlowNode<NodeData>[];
+
   const nodeFactory = new NodeFactory();
   registerAllNodeTypes();
   
