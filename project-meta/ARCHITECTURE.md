@@ -79,45 +79,47 @@ Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리
 
 ## 4. 데이터 흐름 및 노드 실행 (Data Flow & Node Execution)
 
-### 4.1. 일반적인 실행 흐름
+### 4.1. 일반적인 실행 흐름 (Refactored)
 
-1.  **사용자 상호작용:** 사용자가 UI에서 플로우 실행 버튼을 클릭합니다.
-2.  **실행 트리거:** `useGroupExecutionController`의 `executeFlowForGroup` 함수가 호출됩니다.
-3.  **실행 그래프 생성:** `useFlowStructureStore`의 노드와 엣지 정보를 바탕으로 실행 순서를 결정하는 실행 그래프(Directed Acyclic Graph, DAG)를 생성합니다.
-4.  **Flow Runner 실행:** `FlowRunner` (또는 유사한 실행 제어 로직)가 실행 그래프를 순회하며 각 노드를 순서대로 실행합니다.
-5.  **개별 노드 실행 (`Node.process` 및 `execute`):**
+1.  **사용자 상호작용:** 사용자가 UI에서 특정 노드의 'Run' 버튼, 그룹 실행 버튼 또는 전체 플로우 실행 버튼을 클릭합니다.
+2.  **실행 트리거:** UI 이벤트 핸들러는 `src/core/executionUtils.ts`에 정의된 해당 실행 유틸리티 함수를 호출합니다:
+    *   개별 노드 실행: `runSingleNodeExecution(nodeId)`
+    *   그룹 노드 실행: `runGroupNodeExecution(groupNodeId)` (주로 `useGroupExecutionController`를 통해 간접 호출됨)
+    *   전체 플로우 실행: `runFullFlowExecution(startNodeId?)` (주로 `runFlow` 헬퍼 함수를 통해 호출됨)
+3.  **실행 컨텍스트 준비 (`prepareExecutionContext`):** 호출된 유틸리티 함수는 먼저 `prepareExecutionContext` 함수를 사용하여 실행에 필요한 환경을 준비합니다. 이 함수는 다음을 수행합니다:
+    *   고유 실행 ID 생성
+    *   실행 시점의 `nodes`, `edges` 정보 가져오기 (`useFlowStructureStore`)
+    *   `NodeFactory` 인스턴스 생성 및 모든 노드 타입 등록
+    *   위 정보들을 포함하는 `FlowExecutionContext` 인스턴스 생성
+4.  **실행 시작 (`_startExecutionProcess`):** 유틸리티 함수는 준비된 컨텍스트와 실행할 노드 ID(들)를 `_startExecutionProcess` 내부 함수에 전달하여 실제 실행을 시작합니다. 이 함수는 다음을 수행합니다:
+    *   실행할 각 시작 노드에 대해:
+        *   필요한 경우 노드 데이터 준비 (예: LLM 노드)
+        *   `nodeFactory.create(...)`를 사용하여 노드 인스턴스 생성 (이때 컨텍스트 전달)
+        *   `nodeInstance.process({})` 호출
+5.  **개별 노드 실행 (`Node.process` 및 `execute`):** (기존 로직과 유사)
     *   모든 노드는 `Node` 기본 클래스의 `process` 메소드로 실행됩니다.
     *   `process`는 노드 상태를 'running'으로 변경하고, 해당 노드별로 구현된 `execute` 메소드를 호출합니다.
-    *   `execute` 메소드는 노드 타입에 따라 다음과 같은 작업을 수행합니다:
-        *   **Frontend 처리:** `HTML Parser` 등은 브라우저에서 직접 로직을 수행합니다.
-        *   **Backend 처리:** `Web Crawler`, `LLM`, `API` 등은 필요한 정보를 구성하여 백엔드 API를 호출하고 응답을 기다립니다.
-    *   `execute`가 결과를 반환하면, `process`는 결과를 `FlowExecutionContext.storeOutput`으로 저장하고 노드 상태를 'success'로 표시합니다.
-        *   결과가 배열인 경우, 각 요소는 개별적으로 `storeOutput`으로 저장됩니다.
-        *   결과가 단일 값인 경우, 해당 값이 그대로 `storeOutput`으로 저장됩니다.
-        *   결과 저장 후, `process`는 자식 노드들을 찾아 병렬로 실행합니다.
-6.  **결과 저장 및 전달 (`storeOutput`):**
-    *   모든 노드 결과는 `FlowExecutionContext`의 `storeOutput` 메소드를 통해 중앙에서 관리됩니다.
-    *   각 노드 ID에 대한 결과 배열(`Map<string, any[]>`)이 유지됩니다. 
-    *   새 결과가 들어오면 해당 노드의 결과 배열에 **추가**됩니다.
-    *   중앙 집중식 결과 저장은 데이터 흐름을 일관되게 유지하고, 노드 간 결과 전달을 단순화합니다.
-7.  **다음 노드 실행:**
-    *   자식 노드의 `process` 메소드를 실행할 때, 부모 노드의 **전체 실행 결과**가 입력으로 전달됩니다.
-    *   이는 부모 노드가 배열을 반환한 경우 중요합니다(자식 노드는 전체 배열을 받음).
-8.  **UI 업데이트:** 노드 상태와 결과 변경은 해당 상태를 구독하는 UI 컴포넌트(노드 자체, 사이드바 등)에 자동으로 반영됩니다.
+    *   `execute` 메소드는 노드 타입에 따른 로직을 수행하고 결과를 반환합니다.
+        *   **Input 노드의 Foreach 모드:** 특별한 `{ mode: 'foreach', items: [...] }` 객체를 반환합니다.
+        *   **기타 노드:** 처리 결과를 반환합니다 (배열 또는 단일 값).
+    *   `process`는 `execute`의 반환값을 분석합니다:
+        *   **ForEach 객체:** 반환된 `items` 배열을 순회하며 각 `item`에 대해 모든 자식 노드의 `process(item)`을 호출합니다.
+        *   **배열/단일 값:** 해당 값을 `FlowExecutionContext.storeOutput`으로 저장하고, **모든** 자식 노드의 `process(value)`를 호출합니다.
+        *   **null:** 실행을 중단합니다.
+6.  **결과 저장 (`storeOutput`):** (기존 로직과 동일)
+    *   `FlowExecutionContext`의 `storeOutput` 메소드를 통해 노드 ID별 결과 배열에 결과가 추가됩니다.
+7.  **UI 업데이트:** (기존 로직과 동일)
+    *   노드 상태와 결과 변경은 Zustand 스토어를 통해 UI에 반영됩니다.
 
-### 4.2. 그룹 노드 실행
+### 4.2. 그룹 노드 실행 (Refactored)
 
-그룹 노드는 연결된 입력 소스(주로 `Input` 노드)의 데이터를 반복 처리하는 특수한 실행 로직을 가집니다.
+그룹 노드는 내부 서브 플로우를 실행하는 로직을 자체적으로 가지고 있습니다 (`GroupNode.execute` 참고).
 
-1.  **그룹 실행 트리거:** 그룹 노드 자체를 실행하거나, 그룹 노드가 포함된 플로우가 실행될 때 그룹 실행 로직이 시작됩니다.
-2.  **입력 소스 확인:** 그룹 노드 설정(`iterationConfig.sourceNodeId`)에 지정된 입력 소스 노드의 결과(`nodeState.result`)를 가져옵니다. 이 결과는 보통 배열 형태입니다.
-3.  **반복 실행:** 입력 배열의 각 항목에 대해 그룹 **내부의 서브 플로우**를 **독립적으로** 실행합니다.
-    *   `useGroupExecutionController`는 현재 반복 인덱스와 총 항목 수를 `useGroupExecutionState`에 업데이트합니다.
-    *   각 반복마다 입력 항목이 그룹 내부 플로우의 **시작 노드**로 전달됩니다.
-    *   그룹 내부 노드들은 일반적인 실행 흐름(4.1)에 따라 체이닝되어 실행됩니다.
-    *   각 반복의 최종 결과는 수집됩니다.
-4.  **결과 집계:** 모든 항목에 대한 반복 실행이 완료되면, 각 반복에서 수집된 결과들을 배열 형태로 묶어 그룹 노드의 최종 결과(`nodeState.result`)로 저장합니다.
-5.  **독립성:** 각 반복 실행은 서로 독립적입니다. 한 반복의 오류가 다른 반복의 실행에 직접적인 영향을 주지 않습니다 (오류 처리 방식에 따라 달라질 수 있음).
+1.  **그룹 실행 트리거:** 사용자가 UI에서 그룹 실행 버튼을 클릭하면 `useGroupExecutionController`의 `executeFlowForGroup` 액션이 호출됩니다.
+2.  **유틸리티 함수 호출:** 이 액션은 내부적으로 `executionUtils.ts`의 `runGroupNodeExecution(groupNodeId)` 함수를 호출합니다.
+3.  **그룹 노드 실행 시작:** `runGroupNodeExecution`은 `prepareExecutionContext`와 `_startExecutionProcess`를 사용하여 해당 `GroupNode` 인스턴스의 `process({})`를 호출합니다.
+4.  **내부 플로우 실행:** `GroupNode`의 `execute` 메소드가 실행되어 내부 노드들을 식별하고, 내부 루트 노드부터 시작하여 서브 플로우를 실행합니다 (자세한 내용은 `GroupNode.ts` 참조).
+5.  **결과 집계 및 반환:** `GroupNode.execute`는 내부 리프 노드들의 결과를 취합하여 반환하고, 이 결과는 `process` 메소드를 통해 `FlowExecutionContext.storeOutput`에 저장됩니다.
 
 ### 4.3. 데이터 형식
 
@@ -166,6 +168,18 @@ Input 노드는 공통 항목(sharedItems)과 개별 항목(items)을 구분하�
 2. **명확한 책임 분리:** 노드 로직(`execute`)과 결과 저장(`process`)의 책임을 분리합니다. 이렇게 하면 노드 개발자는 데이터 처리 로직에만 집중할 수 있습니다.
 3. **일관된 데이터 흐름:** 모든 노드가 같은 `process` → `execute` → 결과 반환 → `storeOutput` 흐름을 따르면 전체 시스템의 데이터 흐름이 일관되고 예측 가능해집니다.
 4. **디버깅 용이성:** 모든 결과가 같은 방식으로 저장되므로 문제 진단과 디버깅이 용이합니다.
+
+### 4.6. 실행 유틸리티 (`executionUtils.ts`)
+
+`src/core/executionUtils.ts` 파일은 다양한 시나리오(단일 노드, 그룹 노드, 전체 플로우)에서 플로우 실행을 시작하는 로직을 중앙 집중화하여 코드 중복을 제거하고 일관성을 높입니다. 주요 함수는 다음과 같습니다:
+
+*   **`prepareExecutionContext(): FlowExecutionContext`**: 새로운 실행을 위한 컨텍스트(실행 ID, 노드/엣지 정보, 노드 팩토리 포함)를 준비하고 반환합니다.
+*   **`_startExecutionProcess(startNodeIds, triggerNodeId, context)`**: 내부 헬퍼 함수로, 주어진 컨텍스트 내에서 지정된 시작 노드들의 실행(`process({})` 호출)을 담당합니다.
+*   **`runSingleNodeExecution(nodeId: string): Promise<void>`**: 특정 노드 하나만 실행합니다. 노드 UI의 'Run' 버튼에서 사용됩니다.
+*   **`runGroupNodeExecution(groupNodeId: string): Promise<void>`**: 특정 그룹 노드의 실행을 시작합니다. `useGroupExecutionController`에서 호출됩니다.
+*   **`runFullFlowExecution(startNodeId?: string): Promise<void>`**: 전체 플로우 실행을 시작합니다. `startNodeId`가 없으면 루트 노드부터 시작하며, `runFlow` 헬퍼 함수에서 사용됩니다.
+
+**참고:** `FlowRunner.ts`의 `FlowRunner.executeFlow` 메소드는 이제 deprecated 되었으며, 대신 `runFullFlowExecution` 사용이 권장됩니다.
 
 ## Frontend Deep Dive
 For implementation details about React component structure and state management:

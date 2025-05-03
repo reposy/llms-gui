@@ -14,6 +14,7 @@ import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 import { getNodeContent, setNodeContent } from '../../store/useNodeContentStore';
+import { runSingleNodeExecution } from '../../core/executionUtils';
 
 interface LLMNodeHeaderProps {
   id: string;
@@ -47,56 +48,12 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const handleRun = useCallback(() => {
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
-      const executionId = `exec-${uuidv4()}`;
-      const { nodes: currentNodes, edges: currentEdges } = useFlowStructureStore.getState();
-      const nodeFactory = new NodeFactory();
-      registerAllNodeTypes();
-      const executionContext = new FlowExecutionContext(executionId, getNodeContent, currentNodes, currentEdges, nodeFactory);
-      
-      executionContext.setTriggerNode(id);
-      
-      console.log(`[LlmNodeHeader] Starting execution for node ${id}`);
-      
-      buildExecutionGraphFromFlow(currentNodes, currentEdges);
-      const executionGraph = getExecutionGraph();
-      
-      const nodeStructure = currentNodes.find(n => n.id === id);
-      if (!nodeStructure) {
-        console.error(`[LlmNodeHeader] Node structure ${id} not found.`);
-        return;
-      }
-      
-      const nodeContent = getNodeContent(id, 'llm') as LLMNodeContent;
-      if (!nodeContent) {
-          console.error(`[LlmNodeHeader] Node content for ${id} not found.`);
-          return;
-      }
-      
-      const combinedNodeData = {
-          ...nodeStructure.data,
-          ...nodeContent
-      };
-
-      console.log(`[LlmNodeHeader] Creating instance with combined data:`, combinedNodeData);
-      
-      const nodeInstance = nodeFactory.create(
-        id,
-        nodeStructure.type as string,
-        combinedNodeData,
-        executionContext
-      );
-      
-      nodeInstance.property = {
-        ...nodeInstance.property,
-        nodes: currentNodes,
-        edges: currentEdges,
-        nodeFactory,
-        executionGraph
-      };
-      
-      nodeInstance.process({}).catch((error: Error) => {
-        console.error(`[LlmNodeHeader] Error executing node ${id}:`, error);
+      console.log(`[LlmNodeHeader] Triggering single execution for node ${id}`);
+      runSingleNodeExecution(id).catch((error: Error) => {
+        console.error(`[LlmNodeHeader] Error during single execution for node ${id}:`, error);
       });
+    } else {
+       console.log(`[LlmNodeHeader] Skipping run for non-root node ${id}`);
     }
   }, [id, isRootNode]);
 

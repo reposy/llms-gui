@@ -20,13 +20,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { TrashIcon } from '@heroicons/react/20/solid';
 import { FiFile, FiType } from 'react-icons/fi';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
+import { runSingleNodeExecution } from '../../core/executionUtils';
 
 // Node component
 export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   const inputData = data as InputNodeData;
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
-  const { nodes, edges } = useFlowStructureStore();
   const setZustandNodeContent = useNodeContentStore(state => state.setNodeContent);
   const { incomingConnections } = useNodeConnections(id);
   const isRootNode = incomingConnections.length === 0;
@@ -39,7 +39,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     commonItems,
     items,
     textBuffer,
-    iterateEachRow,
     chainingUpdateMode,
     editingItemId,
     editingText,
@@ -48,7 +47,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     handleFileChange,
     handleDeleteItem,
     handleClearItems,
-    handleToggleProcessingMode,
     handleUpdateChainingMode: handleChainingModeChange,
     handleMoveChainingItem,
     handleStartEditingTextItem,
@@ -72,29 +70,15 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     setNodes(updatedNodes);
   }, [currentNodes, setZustandNodeContent, setNodes]);
 
-  // Run handler
+  // Run handler - Simplified
   const handleRun = useCallback(() => {
-    const executionId = `exec-${uuidv4()}`;
-    // Create factory and register types first
-    const nodeFactory = new NodeFactory();
-    registerAllNodeTypes();
-    // Now create context, passing nodes/edges from hook scope
-    const executionContext = new FlowExecutionContext(executionId, getNodeContent, nodes, edges, nodeFactory);
-    
-    executionContext.setTriggerNode(id);
-    
-    buildExecutionGraphFromFlow(nodes, edges); // Use nodes/edges from hook scope
-    const executionGraph = getExecutionGraph();
-    
-    const node = nodes.find(n => n.id === id); // Use nodes from hook scope
-    if (!node) return;
-    
-    const nodeInstance = nodeFactory.create(id, node.type as string, node.data, executionContext);
-    
-    nodeInstance.property = { ...nodeInstance.property, nodes, edges, nodeFactory, executionGraph }; // Use nodes/edges from hook scope
-    
-    nodeInstance.process({}).catch(error => console.error(`[InputNode] Error:`, error));
-  }, [id, nodes, edges, getNodeContent]); // Keep nodes/edges dependencies as they are used directly
+    console.log(`[InputNode] Triggering single execution for node ${id}`);
+    // Call the centralized execution utility
+    runSingleNodeExecution(id).catch(error => {
+      console.error(`[InputNode] Error during single execution:`, error);
+      // Optionally, update node state to show error feedback to the user here
+    });
+  }, [id]); // Dependency is only the node id now
 
   // Prevent keydown events from bubbling up to React Flow
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -157,9 +141,9 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
               <label className="text-sm font-medium text-gray-700">Processing Mode:</label>
               <span 
                 className={`px-3 py-1 text-sm font-medium rounded-md 
-                  ${iterateEachRow ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}
+                  ${nodeContent?.iterateEachRow ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}
               >
-                {iterateEachRow ? 'ForEach' : 'Batch'}
+                {nodeContent?.iterateEachRow ? 'ForEach' : 'Batch'}
               </span>
             </div>
             

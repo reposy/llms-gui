@@ -19,6 +19,7 @@ import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
 import { useNodeContentStore, getNodeContent } from '../../store/useNodeContentStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
+import { runSingleNodeExecution } from '../../core/executionUtils';
 
 interface Props {
   id: string;
@@ -84,52 +85,12 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
   }, [nodes, setNodesLocal, setNodeContentLocal]);
 
   const handleRun = useCallback(() => {
-    // Create execution context
-    const executionId = `exec-${uuidv4()}`;
-    // Get nodes/edges and create factory BEFORE creating context
-    const { nodes: currentNodes, edges: currentEdges } = useFlowStructureStore.getState(); // Use getState to get latest
-    const nodeFactory = new NodeFactory();
-    registerAllNodeTypes();
-    const executionContext = new FlowExecutionContext(executionId, getNodeContent, currentNodes, currentEdges, nodeFactory);
-    
-    // Set trigger node
-    executionContext.setTriggerNode(id);
-    
-    console.log(`[JSONExtractorNode] Starting execution for node ${id}`);
-    
-    // Build execution graph - Use the nodes/edges we already fetched
-    buildExecutionGraphFromFlow(currentNodes, currentEdges);
-    const executionGraph = getExecutionGraph();
-    
-    // Find the node data
-    const node = currentNodes.find(n => n.id === id);
-    if (!node) {
-      console.error(`[JSONExtractorNode] Node ${id} not found.`);
-      return;
-    }
-    
-    // Create the node instance
-    const nodeInstance = nodeFactory.create(
-      id,
-      node.type as string,
-      node.data,
-      executionContext
-    );
-    
-    // Attach graph structure reference to the node property
-    nodeInstance.property = {
-      ...nodeInstance.property,
-      nodes: currentNodes,
-      edges: currentEdges,
-      executionGraph,
-      nodeFactory
-    };
-    
-    // Execute the node
-    nodeInstance.process({}).catch(error => {
-      console.error(`[JSONExtractorNode] Error executing node ${id}:`, error);
+    console.log(`[JSONExtractorNode] Triggering single execution for node ${id}`);
+    runSingleNodeExecution(id).catch(error => {
+      console.error(`[JSONExtractorNode] Error during single execution:`, error);
+      // Optionally, update node state to show error feedback
     });
-  }, [id, getNodeContent]);
+  }, [id]);
 
   const toggleNodeView = () => {
     setNodeViewMode({ 

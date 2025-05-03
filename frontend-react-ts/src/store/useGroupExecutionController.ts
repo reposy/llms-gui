@@ -8,6 +8,7 @@ import { buildExecutionGraphFromFlow, getExecutionGraph } from './useExecutionGr
 import { v4 as uuidv4 } from 'uuid';
 import { useFlowStructureStore } from './useFlowStructureStore';
 import { getNodeContent } from './useNodeContentStore';
+import { runGroupNodeExecution } from '../core/executionUtils';
 
 // Rename state interface
 export interface GroupExecutionControllerState { // Renamed
@@ -38,67 +39,27 @@ export const useGroupExecutionController = create<GroupExecutionControllerState>
 
       // Public actions
       executeFlowForGroup: async (groupNodeId: string) => {
-        try {
-          const executionId = `exec-${uuidv4()}`;
-          set({ 
-            isExecuting: true,
-            currentExecutionId: executionId,
-            currentIterationIndex: undefined,
-            currentIterationItem: undefined,
-            currentGroupTotalItems: undefined
-          });
+        // Get the state setting function directly
+        const setExecuting = get()._setIsExecuting;
+        
+        // Reset iteration context (and potentially other states) at the start
+        get()._setCurrentExecutionId(undefined); // Clear previous execution ID
+        get()._setIterationContext({}); // Clear iteration context
 
-          // Create execution context
-          const nodeFactory = new NodeFactory();
-          registerAllNodeTypes();
-          const { nodes, edges } = useFlowStructureStore.getState();
-          const executionContext = new FlowExecutionContext(executionId, getNodeContent, nodes, edges, nodeFactory);
-          
-          // Set trigger node
-          executionContext.setTriggerNode(groupNodeId);
-          
-          console.log(`[GroupExecutionController] Starting execution for group node ${groupNodeId}`); // Log updated
-          
-          // Build execution graph
-          buildExecutionGraphFromFlow(nodes, edges);
-          const executionGraph = getExecutionGraph();
-          
-          // Create node factory
-          // const nodeFactory = new NodeFactory();
-          // registerAllNodeTypes();
-          
-          // Find the node data
-          const node = nodes.find(n => n.id === groupNodeId);
-          if (!node) {
-            console.error(`[GroupExecutionController] Group node ${groupNodeId} not found.`); // Log updated
-            set({ isExecuting: false });
-            return;
-          }
-          
-          // Create the node instance
-          const nodeInstance = nodeFactory.create(
-            groupNodeId,
-            node.type as string,
-            node.data,
-            executionContext
-          );
-          
-          // Attach graph structure reference to the node property
-          nodeInstance.property = {
-            ...nodeInstance.property,
-            nodes,
-            edges,
-            nodeFactory,
-            executionGraph
-          };
-          
-          // Execute the node
-          await nodeInstance.process({});
-          
-          set({ isExecuting: false });
+        setExecuting(true); // Set executing flag
+        console.log(`[GroupExecutionController] Starting execution for group ${groupNodeId}`);
+
+        try {
+          // Call the centralized execution utility
+          await runGroupNodeExecution(groupNodeId);
+          console.log(`[GroupExecutionController] Successfully completed execution for group ${groupNodeId}`);
+          // Optionally update other state based on successful completion
         } catch (error) {
-          console.error(`[GroupExecutionController] Error executing group ${groupNodeId}:`, error); // Log updated
-          set({ isExecuting: false });
+          console.error(`[GroupExecutionController] Error executing group ${groupNodeId}:`, error);
+          // Optionally update state to reflect the error
+        } finally {
+          setExecuting(false); // Ensure executing flag is reset regardless of success/failure
+          console.log(`[GroupExecutionController] Finished execution attempt for group ${groupNodeId}`);
         }
       },
 
