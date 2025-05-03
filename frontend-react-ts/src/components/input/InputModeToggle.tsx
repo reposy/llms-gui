@@ -1,86 +1,92 @@
 import React from 'react';
 import clsx from 'clsx';
 
-interface InputModeToggleProps {
+interface InputModeProps {
   iterateEachRow: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
+  chainingUpdateMode: 'common' | 'element' | 'none';
+  onToggleProcessingMode: () => void;
+  onUpdateChainingMode: (mode: 'common' | 'element' | 'none') => void;
 }
 
-export const InputModeToggle: React.FC<InputModeToggleProps> = ({
-  iterateEachRow,
-  onToggle,
-  disabled = false
+export const InputModeToggle: React.FC<InputModeProps> = ({ 
+  iterateEachRow, 
+  chainingUpdateMode,
+  onToggleProcessingMode,
+  onUpdateChainingMode
 }) => {
   return (
-    <div className="mb-4 border rounded-lg p-3 bg-gray-50">
-      <p className="text-sm font-medium mb-2">Execution Mode</p>
-      
-      <div className="flex">
+    <div className="flex flex-col space-y-2 w-full">
+      <div className="flex items-center justify-between w-full">
+        <label className="text-sm font-medium text-gray-700">실행 모드:</label>
         <button
           type="button"
-          onClick={onToggle}
-          disabled={disabled || !iterateEachRow}
-          className={clsx(
-            'flex-1 px-3 py-1.5 text-xs transition rounded-l-md',
-            !iterateEachRow 
-              ? 'bg-blue-500 text-white font-medium' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          )}
+          onClick={onToggleProcessingMode}
+          className={`
+            px-3 py-1 text-sm font-medium rounded-md transition-colors
+            ${iterateEachRow
+              ? 'bg-green-100 text-green-800 hover:bg-green-200'
+              : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+            }
+          `}
         >
-          Batch
-        </button>
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={disabled || iterateEachRow}
-          className={clsx(
-            'flex-1 px-3 py-1.5 text-xs transition rounded-r-md',
-            iterateEachRow 
-              ? 'bg-blue-500 text-white font-medium' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          )}
-        >
-          For Each
+          {iterateEachRow ? 'ForEach 모드' : 'Batch 모드'}
         </button>
       </div>
       
-      <div className="mt-2 text-xs text-gray-600">
-        {iterateEachRow ? (
-          <div className="flex">
-            <div className="w-5 text-blue-500 mr-1">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <p>
-              <strong>For Each</strong>: Process each row individually, running downstream nodes once per row.
-              Each row is passed as <code className="bg-gray-200 px-1 rounded">{"{{input}}"}</code> to connected nodes.
-            </p>
-          </div>
-        ) : (
-          <div className="flex">
-            <div className="w-5 text-blue-500 mr-1">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 7a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 13a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <p>
-              <strong>Batch</strong>: Process all rows at once, passing the entire content as 
-              <code className="bg-gray-200 px-1 rounded ml-1">{"{{input}}"}</code> to connected nodes.
-            </p>
-          </div>
-        )}
-      </div>
-      
-      {iterateEachRow && (
-        <div className="mt-2 bg-blue-50 p-2 rounded text-xs">
-          <div className="font-medium text-blue-700 mb-1">Execution Tracking</div>
-          <p className="text-blue-600">
-            Each input row will be processed separately. Results will include metadata to track which row produced which output.
-          </p>
+      <div className="flex flex-col space-y-1">
+        <label className="text-sm font-medium text-gray-700">자동 입력 추가:</label>
+        <div className="flex space-x-2 items-center">
+          <button
+            type="button"
+            onClick={() => onUpdateChainingMode('common')}
+            className={`
+              px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1
+              ${chainingUpdateMode === 'common'
+                ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+              }
+            `}
+          >
+            공통 항목
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateChainingMode('element')}
+            className={`
+              px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1
+              ${chainingUpdateMode === 'element'
+                ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+              }
+            `}
+          >
+            개별 항목
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateChainingMode('none')}
+            className={`
+              px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1
+              ${chainingUpdateMode === 'none'
+                ? 'bg-gray-400 text-white hover:bg-gray-500'
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+              }
+            `}
+          >
+            미적용
+          </button>
         </div>
-      )}
+      </div>
+      
+      <div className="text-xs text-gray-600 mt-1">
+        {
+          chainingUpdateMode === 'common' ? 
+            '(이전 노드 출력을 자동으로 공통 항목에 추가)' :
+          chainingUpdateMode === 'element' ? 
+            '(이전 노드 출력을 자동으로 개별 항목에 추가)' :
+            '(이전 노드 출력을 자동으로 추가하지 않음)'
+        }
+      </div>
     </div>
   );
 }; 

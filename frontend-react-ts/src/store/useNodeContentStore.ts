@@ -23,9 +23,12 @@ export interface BaseNodeContent {
  * 입력 노드 컨텐츠
  */
 export interface InputNodeContent extends BaseNodeContent {
+  chainingItems: (string | File)[];
+  commonItems: (string | File)[];
   items: (string | File)[];
   textBuffer?: string;
   iterateEachRow: boolean;
+  chainingUpdateMode: 'common' | 'element' | 'none';
 }
 
 /**
@@ -141,9 +144,12 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
   switch (type) {
     case 'input':
       return {
+        chainingItems: [],
+        commonItems: [],
         items: [],
         textBuffer: '',
         iterateEachRow: false,
+        chainingUpdateMode: 'element',
         isDirty: false,
         label: 'Input'
       } as InputNodeContent;
