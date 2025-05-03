@@ -1,7 +1,7 @@
 // src/components/nodes/InputNode.tsx
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { InputNodeData } from '../../types/nodes';
+import { InputNodeData, InputNodeContent } from '../../types/nodes';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
@@ -13,7 +13,7 @@ import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContentStore } from '../../store/useNodeContentStore';
+import { useNodeContentStore, useNodeContent } from '../../store/useNodeContentStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,6 +31,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   const { incomingConnections } = useNodeConnections(id);
   const isRootNode = incomingConnections.length === 0;
   const currentNodes = useFlowStructureStore(state => state.nodes); 
+  const { content: nodeContent } = useNodeContent<InputNodeContent>(id, 'input');
 
   // Use the consolidated input node hook with all functionalities
   const {
@@ -160,11 +161,32 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
               <span className="text-sm font-medium text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
                 {/* Map mode value to display text */}
                 {{
-                  'common': 'Common (Append)',
-                  'replaceCommon': 'Common (Replace)',
-                  'element': 'Element',
+                  'common': 'Common (App)',
+                  'replaceCommon': 'Common (Rep)',
+                  'element': 'Element (App)',
+                  'replaceElement': 'Element (Rep)',
                   'none': 'None'
-                }[chainingUpdateMode]}
+                }[chainingUpdateMode || 'element'] /* Default to element if undefined */}
+              </span>
+            </div>
+
+            {/* Accumulation Mode Display - Added */}
+            <div className="flex items-center justify-between w-full px-4 pt-2 border-t border-gray-200">
+              <label className="text-sm font-medium text-gray-700">Accumulation:</label>
+              <span 
+                className={clsx(
+                  `px-2 py-0.5 text-sm font-medium rounded-md`,
+                  nodeContent?.accumulationMode === 'always' || !nodeContent?.accumulationMode ? 'bg-blue-100 text-blue-800' :
+                  nodeContent?.accumulationMode === 'oncePerContext' ? 'bg-green-100 text-green-800' :
+                  nodeContent?.accumulationMode === 'none' ? 'bg-gray-100 text-gray-800' : 'bg-gray-100 text-gray-800' // Default/fallback style
+                )}
+              >
+                {/* Map mode value to display text */}
+                {{
+                  'always': 'Always',
+                  'oncePerContext': 'Once',
+                  'none': 'None'
+                }[nodeContent?.accumulationMode || 'always'] /* Default to Always if undefined */}
               </span>
             </div>
             

@@ -112,7 +112,7 @@ export interface InputNodeData extends BaseNodeData {
   iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
   executionMode?: 'batch' | 'foreach'; // Mode of execution, set by the UI
   // Add chainingUpdateMode to InputNodeData as well
-  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'none'; 
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none';
   iterationStatus?: {
     currentIndex: number;
     totalItems: number;
@@ -243,8 +243,8 @@ export interface InputNodeContent extends BaseNodeData {
   textBuffer?: string;
   iterateEachRow?: boolean;
   executionMode?: 'batch' | 'foreach';
-  // Ensure chainingUpdateMode is defined here consistently
-  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'none'; 
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none';
+  accumulationMode?: 'always' | 'oncePerContext' | 'none'; // Add 'none' accumulation mode
 }
 
 export interface OutputNodeContent extends BaseNodeData {

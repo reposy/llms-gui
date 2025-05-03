@@ -1,4 +1,3 @@
-import { create } from 'zustand';
 import { createWithEqualityFn } from 'zustand/traditional';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
@@ -38,6 +37,7 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         iterateEachRow: false,
         executionMode: 'batch',
         chainingUpdateMode: 'element',
+        accumulationMode: 'always',
         // isDirty: false, // Base property, remove
       } as InputNodeContent;
 

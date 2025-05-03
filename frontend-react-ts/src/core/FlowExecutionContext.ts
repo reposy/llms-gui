@@ -61,6 +61,9 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   private executedNodeIds = new Set<string>();
 
+  // Add a set to track nodes that have accumulated once per context for InputNode
+  public accumulatedOnceInputNodes: Set<string> = new Set<string>();
+
   /**
    * Constructor
    * @param executionId Unique identifier for this execution

@@ -9,6 +9,8 @@ import { InputSummaryBar } from '../input/InputSummaryBar';
 import { InputModeToggle } from '../input/InputModeToggle';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Import the utility function
 import clsx from 'clsx';
+import { InputNodeContent } from '../../types/nodes';
+import { useNodeContent } from '../../store/useNodeContentStore';
 
 interface InputNodeConfigProps {
   nodeId: string;
@@ -67,8 +69,10 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
     handleClearElementItems,
   } = useInputNodeData({ nodeId });
   
+  const { content, updateContent } = useNodeContent<InputNodeContent>(nodeId, 'input');
+
   // Explicitly type the mode for clarity within this component scope
-  const currentMode = chainingUpdateMode as 'common' | 'replaceCommon' | 'element' | 'none';
+  const currentMode = chainingUpdateMode as 'common' | 'replaceCommon' | 'element' | 'none' | 'replaceElement';
 
   // Format each list separately using the imported utility function
   const formattedChainingItems = useMemo(() => formatItemsForDisplay(chainingItems || [], 'config-chaining'), [chainingItems]);
@@ -95,6 +99,13 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
   // Define move handlers (only from chaining)
   const handleMoveToCommon = useCallback((index: number) => handleMoveItem(index, 'common'), [handleMoveItem]);
   const handleMoveToElement = useCallback((index: number) => handleMoveItem(index, 'element'), [handleMoveItem]);
+
+  // Handler for Accumulation Mode change
+  const handleAccumulationModeChange = (value: 'always' | 'oncePerContext' | 'none') => {
+    if (value) { // Ensure a value is selected
+      updateContent({ accumulationMode: value });
+    }
+  };
 
   return (
     <div className="space-y-6 p-4">
@@ -137,45 +148,57 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
       {/* Chaining Update Mode Buttons (Replicating UI from InputNode.tsx) */}
       <div>
         <ConfigLabel>Chained Input Behavior</ConfigLabel>
-        <div className="flex flex-wrap gap-2 mt-1">
+        <div className="flex flex-wrap gap-1.5 mt-1"> {/* Reduced gap */} 
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('common')}
             className={clsx(
-              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-grow`, // Use flex-grow
               currentMode === 'common' ? 'bg-purple-100 text-purple-800 hover:bg-purple-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
             )}
             title="Append chained input to Common Items"
           >
-            Append Common
+            Common (App)
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('replaceCommon')}
             className={clsx(
-              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-grow`,
               currentMode === 'replaceCommon' ? 'bg-purple-400 text-white hover:bg-purple-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
             )}
             title="Replace Common Items with chained input"
           >
-            Replace Common
+            Common (Rep)
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('element')}
             className={clsx(
-              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-grow`,
               currentMode === 'element' ? 'bg-orange-100 text-orange-800 hover:bg-orange-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
             )}
             title="Append chained input to Element Items"
           >
-            Element
+            Element (App)
+          </button>
+          {/* Added Replace Element button */}
+          <button
+            type="button"
+            onClick={() => handleUpdateChainingMode('replaceElement')}
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-grow`,
+              currentMode === 'replaceElement' ? 'bg-orange-400 text-white hover:bg-orange-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            )}
+            title="Replace Element Items with chained input"
+          >
+            Element (Rep)
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('none')}
             className={clsx(
-              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-grow`,
               currentMode === 'none' ? 'bg-gray-400 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
             )}
             title="Do not automatically add chained input"
@@ -184,6 +207,55 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
           </button>
         </div>
       </div>
+
+      {/* New Accumulation Mode Section */}
+      {/* Only show this if chaining mode affects common items */}
+      {/* Updated condition: Show if chainingUpdateMode is NOT 'none' */}
+      {(content?.chainingUpdateMode !== 'none') && (
+        <div>
+          <div className="block text-sm font-medium text-gray-700 mb-1">
+            Accumulation Mode
+          </div>
+          <div className="flex space-x-2 mt-1">
+            <button
+              type="button"
+              onClick={() => handleAccumulationModeChange('always')}
+              className={clsx(
+                `px-3 py-1 text-xs font-medium rounded-md transition-colors flex-1`,
+                (content?.accumulationMode === 'always' || !content?.accumulationMode) ? 'bg-blue-100 text-blue-800 hover:bg-blue-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+              )}
+              title="Always add chained input to relevant items (Common/Element) on each execution"
+            >
+              Always
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAccumulationModeChange('oncePerContext')}
+              className={clsx(
+                `px-3 py-1 text-xs font-medium rounded-md transition-colors flex-1`,
+                content?.accumulationMode === 'oncePerContext' ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+              )}
+              title="Add chained input to relevant items only once per execution context (e.g., once per loop)"
+            >
+              Once
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAccumulationModeChange('none')}
+              className={clsx(
+                `px-3 py-1 text-xs font-medium rounded-md transition-colors flex-1`,
+                content?.accumulationMode === 'none' ? 'bg-gray-400 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+              )}
+              title="Do not add chained input to internal items; only pass through"
+            >
+              None
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Controls if/when chained input is added to this node's internal items (Common/Element). 'None' passes input through without adding it internally.
+          </p>
+        </div>
+      )}
 
       {/* Item Count Summary - Uses calculated counts */}
       <InputSummaryBar

@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { InputNodeContent } from '../types/nodes';
+import { InputNodeContent, FileLikeObject } from '../types/nodes';
 import { useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
@@ -41,134 +41,123 @@ export class InputNode extends Node {
    * @param input The input to execute
    * @returns The combined items array (Batch) or null (ForEach)
    */
-  async execute(input: any): Promise<any> {
-    this.context?.log(`${this.type}(${this.id}): Executing`);
+  async execute(input?: any): Promise<any> {
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, 'input') as InputNodeContent;
+    const currentContext = this.context;
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as InputNodeContent;
+    if (!currentContext) {
+      console.warn(`[InputNode ${this.id}] Execution context is missing.`);
+      return nodeContent.items || []; // Return existing items if no context
+    }
 
-    // Use nodeContent for logic
-    const chainingItems = nodeContent?.chainingItems || [];
-    const commonItems = nodeContent?.commonItems || [];
-    const items = nodeContent?.items || [];
-    const iterateEachRow = nodeContent?.iterateEachRow;
-    // Explicitly assert the type before the switch statement
-    const mode = (nodeContent.chainingUpdateMode || 'element') as 'common' | 'replaceCommon' | 'element' | 'none';
-    
-    this.context?.log(`${this.type}(${this.id}): Start state - Chaining: ${chainingItems.length}, Common: ${commonItems.length}, Items: ${items.length}, Iterate: ${iterateEachRow}, ChainingMode: ${mode}`);
+    currentContext.log(`${this.type}(${this.id}): Executing Input Node`);
+    currentContext.markNodeRunning(this.id);
 
-    // --- Step 1 & 2: Process Input --- 
-    let processedChainingInputs: any[] = [];
-    let processedCommonInputs: any[] | null = null; // Use null to differentiate from empty array if no update needed
-    let processedElementInputs: any[] | null = null;// Use null
+    let newItems = [...(nodeContent.items || [])];
+    let newCommonItems = [...(nodeContent.commonItems || [])];
+    let updatePerformed = false;
 
-    if (input !== null && input !== undefined) {
-      const inputsToProcess = Array.isArray(input) ? input : [input];
+    // Process chained input if provided
+    if (input !== undefined && input !== null) {
+      currentContext.log(`${this.type}(${this.id}): Received chained input: ${JSON.stringify(input)}`);
+      const { chainingUpdateMode, accumulationMode } = nodeContent;
 
-      // Helper to check if an item is a valid object (not empty) - ADD BACK
-      const isValidObject = (item: any) => 
-        typeof item === 'object' && item !== null && Object.keys(item).length > 0;
-
-      // Helper to filter valid inputs
-      const getValidInputs = (arr: any[]) => arr.filter(item => 
-         item !== null && item !== undefined && (typeof item !== 'object' || isValidObject(item))
-      );
-
-      const validInputs = getValidInputs(inputsToProcess);
-
-      if (validInputs.length > 0) {
-        // 1. Always process for chainingItems
-        processedChainingInputs = [...chainingItems, ...validInputs]; // Append to existing chaining items
-        this.context?.log(`${this.type}(${this.id}): Processed ${validInputs.length} valid input(s) for chainingItems. New potential count: ${processedChainingInputs.length}`);
-
-        // 2. Process based on chainingUpdateMode
-        switch (mode) { // Use the asserted type variable
-          case 'replaceCommon':
-            processedCommonInputs = [...validInputs]; // Replace with new valid inputs
-            this.context?.log(`${this.type}(${this.id}): Mode 'replaceCommon'. Prepared ${validInputs.length} item(s) to replace commonItems.`);
-            break;
-          case 'common':
-            processedCommonInputs = [...commonItems, ...validInputs]; // Append to existing common items
-            this.context?.log(`${this.type}(${this.id}): Mode 'common'. Prepared ${validInputs.length} item(s) to append to commonItems. New potential count: ${processedCommonInputs.length}`);
-            break;
-          case 'element':
-            processedElementInputs = [...items, ...validInputs]; // Append to existing element items
-            this.context?.log(`${this.type}(${this.id}): Mode 'element'. Prepared ${validInputs.length} item(s) to append to items. New potential count: ${processedElementInputs.length}`);
-            break;
-          case 'none':
-            // Do nothing for common or element items
-            this.context?.log(`${this.type}(${this.id}): Mode 'none'. No updates to common/element items.`);
-            break;
+      // === Accumulation Control Start ===
+      let canAccumulate = true;
+      if (accumulationMode === 'none') {
+        canAccumulate = false;
+        currentContext.log(`${this.type}(${this.id}): Accumulation disabled (mode: none).`);
+      } else if (accumulationMode === 'oncePerContext' && (chainingUpdateMode === 'common' || chainingUpdateMode === 'replaceCommon')) {
+        // Initialize the Set in the context if it doesn't exist
+        if (!currentContext.accumulatedOnceInputNodes) {
+            currentContext.accumulatedOnceInputNodes = new Set<string>();
         }
-      } else {
-        this.context?.log(`${this.type}(${this.id}): Input received, but contained no valid items after filtering.`);
-      }
-    }
-
-    // --- Update Store if anything changed ---
-    const updatePayload: Partial<InputNodeContent> = {};
-    let storeNeedsUpdate = false;
-
-    // Check if chainingItems changed (always check if valid inputs were processed)
-    if (processedChainingInputs.length > chainingItems.length) {
-      updatePayload.chainingItems = processedChainingInputs;
-      storeNeedsUpdate = true;
-      this.context?.log(`${this.type}(${this.id}): Staging chainingItems update.`);
-    }
-
-    // Check if commonItems changed
-    if (processedCommonInputs !== null) { // Only update if processedCommonInputs was assigned
-      // Simple length comparison might not be enough if items were replaced but count is same
-      // For simplicity, we update if it was processed. More robust check could compare arrays.
-       updatePayload.commonItems = processedCommonInputs;
-       storeNeedsUpdate = true;
-       this.context?.log(`${this.type}(${this.id}): Staging commonItems update.`);
-    }
-    
-    // Check if items changed
-    if (processedElementInputs !== null) { // Only update if processedElementInputs was assigned
-       updatePayload.items = processedElementInputs;
-       storeNeedsUpdate = true;
-       this.context?.log(`${this.type}(${this.id}): Staging items update.`);
-    }
-
-    if (storeNeedsUpdate) {
-        this.context?.log(`${this.type}(${this.id}): Updating node content store with staged changes.`);
-        useNodeContentStore.getState().setNodeContent(this.id, updatePayload);
-    }
-
-    // --- Step 3: Determine Output / Execution --- 
-    // Re-fetch the potentially updated state for output generation
-    const finalNodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as InputNodeContent;
-    const finalCommonItems = finalNodeContent?.commonItems || [];
-    const finalItems = finalNodeContent?.items || [];
-    const finalIterateEachRow = finalNodeContent?.iterateEachRow;
-
-    if (finalIterateEachRow) {
-      this.context?.log(`${this.type}(${this.id}): Running in ForEach mode`);
-      // Process each item individually
-      for (const item of finalItems) { // Use finalItems for iteration
-        const childNodes = this.getChildNodes();
-        for (const child of childNodes) {
-          // Combine common items with the current item
-          const combinedInput = [...finalCommonItems, item]; // Use finalCommonItems
-          this.context?.log(`${this.type}(${this.id}): Passing combined input to child: ${finalCommonItems.length} common + 1 individual`);
-          // Pass the combined input to child node
-          // Note: process might need context or further refinement based on child node needs
-          await child.process(combinedInput);
+        if (currentContext.accumulatedOnceInputNodes.has(this.id)) {
+          currentContext.log(`${this.type}(${this.id}): Skipping common items update due to 'oncePerContext' mode.`);
+          canAccumulate = false; // Specifically disable accumulation for common/replaceCommon
         }
       }
-      this.context?.log(`${this.type}(${this.id}): Finished ForEach mode processing`);
-      // Return null to stop chaining from this node after foreach completes
-      return null;
-    } else {
-      // If iterateEachRow is false (Batch mode)
-      // Return combined common items and individual items
-      const combinedOutput = [...finalCommonItems, ...finalItems]; // Use final states
-      this.context?.log(`${this.type}(${this.id}): Running in Batch mode, returning ${combinedOutput.length} items (${finalCommonItems.length} common + ${finalItems.length} individual)`);
+      // === Accumulation Control End ===
       
-      // Return a copy of the combined array
-      return [...combinedOutput];
+      const itemsToAdd = Array.isArray(input) ? input : [input];
+
+      // Only perform accumulation if canAccumulate is true
+      if (canAccumulate) {
+        if (chainingUpdateMode === 'common') {
+          newCommonItems.push(...itemsToAdd);
+          updatePerformed = true;
+          if (accumulationMode === 'oncePerContext') { // Mark only if in oncePerContext mode
+            currentContext.accumulatedOnceInputNodes!.add(this.id); // Mark as updated
+            currentContext.log(`${this.type}(${this.id}): Updated common items and marked for 'oncePerContext'.`);
+          }
+        } else if (chainingUpdateMode === 'replaceCommon') {
+          newCommonItems = itemsToAdd;
+          updatePerformed = true;
+          if (accumulationMode === 'oncePerContext') { // Mark only if in oncePerContext mode
+            currentContext.accumulatedOnceInputNodes!.add(this.id); // Mark as updated
+            currentContext.log(`${this.type}(${this.id}): Replaced common items and marked for 'oncePerContext'.`);
+          }
+        } else if (chainingUpdateMode === 'element') {
+          // Note: 'oncePerContext' currently doesn't apply to 'element' mode. 
+          // If needed later, the canAccumulate logic might need refinement.
+          newItems.push(...itemsToAdd);
+          updatePerformed = true;
+        } else if (chainingUpdateMode === 'replaceElement') {
+          // Replace items with the new input
+          newItems = itemsToAdd;
+          updatePerformed = true;
+          currentContext.log(`${this.type}(${this.id}): Replaced element items.`);
+        }
+      } // End of if(canAccumulate)
+      
+      if (chainingUpdateMode === 'none') {
+        currentContext.log(`${this.type}(${this.id}): Chained input ignored due to chainingUpdateMode 'none'.`);
+      }
+
+      // Persist changes ONLY if accumulation occurred
+      if (updatePerformed) {
+        useNodeContentStore.getState().setNodeContent(this.id, {
+          items: newItems,
+          commonItems: newCommonItems
+        });
+      }
+    }
+
+    // Determine output based on execution mode
+    const executionMode = nodeContent.executionMode || 'batch';
+    let output: any;
+
+    if (executionMode === 'foreach') {
+      currentContext.log(`${this.type}(${this.id}): Executing in Foreach mode`);
+      const itemsToIterate = newItems;
+      if (itemsToIterate.length === 0) {
+        currentContext.log(`${this.type}(${this.id}): No items to iterate in Foreach mode.`);
+        output = null; // Or handle as needed, maybe empty array?
+      } else {
+        // In foreach mode, trigger downstream nodes for each item combined with commonItems
+        // The Input node itself might not output directly in this mode, downstream handles it.
+        // This logic might belong in the core FlowRunner or GroupNode execution.
+        // For now, we'll just return null as the node's direct output.
+        currentContext.log(`${this.type}(${this.id}): Foreach mode selected. Downstream nodes will be triggered per item.`);
+        output = null; // Input node output is null, triggers happen elsewhere
+      }
+      
+    } else { // Batch mode
+      currentContext.log(`${this.type}(${this.id}): Executing in Batch mode`);
+      // Combine commonItems and items for batch output
+      output = [...newCommonItems, ...newItems];
+      currentContext.log(`${this.type}(${this.id}): Outputting combined items (Common: ${newCommonItems.length}, Element: ${newItems.length}, Total: ${output.length})`);
+    }
+
+    // Finalize execution
+    if (output !== null) {
+        currentContext.storeOutput(this.id, output); // Store the output in context
+        currentContext.markNodeSuccess(this.id, { items: newItems, commonItems: newCommonItems });
+        return output;
+    } else {
+        // Handle foreach completion - maybe mark success differently?
+        currentContext.markNodeSuccess(this.id, { status: 'Foreach mode initiated', items: newItems, commonItems: newCommonItems });
+        return null; // Return null as foreach mode output
     }
   }
 }

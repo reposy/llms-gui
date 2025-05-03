@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { useNodeContentStore, InputNodeContent, NodeContent } from '../store/useNodeContentStore';
+import { InputNodeContent, BaseNodeData } from '../types/nodes';
+import { useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
  * InputNode 데이터 관리 훅 (세 가지 아이템 목록 지원)
@@ -14,7 +15,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   // 노드 컨텐츠 가져오기
   const content = useNodeContentStore(
     useCallback(
-      (state) => state.getNodeContent<InputNodeContent>(nodeId, 'input'),
+      (state) => state.getNodeContent(nodeId, 'input') as InputNodeContent,
       [nodeId]
     )
   );
@@ -25,7 +26,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   const items: (string | File)[] = (content?.items as (string | File)[]) || [];
   const textBuffer: string = content?.textBuffer || '';
   const iterateEachRow: boolean = content?.iterateEachRow || false;
-  const chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'none' = content?.chainingUpdateMode || 'element';
+  const chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none' = content?.chainingUpdateMode || 'element';
 
   // 텍스트 아이템 편집 상태 관리 (로컬 UI 상태)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   /**
    * 부분적인 컨텐츠 업데이트 유틸리티 함수
    */
-  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeContent, keyof NodeContent>>) => {
+  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeContent, keyof BaseNodeData>>) => {
     setNodeContent<InputNodeContent>(nodeId, {
       ...content,
       ...updates,
@@ -80,7 +81,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   /**
    * 자동 Chaining 업데이트 모드 변경
    */
-  const handleUpdateChainingMode = useCallback((newMode: 'common' | 'replaceCommon' | 'element' | 'none') => {
+  const handleUpdateChainingMode = useCallback((newMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none') => {
     updateInputContent({ chainingUpdateMode: newMode });
   }, [updateInputContent]);
 
