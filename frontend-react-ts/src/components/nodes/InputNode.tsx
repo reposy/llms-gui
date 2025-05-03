@@ -75,18 +75,26 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   // Run handler
   const handleRun = useCallback(() => {
     const executionId = `exec-${uuidv4()}`;
-    const executionContext = new FlowExecutionContext(executionId, getNodeContent);
-    executionContext.setTriggerNode(id);
-    buildExecutionGraphFromFlow(nodes, edges);
-    const executionGraph = getExecutionGraph();
+    // Create factory and register types first
     const nodeFactory = new NodeFactory();
     registerAllNodeTypes();
-    const node = nodes.find(n => n.id === id);
+    // Now create context, passing nodes/edges from hook scope
+    const executionContext = new FlowExecutionContext(executionId, getNodeContent, nodes, edges, nodeFactory);
+    
+    executionContext.setTriggerNode(id);
+    
+    buildExecutionGraphFromFlow(nodes, edges); // Use nodes/edges from hook scope
+    const executionGraph = getExecutionGraph();
+    
+    const node = nodes.find(n => n.id === id); // Use nodes from hook scope
     if (!node) return;
+    
     const nodeInstance = nodeFactory.create(id, node.type as string, node.data, executionContext);
-    nodeInstance.property = { ...nodeInstance.property, nodes, edges, nodeFactory, executionGraph };
+    
+    nodeInstance.property = { ...nodeInstance.property, nodes, edges, nodeFactory, executionGraph }; // Use nodes/edges from hook scope
+    
     nodeInstance.process({}).catch(error => console.error(`[InputNode] Error:`, error));
-  }, [id, nodes, edges, getNodeContent]);
+  }, [id, nodes, edges, getNodeContent]); // Keep nodes/edges dependencies as they are used directly
 
   // Prevent keydown events from bubbling up to React Flow
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

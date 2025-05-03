@@ -48,19 +48,19 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
       const executionId = `exec-${uuidv4()}`;
-      const executionContext = new FlowExecutionContext(executionId, getNodeContent);
+      const { nodes: currentNodes, edges: currentEdges } = useFlowStructureStore.getState();
+      const nodeFactory = new NodeFactory();
+      registerAllNodeTypes();
+      const executionContext = new FlowExecutionContext(executionId, getNodeContent, currentNodes, currentEdges, nodeFactory);
       
       executionContext.setTriggerNode(id);
       
       console.log(`[LlmNodeHeader] Starting execution for node ${id}`);
       
-      buildExecutionGraphFromFlow(nodes, edges);
+      buildExecutionGraphFromFlow(currentNodes, currentEdges);
       const executionGraph = getExecutionGraph();
       
-      const nodeFactory = new NodeFactory();
-      registerAllNodeTypes();
-      
-      const nodeStructure = nodes.find(n => n.id === id);
+      const nodeStructure = currentNodes.find(n => n.id === id);
       if (!nodeStructure) {
         console.error(`[LlmNodeHeader] Node structure ${id} not found.`);
         return;
@@ -88,8 +88,8 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
       
       nodeInstance.property = {
         ...nodeInstance.property,
-        nodes,
-        edges,
+        nodes: currentNodes,
+        edges: currentEdges,
         nodeFactory,
         executionGraph
       };
@@ -98,7 +98,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
         console.error(`[LlmNodeHeader] Error executing node ${id}:`, error);
       });
     }
-  }, [id, isRootNode, nodes, edges]);
+  }, [id, isRootNode]);
 
   return (
     <NodeHeader

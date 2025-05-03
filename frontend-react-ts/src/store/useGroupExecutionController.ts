@@ -49,23 +49,23 @@ export const useGroupExecutionController = create<GroupExecutionControllerState>
           });
 
           // Create execution context
-          const executionContext = new FlowExecutionContext(executionId, getNodeContent);
+          const nodeFactory = new NodeFactory();
+          registerAllNodeTypes();
+          const { nodes, edges } = useFlowStructureStore.getState();
+          const executionContext = new FlowExecutionContext(executionId, getNodeContent, nodes, edges, nodeFactory);
           
           // Set trigger node
           executionContext.setTriggerNode(groupNodeId);
           
           console.log(`[GroupExecutionController] Starting execution for group node ${groupNodeId}`); // Log updated
           
-          // Get flow structure
-          const { nodes, edges } = useFlowStructureStore.getState();
-          
           // Build execution graph
           buildExecutionGraphFromFlow(nodes, edges);
           const executionGraph = getExecutionGraph();
           
           // Create node factory
-          const nodeFactory = new NodeFactory();
-          registerAllNodeTypes();
+          // const nodeFactory = new NodeFactory();
+          // registerAllNodeTypes();
           
           // Find the node data
           const node = nodes.find(n => n.id === groupNodeId);
