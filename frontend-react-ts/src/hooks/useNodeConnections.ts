@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from 'react';
-import { shallow } from 'zustand/shallow';
 import { Edge, Node } from '@xyflow/react';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getIncomingConnections } from '../utils/flow/flowUtils';
@@ -11,10 +10,10 @@ const DEBUG_LOGS = false;
  * Hook to check if a node has any image input connections
  * This is useful for determining if vision mode can be enabled for LLM nodes
  */
-export const useNodeConnections = (nodeId: string) => {
-  // Use shallow comparisons for store selectors
-  const nodes = useFlowStructureStore(state => state.nodes, shallow);
-  const edges = useFlowStructureStore(state => state.edges, shallow);
+export function useNodeConnections(nodeId: string): NodeConnectionData {
+  // Remove shallow from these selector calls
+  const nodes = useFlowStructureStore(state => state.nodes);
+  const edges = useFlowStructureStore(state => state.edges);
 
   // Memoize the incoming connections to avoid recalculation
   const incomingConnections = useMemo(() => {
@@ -50,4 +49,4 @@ export const useNodeConnections = (nodeId: string) => {
     incomingConnections,
     incomingNodes
   }), [hasImageInputs, incomingConnections, incomingNodes]);
-}; 
+} 

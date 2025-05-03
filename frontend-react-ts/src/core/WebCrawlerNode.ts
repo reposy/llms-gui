@@ -1,4 +1,3 @@
-import type { NodeProps } from '@xyflow/react';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { crawling } from '../utils/web/crawling';
 import { WebCrawlerNodeContent } from '../types/nodes';

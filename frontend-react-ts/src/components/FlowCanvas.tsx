@@ -207,36 +207,18 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   const handleUndo = useCallback(() => {
     if (canUndo) {
       console.log("[FlowCanvas] Undo triggered via UI button");
-      // 실행 취소 수행
+      // 실행 취소 수행 (Zustand 상태 변경)
       undo();
-      
-      // 상태 변경 감지를 위한 미세한 지연
-      setTimeout(() => {
-        // 현재 Zustand 스토어 상태 가져오기
-        const currentState = useFlowStructureStore.getState();
-        // 노드와 엣지를 다시 설정하여 React Flow에 반영
-        // TypeScript 에러 해결: 함수가 아닌 배열을 전달
-        setZustandNodes([...currentState.nodes]);
-        setZustandEdges([...currentState.edges]);
-      }, 10); // 지연 시간을 약간 늘려 확실히 적용되도록 함
+      // setTimeout 로직 제거: Zustand 상태 변경이 useNodes/useEdges를 통해 React Flow에 반영되어야 함
     }
   }, [canUndo]);
   
   const handleRedo = useCallback(() => {
     if (canRedo) {
       console.log("[FlowCanvas] Redo triggered via UI button");
-      // 다시 실행 수행
+      // 다시 실행 수행 (Zustand 상태 변경)
       redo();
-      
-      // 상태 변경 감지를 위한 미세한 지연
-      setTimeout(() => {
-        // 현재 Zustand 스토어 상태 가져오기
-        const currentState = useFlowStructureStore.getState();
-        // 노드와 엣지를 다시 설정하여 React Flow에 반영
-        // TypeScript 에러 해결: 함수가 아닌 배열을 전달
-        setZustandNodes([...currentState.nodes]);
-        setZustandEdges([...currentState.edges]);
-      }, 10); // 지연 시간을 약간 늘려 확실히 적용되도록 함
+      // setTimeout 로직 제거: Zustand 상태 변경이 useNodes/useEdges를 통해 React Flow에 반영되어야 함
     }
   }, [canRedo]);
   

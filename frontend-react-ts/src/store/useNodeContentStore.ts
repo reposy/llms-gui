@@ -1,141 +1,45 @@
 import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
 // Import types from the central definition file
 import { 
-  FileLikeObject, HTTPMethod, ExtractionRule, 
-  BaseNodeContent, InputNodeContent, LLMNodeContent, OutputNodeContent, 
-  WebCrawlerNodeContent, APINodeContent, ConditionalNodeContent, 
-  MergerNodeContent, JSONExtractorNodeContent, GroupNodeContent, 
-  HTMLParserNodeContent, NodeContent // Import the union type as well
+  InputNodeContent,
+  LLMNodeContent, 
+  OutputNodeContent, 
+  WebCrawlerNodeContent, 
+  APINodeContent, 
+  ConditionalNodeContent, 
+  JSONExtractorNodeData, // Note: Assuming JSONExtractor uses NodeData, not Content specific type
+  GroupNodeContent, 
+  NodeContent, // Import the union type
+  HTTPMethod, // Import necessary utility types
+  RequestBodyType,
+  // ExtractionRule, // Appears unused
+  // FileLikeObject // Appears unused
 } from '../types/nodes'; 
 import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-// Remove self-import attempt
-// import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
-
-/**
- * 노드 컨텐츠의 기본 인터페이스 - REMOVED (imported from types/nodes)
- */
-/*
-export interface BaseNodeContent { ... }
-*/
-
-/**
- * 입력 노드 컨텐츠 - REMOVED (imported from types/nodes)
- */
-/*
-export interface InputNodeContent extends BaseNodeContent { ... }
-*/
-
-/**
- * LLM 노드 컨텐츠 - REMOVED (imported from types/nodes)
- */
-/*
-export interface LLMNodeContent extends BaseNodeContent { ... }
-*/
-
-/**
- * 출력 노드 컨텐츠
- */
-export interface OutputNodeContent extends BaseNodeContent {
-  format: 'json' | 'text';
-  content?: string;
-  mode?: 'read' | 'write';
-}
-
-/**
- * Represents the content specific to a Web Crawler node.
- */
-export interface WebCrawlerNodeContent {
-  type: 'web-crawler';
-  label: string;
-  url?: string;
-  waitForSelectorOnPage?: string;
-  iframeSelector?: string;
-  waitForSelectorInIframe?: string;
-  timeout?: number;
-  headers?: Record<string, string>;
-}
-
-/**
- * HTML Parser 노드 콘텐츠
- */
-export interface HTMLParserNodeContent extends BaseNodeContent {
-  extractionRules?: ExtractionRule[];
-}
-
-/**
- * API 노드 컨텐츠
- */
-export interface APINodeContent extends BaseNodeContent {
-  url: string;
-  method: HTTPMethod;
-  headers?: Record<string, string>;
-  body?: string;
-  queryParams?: Record<string, string>;
-  useInputAsBody?: boolean;
-  contentType?: string;
-  bodyFormat?: 'key-value' | 'raw';
-  bodyParams?: Array<{ key: string; value: string; enabled: boolean }>;
-}
-
-/**
- * 조건부 노드 컨텐츠
- */
-export interface ConditionalNodeContent extends BaseNodeContent {
-  conditionType: 'contains' | 'greater_than' | 'less_than' | 'equal_to' | 'json_path';
-  conditionValue: string;
-}
-
-/**
- * Merger 노드 컨텐츠
- */
-export interface MergerNodeContent extends BaseNodeContent {
-  strategy: 'array' | 'object';
-  keys?: string[];
-  items: any[];
-}
-
-/**
- * JSON 추출 노드 컨텐츠
- */
-export interface JSONExtractorNodeContent extends BaseNodeContent {
-  path: string;
-  defaultValue?: string;
-}
-
-/**
- * 그룹 노드 컨텐츠
- */
-export interface GroupNodeContent extends BaseNodeContent {
-  childNodes: string[];
-}
-
-/**
- * 모든 노드 컨텐츠 타입의 유니온 타입 - REMOVED (imported from types/nodes)
- */
-/*
-export type NodeContent = ...;
-*/
 
 /**
  * Creates the default content for a given node type.
+ * These objects should ONLY contain properties defined in the specific *NodeContent types
+ * from types/nodes.ts (or *NodeData for types without a specific Content type like JSONExtractor).
+ * Base properties like label/isDirty are NOT set here.
  */
-// Ensure this function uses the imported types correctly
 export function createDefaultNodeContent(type: string, id: string): NodeContent {
   switch (type) {
     case 'input':
       return {
-        chainingItems: [],
-        commonItems: [],
         items: [],
+        commonItems: [],
+        chainingItems: [],
         textBuffer: '',
         iterateEachRow: false,
-        chainingUpdateMode: 'element', // Ensure this matches the imported type's possibilities
-        isDirty: false,
-        label: 'Input'
-      } as InputNodeContent; // Use imported type for assertion
+        executionMode: 'batch',
+        chainingUpdateMode: 'element',
+        // isDirty: false, // Base property, remove
+      } as InputNodeContent;
 
     case 'llm':
       return {
@@ -145,89 +49,75 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         provider: 'ollama',
         ollamaUrl: 'http://localhost:11434',
         mode: 'text',
-        isDirty: false,
-        label: 'LLM'
-      } as LLMNodeContent; // Use imported type
+        // isDirty: false, // Base property, remove
+      } as LLMNodeContent;
 
     case 'output':
       return {
         format: 'text',
-        content: '',
+        content: '', // content is part of OutputNodeContent
         mode: 'read',
-        isDirty: false,
-        label: 'Output'
+        // isDirty: false, // Base property, remove
       } as OutputNodeContent;
 
     case 'web-crawler':
       return {
-        // type: 'web-crawler', // type is not part of NodeContent generally
-        label: `Web Crawler ${id.substring(0, 4)}`,
         url: '',
-        waitForSelector: '', // Corrected field name based on types/nodes.ts likely
+        waitForSelector: '',
         extractSelectors: {},
         timeout: 30000,
         headers: {},
-        includeHtml: false,
-        outputFormat: 'text' // Default reasonable format
-      } satisfies WebCrawlerNodeContent; // Use satisfies if possible, or 'as' with imported type
+        outputFormat: 'html',
+        // isDirty: false, // Not part of WebCrawlerNodeContent
+      } as WebCrawlerNodeContent;
 
-    case 'html-parser':
-      return {
-        extractionRules: [],
-        isDirty: false,
-        label: 'HTML Parser'
-      } as HTMLParserNodeContent;
+    // HTML Parser case might be needed if used, ensure type exists in types/nodes.ts
+    /* case 'html-parser': 
+      return { extractionRules: [] } as HTMLParserNodeData; // Or HTMLParserNodeContent if defined
+    */
 
     case 'api':
       return {
         url: '',
-        method: 'GET' as HTTPMethod, // Assert specific type from import
-        headers: {},
-        queryParams: {},
-        bodyFormat: 'raw',
-        body: '',
-        useInputAsBody: false,
-        isDirty: false,
-        label: 'API'
+        method: 'GET' as HTTPMethod,
+        requestBodyType: 'none' as RequestBodyType,
+        requestHeaders: {},
+        requestBody: '',
+        // isDirty: false, // Base property, remove
       } as APINodeContent;
 
     case 'conditional':
       return {
         conditionType: 'contains',
         conditionValue: '',
-        isDirty: false,
-        label: 'Conditional'
+        // isDirty: false, // Base property, remove
       } as ConditionalNodeContent;
-
-    case 'merger':
+    
+    // Merger case might be needed if used, ensure type exists in types/nodes.ts
+    /* case 'merger':
       return {
-        // strategy: 'array', // Removed, check types/nodes.ts
-        mergeMode: 'concat', // Match definition in types/nodes.ts
-        arrayStrategy: 'flatten', // Match definition
+        mergeMode: 'concat', 
+        arrayStrategy: 'flatten',
         items: [],
-        isDirty: false,
-        label: 'Merger'
-      } as MergerNodeContent;
+      } as MergerNodeData; // Or MergerNodeContent if defined
+    */
 
-    case 'json-extractor':
+    case 'json-extractor': // Uses NodeData as per previous check
       return {
         path: '',
-        // defaultValue: '', // Check if exists in types/nodes.ts
-        isDirty: false,
-        label: 'JSON Extractor'
-      } as JSONExtractorNodeContent;
+        // isDirty: false, // Base property, remove
+      } as JSONExtractorNodeData;
 
     case 'group':
       return {
-        // childNodes: [], // Check if exists in types/nodes.ts
-        isCollapsed: false, // Match definition
-        isDirty: false,
-        label: 'Group'
+        isCollapsed: false,
+        // isDirty: false, // Base property, remove
       } as GroupNodeContent;
 
     default:
-      console.warn(`Creating default content for unknown node type: ${type}`);
-      return { label: `Node ${id.substring(0, 4)}` } as BaseNodeContent; // Default to Base
+      console.warn(`Creating default content for unknown node type: ${type}. Returning empty object.`);
+      // Return an empty object or minimal structure compatible with NodeContent union
+      return {} as NodeContent; // Return type must satisfy NodeContent
   }
 }
 
@@ -256,12 +146,6 @@ interface NodeContentState {
   // 모든 컨텐츠를 초기화하는 함수
   resetAllContent: () => void;
 
-  // 노드의 dirty 상태를 설정하는 함수
-  markNodeDirty: (nodeId: string, isDirty: boolean) => void;
-  
-  // 노드의 dirty 상태를 확인하는 함수
-  isNodeDirty: (nodeId: string) => boolean;
-  
   // 존재하지 않는 노드의 컨텐츠를 정리하는 함수
   cleanupDeletedNodes: (existingNodeIds: string[]) => void;
 }
@@ -270,22 +154,19 @@ interface NodeContentState {
  * 노드 컨텐츠를 저장하는 Zustand 스토어
  * persist 미들웨어로 로컬 스토리지에 자동 저장
  */
-export const useNodeContentStore = create<NodeContentState>()(
+export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
   persist(
     (set, get) => ({
       contents: {},
 
       setNodeContent: (nodeId, contentUpdate) => set(state => {
-        const currentContent = state.contents[nodeId] || createDefaultNodeContent(contentUpdate.type || 'unknown', nodeId); // Ensure default creation on update if missing
+        const currentContent = state.contents[nodeId] || createDefaultNodeContent(contentUpdate.type || 'unknown', nodeId); 
         
-        // Perform a shallow merge, but handle potential deep objects if necessary
         const newContent = { 
           ...currentContent,
           ...contentUpdate,
-          isDirty: true, // Mark as dirty on any update
         };
 
-        // Optimization: Only update if content has actually changed
         if (!isEqual(currentContent, newContent)) {
           return { 
             contents: { 
@@ -294,8 +175,6 @@ export const useNodeContentStore = create<NodeContentState>()(
             }
           };
         } else {
-           // console.log(`Node content for ${nodeId} unchanged, skipping update.`);
-           // Return original state if no change
            return state; 
         }
       }),
@@ -306,61 +185,30 @@ export const useNodeContentStore = create<NodeContentState>()(
         return { contents: newContents };
       }),
 
-      // getNodeContent now correctly uses the imported NodeContent type
       getNodeContent: (nodeId: string, nodeType?: string): NodeContent => {
         const content = get().contents[nodeId];
         if (!content) {
-          // If content doesn't exist, create default content based on nodeType
           if (nodeType) {
-            // console.warn(`Content for node ${nodeId} not found, creating default for type ${nodeType}.`);
-            const defaultContent = createDefaultNodeContent(nodeType, nodeId);
-            // Return the created default content WITHOUT setting it in the store here.
-            // Let the caller decide whether to set it using setNodeContent action.
-            return defaultContent; 
+            return createDefaultNodeContent(nodeType, nodeId); 
           } else {
              console.warn(`Content for node ${nodeId} not found and nodeType not provided. Cannot create default.`);
-             // Return a minimal base content or handle as error
-             return { label: `Node ${nodeId}` } as BaseNodeContent; // Return base content instead of {}?
+             return {} as NodeContent; 
           }
         }
-        return content; // Return existing content, assert type NodeContent
+        return content; 
       },
 
       getAllNodeContents: () => get().contents,
       
-      // 임포트된 컨텐츠로부터 로드
       loadFromImportedContents: (contents) => {
         console.log('[NodeContentStore] Loading imported contents', contents);
         set({ contents });
       },
       
-      // 모든 컨텐츠 초기화
       resetAllContent: () => {
         set({ contents: {} });
       },
 
-      // 노드의 dirty 상태 설정
-      markNodeDirty: (nodeId, isDirty) => {
-        set((state) => {
-          const currentContent = state.contents[nodeId];
-          if (!currentContent) return state;
-          
-          return {
-            contents: {
-              ...state.contents,
-              [nodeId]: { ...currentContent, isDirty }
-            }
-          };
-        });
-      },
-
-      // 노드의 dirty 상태 확인
-      isNodeDirty: (nodeId) => {
-        const nodeContent = get().contents[nodeId];
-        return nodeContent ? !!nodeContent.isDirty : false;
-      },
-      
-      // 존재하지 않는 노드의 컨텐츠 정리
       cleanupDeletedNodes: (existingNodeIds) => {
         set((state) => {
           const existingNodeIdSet = new Set(existingNodeIds);
@@ -383,8 +231,12 @@ export const useNodeContentStore = create<NodeContentState>()(
     }),
     {
       name: 'node-content-storage',
+      onRehydrateStorage: () => (state) => {
+        console.log('Node content hydrated:', state);
+      }
     }
-  )
+  ),
+  shallow
 );
 
 // 직접 접근 가능한 함수들
@@ -395,8 +247,6 @@ export const {
   getAllNodeContents,
   loadFromImportedContents,
   resetAllContent,
-  markNodeDirty,
-  isNodeDirty,
   cleanupDeletedNodes
 } = useNodeContentStore.getState();
 
@@ -410,27 +260,21 @@ export function useNodeContent<T extends NodeContent = NodeContent>(
   nodeId: string,
   nodeType?: string // nodeType is now optional, but still useful for getNodeContent
 ) {
-  // Select the content using the store's getNodeContent
   const contentSelector = useCallback(
-    (state: NodeContentState) => state.getNodeContent(nodeId, nodeType) as T, // Cast to T
+    (state: NodeContentState) => state.getNodeContent(nodeId, nodeType) as T,
     [nodeId, nodeType]
   );
-  const content = useNodeContentStore(contentSelector, shallow); // Use shallow compare
+  const content = useNodeContentStore(contentSelector);
 
-  // Get the setNodeContent function from the store
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Create a stable update function using useCallback
   const updateContent = useCallback(
     (partialContent: Partial<T>) => {
-      // Call the store's setNodeContent, ensuring type is passed if available
-      // The store's setNodeContent logic should handle default creation/merging
       setNodeContent<T>(nodeId, { ...partialContent, type: nodeType || content?.type });
     },
-    [nodeId, nodeType, setNodeContent, content?.type] // Add content.type as dependency
+    [nodeId, nodeType, setNodeContent, content?.type]
   );
 
-  // Return the content and the memoized update function
   return { content, updateContent };
 }
 

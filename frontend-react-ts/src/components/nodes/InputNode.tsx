@@ -54,6 +54,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     handleEditingTextChange,
     handleFinishEditingTextItem,
     handleCancelEditingTextItem,
+    label,
   } = useInputNodeData({ nodeId: id });
   
   // Format items for display
@@ -129,7 +130,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
           {/* Node Header */} 
           <NodeHeader 
              nodeId={id} 
-             label={inputData.label || 'Input'} 
+             label={label || 'Input'} 
              placeholderLabel="Input"
              isRootNode={isRootNode}
              isRunning={isRunning}

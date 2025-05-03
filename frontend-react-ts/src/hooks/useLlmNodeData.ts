@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { shallow } from 'zustand/shallow';
-import { useNodeContent, LLMNodeContent, useNodeContentStore, isNodeDirty } from '../store/useNodeContentStore';
+import { useNodeContent, LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { LLMMode } from '../types/nodes';
 
 /**
@@ -11,24 +10,16 @@ export const useLlmNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use shallow comparison for content retrieval
+  // Remove shallow from this call as well
   const content = useNodeContentStore(
     state => state.contents[nodeId] || {},
-    shallow
   ) as LLMNodeContent;
   
-  // Get the update function
+  // And remove shallow from this call
   const updateContent = useNodeContentStore(
     state => state.setNodeContent,
-    shallow
   );
   
-  // useNodeContentStore의 isNodeDirty 함수를 사용하여 dirty 상태 확인
-  const isContentDirty = useNodeContentStore(
-    state => state.isNodeDirty(nodeId),
-    shallow
-  );
-
   // Memoize extracted values to prevent recreation
   const values = useMemo(() => ({
     prompt: content.prompt || '',
@@ -39,9 +30,8 @@ export const useLlmNodeData = ({
     openaiApiKey: content.openaiApiKey || '',
     mode: content.mode || 'text',
     label: content.label || 'LLM Node',
-    responseContent: content.content || '',
-    isDirty: isContentDirty
-  }), [content, isContentDirty]);
+    responseContent: content.content || ''
+  }), [content]);
 
   /**
    * Handle prompt change

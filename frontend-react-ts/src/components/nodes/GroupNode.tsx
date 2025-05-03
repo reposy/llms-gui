@@ -31,7 +31,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const executionContextRef = useRef<FlowExecutionContext | null>(null);
   
   const { 
-    label: initialLabel,
+    label,
     isCollapsed, 
   } = useGroupNodeData({ nodeId: id });
 
@@ -200,7 +200,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         >
           <EditableNodeLabel
             nodeId={id}
-            initialLabel={initialLabel}
+            initialLabel={label}
             placeholderLabel="Group"
             onLabelUpdate={handleLabelUpdate}
             labelClassName="text-xs text-orange-800 font-medium mr-2"

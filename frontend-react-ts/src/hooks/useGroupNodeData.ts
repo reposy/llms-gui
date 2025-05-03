@@ -11,17 +11,20 @@ export const useGroupNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContent hook with correct type and nodeType
-  const contentFromHook = useNodeContent<GroupNodeContent>(nodeId, 'group');
+  const contentSelector = useCallback(
+    (state: NodeContentState) => state.getNodeContent<GroupNodeContent>(nodeId, 'group'),
+    [nodeId]
+  );
+  const content = useNodeContentStore(contentSelector);
+
+  // Use optional chaining for safety
+  const isCollapsed = content?.isCollapsed || false;
+  const label = content?.label || ''; // Get the current label
+
   const updateContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Get isDirty status directly from the store
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
-
   // Ensure content is defined and provide defaults defensively
-  const content = contentFromHook || createDefaultNodeContent('group', nodeId) as GroupNodeContent;
-  const label = content?.label || 'Group';
-  const isCollapsed = content?.isCollapsed || false;
+  const contentFromHook = content || createDefaultNodeContent('group', nodeId) as GroupNodeContent;
 
   /**
    * Handle label change to match EditableNodeLabel signature
@@ -73,7 +76,6 @@ export const useGroupNodeData = ({
     content,
     label,
     isCollapsed,
-    isDirty: isContentDirty,
     
     // Event handlers
     handleLabelChange,

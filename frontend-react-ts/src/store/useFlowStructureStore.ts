@@ -1,8 +1,10 @@
 import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import { NodeData } from '../types/nodes';
 import { createIDBStorage } from '../utils/storage/idbStorage';
+import { shallow } from 'zustand/shallow';
 
 // Type for the store
 interface FlowStructureState {
@@ -18,8 +20,8 @@ interface FlowStructureState {
   onEdgesChange: (changes: EdgeChange[]) => void;
 }
 
-// Create the store with persist middleware
-export const useFlowStructureStore = create<FlowStructureState>()(
+// Use createWithEqualityFn and provide shallow as the default equality function
+export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
   persist(
     (set, get) => ({
       nodes: [],
@@ -84,19 +86,12 @@ export const useFlowStructureStore = create<FlowStructureState>()(
     {
       name: 'flow-structure-storage',
       storage: createJSONStorage(() => createIDBStorage()),
-      partialize: (state) => ({ 
-        nodes: state.nodes,
-        edges: state.edges,
-        // Don't persist selection state across sessions
-        // selectedNodeIds: state.selectedNodeIds 
-        // Note: applyNodeChanges might affect node data, 
-        // ensure persist/partialize logic aligns with data handling in useNodeContentStore if needed.
-      }),
       onRehydrateStorage: () => (state) => {
         console.log('Flow structure hydrated:', state);
       }
     }
-  )
+  ),
+  shallow
 );
 
 // Helper function to check if two Node arrays are equal (simple version)

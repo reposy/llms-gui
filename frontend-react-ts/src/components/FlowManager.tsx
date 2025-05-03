@@ -93,13 +93,15 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
     }
   };
 
-  const exportFlow = () => {
-    const flowData = exportFlowAsJson();
+  // Generalized export function called by both buttons
+  const handleExport = (includeData: boolean) => {
+    const flowData = exportFlowAsJson(includeData);
     const blob = new Blob([JSON.stringify(flowData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `flow-${Date.now()}.json`;
+    const filename = includeData ? `flow-with-data-${Date.now()}.json` : `flow-${Date.now()}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -187,7 +189,7 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
   }, { enableOnFormTags: false }, [flowApi]);
 
   return (
-    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2">
+    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 items-center">
       <button 
         onClick={createNewFlow}
         className="px-3 py-1 bg-white border border-gray-300 rounded shadow-sm text-sm hover:bg-gray-50 flex items-center"
@@ -195,13 +197,23 @@ export const FlowManager: React.FC<FlowManagerProps> = ({ flowApi }) => {
         <span className="mr-1">+</span> 새 플로우
       </button>
       <button 
-        onClick={exportFlow}
+        onClick={() => handleExport(false)}
         className={`px-3 py-1 bg-white border ${isDirty ? 'border-yellow-400' : 'border-gray-300'} rounded shadow-sm text-sm hover:bg-gray-50 flex items-center`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         {isDirty ? '플로우 저장*' : '플로우 저장'}
+      </button>
+      <button 
+        onClick={() => handleExport(true)}
+        className={`px-3 py-1 bg-white border ${isDirty ? 'border-yellow-400' : 'border-gray-300'} rounded shadow-sm text-sm hover:bg-gray-50 flex items-center`}
+        title="플로우 구조, 설정 및 마지막 실행 결과를 함께 저장합니다."
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        {isDirty ? '결과 포함 저장*' : '결과 포함 저장'}
       </button>
       <label 
         htmlFor="import-flow-input"

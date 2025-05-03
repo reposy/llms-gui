@@ -246,6 +246,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     chainingUpdateMode,
     editingItemId, // UI 편집 상태 노출
     editingText,   // UI 편집 상태 노출
+    label: content?.label || '',
     
     // 핸들러 함수
     handleTextChange,
