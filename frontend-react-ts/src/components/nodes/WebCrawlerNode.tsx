@@ -80,12 +80,12 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     : 'idle';
   
   // Format URL for display
-  const displayUrl = crawlerData.url 
+  const displayUrl = crawlerData?.url
     ? (crawlerData.url.length > 30 ? crawlerData.url.substring(0, 27) + '...' : crawlerData.url)
     : 'No URL set';
   
   // Count extractors
-  const extractorCount = crawlerData.extractSelectors ? Object.keys(crawlerData.extractSelectors).length : 0;
+  const extractorCount = crawlerData?.extractSelectors ? Object.keys(crawlerData.extractSelectors).length : 0;
   
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -104,7 +104,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
 
         <NodeHeader 
           nodeId={id}
-          label={crawlerData.label || "Web Crawler"}
+          label={crawlerData?.label || "Web Crawler"}
           placeholderLabel="Web Crawler"
           isRootNode={true}
           isRunning={isRunning}
@@ -122,7 +122,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
               <span className="ml-1 font-mono text-blue-600">{displayUrl}</span>
             </div>
             
-            {crawlerData.waitForSelector && (
+            {crawlerData?.waitForSelector && (
               <div className="text-xs">
                 <span className="font-semibold">Wait for:</span> 
                 <span className="ml-1 font-mono">{crawlerData.waitForSelector}</span>
@@ -138,7 +138,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
             
             <div className="text-xs">
               <span className="font-semibold">Output:</span> 
-              <span className="ml-1 capitalize">{crawlerData.outputFormat || 'full'}</span>
+              <span className="ml-1 capitalize">{crawlerData?.outputFormat || 'full'}</span>
             </div>
             
             {/* Error message display */}
