@@ -1,6 +1,5 @@
 // src/components/nodes/LLMNodeExpandedView.tsx
 import React, { useCallback, useMemo } from 'react';
-import { shallow } from 'zustand/shallow';
 import { LLMNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
@@ -8,7 +7,6 @@ import LLMNodeHeader from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 // 디버깅 모드 설정
 const DEBUG_LOGS = false;
@@ -37,7 +35,6 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     mode,
     label,
     responseContent,
-    isDirty,
     handlePromptChange,
     handleModelChange,
     handleTemperatureChange,
@@ -77,7 +74,6 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
         data={{ ...data, label: label ?? data.label }}
         viewMode={viewMode}
         onToggleView={onToggleView}
-        isContentDirty={isDirty}
       />
       <div className="absolute -top-2 -right-2">
         <NodeStatusIndicator status={nodeStatus} />

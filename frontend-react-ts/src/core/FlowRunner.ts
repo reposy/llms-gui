@@ -6,6 +6,7 @@ import { getRootNodeIds } from '../utils/flow/flowUtils';
 import { registerAllNodeTypes } from './NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
 import { NodeData } from '../types/nodes';
+import { getNodeContent } from '../store/useNodeContentStore';
 
 /**
  * FlowRunner handles the execution of a flow, starting from root nodes
@@ -28,7 +29,7 @@ export class FlowRunner {
   ): Promise<void> {
     // Create a unique execution context for this run
     const executionId = uuidv4();
-    const context = new FlowExecutionContext(executionId);
+    const context = new FlowExecutionContext(executionId, getNodeContent);
     
     context.log(`Starting flow execution (Execution ID: ${executionId})${startNodeId ? ` from node ${startNodeId}` : ' from all root nodes'}`);
     

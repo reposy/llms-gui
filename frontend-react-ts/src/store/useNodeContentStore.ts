@@ -278,13 +278,6 @@ export function useNodeContent<T extends NodeContent = NodeContent>(
   return { content, updateContent };
 }
 
-// 하위 호환성을 위한 레거시 함수들
-export {
-  useNodeContent as useInputNodeContent,
-  getNodeContent as getInputNodeContent,
-  setNodeContent as setInputNodeContent
-};
-
 // Update NodeContentRecord to include HTMLParserNodeContent
 export type NodeContentRecord = {
   [nodeId: string]: NodeContent; // Use the imported union type

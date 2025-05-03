@@ -1,5 +1,5 @@
 // src/components/nodes/LLMNode.tsx
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
 import { LLMNodeData } from '../../types/nodes';
@@ -11,6 +11,7 @@ import { LLMNodeExpandedView } from './LLMNodeExpandedView';
 import { LLMNodeViewController } from './LLMNodeViewController';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
+import LLMNodeHeader from './LLMNodeHeader';
 
 interface Props {
   id: string;
@@ -28,7 +29,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const setViewMode = useViewModeStore(state => state.setNodeViewMode);
   
   // Get LLM data from Zustand store
-  const { isDirty } = useLlmNodeData({ nodeId: id });
+  useLlmNodeData({ nodeId: id });
   
   /**
    * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.
@@ -95,27 +96,34 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
               'border',
               selected
                 ? 'border-blue-500 ring-2 ring-blue-300 ring-offset-1 shadow-lg'
-                : 'border-blue-200 shadow-sm',
-              isDirty ? 'border-l-4 border-l-yellow-400' : '' // Show dirty state visual indicator
+                : 'border-blue-200 shadow-sm'
             )}
           >
-            {viewMode === VIEW_MODES.COMPACT ? (
-              <LLMNodeCompactView
-                id={id}
-                data={data}
-                nodeState={nodeState}
-                viewMode={viewMode}
-                onToggleView={toggleNodeView}
-              />
-            ) : (
-              <LLMNodeExpandedView
-                id={id}
-                data={data}
-                nodeState={nodeState}
-                viewMode={viewMode}
-                onToggleView={toggleNodeView}
-              />
-            )}
+            <LLMNodeHeader 
+              id={id} 
+              data={data} 
+              viewMode={viewMode} 
+              onToggleView={toggleNodeView} 
+            />
+            <div className="node-content">
+              {viewMode === VIEW_MODES.COMPACT ? (
+                <LLMNodeCompactView
+                  id={id}
+                  data={data}
+                  nodeState={nodeState}
+                  viewMode={viewMode}
+                  onToggleView={toggleNodeView}
+                />
+              ) : (
+                <LLMNodeExpandedView
+                  id={id}
+                  data={data}
+                  nodeState={nodeState}
+                  viewMode={viewMode}
+                  onToggleView={toggleNodeView}
+                />
+              )}
+            </div>
           </div>
         </div>
       </LLMNodeViewController>

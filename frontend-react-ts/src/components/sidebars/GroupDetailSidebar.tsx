@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import type { Node } from '@xyflow/react';
 import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { useExecutionController, useExecutionState } from '../../store/useExecutionController';
+import { useGroupExecutionController, useGroupExecutionState } from '../../store/useGroupExecutionController';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { GroupExecutionItemResult } from '../../types/execution';
 
@@ -23,7 +23,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   // 단일 그룹 노드만 허용
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
   const nodeState = useNodeState(selectedNodeId || '');
-  const executionState = useExecutionState();
+  const executionState = useGroupExecutionState();
 
   // 무선택 또는 다중 선택 시 안내
   if (!selectedNodeId) {
@@ -50,7 +50,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   const handleRunGroup = useCallback(() => {
     if (!selectedNodeId) return;
     console.log("Triggering execution for group:", selectedNodeId);
-    useExecutionController.getState().executeFlowForGroup(selectedNodeId);
+    useGroupExecutionController.getState().executeFlowForGroup(selectedNodeId);
   }, [selectedNodeId]);
 
   // Handle JSON export

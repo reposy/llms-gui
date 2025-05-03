@@ -1,6 +1,6 @@
 // src/components/nodes/JSONExtractorNode.tsx
 import React, { useCallback, useEffect, useState } from 'react';
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { Handle, Position, useReactFlow, NodeProps } from '@xyflow/react';
 import { JSONExtractorNodeData } from '../../types/nodes';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
@@ -17,9 +17,8 @@ import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContentStore } from '../../store/useNodeContentStore';
-import { setNodeContent } from '../../store/useNodeContentStore';
-import { setNodes } from '../../store/useFlowStructureStore';
+import { useNodeContentStore, getNodeContent } from '../../store/useNodeContentStore';
+import { useNodeConnections } from '../../hooks/useNodeConnections';
 
 interface Props {
   id: string;
@@ -28,7 +27,10 @@ interface Props {
   selected?: boolean;
 }
 
-const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
+const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, isConnectable = true }) => {
+  // Use a specific type assertion for clarity and safety
+  const data = nodeData as JSONExtractorNodeData;
+  
   // Use updateNode from Zustand store
   const { nodes, edges } = useFlowStructureStore();
   
@@ -43,7 +45,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
   const globalViewMode = useViewModeStore(state => state.globalViewMode);
   const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
   
-  const [pathDraft, setPathDraft] = useState(data.path || '');
+  const [pathDraft, setPathDraft] = useState<string>(data?.path || '');
   const [isComposing, setIsComposing] = useState(false);
 
   // Update drafts when data changes externally
@@ -84,7 +86,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
   const handleRun = useCallback(() => {
     // Create execution context
     const executionId = `exec-${uuidv4()}`;
-    const executionContext = new FlowExecutionContext(executionId);
+    const executionContext = new FlowExecutionContext(executionId, getNodeContent);
     
     // Set trigger node
     executionContext.setTriggerNode(id);
@@ -119,14 +121,15 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
       ...nodeInstance.property,
       nodes,
       edges,
-      executionGraph
+      executionGraph,
+      nodeFactory
     };
     
     // Execute the node
     nodeInstance.process({}).catch(error => {
       console.error(`[JSONExtractorNode] Error executing node ${id}:`, error);
     });
-  }, [id, nodes, edges]);
+  }, [id, nodes, edges, getNodeContent]);
 
   const toggleNodeView = () => {
     setNodeViewMode({ 
@@ -200,7 +203,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
         >
           <NodeHeader
             nodeId={id}
-            label={data.label || 'JSON Extractor'}
+            label={data?.label || 'JSON Extractor'}
             placeholderLabel="JSON Extractor"
             isRootNode={isRootNode}
             isRunning={nodeStatus === 'running'}
@@ -217,7 +220,7 @@ const JSONExtractorNode: React.FC<Props> = ({ id, data, isConnectable, selected 
             {viewMode === VIEW_MODES.COMPACT ? (
               <>
                 <div className="text-sm text-gray-600">
-                  Extract: {data.path || 'No path set'}
+                  Extract: {data?.path || 'No path set'}
                 </div>
                 <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
               </>

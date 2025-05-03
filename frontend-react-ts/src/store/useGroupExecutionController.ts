@@ -9,8 +9,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { useFlowStructureStore } from './useFlowStructureStore';
 import { getNodeContent } from './useNodeContentStore';
 
-// Define the state structure for execution controller (simplified)
-export interface ExecutionControllerState {
+// Rename state interface
+export interface GroupExecutionControllerState { // Renamed
   isExecuting: boolean;
   currentExecutionId?: string;
   currentIterationItem?: any;
@@ -26,8 +26,8 @@ export interface ExecutionControllerState {
   _setIterationContext: (context: { item?: any; index?: number; total?: number }) => void;
 }
 
-// Create the Zustand store for execution controller
-export const useExecutionController = create<ExecutionControllerState>()(
+// Rename store creator
+export const useGroupExecutionController = create<GroupExecutionControllerState>()( // Renamed
   devtools(
     (set, get) => ({
       isExecuting: false,
@@ -54,7 +54,7 @@ export const useExecutionController = create<ExecutionControllerState>()(
           // Set trigger node
           executionContext.setTriggerNode(groupNodeId);
           
-          console.log(`[ExecutionController] Starting execution for group node ${groupNodeId}`);
+          console.log(`[GroupExecutionController] Starting execution for group node ${groupNodeId}`); // Log updated
           
           // Get flow structure
           const { nodes, edges } = useFlowStructureStore.getState();
@@ -70,7 +70,7 @@ export const useExecutionController = create<ExecutionControllerState>()(
           // Find the node data
           const node = nodes.find(n => n.id === groupNodeId);
           if (!node) {
-            console.error(`[ExecutionController] Group node ${groupNodeId} not found.`);
+            console.error(`[GroupExecutionController] Group node ${groupNodeId} not found.`); // Log updated
             set({ isExecuting: false });
             return;
           }
@@ -97,7 +97,7 @@ export const useExecutionController = create<ExecutionControllerState>()(
           
           set({ isExecuting: false });
         } catch (error) {
-          console.error(`[ExecutionController] Error executing group ${groupNodeId}:`, error);
+          console.error(`[GroupExecutionController] Error executing group ${groupNodeId}:`, error); // Log updated
           set({ isExecuting: false });
         }
       },
@@ -114,11 +114,11 @@ export const useExecutionController = create<ExecutionControllerState>()(
   )
 );
 
-// Export a selector to access the execution state
-export const useExecutionState = () => useExecutionController(state => ({
+// Rename selector export
+export const useGroupExecutionState = () => useGroupExecutionController(state => ({ // Renamed
   isExecuting: state.isExecuting,
   currentExecutionId: state.currentExecutionId,
   currentIterationItem: state.currentIterationItem,
   currentIterationIndex: state.currentIterationIndex,
   currentGroupTotalItems: state.currentGroupTotalItems
-}));
+})); 

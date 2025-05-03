@@ -42,13 +42,16 @@ export class InputNode extends Node {
    * @returns The combined items array (Batch) or null (ForEach)
    */
   async execute(input?: any): Promise<any> {
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, 'input') as InputNodeContent;
+    // Get node content via context function
+    // const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, 'input') as InputNodeContent;
     const currentContext = this.context;
-
-    if (!currentContext) {
-      console.warn(`[InputNode ${this.id}] Execution context is missing.`);
-      return nodeContent.items || []; // Return existing items if no context
+    if (!currentContext || !currentContext.getNodeContentFunc) { // Add check for getNodeContentFunc
+      console.warn(`[InputNode ${this.id}] Execution context or getNodeContentFunc is missing.`);
+      // Attempt to get content directly as a fallback, though ideally context should always be valid
+      const fallbackContent = useNodeContentStore.getState().getNodeContent(this.id, 'input') as InputNodeContent;
+      return fallbackContent.items || [];
     }
+    const nodeContent = currentContext.getNodeContentFunc(this.id, 'input') as InputNodeContent;
 
     currentContext.log(`${this.type}(${this.id}): Executing Input Node`);
     currentContext.markNodeRunning(this.id);
@@ -101,6 +104,9 @@ export class InputNode extends Node {
 
       // Persist changes ONLY if accumulation occurred
       if (updatePerformed) {
+        // TODO: Ideally, the context should handle persistence too,
+        // or return the updated content to the runner to handle.
+        // For now, keep the direct store call, but acknowledge it's not ideal.
         useNodeContentStore.getState().setNodeContent(this.id, {
           items: newItems,
           commonItems: newCommonItems

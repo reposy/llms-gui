@@ -6,13 +6,14 @@ import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { NodeHeader } from './shared/NodeHeader';
 import { LLMNodeData, NodeData } from '../../types/nodes';
+import { LLMNodeContent } from '../../types/nodes';
 import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { getNodeContent, setNodeContent, LLMNodeContent } from '../../store/useNodeContentStore';
+import { getNodeContent, setNodeContent } from '../../store/useNodeContentStore';
 
 interface LLMNodeHeaderProps {
   id: string;
@@ -33,7 +34,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   
-  const initialLabel = getNodeContent<LLMNodeContent>(id, 'llm')?.label || data.label || 'LLM';
+  const initialLabel = (getNodeContent(id, 'llm') as LLMNodeContent)?.label || data.label || 'LLM';
   
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     setNodeContent<LLMNodeContent>(nodeId, { label: newLabel });
@@ -47,7 +48,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
       const executionId = `exec-${uuidv4()}`;
-      const executionContext = new FlowExecutionContext(executionId);
+      const executionContext = new FlowExecutionContext(executionId, getNodeContent);
       
       executionContext.setTriggerNode(id);
       
@@ -65,7 +66,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
         return;
       }
       
-      const nodeContent = getNodeContent<LLMNodeContent>(id, 'llm');
+      const nodeContent = getNodeContent(id, 'llm') as LLMNodeContent;
       if (!nodeContent) {
           console.error(`[LlmNodeHeader] Node content for ${id} not found.`);
           return;

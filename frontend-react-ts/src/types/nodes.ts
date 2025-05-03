@@ -287,15 +287,28 @@ export type NodeTypeMap = {
   group: GroupNodeContent;
 };
 
-export interface LLMNodeContent extends NodeContent {
-  // ... existing code ...
+// Modify LLMNodeContent to extend BaseNodeData
+export interface LLMNodeContent extends BaseNodeData { // Changed NodeContent to BaseNodeData
+  provider: 'ollama' | 'openai';
+  model: string;
+  prompt: string;
+  temperature: number;
+  ollamaUrl?: string;
+  openaiApiKey?: string;
+  mode?: LLMMode;
+  viewMode?: NodeViewMode;
+  // Note: label is now inherited from BaseNodeData
+  // _flash?: number; // Removed previously
+  // Add response content if needed for display/state
+  responseContent?: LLMResult | string; 
 }
 
 /**
  * Represents the content specific to a Web Crawler node.
  */
-export interface WebCrawlerNodeContent extends BaseNodeContent {
-  url: string;
+// Modify WebCrawlerNodeContent to extend BaseNodeData
+export interface WebCrawlerNodeContent extends BaseNodeData { // Changed BaseNodeContent to BaseNodeData
+  url?: string; // Make optional as it might be set later
   waitForSelectorOnPage?: string;
   iframeSelector?: string;
   waitForSelectorInIframe?: string;

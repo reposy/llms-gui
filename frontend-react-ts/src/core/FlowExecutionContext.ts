@@ -1,5 +1,6 @@
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { ExecutionContext } from '../types/execution';
+import { NodeContent } from '../types/nodes';
 
 /**
  * Context for flow execution
@@ -65,12 +66,22 @@ export class FlowExecutionContext implements ExecutionContext {
   public accumulatedOnceInputNodes: Set<string> = new Set<string>();
 
   /**
+   * Function to retrieve node content. Injected during context creation.
+   */
+  getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent;
+
+  /**
    * Constructor
    * @param executionId Unique identifier for this execution
+   * @param getNodeContentFunc Function to retrieve node content
    */
-  constructor(executionId: string) {
+  constructor(
+      executionId: string,
+      getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent
+    ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
+    this.getNodeContentFunc = getNodeContentFunc;
   }
 
   /**

@@ -13,7 +13,7 @@ import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContentStore, useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeContentStore, useNodeContent, getNodeContent } from '../../store/useNodeContentStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -75,7 +75,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   // Run handler
   const handleRun = useCallback(() => {
     const executionId = `exec-${uuidv4()}`;
-    const executionContext = new FlowExecutionContext(executionId);
+    const executionContext = new FlowExecutionContext(executionId, getNodeContent);
     executionContext.setTriggerNode(id);
     buildExecutionGraphFromFlow(nodes, edges);
     const executionGraph = getExecutionGraph();
@@ -86,7 +86,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     const nodeInstance = nodeFactory.create(id, node.type as string, node.data, executionContext);
     nodeInstance.property = { ...nodeInstance.property, nodes, edges, nodeFactory, executionGraph };
     nodeInstance.process({}).catch(error => console.error(`[InputNode] Error:`, error));
-  }, [id, nodes, edges]);
+  }, [id, nodes, edges, getNodeContent]);
 
   // Prevent keydown events from bubbling up to React Flow
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
