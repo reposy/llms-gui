@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { InputNodeContent, FileLikeObject } from '../types/nodes';
+import { InputNodeContent } from '../types/nodes';
 import { useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
@@ -61,55 +61,40 @@ export class InputNode extends Node {
     if (input !== undefined && input !== null) {
       currentContext.log(`${this.type}(${this.id}): Received chained input: ${JSON.stringify(input)}`);
       const { chainingUpdateMode, accumulationMode } = nodeContent;
-
-      // === Accumulation Control Start ===
-      let canAccumulate = true;
-      if (accumulationMode === 'none') {
-        canAccumulate = false;
-        currentContext.log(`${this.type}(${this.id}): Accumulation disabled (mode: none).`);
-      } else if (accumulationMode === 'oncePerContext' && (chainingUpdateMode === 'common' || chainingUpdateMode === 'replaceCommon')) {
-        // Initialize the Set in the context if it doesn't exist
-        if (!currentContext.accumulatedOnceInputNodes) {
-            currentContext.accumulatedOnceInputNodes = new Set<string>();
-        }
-        if (currentContext.accumulatedOnceInputNodes.has(this.id)) {
-          currentContext.log(`${this.type}(${this.id}): Skipping common items update due to 'oncePerContext' mode.`);
-          canAccumulate = false; // Specifically disable accumulation for common/replaceCommon
-        }
-      }
-      // === Accumulation Control End ===
-      
       const itemsToAdd = Array.isArray(input) ? input : [input];
 
-      // Only perform accumulation if canAccumulate is true
-      if (canAccumulate) {
-        if (chainingUpdateMode === 'common') {
-          newCommonItems.push(...itemsToAdd);
-          updatePerformed = true;
-          if (accumulationMode === 'oncePerContext') { // Mark only if in oncePerContext mode
-            currentContext.accumulatedOnceInputNodes!.add(this.id); // Mark as updated
-            currentContext.log(`${this.type}(${this.id}): Updated common items and marked for 'oncePerContext'.`);
-          }
-        } else if (chainingUpdateMode === 'replaceCommon') {
-          newCommonItems = itemsToAdd;
-          updatePerformed = true;
-          if (accumulationMode === 'oncePerContext') { // Mark only if in oncePerContext mode
-            currentContext.accumulatedOnceInputNodes!.add(this.id); // Mark as updated
-            currentContext.log(`${this.type}(${this.id}): Replaced common items and marked for 'oncePerContext'.`);
-          }
-        } else if (chainingUpdateMode === 'element') {
-          // Note: 'oncePerContext' currently doesn't apply to 'element' mode. 
-          // If needed later, the canAccumulate logic might need refinement.
-          newItems.push(...itemsToAdd);
-          updatePerformed = true;
-        } else if (chainingUpdateMode === 'replaceElement') {
-          // Replace items with the new input
-          newItems = itemsToAdd;
-          updatePerformed = true;
-          currentContext.log(`${this.type}(${this.id}): Replaced element items.`);
+      // Determine if accumulation should happen and if marking is needed for oncePerContext
+      const { shouldAccumulate, needsMarking } = this._shouldAccumulateInput(
+        accumulationMode,
+        chainingUpdateMode,
+        currentContext
+      );
+
+      // Only perform accumulation if allowed
+      if (shouldAccumulate) {
+        const result = this._applyChainedInput(
+          itemsToAdd,
+          chainingUpdateMode,
+          newItems,
+          newCommonItems,
+          currentContext
+        );
+        newItems = result.newItems;
+        newCommonItems = result.newCommonItems;
+        updatePerformed = result.updatePerformed;
+
+        // Mark for oncePerContext if accumulation happened and marking is needed
+        if (updatePerformed && needsMarking) {
+           // Ensure the set exists before adding
+           if (!currentContext.accumulatedOnceInputNodes) {
+               currentContext.accumulatedOnceInputNodes = new Set<string>();
+           }
+          currentContext.accumulatedOnceInputNodes!.add(this.id);
+          currentContext.log(`${this.type}(${this.id}): Marked node for 'oncePerContext' accumulation.`);
         }
-      } // End of if(canAccumulate)
+      }
       
+      // Log if chaining mode is 'none' (this happens regardless of accumulation)
       if (chainingUpdateMode === 'none') {
         currentContext.log(`${this.type}(${this.id}): Chained input ignored due to chainingUpdateMode 'none'.`);
       }
@@ -159,5 +144,86 @@ export class InputNode extends Node {
         currentContext.markNodeSuccess(this.id, { status: 'Foreach mode initiated', items: newItems, commonItems: newCommonItems });
         return null; // Return null as foreach mode output
     }
+  }
+
+  /**
+   * Determines if the chained input should be accumulated based on the mode.
+   * Also indicates if the node needs to be marked in the context for 'oncePerContext'.
+   * @param accumulationMode Current accumulation mode
+   * @param chainingUpdateMode Current chaining update mode
+   * @param context Current execution context
+   * @returns Object with `shouldAccumulate` (boolean) and `needsMarking` (boolean)
+   */
+  private _shouldAccumulateInput(
+    accumulationMode: 'always' | 'oncePerContext' | 'none' | undefined,
+    chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none' | undefined,
+    context: FlowExecutionContext
+  ): { shouldAccumulate: boolean; needsMarking: boolean } {
+    if (accumulationMode === 'none') {
+      context.log(`${this.type}(${this.id}): Accumulation disabled (mode: none).`);
+      return { shouldAccumulate: false, needsMarking: false };
+    }
+
+    const affectsCommonItems = chainingUpdateMode === 'common' || chainingUpdateMode === 'replaceCommon';
+
+    if (accumulationMode === 'oncePerContext' && affectsCommonItems) {
+      // Ensure the set exists before checking
+      if (!context.accumulatedOnceInputNodes) {
+        context.accumulatedOnceInputNodes = new Set<string>();
+      }
+      if (context.accumulatedOnceInputNodes.has(this.id)) {
+        context.log(`${this.type}(${this.id}): Skipping common items accumulation due to 'oncePerContext' mode.`);
+        return { shouldAccumulate: false, needsMarking: false };
+      } else {
+        // Needs accumulation AND marking after successful update
+        return { shouldAccumulate: true, needsMarking: true }; 
+      }
+    }
+
+    // Default case: Always accumulate, no special marking needed
+    return { shouldAccumulate: true, needsMarking: false };
+  }
+
+  /**
+   * Applies the chained input items to the appropriate lists based on chainingUpdateMode.
+   * @param itemsToAdd The items received from the chained input
+   * @param chainingUpdateMode The selected chaining update mode
+   * @param currentItems The current element items list
+   * @param currentCommonItems The current common items list
+   * @param context Current execution context (for logging)
+   * @returns Object with updated `newItems`, `newCommonItems`, and `updatePerformed` status
+   */
+  private _applyChainedInput(
+    itemsToAdd: any[],
+    chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none' | undefined,
+    currentItems: any[],
+    currentCommonItems: any[],
+    context: FlowExecutionContext
+  ): { newItems: any[]; newCommonItems: any[]; updatePerformed: boolean } {
+    let newItems = [...currentItems];
+    let newCommonItems = [...currentCommonItems];
+    let updatePerformed = false;
+
+    if (chainingUpdateMode === 'common') {
+      newCommonItems.push(...itemsToAdd);
+      updatePerformed = true;
+      context.log(`${this.type}(${this.id}): Appended to common items.`);
+    } else if (chainingUpdateMode === 'replaceCommon') {
+      newCommonItems = itemsToAdd;
+      updatePerformed = true;
+      context.log(`${this.type}(${this.id}): Replaced common items.`);
+    } else if (chainingUpdateMode === 'element') {
+      newItems.push(...itemsToAdd);
+      updatePerformed = true;
+      context.log(`${this.type}(${this.id}): Appended to element items.`);
+    } else if (chainingUpdateMode === 'replaceElement') {
+      newItems = itemsToAdd;
+      updatePerformed = true;
+      context.log(`${this.type}(${this.id}): Replaced element items.`);
+    }
+    // Note: chainingUpdateMode === 'none' is handled outside this method regarding logging.
+    // No item update happens in that case.
+
+    return { newItems, newCommonItems, updatePerformed };
   }
 }
