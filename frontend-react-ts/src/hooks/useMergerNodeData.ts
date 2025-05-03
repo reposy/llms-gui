@@ -27,7 +27,7 @@ export const useMergerNodeData = ({
     shallow // Use shallow comparison
   );
 
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
 
   // --- Derived State (from content store) ---
   // Provide defaults directly when accessing
@@ -36,6 +36,9 @@ export const useMergerNodeData = ({
   const keys = content?.keys || [];
   const items = content?.items || [];
   const itemCount = items.length;
+  const mode = content?.mode || 'default';
+  const params = content?.params || [];
+  const result = content?.result || [];
 
   /**
    * Utility function to update content in the store, ensuring defaults and types.
@@ -92,7 +95,10 @@ export const useMergerNodeData = ({
     keys,
     items,
     itemCount,
-    isDirty: isContentDirty,
+    mode,
+    params,
+    content: result, // Assuming content holds the merged result
+    // isDirty: isContentDirty, // Removed
 
     // Change Handlers
     handleLabelChange,

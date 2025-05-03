@@ -18,8 +18,7 @@ export const useConditionalNodeData = ({
     updateContent,
   } = useNodeContent<ConditionalNodeContent>(nodeId, 'conditional');
   
-  // Get isDirty status directly from the store
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
 
   // Cast the general content to ConditionalNodeContent type
   const content = generalContent as ConditionalNodeContent;
@@ -82,7 +81,7 @@ export const useConditionalNodeData = ({
     conditionType,
     conditionValue,
     label,
-    isDirty: isContentDirty,
+    // isDirty: isContentDirty, // Removed
     
     // Event handlers
     handleConditionTypeChange,

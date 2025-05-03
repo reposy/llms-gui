@@ -27,7 +27,7 @@ export const useJsonExtractorNodeData = ({
     shallow // Use shallow comparison
   );
 
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
 
   // --- Derived State (from content store) ---
   // Provide defaults directly when accessing
@@ -35,6 +35,8 @@ export const useJsonExtractorNodeData = ({
   const label = content?.label || 'JSON Extractor Node';
   const defaultValue = content?.defaultValue || '';
   const result = content?.content; // The extracted result is stored in the generic 'content' field
+  const jsonPath = content?.path || '';
+  const outputContentType = content?.outputContentType || '';
 
   /**
    * Utility function to update content in the store, ensuring defaults and types.
@@ -89,10 +91,12 @@ export const useJsonExtractorNodeData = ({
     path,
     label,
     defaultValue,
+    jsonPath,
+    content,
+    outputContentType,
 
     // Result Data (from nodeContentStore.content)
     result,
-    isDirty: isContentDirty, // Reflects content store dirtiness
 
     // Configuration Change Handlers
     handlePathChange,

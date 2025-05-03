@@ -20,7 +20,7 @@ export const useApiNodeData = ({
   } = useNodeContent<APINodeContent>(nodeId, 'api');
 
   // Get isDirty status directly from the store
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
 
   // Cast the general content to APINodeContent type
   const content = generalContent as APINodeContent;
@@ -213,7 +213,7 @@ export const useApiNodeData = ({
     executionTime,
     errorMessage,
     isRunning,
-    isDirty: isContentDirty,
+    // isDirty: isContentDirty, // Removed
 
     // Event Handlers / Updaters
     handleUrlChange,
