@@ -70,7 +70,8 @@ Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리
 *   **`useFlowStructureStore`:** 플로우의 구조적인 정보 (노드 목록, 엣지 목록, 선택된 노드 ID 등)를 관리합니다. React Flow 컴포넌트와 직접적으로 상호작용합니다.
 *   **`useNodeContentStore`:** 각 노드의 **설정 내용(콘텐츠)**을 관리합니다. 노드 ID를 키로 사용하여 각 노드의 `label`, `extractionRules`, `prompt`, `url` 등 설정 패널에서 사용자가 입력하는 데이터를 저장하고 업데이트합니다. `NodeConfigSidebar` 및 각 노드의 설정 UI 컴포넌트(`ConfigFactory` 통해 로드됨)에서 주로 사용됩니다.
 *   **`useNodeStateStore`:** 각 노드의 **실행 상태**를 관리합니다. 노드 ID를 키로 사용하여 각 노드의 실행 상태(`status`: 'idle', 'running', 'success', 'error'), 마지막 실행 결과(`result`), 오류 메시지(`error`) 등을 저장합니다. `Flow Runner` 및 각 노드의 `execute` 메서드에서 상태를 업데이트하며, 노드 UI 컴포넌트와 `NodeConfigSidebar`의 결과 표시 영역에서 이 상태를 구독하여 표시합니다.
-*   **`useExecutionController` / `useExecutionState`:** 플로우 전체의 실행 제어 및 상태(현재 실행 중인 노드, 그룹 반복 상태 등)를 관리합니다. 사용자가 실행 버튼을 눌렀을 때 트리거됩니다.
+*   **`useGroupExecutionController` / `useGroupExecutionState`:** 그룹 노드의 실행 제어 및 관련 UI 상태(현재 실행 중인 그룹, 그룹 반복 상태 등)를 관리합니다. 사용자가 그룹 노드의 실행 버튼을 눌렀을 때 트리거됩니다.
+*   **`useExecutionGraphStore`:** 노드와 엣지 정보를 기반으로 생성된 실행 순서 그래프를 저장합니다. 실제 플로우 실행 시 이 그래프를 참조하여 노드 실행 순서를 결정합니다.
 *   **`useDirtyTracker`:** 플로우 구조나 노드 콘텐츠가 마지막 저장 이후 변경되었는지 여부를 추적합니다.
 *   **`useViewModeStore`:** 각 노드의 표시 모드(Compact/Expanded/Auto) 및 전역 뷰 모드를 관리합니다.
 
@@ -81,7 +82,7 @@ Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리
 ### 4.1. 일반적인 실행 흐름
 
 1.  **사용자 상호작용:** 사용자가 UI에서 플로우 실행 버튼을 클릭합니다.
-2.  **실행 트리거:** `useExecutionController`의 `executeFlow` 함수가 호출됩니다.
+2.  **실행 트리거:** `useGroupExecutionController`의 `executeFlowForGroup` 함수가 호출됩니다.
 3.  **실행 그래프 생성:** `useFlowStructureStore`의 노드와 엣지 정보를 바탕으로 실행 순서를 결정하는 실행 그래프(Directed Acyclic Graph, DAG)를 생성합니다.
 4.  **Flow Runner 실행:** `FlowRunner` (또는 유사한 실행 제어 로직)가 실행 그래프를 순회하며 각 노드를 순서대로 실행합니다.
 5.  **개별 노드 실행 (`Node.process` 및 `execute`):**
@@ -111,7 +112,7 @@ Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리
 1.  **그룹 실행 트리거:** 그룹 노드 자체를 실행하거나, 그룹 노드가 포함된 플로우가 실행될 때 그룹 실행 로직이 시작됩니다.
 2.  **입력 소스 확인:** 그룹 노드 설정(`iterationConfig.sourceNodeId`)에 지정된 입력 소스 노드의 결과(`nodeState.result`)를 가져옵니다. 이 결과는 보통 배열 형태입니다.
 3.  **반복 실행:** 입력 배열의 각 항목에 대해 그룹 **내부의 서브 플로우**를 **독립적으로** 실행합니다.
-    *   `useExecutionController`는 현재 반복 인덱스와 총 항목 수를 `useExecutionState`에 업데이트합니다.
+    *   `useGroupExecutionController`는 현재 반복 인덱스와 총 항목 수를 `useGroupExecutionState`에 업데이트합니다.
     *   각 반복마다 입력 항목이 그룹 내부 플로우의 **시작 노드**로 전달됩니다.
     *   그룹 내부 노드들은 일반적인 실행 흐름(4.1)에 따라 체이닝되어 실행됩니다.
     *   각 반복의 최종 결과는 수집됩니다.

@@ -457,7 +457,7 @@
 `Group` 노드는 내부에 포함된 다른 노드들을 하나의 단위로 묶어 관리하고, 특정 입력 소스(주로 `Input` 노드)로부터 받은 데이터 항목 각각에 대해 내부 워크플로우를 반복 실행하는 **프론트엔드 기반 노드**입니다.
 
 -   **입력:** Group 노드 자체는 이전 노드로부터 직접적인 데이터를 받아 처리하지는 않습니다. 대신, `Iteration Config` 설정에서 지정된 입력 소스 노드(`sourceNodeId`)의 출력을 반복 실행의 대상으로 사용합니다.
--   **처리 (`core/GroupNode.ts`, `core/FlowRunner.ts`, `store/useExecutionController.ts`):**
+-   **처리 (`core/GroupNode.ts`, `core/FlowRunner.ts`, `store/useGroupExecutionController.ts`):**
     -   Group 노드가 실행되면, 설정된 입력 소스 노드(`sourceNodeId`)로부터 데이터 배열(`items`)을 가져옵니다. (예: `Input` 노드의 `items`)
     -   가져온 배열의 각 항목(`item`)에 대해 다음을 반복합니다:
         -   Group 내부에 정의된 워크플로우(노드 및 연결)를 실행합니다.
@@ -486,9 +486,9 @@
     -   **Results:** 그룹 실행이 완료된 후, 각 반복의 리프 노드 결과들이 여기에 표시됩니다. 반복 횟수, 각 반복의 인덱스 및 결과 미리보기가 나타날 수 있습니다. (현재 UI 구현 상태에 따라 다를 수 있음)
     -   **Export JSON:** 그룹 실행 결과를 JSON 파일로 내보냅니다.
 
-### 3. 실행 로직 (`core/GroupNode.ts`, `core/FlowRunner.ts`, `store/useExecutionController.ts`)
+### 3. 실행 로직 (`core/GroupNode.ts`, `core/FlowRunner.ts`, `store/useGroupExecutionController.ts`)
 
-1.  **실행 트리거:** `FlowRunner.executeFlow` 또는 `useExecutionController.executeFlowForGroup` 함수를 통해 Group 노드의 실행이 시작됩니다.
+1.  **실행 트리거:** `FlowRunner.executeFlow` 또는 `useGroupExecutionController.executeFlowForGroup` 함수를 통해 Group 노드의 실행이 시작됩니다.
 2.  **입력 소스 가져오기:** Group 노드의 `execute` 메서드 또는 관련 컨트롤러 로직에서 `iterationConfig.sourceNodeId`를 사용하여 소스 노드의 출력(보통 배열 `items`)을 가져옵니다. 소스가 없거나 배열이 아니면 오류 처리합니다.
 3.  **내부 실행 준비 (`_prepareInternalExecution`):**
     -   Group 노드 내부에 포함된 노드(`internalNodes`)와 엣지(`internalEdges`)를 식별합니다.
