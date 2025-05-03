@@ -23,7 +23,7 @@ export const useOutputNodeData = (nodeId: string) => {
     shallow // Use shallow comparison
   );
 
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
 
   // --- Derived State (from content store) ---
   // Provide defaults directly when destructuring or accessing
@@ -123,7 +123,7 @@ export const useOutputNodeData = (nodeId: string) => {
     format,
     mode,
     content: result, 
-    isDirty: isContentDirty,
+    // isDirty: isContentDirty, // Removed
 
     // Change Handlers
     handleLabelChange,

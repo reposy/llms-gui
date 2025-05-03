@@ -1,6 +1,8 @@
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { ExecutionContext } from '../types/execution';
 import { NodeContent } from '../types/nodes';
+import { Node as FlowNode, Edge } from '@xyflow/react';
+import { NodeFactory } from './NodeFactory';
 
 /**
  * Context for flow execution
@@ -71,17 +73,41 @@ export class FlowExecutionContext implements ExecutionContext {
   getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent;
 
   /**
+   * Full list of nodes in the current flow structure.
+   */
+  public readonly nodes: FlowNode[];
+
+  /**
+   * Full list of edges in the current flow structure.
+   */
+  public readonly edges: Edge[];
+
+  /**
+   * Node factory instance for creating node instances during execution.
+   */
+  public readonly nodeFactory: NodeFactory;
+
+  /**
    * Constructor
    * @param executionId Unique identifier for this execution
    * @param getNodeContentFunc Function to retrieve node content
+   * @param nodes Full list of nodes in the flow
+   * @param edges Full list of edges in the flow
+   * @param nodeFactory Node factory instance
    */
   constructor(
       executionId: string,
-      getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent
+      getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
+      nodes: FlowNode[],
+      edges: Edge[],
+      nodeFactory: NodeFactory
     ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
     this.getNodeContentFunc = getNodeContentFunc;
+    this.nodes = nodes;
+    this.edges = edges;
+    this.nodeFactory = nodeFactory;
   }
 
   /**

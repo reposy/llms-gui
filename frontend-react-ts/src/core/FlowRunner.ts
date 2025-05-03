@@ -29,7 +29,7 @@ export class FlowRunner {
   ): Promise<void> {
     // Create a unique execution context for this run
     const executionId = uuidv4();
-    const context = new FlowExecutionContext(executionId, getNodeContent);
+    const context = new FlowExecutionContext(executionId, getNodeContent, nodes, edges, nodeFactory);
     
     context.log(`Starting flow execution (Execution ID: ${executionId})${startNodeId ? ` from node ${startNodeId}` : ' from all root nodes'}`);
     
