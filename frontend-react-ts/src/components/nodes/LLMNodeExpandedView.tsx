@@ -69,12 +69,6 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
   // 실제 렌더링
   return (
     <div className="llm-node-container">
-      <LLMNodeHeader
-        id={id}
-        data={{ ...data, label: label ?? data.label }}
-        viewMode={viewMode}
-        onToggleView={onToggleView}
-      />
       <div className="absolute -top-2 -right-2">
         <NodeStatusIndicator status={nodeStatus} />
       </div>
