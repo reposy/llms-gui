@@ -106,9 +106,13 @@ export interface InputNodeData extends BaseNodeData {
   inputType?: 'text' | 'file' | 'list'; // Type of input
   text?: string; // For single text input
   textBuffer?: string; // Buffer for in-progress text entry
-  items?: string[]; // For array of text and file paths
+  items?: (string | File)[]; // Allow Files in items array
+  commonItems?: (string | File)[]; // Added for common items
+  chainingItems?: (string | File)[]; // Added for chaining items
   iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
   executionMode?: 'batch' | 'foreach'; // Mode of execution, set by the UI
+  // Add chainingUpdateMode to InputNodeData as well
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'none'; 
   iterationStatus?: {
     currentIndex: number;
     totalItems: number;
@@ -230,9 +234,17 @@ export interface APINodeContent extends BaseNodeData {
   // _flash?: number; // Removed for visual feedback separation
 }
 
-// Define other specific node content types
+// Define other specific node content types - CONSOLIDATE HERE
 export interface InputNodeContent extends BaseNodeData {
-  value: string;
+  label?: string; // Inherited, make optional
+  items?: (string | File)[]; // Use the same type as InputNodeData
+  commonItems?: (string | File)[]; // Use the same type as InputNodeData
+  chainingItems?: (string | File)[]; // Use the same type as InputNodeData
+  textBuffer?: string;
+  iterateEachRow?: boolean;
+  executionMode?: 'batch' | 'foreach';
+  // Ensure chainingUpdateMode is defined here consistently
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'none'; 
 }
 
 export interface OutputNodeContent extends BaseNodeData {

@@ -8,7 +8,6 @@ import { NodeHeader } from './shared/NodeHeader';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { InputItemList } from '../input/InputItemList';
-import { InputModeToggle } from '../input/InputModeToggle';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
@@ -143,13 +142,30 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
 
           {/* Node Content */} 
           <div className="flex flex-col space-y-3 mt-2">
-            {/* Mode Toggles */} 
-            <InputModeToggle 
-              iterateEachRow={iterateEachRow}
-              chainingUpdateMode={chainingUpdateMode}
-              onToggleProcessingMode={handleToggleProcessingMode}
-              onUpdateChainingMode={handleChainingModeChange}
-            />
+            {/* Processing Mode Display */}
+            <div className="flex items-center justify-between w-full px-4 pt-2">
+              <label className="text-sm font-medium text-gray-700">Processing Mode:</label>
+              <span 
+                className={`px-3 py-1 text-sm font-medium rounded-md 
+                  ${iterateEachRow ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}
+              >
+                {iterateEachRow ? 'ForEach' : 'Batch'}
+              </span>
+            </div>
+            
+            {/* Chained Input Behavior Display */}
+            <div className="flex items-center justify-between w-full px-4 pt-2 border-t border-gray-200">
+              <label className="text-sm font-medium text-gray-700">Chained Input:</label>
+              <span className="text-sm font-medium text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
+                {/* Map mode value to display text */}
+                {{
+                  'common': 'Common (Append)',
+                  'replaceCommon': 'Common (Replace)',
+                  'element': 'Element',
+                  'none': 'None'
+                }[chainingUpdateMode]}
+              </span>
+            </div>
             
             {/* Manual Text Input */}
             <div className="px-4 py-2 border-t border-gray-200">

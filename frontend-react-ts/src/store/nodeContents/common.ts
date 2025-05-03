@@ -48,14 +48,17 @@ export interface OutputNodeContent extends BaseNodeContent {
 }
 
 /**
- * Input node content
+ * Input node content - REMOVED as now defined in types/nodes.ts
  */
+/*
 export interface InputNodeContent extends BaseNodeContent {
   items?: string[];
   textBuffer?: string;
   iterateEachRow?: boolean;
   executionMode?: 'batch' | 'foreach';
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'none'; 
 }
+*/
 
 /**
  * JSON Extractor node content
@@ -106,7 +109,6 @@ export type NodeContent =
   | LLMNodeContent
   | APINodeContent
   | OutputNodeContent
-  | InputNodeContent
   | JSONExtractorNodeContent
   | GroupNodeContent
   | ConditionalNodeContent

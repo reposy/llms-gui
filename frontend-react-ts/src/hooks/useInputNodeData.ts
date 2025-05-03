@@ -25,7 +25,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   const items: (string | File)[] = (content?.items as (string | File)[]) || [];
   const textBuffer: string = content?.textBuffer || '';
   const iterateEachRow: boolean = content?.iterateEachRow || false;
-  const chainingUpdateMode: 'common' | 'element' | 'none' = content?.chainingUpdateMode || 'element';
+  const chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'none' = content?.chainingUpdateMode || 'element';
 
   // 텍스트 아이템 편집 상태 관리 (로컬 UI 상태)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -80,7 +80,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   /**
    * 자동 Chaining 업데이트 모드 변경
    */
-  const handleUpdateChainingMode = useCallback((newMode: 'common' | 'element' | 'none') => {
+  const handleUpdateChainingMode = useCallback((newMode: 'common' | 'replaceCommon' | 'element' | 'none') => {
     updateInputContent({ chainingUpdateMode: newMode });
   }, [updateInputContent]);
 

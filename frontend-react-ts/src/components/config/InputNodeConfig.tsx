@@ -8,6 +8,7 @@ import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
 import { InputModeToggle } from '../input/InputModeToggle';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Import the utility function
+import clsx from 'clsx';
 
 interface InputNodeConfigProps {
   nodeId: string;
@@ -66,6 +67,9 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
     handleClearElementItems,
   } = useInputNodeData({ nodeId });
   
+  // Explicitly type the mode for clarity within this component scope
+  const currentMode = chainingUpdateMode as 'common' | 'replaceCommon' | 'element' | 'none';
+
   // Format each list separately using the imported utility function
   const formattedChainingItems = useMemo(() => formatItemsForDisplay(chainingItems || [], 'config-chaining'), [chainingItems]);
   const formattedCommonItems = useMemo(() => formatItemsForDisplay(commonItems || [], 'config-common'), [commonItems]);
@@ -99,47 +103,86 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
         Debug: TextBuffer: "{textBuffer}" (Length: {textBuffer?.length || 0})
       </div> */}
 
-      {/* Processing Mode toggle - REMOVED from Config, shown in Node only */}
-      {/* {showIterateOption && (
-        <div>
-          <ConfigLabel>실행 모드 (Processing Mode)</ConfigLabel>
-          <InputModeToggle 
-            // ... props 
-          />
+      {/* Processing Mode Toggle - Use two distinct buttons */}
+      <div>
+        <ConfigLabel>Processing Mode</ConfigLabel>
+        <div className="flex justify-between space-x-2">
+            {/* Batch Button */}
+            <button
+                type="button"
+                onClick={() => iterateEachRow && handleToggleProcessingMode()} // Trigger when in ForEach mode
+                className={clsx(
+                    `px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1`,
+                    !iterateEachRow ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                )}
+                disabled={!iterateEachRow} // Disable if active
+            >
+                Batch
+            </button>
+            {/* ForEach Button */}
+            <button
+                type="button"
+                onClick={() => !iterateEachRow && handleToggleProcessingMode()} // Trigger when in Batch mode
+                className={clsx(
+                    `px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1`,
+                    iterateEachRow ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                )}
+                disabled={iterateEachRow} // Disable if active
+            >
+                ForEach
+            </button>
         </div>
-      )} */}
+      </div>
 
       {/* Chaining Update Mode Buttons (Replicating UI from InputNode.tsx) */}
       <div>
         <ConfigLabel>Chained Input Behavior</ConfigLabel>
-        <div className="flex space-x-2 items-center mt-1">
+        <div className="flex flex-wrap gap-2 mt-1">
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('common')}
-            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1 ${chainingUpdateMode === 'common' ? 'bg-purple-100 text-purple-800 hover:bg-purple-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              currentMode === 'common' ? 'bg-purple-100 text-purple-800 hover:bg-purple-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            )}
+            title="Append chained input to Common Items"
           >
-            Common
+            Append Common
+          </button>
+          <button
+            type="button"
+            onClick={() => handleUpdateChainingMode('replaceCommon')}
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              currentMode === 'replaceCommon' ? 'bg-purple-400 text-white hover:bg-purple-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            )}
+            title="Replace Common Items with chained input"
+          >
+            Replace Common
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('element')}
-            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1 ${chainingUpdateMode === 'element' ? 'bg-orange-100 text-orange-800 hover:bg-orange-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              currentMode === 'element' ? 'bg-orange-100 text-orange-800 hover:bg-orange-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            )}
+            title="Append chained input to Element Items"
           >
             Element
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('none')}
-            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1 ${chainingUpdateMode === 'none' ? 'bg-gray-400 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors w-[calc(50%-4px)]`,
+              currentMode === 'none' ? 'bg-gray-400 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            )}
+            title="Do not automatically add chained input"
           >
             None
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-1">
-          {chainingUpdateMode === 'common' ? 'Chained inputs are added to Common items.' :
-           chainingUpdateMode === 'element' ? 'Chained inputs are added to Element items.' :
-           'Chained inputs are not automatically added.'}
-        </p>
       </div>
 
       {/* Item Count Summary - Uses calculated counts */}
@@ -214,10 +257,10 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
           onFinishEditing={handleFinishEditingTextItem}
           onCancelEditing={handleCancelEditingTextItem}
           
-          // Pass clear handlers if available from hook - REMOVED as InputItemList doesn't accept them
-          // onClearChaining={handleClearChainingItems}
-          // onClearCommon={handleClearCommonItems}
-          // onClearElement={handleClearElementItems}
+          // Pass clear handlers
+          onClearChaining={handleClearChainingItems}
+          onClearCommon={handleClearCommonItems}
+          onClearElement={handleClearElementItems}
       />
 
     </div>

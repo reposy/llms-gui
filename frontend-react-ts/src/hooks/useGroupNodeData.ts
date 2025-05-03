@@ -12,20 +12,16 @@ export const useGroupNodeData = ({
   nodeId: string
 }) => {
   // Use the general NodeContent hook with correct type and nodeType
-  const { 
-    content: generalContent, 
-    updateContent,
-  } = useNodeContent<GroupNodeContent>(nodeId, 'group');
+  const contentFromHook = useNodeContent<GroupNodeContent>(nodeId, 'group');
+  const updateContent = useNodeContentStore(state => state.setNodeContent);
 
   // Get isDirty status directly from the store
   const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
 
-  // Cast the general content to GroupNodeContent type
-  const content = generalContent as GroupNodeContent;
-
-  // Destructure content for easier access
-  const label = content.label || 'Group';
-  const isCollapsed = content.isCollapsed || false;
+  // Ensure content is defined and provide defaults defensively
+  const content = contentFromHook || createDefaultNodeContent('group', nodeId) as GroupNodeContent;
+  const label = content?.label || 'Group';
+  const isCollapsed = content?.isCollapsed || false;
 
   /**
    * Handle label change to match EditableNodeLabel signature

@@ -3,9 +3,9 @@ import clsx from 'clsx';
 
 interface InputModeProps {
   iterateEachRow: boolean;
-  chainingUpdateMode: 'common' | 'element' | 'none';
+  chainingUpdateMode: 'common' | 'element' | 'none' | 'replaceCommon';
   onToggleProcessingMode: () => void;
-  onUpdateChainingMode: (mode: 'common' | 'element' | 'none') => void;
+  onUpdateChainingMode: (mode: 'common' | 'element' | 'none' | 'replaceCommon') => void;
 }
 
 export const InputModeToggle: React.FC<InputModeProps> = ({ 
@@ -39,39 +39,52 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
           <button
             type="button"
             onClick={() => onUpdateChainingMode('common')}
-            className={`
-              px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1
-              ${chainingUpdateMode === 'common'
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-1 whitespace-nowrap`,
+              chainingUpdateMode === 'common'
                 ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
                 : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-              }
-            `}
+            )}
+            title="Append chained input to Common Items"
           >
-            Common
+            Common (Append)
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateChainingMode('replaceCommon')}
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-1 whitespace-nowrap`,
+              chainingUpdateMode === 'replaceCommon' 
+                ? 'bg-purple-400 text-white hover:bg-purple-500' 
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            )}
+            title="Replace Common Items with chained input"
+          >
+            Common (Replace)
           </button>
           <button
             type="button"
             onClick={() => onUpdateChainingMode('element')}
-            className={`
-              px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1
-              ${chainingUpdateMode === 'element'
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-1 whitespace-nowrap`,
+              chainingUpdateMode === 'element'
                 ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
                 : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-              }
-            `}
+            )}
+            title="Append chained input to Element Items"
           >
             Element
           </button>
           <button
             type="button"
             onClick={() => onUpdateChainingMode('none')}
-            className={`
-              px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1
-              ${chainingUpdateMode === 'none'
+            className={clsx(
+              `px-2 py-1 text-xs font-medium rounded-md transition-colors flex-1 whitespace-nowrap`,
+              chainingUpdateMode === 'none'
                 ? 'bg-gray-400 text-white hover:bg-gray-500'
                 : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-              }
-            `}
+            )}
+            title="Do not automatically add chained input"
           >
             None
           </button>
@@ -82,6 +95,8 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
         {
           chainingUpdateMode === 'common' ? 
             '(Chained inputs are automatically added to Common items)' :
+          chainingUpdateMode === 'replaceCommon' ?
+            '(Common items are REPLACED by chained inputs)' :
           chainingUpdateMode === 'element' ? 
             '(Chained inputs are automatically added to Element items)' :
             '(Chained inputs are not automatically added)'

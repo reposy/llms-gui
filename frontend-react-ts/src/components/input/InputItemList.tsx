@@ -28,6 +28,7 @@ interface ItemListSectionProps {
   editingItemId?: string | null; // 현재 편집 중인 아이템 ID
   editingText?: string; // 현재 편집 중인 텍스트
   disabled?: boolean;
+  onClear?: () => void; // Add clear handler prop for the section
 }
 
 // 개별 리스트 아이템 렌더링 컴포넌트
@@ -193,50 +194,54 @@ const ListItem: React.FC<{
 };
 
 // Main component to render all sections
-export const InputItemList: React.FC<{
+interface InputItemListProps extends Omit<ItemListSectionProps, 'items' | 'title' | 'itemType' | 'colorClass' | 'onClear'> {
   chainingItems: ItemDisplay[];
   commonItems: ItemDisplay[];
   items: ItemDisplay[];
-} & Omit<ItemListSectionProps, 'items' | 'title' | 'itemType' | 'colorClass'>> = ({ 
+  onClearChaining?: () => void; // Specific clear handler for Chaining items
+  onClearCommon?: () => void;   // Specific clear handler for Common items
+  onClearElement?: () => void;  // Specific clear handler for Element items
+}
+
+export const InputItemList: React.FC<InputItemListProps> = ({ 
   chainingItems, 
   commonItems, 
   items, 
+  onClearChaining,
+  onClearCommon,
+  onClearElement,
   ...commonProps 
 }) => {
+  // Determine if any list has items to conditionally render the empty state differently
+  const hasAnyItems = chainingItems.length > 0 || commonItems.length > 0 || items.length > 0;
+
   return (
     <div className="space-y-4">
-      {chainingItems.length > 0 && (
-        <ItemListSection 
-          title="Chaining 입력" 
-          itemType="chaining" 
-          items={chainingItems} 
-          colorClass="gray" 
-          {...commonProps} 
-        />
-      )}
-      {commonItems.length > 0 && (
-        <ItemListSection 
-          title="Common Items" 
-          itemType="common" 
-          items={commonItems} 
-          colorClass="purple" 
-          {...commonProps} 
-        />
-      )}
-      {items.length > 0 && (
-        <ItemListSection 
-          title="Items" 
-          itemType="element" 
-          items={items} 
-          colorClass="orange" 
-          {...commonProps} 
-        />
-      )}
-      {chainingItems.length === 0 && commonItems.length === 0 && items.length === 0 && (
-         <div className="text-center py-6 border border-dashed border-gray-300 bg-gray-50 rounded-md">
-           <p className="text-sm text-gray-500">No items added yet</p>
-         </div>
-       )}
+      {/* Always render ItemListSection for each type */}
+      <ItemListSection 
+        title="Chaining Items"
+        itemType="chaining" 
+        items={chainingItems}
+        colorClass="gray" 
+        onClear={onClearChaining} // Pass the specific clear handler
+        {...commonProps} 
+      />
+      <ItemListSection 
+        title="Common Items" 
+        itemType="common" 
+        items={commonItems} 
+        colorClass="purple" 
+        onClear={onClearCommon} // Pass the specific clear handler
+        {...commonProps} 
+      />
+      <ItemListSection 
+        title="Element Items" // Changed title for clarity
+        itemType="element" 
+        items={items} 
+        colorClass="orange" 
+        onClear={onClearElement} // Pass the specific clear handler
+        {...commonProps} 
+      />
     </div>
   );
 };
@@ -247,26 +252,47 @@ const ItemListSection: React.FC<ItemListSectionProps> = ({
   itemType, 
   items, 
   colorClass, 
+  onClear, // Receive the clear handler
   editingItemId, 
   ...otherProps 
 }) => {
   const headerColor = itemType === 'chaining' ? 'text-gray-800' : `text-${colorClass}-800`;
 
+  // Always render the section container and title
   return (
     <div className="space-y-2">
-      <div className={`text-sm font-medium ${headerColor}`}>{title} ({items.length})</div>
-      <ul className="space-y-1">
-        {items.map((item) => (
-          <ListItem 
-            key={item.id} 
-            item={item} 
-            itemType={itemType} 
-            colorClass={colorClass} 
-            isEditing={editingItemId === item.id} // Pass editing state
-            {...otherProps} 
-          />
-        ))}
-      </ul>
+      {/* Section Header with Title and Optional Clear Button */}
+      <div className={`flex justify-between items-center`}>
+        <div className={`text-sm font-medium ${headerColor}`}>{title} ({items.length})</div>
+        {/* Render clear button only if handler is provided and items exist */}
+        {onClear && items.length > 0 && (
+          <button 
+            onClick={onClear} 
+            className="p-0.5 text-gray-400 hover:text-red-500"
+            title={`Clear ${title}`}
+          >
+            <TrashIcon className="h-3 w-3"/>
+          </button>
+        )}
+      </div>
+      {items.length > 0 ? (
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <ListItem 
+              key={item.id} 
+              item={item} 
+              itemType={itemType} 
+              colorClass={colorClass} 
+              isEditing={editingItemId === item.id} // Pass editing state
+              {...otherProps} 
+            />
+          ))}
+        </ul>
+      ) : (
+        <div className="text-center py-6 border border-dashed border-gray-300 bg-gray-50 rounded-md">
+          <p className="text-sm text-gray-500">No items added yet</p>
+        </div>
+      )}
     </div>
   );
 }; 

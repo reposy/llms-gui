@@ -2,47 +2,38 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
-import { FileLikeObject, HTTPMethod, ExtractionRule } from '../types/nodes';
+// Import types from the central definition file
+import { 
+  FileLikeObject, HTTPMethod, ExtractionRule, 
+  BaseNodeContent, InputNodeContent, LLMNodeContent, OutputNodeContent, 
+  WebCrawlerNodeContent, APINodeContent, ConditionalNodeContent, 
+  MergerNodeContent, JSONExtractorNodeContent, GroupNodeContent, 
+  HTMLParserNodeContent, NodeContent // Import the union type as well
+} from '../types/nodes'; 
 import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
-// Import ExtractionRule type here as well if needed, or ensure it's exported from the store
-// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
+// Remove self-import attempt
+// import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
 
 /**
- * 노드 컨텐츠의 기본 인터페이스
- * 모든 노드 타입별 컨텐츠는 이를 확장함
+ * 노드 컨텐츠의 기본 인터페이스 - REMOVED (imported from types/nodes)
  */
-export interface BaseNodeContent {
-  isDirty?: boolean;
-  label?: string;
-  content?: any;
-  [key: string]: any;
-}
+/*
+export interface BaseNodeContent { ... }
+*/
 
 /**
- * 입력 노드 컨텐츠
+ * 입력 노드 컨텐츠 - REMOVED (imported from types/nodes)
  */
-export interface InputNodeContent extends BaseNodeContent {
-  chainingItems: (string | File)[];
-  commonItems: (string | File)[];
-  items: (string | File)[];
-  textBuffer?: string;
-  iterateEachRow: boolean;
-  chainingUpdateMode: 'common' | 'element' | 'none';
-}
+/*
+export interface InputNodeContent extends BaseNodeContent { ... }
+*/
 
 /**
- * LLM 노드 컨텐츠
+ * LLM 노드 컨텐츠 - REMOVED (imported from types/nodes)
  */
-export interface LLMNodeContent extends BaseNodeContent {
-  prompt: string;
-  model: string;
-  temperature: number;
-  provider: 'ollama' | 'openai';
-  ollamaUrl?: string;
-  openaiApiKey?: string;
-  mode?: 'text' | 'vision';
-}
+/*
+export interface LLMNodeContent extends BaseNodeContent { ... }
+*/
 
 /**
  * 출력 노드 컨텐츠
@@ -122,24 +113,16 @@ export interface GroupNodeContent extends BaseNodeContent {
 }
 
 /**
- * 모든 노드 컨텐츠 타입의 유니온 타입
+ * 모든 노드 컨텐츠 타입의 유니온 타입 - REMOVED (imported from types/nodes)
  */
-export type NodeContent = 
-  | InputNodeContent
-  | LLMNodeContent
-  | OutputNodeContent
-  | WebCrawlerNodeContent
-  | APINodeContent
-  | ConditionalNodeContent
-  | MergerNodeContent
-  | JSONExtractorNodeContent
-  | GroupNodeContent
-  | HTMLParserNodeContent
-  | BaseNodeContent;
+/*
+export type NodeContent = ...;
+*/
 
 /**
  * Creates the default content for a given node type.
  */
+// Ensure this function uses the imported types correctly
 export function createDefaultNodeContent(type: string, id: string): NodeContent {
   switch (type) {
     case 'input':
@@ -149,10 +132,10 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         items: [],
         textBuffer: '',
         iterateEachRow: false,
-        chainingUpdateMode: 'element',
+        chainingUpdateMode: 'element', // Ensure this matches the imported type's possibilities
         isDirty: false,
         label: 'Input'
-      } as InputNodeContent;
+      } as InputNodeContent; // Use imported type for assertion
 
     case 'llm':
       return {
@@ -164,7 +147,7 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         mode: 'text',
         isDirty: false,
         label: 'LLM'
-      } as LLMNodeContent;
+      } as LLMNodeContent; // Use imported type
 
     case 'output':
       return {
@@ -177,15 +160,16 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
 
     case 'web-crawler':
       return {
-        type: 'web-crawler',
+        // type: 'web-crawler', // type is not part of NodeContent generally
         label: `Web Crawler ${id.substring(0, 4)}`,
         url: '',
-        waitForSelectorOnPage: '',
-        iframeSelector: '',
-        waitForSelectorInIframe: '',
+        waitForSelector: '', // Corrected field name based on types/nodes.ts likely
+        extractSelectors: {},
         timeout: 30000,
         headers: {},
-      } satisfies WebCrawlerNodeContent;
+        includeHtml: false,
+        outputFormat: 'text' // Default reasonable format
+      } satisfies WebCrawlerNodeContent; // Use satisfies if possible, or 'as' with imported type
 
     case 'html-parser':
       return {
@@ -197,7 +181,7 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
     case 'api':
       return {
         url: '',
-        method: 'GET',
+        method: 'GET' as HTTPMethod, // Assert specific type from import
         headers: {},
         queryParams: {},
         bodyFormat: 'raw',
@@ -217,8 +201,9 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
 
     case 'merger':
       return {
-        strategy: 'array',
-        keys: [],
+        // strategy: 'array', // Removed, check types/nodes.ts
+        mergeMode: 'concat', // Match definition in types/nodes.ts
+        arrayStrategy: 'flatten', // Match definition
         items: [],
         isDirty: false,
         label: 'Merger'
@@ -227,30 +212,31 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
     case 'json-extractor':
       return {
         path: '',
-        defaultValue: '',
+        // defaultValue: '', // Check if exists in types/nodes.ts
         isDirty: false,
         label: 'JSON Extractor'
       } as JSONExtractorNodeContent;
 
     case 'group':
       return {
-        childNodes: [],
+        // childNodes: [], // Check if exists in types/nodes.ts
+        isCollapsed: false, // Match definition
         isDirty: false,
         label: 'Group'
       } as GroupNodeContent;
 
     default:
       console.warn(`Creating default content for unknown node type: ${type}`);
-      return { type: 'unknown', label: `Node ${id.substring(0, 4)}` } as any;
+      return { label: `Node ${id.substring(0, 4)}` } as BaseNodeContent; // Default to Base
   }
 }
 
 /**
  * 노드 컨텐츠 스토어 인터페이스
  */
-interface NodeContentStore {
+interface NodeContentState {
   // 노드 ID를 키로 사용하는 컨텐츠 맵
-  contents: Record<string, NodeContent>;
+  contents: Record<string, NodeContent>; // Use the imported union type
   
   // 노드 ID와 컨텐츠를 받아 저장하는 함수
   setNodeContent: <T extends NodeContent>(nodeId: string, content: Partial<T>) => void;
@@ -259,7 +245,7 @@ interface NodeContentStore {
   deleteNodeContent: (nodeId: string) => void;
   
   // 노드 ID로 컨텐츠를 조회하는 함수
-  getNodeContent: <T extends NodeContent = NodeContent>(nodeId: string, nodeType?: string) => T;
+  getNodeContent: (nodeId: string, nodeType?: string) => NodeContent;
   
   // 모든 컨텐츠를 가져오는 함수
   getAllNodeContents: () => Record<string, NodeContent>;
@@ -284,82 +270,63 @@ interface NodeContentStore {
  * 노드 컨텐츠를 저장하는 Zustand 스토어
  * persist 미들웨어로 로컬 스토리지에 자동 저장
  */
-export const useNodeContentStore = create<NodeContentStore>()(
+export const useNodeContentStore = create<NodeContentState>()(
   persist(
     (set, get) => ({
-      // 초기 상태: 빈 객체
       contents: {},
-      
-      // 노드 컨텐츠 설정 (기존 컨텐츠와 병합)
-      setNodeContent: <T extends NodeContent>(nodeId: string, newContentUpdate: Partial<T>) => {
-        set((state) => {
-          // 현재 컨텐츠 가져오기 (없으면 빈 객체)
-          const currentContent = state.contents[nodeId] || {};
-          
-          // Determine the final isDirty state
-          // If newContentUpdate has an isDirty field, use it, otherwise default to true
-          const finalIsDirty = (newContentUpdate as any).isDirty !== undefined 
-                               ? (newContentUpdate as any).isDirty 
-                               : true;
 
-          // Directly merge the update with the current content
-          const newContent = {
-            ...currentContent,
-            ...newContentUpdate,
-            isDirty: finalIsDirty // Ensure isDirty is correctly set
-          };
-          
-          // Optimization: Check if the object reference is the same AND isDirty is same.
-          // This avoids unnecessary updates if the exact same update object is passed multiple times.
-          // However, usually a new object is created for updates, making this less effective.
-          // Let Zustand handle shallow equality checks on the top level.
-          // A simple reference check might be sufficient if performance becomes an issue.
-          // if (state.contents[nodeId] === newContent && currentContent.isDirty === finalIsDirty) {
-          //   return state; // Avoid update if object reference and isDirty are identical
-          // }
+      setNodeContent: (nodeId, contentUpdate) => set(state => {
+        const currentContent = state.contents[nodeId] || createDefaultNodeContent(contentUpdate.type || 'unknown', nodeId); // Ensure default creation on update if missing
+        
+        // Perform a shallow merge, but handle potential deep objects if necessary
+        const newContent = { 
+          ...currentContent,
+          ...contentUpdate,
+          isDirty: true, // Mark as dirty on any update
+        };
 
-          console.log(`[NodeContentStore] Updating content for ${nodeId}:`, newContent);
-          
-          return {
-            contents: {
-              ...state.contents,
-              [nodeId]: newContent
+        // Optimization: Only update if content has actually changed
+        if (!isEqual(currentContent, newContent)) {
+          return { 
+            contents: { 
+              ...state.contents, 
+              [nodeId]: newContent 
             }
           };
-        });
-      },
-      
-      // 노드 컨텐츠 삭제
-      deleteNodeContent: (nodeId) => {
-        set((state) => {
-          const newContents = { ...state.contents };
-          delete newContents[nodeId];
-          return { contents: newContents };
-        });
-      },
-      
-      // 노드 컨텐츠 조회 (타입 파라미터로 타입 안전성 보장)
-      getNodeContent: <T extends NodeContent = NodeContent>(nodeId: string, nodeType?: string): T => {
+        } else {
+           // console.log(`Node content for ${nodeId} unchanged, skipping update.`);
+           // Return original state if no change
+           return state; 
+        }
+      }),
+
+      deleteNodeContent: (nodeId) => set(state => {
+        const newContents = { ...state.contents };
+        delete newContents[nodeId];
+        return { contents: newContents };
+      }),
+
+      // getNodeContent now correctly uses the imported NodeContent type
+      getNodeContent: (nodeId: string, nodeType?: string): NodeContent => {
         const content = get().contents[nodeId];
-        
-        // 컨텐츠가 있으면 반환
-        if (content) {
-          return content as T;
+        if (!content) {
+          // If content doesn't exist, create default content based on nodeType
+          if (nodeType) {
+            // console.warn(`Content for node ${nodeId} not found, creating default for type ${nodeType}.`);
+            const defaultContent = createDefaultNodeContent(nodeType, nodeId);
+            // Return the created default content WITHOUT setting it in the store here.
+            // Let the caller decide whether to set it using setNodeContent action.
+            return defaultContent; 
+          } else {
+             console.warn(`Content for node ${nodeId} not found and nodeType not provided. Cannot create default.`);
+             // Return a minimal base content or handle as error
+             return { label: `Node ${nodeId}` } as BaseNodeContent; // Return base content instead of {}?
+          }
         }
-        
-        // 컨텐츠가 없고 노드 타입이 제공되었다면 기본값 생성
-        if (nodeType) {
-          return createDefaultNodeContent(nodeType, nodeId) as T;
-        }
-        
-        // 둘 다 없으면 빈 객체 반환
-        return {} as T;
+        return content; // Return existing content, assert type NodeContent
       },
-      
-      // 모든 노드 컨텐츠 조회
-      getAllNodeContents: () => {
-        return get().contents;
-      },
+
+      getAllNodeContents: () => get().contents,
       
       // 임포트된 컨텐츠로부터 로드
       loadFromImportedContents: (contents) => {
@@ -415,11 +382,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
       }
     }),
     {
-      // 로컬 스토리지 이름
       name: 'node-content-storage',
-      
-      // 영구 저장에서 제외할 항목 없음 (모든 contents 저장)
-      partialize: (state) => ({ contents: state.contents })
     }
   )
 );
@@ -447,21 +410,11 @@ export function useNodeContent<T extends NodeContent = NodeContent>(
   nodeId: string,
   nodeType?: string
 ) {
-  const content = useNodeContentStore(
-    (state) => state.getNodeContent<T>(nodeId, nodeType)
-  );
-  
-  const updateStoreContent = useNodeContentStore(state => state.setNodeContent);
-  
-  const updateContent = useCallback((newContentUpdate: Partial<T>) => {
-    console.log(`[useNodeContent hook] updateContent called for ${nodeId}. Passing to store:`, newContentUpdate);
-    updateStoreContent(nodeId, newContentUpdate);
-  }, [nodeId, updateStoreContent]);
-
-  return {
-    content,
-    updateContent
-  };
+  // Use shallow compare for selector to prevent unnecessary re-renders
+  return useNodeContentStore(useCallback(
+    (state) => state.getNodeContent<T>(nodeId, nodeType),
+    [nodeId, nodeType]
+  ), shallow);
 }
 
 // 하위 호환성을 위한 레거시 함수들
@@ -473,17 +426,10 @@ export {
 
 // Update NodeContentRecord to include HTMLParserNodeContent
 export type NodeContentRecord = {
-  [nodeId: string]: LLMNodeContent | HTMLParserNodeContent | InputNodeContent | WebCrawlerNodeContent | OutputNodeContent | APINodeContent | any;
+  [nodeId: string]: NodeContent; // Use the imported union type
 }; 
 
-// --- Export ExtractionRule interface --- 
-export interface ExtractionRule {
-  id?: string;
-  name: string;
-  target: 'text' | 'html' | 'attribute';
-  selector: string;
-  attribute_name?: string;
-  multiple: boolean;
-  pathSteps?: { level: number; tag: string; details: string }[]; 
-}
-// --- End Export --- 
+// Duplicate ExtractionRule removed
+/*
+export interface ExtractionRule { ... }
+*/
