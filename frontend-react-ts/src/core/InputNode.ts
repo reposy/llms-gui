@@ -120,19 +120,76 @@ export class InputNode extends Node {
 
     if (executionMode === 'foreach') {
       currentContext.log(`${this.type}(${this.id}): Executing in Foreach mode`);
-      const itemsToIterate = newItems;
+      // Combine commonItems and items for iteration as per the user's pseudo-code
+      const itemsToIterate = [...newCommonItems, ...newItems]; 
+
       if (itemsToIterate.length === 0) {
         currentContext.log(`${this.type}(${this.id}): No items to iterate in Foreach mode.`);
-        output = null; // Or handle as needed, maybe empty array?
+        // Mark success even if no items, as the node itself executed.
+        currentContext.markNodeSuccess(this.id, { status: 'Foreach completed (no items)', items: newItems, commonItems: newCommonItems });
+        return null; // Return null to stop further chaining by Node.process
       } else {
-        // In foreach mode, trigger downstream nodes for each item combined with commonItems
-        // The Input node itself might not output directly in this mode, downstream handles it.
-        // This logic might belong in the core FlowRunner or GroupNode execution.
-        // For now, we'll just return null as the node's direct output.
-        currentContext.log(`${this.type}(${this.id}): Foreach mode selected. Downstream nodes will be triggered per item.`);
-        output = null; // Input node output is null, triggers happen elsewhere
+        currentContext.log(`${this.type}(${this.id}): Found ${itemsToIterate.length} items to iterate.`);
+
+        // Find child nodes connected to the output handle (assuming 'source' handle id)
+        // Use the context which now holds nodes, edges, and nodeFactory
+        const outputHandleId = `${this.id}-source`; // Standard handle ID format, adjust if different
+        const outgoingEdges = currentContext.edges.filter(edge => edge.source === this.id /*&& edge.sourceHandle === outputHandleId*/); // Handle check might be needed if multiple source handles exist
+        const childNodeIds = outgoingEdges.map(edge => edge.target);
+
+        if (childNodeIds.length === 0) {
+          currentContext.log(`${this.type}(${this.id}): No child nodes connected for Foreach execution.`);
+          currentContext.markNodeSuccess(this.id, { status: 'Foreach completed (no children)', items: newItems, commonItems: newCommonItems });
+          return null;
+        }
+
+        currentContext.log(`${this.type}(${this.id}): Found ${childNodeIds.length} child node(s): ${childNodeIds.join(', ')}`);
+
+        // Instantiate child nodes ONCE before the loop
+        const childNodeInstances: Node[] = [];
+        for (const childId of childNodeIds) {
+          const nodeData = currentContext.nodes.find(n => n.id === childId);
+          if (nodeData && nodeData.type) {
+            const childInstance = currentContext.nodeFactory.create(
+              nodeData.id,
+              nodeData.type,
+              nodeData.data,
+              currentContext // Pass the same context down!
+            );
+            childNodeInstances.push(childInstance);
+          } else {
+            currentContext.log(`${this.type}(${this.id}): Could not find node data or type for child node ${childId}. Skipping instantiation.`);
+          }
+        }
+
+        // Iterate through each item and execute all child nodes for it
+        for (let i = 0; i < itemsToIterate.length; i++) {
+          const item = itemsToIterate[i];
+          currentContext.log(`${this.type}(${this.id}): Processing item ${i + 1}/${itemsToIterate.length}: ${JSON.stringify(item)}`);
+          // Set iteration context for potential use by children or logging
+          currentContext.setIterationContext({ item: item, index: i, total: itemsToIterate.length });
+
+          for (const childNodeInstance of childNodeInstances) {
+            try {
+              currentContext.log(`${this.type}(${this.id}): Triggering child node ${childNodeInstance.id} for item ${i + 1}`);
+              await childNodeInstance.process(item);
+              currentContext.log(`${this.type}(${this.id}): Child node ${childNodeInstance.id} completed for item ${i + 1}`);
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              currentContext.log(`${this.type}(${this.id}): Error processing child node ${childNodeInstance.id} for item ${i + 1}: ${errorMessage}`);
+              // Propagate error? Mark parent as error? Decide on error handling strategy.
+              // For now, just log and continue iteration.
+              currentContext.markNodeError(childNodeInstance.id, `Error during Foreach iteration: ${errorMessage}`);
+            }
+          }
+          // Clear iteration context after processing an item? Or keep the last one?
+          // currentContext.setIterationContext({}); // Optional: Reset iteration context
+        }
+
+        // Mark success after all iterations are done
+        currentContext.markNodeSuccess(this.id, { status: `Foreach completed (${itemsToIterate.length} items)`, items: newItems, commonItems: newCommonItems });
+        return null; // Crucial: Return null to prevent default chaining in Node.process
       }
-      
     } else { // Batch mode
       currentContext.log(`${this.type}(${this.id}): Executing in Batch mode`);
       // Combine commonItems and items for batch output
@@ -141,6 +198,12 @@ export class InputNode extends Node {
     }
 
     // Finalize execution
+    currentContext.storeOutput(this.id, output); // Store the output in context (will be null for foreach)
+    // Mark node success/error is handled within the if/else branches now
+    // currentContext.markNodeSuccess(this.id, { items: newItems, commonItems: newCommonItems });
+    return output; // Return the batch output or null for foreach
+
+    /* // Old logic - replaced by specific marking within branches
     if (output !== null) {
         currentContext.storeOutput(this.id, output); // Store the output in context
         currentContext.markNodeSuccess(this.id, { items: newItems, commonItems: newCommonItems });
@@ -150,6 +213,7 @@ export class InputNode extends Node {
         currentContext.markNodeSuccess(this.id, { status: 'Foreach mode initiated', items: newItems, commonItems: newCommonItems });
         return null; // Return null as foreach mode output
     }
+    */
   }
 
   /**
