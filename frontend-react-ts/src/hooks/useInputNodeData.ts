@@ -176,6 +176,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
       commonItems: updatedCommonItems,
       items: updatedItems
     });
+    setEditingText('');
   }, [chainingItems, commonItems, items, updateInputContent]);
 
   /**
@@ -230,6 +231,11 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     setEditingText('');
   }, []);
 
+  // Define specific clear handlers
+  const handleClearChainingItems = useCallback(() => handleClearItems('chaining'), [handleClearItems]);
+  const handleClearCommonItems = useCallback(() => handleClearItems('common'), [handleClearItems]);
+  const handleClearElementItems = useCallback(() => handleClearItems('element'), [handleClearItems]);
+
   return {
     // 상태 값
     chainingItems,
@@ -246,13 +252,18 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     handleAddText,
     handleFileChange,
     handleDeleteItem,
-    handleClearItems,
+    handleClearItems, // Generic clear handler
     handleToggleProcessingMode,
     handleUpdateChainingMode,
-    handleMoveChainingItem,
+    handleMoveChainingItem, // Add this back (used as handleMoveItem in Config)
     handleStartEditingTextItem,
     handleEditingTextChange,
     handleFinishEditingTextItem,
     handleCancelEditingTextItem,
+    
+    // Specific clear handlers for Config/ItemList
+    handleClearChainingItems,
+    handleClearCommonItems,
+    handleClearElementItems,
   };
 }; 

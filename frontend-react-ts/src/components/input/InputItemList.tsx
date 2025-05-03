@@ -216,7 +216,7 @@ export const InputItemList: React.FC<{
       )}
       {commonItems.length > 0 && (
         <ItemListSection 
-          title="공통 항목" 
+          title="Common Items" 
           itemType="common" 
           items={commonItems} 
           colorClass="purple" 
@@ -225,7 +225,7 @@ export const InputItemList: React.FC<{
       )}
       {items.length > 0 && (
         <ItemListSection 
-          title="개별 항목" 
+          title="Items" 
           itemType="element" 
           items={items} 
           colorClass="orange" 

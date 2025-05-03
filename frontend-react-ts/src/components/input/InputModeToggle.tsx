@@ -17,7 +17,7 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
   return (
     <div className="flex flex-col space-y-2 w-full">
       <div className="flex items-center justify-between w-full">
-        <label className="text-sm font-medium text-gray-700">실행 모드:</label>
+        <label className="text-sm font-medium text-gray-700">Processing Mode:</label>
         <button
           type="button"
           onClick={onToggleProcessingMode}
@@ -29,12 +29,12 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
             }
           `}
         >
-          {iterateEachRow ? 'ForEach 모드' : 'Batch 모드'}
+          {iterateEachRow ? 'ForEach' : 'Batch'}
         </button>
       </div>
       
       <div className="flex flex-col space-y-1">
-        <label className="text-sm font-medium text-gray-700">자동 입력 추가:</label>
+        <label className="text-sm font-medium text-gray-700">Chained Input Behavior:</label>
         <div className="flex space-x-2 items-center">
           <button
             type="button"
@@ -47,7 +47,7 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
               }
             `}
           >
-            공통 항목
+            Common
           </button>
           <button
             type="button"
@@ -60,7 +60,7 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
               }
             `}
           >
-            개별 항목
+            Element
           </button>
           <button
             type="button"
@@ -73,7 +73,7 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
               }
             `}
           >
-            미적용
+            None
           </button>
         </div>
       </div>
@@ -81,10 +81,10 @@ export const InputModeToggle: React.FC<InputModeProps> = ({
       <div className="text-xs text-gray-600 mt-1">
         {
           chainingUpdateMode === 'common' ? 
-            '(이전 노드 출력을 자동으로 공통 항목에 추가)' :
+            '(Chained inputs are automatically added to Common items)' :
           chainingUpdateMode === 'element' ? 
-            '(이전 노드 출력을 자동으로 개별 항목에 추가)' :
-            '(이전 노드 출력을 자동으로 추가하지 않음)'
+            '(Chained inputs are automatically added to Element items)' :
+            '(Chained inputs are not automatically added)'
         }
       </div>
     </div>

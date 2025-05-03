@@ -20,47 +20,7 @@ import { VIEW_MODES } from '../../store/viewModeStore';
 import { v4 as uuidv4 } from 'uuid';
 import { TrashIcon } from '@heroicons/react/20/solid';
 import { FiFile, FiType } from 'react-icons/fi';
-
-// Helper to format raw data into displayable item structure
-const formatItemsForDisplay = (rawItems: (string | File)[], itemType: 'chaining' | 'common' | 'element') => {
-  if (!rawItems) return [];
-  
-  return rawItems.map((item, index) => {
-    const id = `${itemType}-${index}-${typeof item === 'string' ? 'text' : item.name}`;
-    let display = '';
-    let fullContent = '';
-    const isFile = typeof item !== 'string';
-    let fileType = 'text';
-
-    if (isFile) {
-      const file = item as File;
-      display = file.name || 'Unnamed file';
-      fullContent = `${display} (${file.type}, ${Math.round(file.size / 1024)} KB)`;
-      fileType = file.type;
-    } else {
-      fullContent = item as string;
-      // Show first 2 lines or 50 chars for display
-      const lines = fullContent.split('\n');
-      if (lines.length > 2) {
-        display = lines.slice(0, 2).join('\n');
-      } else if (fullContent.length > 50) {
-        display = fullContent.substring(0, 50);
-      } else {
-        display = fullContent;
-      }
-    }
-    
-    return {
-      id,
-      originalIndex: index,
-      display,
-      fullContent,
-      type: fileType,
-      isFile,
-      isEditing: false // Default, will be handled by hook state
-    };
-  });
-};
+import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
 
 // Node component
 export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
@@ -194,7 +154,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
             {/* Manual Text Input */}
             <div className="px-4 py-2 border-t border-gray-200">
               <label className="block text-xs font-medium text-gray-500 mb-1">
-                텍스트 추가:
+                 Add Text:
               </label>
               <div className="flex items-center space-x-2">
                 <textarea
@@ -210,22 +170,22 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                     onClick={() => handleAddText('common')}
                     disabled={!textBuffer.trim()}
                     className={`px-2 py-1 text-xs font-medium rounded ${!textBuffer.trim() ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}
-                  >공통</button>
+                  >Common</button>
                   <button
                     onClick={() => handleAddText('element')}
                     disabled={!textBuffer.trim()}
                     className={`px-2 py-1 text-xs font-medium rounded ${!textBuffer.trim() ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-orange-800 hover:bg-orange-200'}`}
-                  >개별</button>
+                  >Element</button>
                 </div>
               </div>
             </div>
             
             {/* File Input Area */} 
             <div className="flex justify-between items-center">
-                <label className="text-sm font-medium text-gray-700">파일 추가:</label>
+                <label className="text-sm font-medium text-gray-700">Add Files:</label>
                 <div className="flex space-x-1">
-                  <label className={`px-2 py-1 text-xs font-medium rounded cursor-pointer bg-purple-100 text-purple-800 hover:bg-purple-200`}>공통<input type="file" className="hidden" onChange={(e) => handleFileChange(e, 'common')} multiple /></label>
-                  <label className={`px-2 py-1 text-xs font-medium rounded cursor-pointer bg-orange-100 text-orange-800 hover:bg-orange-200`}>개별<input type="file" className="hidden" onChange={(e) => handleFileChange(e, 'element')} multiple /></label>
+                  <label className={`px-2 py-1 text-xs font-medium rounded cursor-pointer bg-purple-100 text-purple-800 hover:bg-purple-200`}>Common<input type="file" className="hidden" onChange={(e) => handleFileChange(e, 'common')} multiple /></label>
+                  <label className={`px-2 py-1 text-xs font-medium rounded cursor-pointer bg-orange-100 text-orange-800 hover:bg-orange-200`}>Element<input type="file" className="hidden" onChange={(e) => handleFileChange(e, 'element')} multiple /></label>
                 </div>
             </div>
             

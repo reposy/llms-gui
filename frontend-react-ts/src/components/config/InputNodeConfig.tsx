@@ -7,6 +7,7 @@ import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
 import { InputModeToggle } from '../input/InputModeToggle';
+import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Import the utility function
 
 interface InputNodeConfigProps {
   nodeId: string;
@@ -35,32 +36,8 @@ const calculateItemCounts = (items: (string | File)[]) => {
   };
 };
 
-// Utility function to format items for display (consistent with InputNode.tsx)
-const formatItemsForDisplay = (items: (string | File)[]) => {
-  if (!items) return [];
-  
-  return items.map((item, index) => {
-    const baseItem = {
-      id: `item-${index}-${typeof item === 'string' ? 'text' : 'file'}`,
-      index,
-      isFile: typeof item !== 'string',
-      originalItem: item
-    };
-    if (typeof item === 'string') {
-      return {
-        ...baseItem,
-        display: item,
-        type: 'text',
-      };
-    } else {
-      return {
-        ...baseItem,
-        display: item.name || 'Unnamed file',
-        type: item.type,
-      };
-    }
-  });
-};
+// Utility function to format items for display - REMOVED
+// const formatItemsForDisplay = (rawItems: (string | File)[]) => { ... };
 
 export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
   const {
@@ -76,23 +53,23 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
     handleDeleteItem,
     handleClearItems,
     handleToggleProcessingMode,
-    handleMoveItem,
-    handleClearChainingItems,
-    handleClearCommonItems,
-    handleClearElementItems,
     handleUpdateChainingMode,
-    editingItemId,
-    editingText,
+    handleMoveChainingItem: handleMoveItem,
     handleStartEditingTextItem,
     handleEditingTextChange,
     handleFinishEditingTextItem,
     handleCancelEditingTextItem,
+    editingItemId,
+    editingText,
+    handleClearChainingItems,
+    handleClearCommonItems,
+    handleClearElementItems,
   } = useInputNodeData({ nodeId });
   
-  // Format each list separately
-  const formattedChainingItems = useMemo(() => formatItemsForDisplay(chainingItems || []), [chainingItems]);
-  const formattedCommonItems = useMemo(() => formatItemsForDisplay(commonItems || []), [commonItems]);
-  const formattedItems = useMemo(() => formatItemsForDisplay(items || []), [items]);
+  // Format each list separately using the imported utility function
+  const formattedChainingItems = useMemo(() => formatItemsForDisplay(chainingItems || [], 'config-chaining'), [chainingItems]);
+  const formattedCommonItems = useMemo(() => formatItemsForDisplay(commonItems || [], 'config-common'), [commonItems]);
+  const formattedItems = useMemo(() => formatItemsForDisplay(items || [], 'config-element'), [items]);
 
   // Calculate total count across relevant lists for summary
   const totalItemCount = (commonItems?.length || 0) + (items?.length || 0);
@@ -122,49 +99,46 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
         Debug: TextBuffer: "{textBuffer}" (Length: {textBuffer?.length || 0})
       </div> */}
 
-      {/* Processing Mode toggle - Conditionally render based on item count */}
-      {showIterateOption && (
+      {/* Processing Mode toggle - REMOVED from Config, shown in Node only */}
+      {/* {showIterateOption && (
         <div>
           <ConfigLabel>실행 모드 (Processing Mode)</ConfigLabel>
           <InputModeToggle 
-            iterateEachRow={iterateEachRow}
-            onToggle={handleToggleProcessingMode}
-            option1Label="배치 (Batch)"
-            option2Label="개별 반복 (ForEach)"
+            // ... props 
           />
         </div>
-      )}
+      )} */}
 
       {/* Chaining Update Mode Buttons (Replicating UI from InputNode.tsx) */}
       <div>
-        <ConfigLabel>자동 입력 추가 방식 (Chained Input Behavior)</ConfigLabel>
+        <ConfigLabel>Chained Input Behavior</ConfigLabel>
         <div className="flex space-x-2 items-center mt-1">
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('common')}
             className={`px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1 ${chainingUpdateMode === 'common' ? 'bg-purple-100 text-purple-800 hover:bg-purple-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
           >
-            공통 항목 (Common)
+            Common
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('element')}
             className={`px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1 ${chainingUpdateMode === 'element' ? 'bg-orange-100 text-orange-800 hover:bg-orange-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
           >
-            개별 항목 (Element)
+            Element
           </button>
           <button
             type="button"
             onClick={() => handleUpdateChainingMode('none')}
             className={`px-3 py-1 text-sm font-medium rounded-md transition-colors flex-1 ${chainingUpdateMode === 'none' ? 'bg-gray-400 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
           >
-            미적용 (None)
+            None
           </button>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          {chainingUpdateMode === 'common' ? '이전 노드 출력이 자동으로 공통 항목에 추가됩니다.' :
-           chainingUpdateMode === 'element' ? '이전 노드 출력이 자동으로 개별 항목에 추가됩니다.' :
-           '이전 노드 출력이 자동으로 추가되지 않습니다.'}
+          {chainingUpdateMode === 'common' ? 'Chained inputs are added to Common items.' :
+           chainingUpdateMode === 'element' ? 'Chained inputs are added to Element items.' :
+           'Chained inputs are not automatically added.'}
         </p>
       </div>
 
@@ -176,31 +150,45 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
 
       {/* Text Input with Common/Element buttons */}
       <div>
-        <ConfigLabel>텍스트 추가 (Add Text)</ConfigLabel>
-        <InputTextManagerSidebar
-          textBuffer={textBuffer}
+        <ConfigLabel>Add Text</ConfigLabel>
+        <textarea
+          value={textBuffer}
           onChange={handleTextChange}
-          height="h-24"
-          commonButtonLabel="공통 목록에 추가"
-          elementButtonLabel="개별 목록에 추가"
-          onAddCommon={handleAddTextToCommon}
-          onAddElement={handleAddTextToElement}
+          placeholder="Enter text..."
+          className={`w-full h-24 p-2 border border-gray-300 rounded-md bg-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent nodrag nowheel`}
+          onKeyDown={(e) => e.stopPropagation()} // Prevent keydown propagation
         />
+        <div className="flex justify-end space-x-2 mt-2">
+          <button
+            onClick={handleAddTextToCommon}
+            disabled={!textBuffer?.trim()}
+            className={`px-3 py-1 text-xs font-medium rounded ${!textBuffer?.trim() ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-purple-100 text-purple-800 hover:bg-purple-200'}`}
+            title={!textBuffer?.trim() ? "Enter text to add" : "Add to Common Items"}
+          >
+            Add Common
+          </button>
+          <button
+            onClick={handleAddTextToElement}
+            disabled={!textBuffer?.trim()}
+            className={`px-3 py-1 text-xs font-medium rounded ${!textBuffer?.trim() ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-orange-100 text-orange-800 hover:bg-orange-200'}`}
+            title={!textBuffer?.trim() ? "Enter text to add" : "Add to Element Items"}
+          >
+            Add Element
+          </button>
+        </div>
       </div>
       
       {/* File Upload - Separate buttons */}
       <div>
-        <ConfigLabel>파일 추가 (Add Files)</ConfigLabel>
+        <ConfigLabel>Add Files</ConfigLabel>
         <div className="flex space-x-2">
           <InputFileUploader
             onUpload={handleFileUploadToCommon}
-            buttonLabel="공통으로 추가"
-            className="flex-1"
+            buttonLabel="Common"
           />
           <InputFileUploader
             onUpload={handleFileUploadToElement}
-            buttonLabel="개별로 추가"
-            className="flex-1"
+            buttonLabel="Element"
           />
         </div>
       </div>
@@ -216,7 +204,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
           
           // Pass common props (handlers etc.)
           onDeleteItem={handleDeleteItem} // Pass the generic handler
-          onMoveItem={handleMoveItem} // Pass the generic handler
+          onMoveItem={handleMoveItem} // Pass the aliased handler
           
           // Pass editing handlers
           editingItemId={editingItemId}
@@ -226,7 +214,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
           onFinishEditing={handleFinishEditingTextItem}
           onCancelEditing={handleCancelEditingTextItem}
           
-          // Pass clear handlers if available from hook
+          // Pass clear handlers if available from hook - REMOVED as InputItemList doesn't accept them
           // onClearChaining={handleClearChainingItems}
           // onClearCommon={handleClearCommonItems}
           // onClearElement={handleClearElementItems}
