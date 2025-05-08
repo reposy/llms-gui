@@ -1,10 +1,8 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-import { useNodeContentStore, MergerNodeContent, NodeContent } from '../store/useNodeContentStore';
-// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { MergerNodeContent } from '../types/nodes';
 import { isEqual } from 'lodash';
-// import { Node as ReactFlowNode } from '@xyflow/react'; // Removed ReactFlowNode dependency
-import { MergerNodeData } from '../types/nodes'; // Keep type if needed elsewhere, but hook logic shouldn't rely on it
 
 /**
  * Custom hook to manage Merger node state and operations.
@@ -21,13 +19,11 @@ export const useMergerNodeData = ({
   // Use a selector with shallow comparison to get the entire content object
   const content = useNodeContentStore(
     useCallback(
-      (state) => state.getNodeContent<MergerNodeContent>(nodeId, 'merger'), // Get Merger specific content
+      (state) => state.getNodeContent(nodeId, 'merger') as MergerNodeContent,
       [nodeId]
     ),
     shallow // Use shallow comparison
   );
-
-  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
 
   // --- Derived State (from content store) ---
   // Provide defaults directly when accessing
@@ -43,13 +39,13 @@ export const useMergerNodeData = ({
   /**
    * Utility function to update content in the store, ensuring defaults and types.
    */
-  const updateMergerContent = useCallback((updates: Partial<Omit<MergerNodeContent, keyof NodeContent | 'isDirty'>>) => {
-    const currentContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(nodeId, 'merger');
+  const updateMergerContent = useCallback((updates: Partial<MergerNodeContent>) => {
+    const currentContent = useNodeContentStore.getState().getNodeContent(nodeId, 'merger') as MergerNodeContent;
     const newContent: Partial<MergerNodeContent> = { ...currentContent, ...updates };
 
     if (!isEqual(currentContent, newContent)) {
         console.log(`[useMergerNodeData ${nodeId}] Updating content with:`, updates);
-        setNodeContent<MergerNodeContent>(nodeId, newContent);
+        setNodeContent(nodeId, newContent);
     } else {
         console.log(`[useMergerNodeData ${nodeId}] Skipping content update - no changes (deep equal).`);
     }
@@ -98,19 +94,14 @@ export const useMergerNodeData = ({
     mode,
     params,
     content: result, // Assuming content holds the merged result
-    // isDirty: isContentDirty, // Removed
 
     // Change Handlers
     handleLabelChange,
     handleStrategyChange,
     handleKeysChange,
-    // handleConfigChange, // Removed
 
     // Result Item Handlers
     addItem,
     resetItems,
-    
-    // Provide the unified update function if direct partial updates are needed
-    // updateContent: updateMergerContent
   };
 }; 

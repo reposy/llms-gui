@@ -20,6 +20,19 @@ import {
 } from '../types/nodes'; 
 import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
 
+// Export types for use in other components
+export type {
+  NodeContent,
+  InputNodeContent,
+  LLMNodeContent,
+  OutputNodeContent,
+  APINodeContent,
+  ConditionalNodeContent,
+  GroupNodeContent,
+  WebCrawlerNodeContent,
+  JSONExtractorNodeData
+};
+
 /**
  * Creates the default content for a given node type.
  * These objects should ONLY contain properties defined in the specific *NodeContent types

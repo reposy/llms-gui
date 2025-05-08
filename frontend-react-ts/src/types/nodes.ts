@@ -272,7 +272,10 @@ export type NodeContent =
   | TextNodeContent
   | ConditionalNodeContent
   | GroupNodeContent
-  | MergerNodeContent;
+  | MergerNodeContent
+  | LLMNodeContent
+  | WebCrawlerNodeContent
+  | HTMLParserNodeData;
 
 // Overwrite React Flow's Node type to use our specific data structure
 // Ensure this aligns with how nodes are created/used in React Flow

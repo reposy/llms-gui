@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useNodeContent, GroupNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodeContent, GroupNodeContent, useNodeContentStore, createDefaultNodeContent } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 
 /**
@@ -12,7 +12,7 @@ export const useGroupNodeData = ({
   nodeId: string
 }) => {
   const contentSelector = useCallback(
-    (state: NodeContentState) => state.getNodeContent<GroupNodeContent>(nodeId, 'group'),
+    (state) => state.getNodeContent(nodeId, 'group') as GroupNodeContent,
     [nodeId]
   );
   const content = useNodeContentStore(contentSelector);
@@ -31,7 +31,7 @@ export const useGroupNodeData = ({
    */
   const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
     console.log(`[GroupNode ${nodeId}] Handling label change with new label:`, newLabel);
-    updateContent({ label: newLabel });
+    updateContent(nodeId, { label: newLabel });
   }, [nodeId, updateContent]);
 
   /**
@@ -43,7 +43,7 @@ export const useGroupNodeData = ({
       console.log(`[GroupNode ${nodeId}] Skipping collapse toggle - no change (deep equal)`);
       return;
     }
-    updateContent({ isCollapsed: newCollapsed });
+    updateContent(nodeId, { isCollapsed: newCollapsed });
   }, [nodeId, isCollapsed, updateContent]);
 
   /**
@@ -68,7 +68,7 @@ export const useGroupNodeData = ({
     }
     
     console.log(`[GroupNode ${nodeId}] Updating content with:`, updates);
-    updateContent(updates);
+    updateContent(nodeId, updates);
   }, [nodeId, content, updateContent]);
 
   return {
