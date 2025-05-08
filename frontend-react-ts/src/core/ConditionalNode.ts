@@ -1,7 +1,5 @@
 import { Node } from '../core/Node';
-import { findNodeById, getOutgoingConnections } from '../utils/flow/flowUtils.ts';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent } from '../store/useNodeContentStore.ts';
 import { useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { ConditionalNodeContent } from '../types/nodes.ts';
 import { evaluateCondition } from '../utils/flow/executionUtils.ts';
@@ -16,22 +14,6 @@ export type ConditionType =
   | 'containsSubstring'
   | 'jsonPathExistsTruthy'
   | 'contains';  // Legacy type for backward compatibility
-
-/**
- * Conditional node properties
- */
-interface ConditionalNodeProperty {
-  condition?: string;         // Legacy property for backward compatibility
-  conditionType?: ConditionType;
-  conditionValue?: string | number;  // Legacy property name
-  value?: string | number;    // New property name
-  data?: any;                 // Node data from UI
-  // References to flow structure and factory (added by FlowRunner)
-  nodes?: any[];
-  edges?: any[];
-  nodeFactory?: any;
-  executionGraph?: Map<string, any>;
-}
 
 /**
  * Conditional node that branches flow based on a condition

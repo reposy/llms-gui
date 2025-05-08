@@ -115,17 +115,14 @@ export class HTMLParserNode extends Node {
    * @returns 파싱된 결과 객체 또는 오류 시 null
    */
   async execute(input: any): Promise<any> {
-    // Define logger specific to this execution context
-    const log = (message: string) => this._log(message);
-    
-    log('실행 시작');
+    this._log('실행 시작');
 
     // Extract HTML content using the helper function
-    const htmlContent = getHtmlContentFromInput(input, log);
+    const htmlContent = getHtmlContentFromInput(input, (message) => this._log(message));
 
     // If no valid HTML content, stop processing this branch
     if (!htmlContent || htmlContent.trim().length === 0) {
-      log('유효한 HTML 콘텐츠를 찾을 수 없습니다. 브랜치 실행을 중단합니다.');
+      this._log('유효한 HTML 콘텐츠를 찾을 수 없습니다. 브랜치 실행을 중단합니다.');
       return null;
     }
 
@@ -136,12 +133,12 @@ export class HTMLParserNode extends Node {
     // If no rules, maybe return the HTML itself or null?
     // Returning the HTML makes it act like a pass-through if no rules defined.
     if (extractionRules.length === 0) {
-      log('경고 - 추출 규칙이 정의되지 않았습니다. 추출된 HTML 콘텐츠를 반환합니다.');
+      this._log('경고 - 추출 규칙이 정의되지 않았습니다. 추출된 HTML 콘텐츠를 반환합니다.');
       return htmlContent; // Return HTML content directly
     }
 
     // 클라이언트 사이드에서 직접 파싱
-    log(`HTML 파싱 시작 - ${extractionRules.length}개 규칙 적용`);
+    this._log(`HTML 파싱 시작 - ${extractionRules.length}개 규칙 적용`);
     
     const result: Record<string, string | string[]> = {};
     
@@ -174,7 +171,7 @@ export class HTMLParserNode extends Node {
     }
 
     // 결과 반환
-    log('실행 성공, 데이터 추출됨');
+    this._log('실행 성공, 데이터 추출됨');
     return result; // Return the result object
   }
 } 
