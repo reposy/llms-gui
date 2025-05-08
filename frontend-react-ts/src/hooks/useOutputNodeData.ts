@@ -1,10 +1,8 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
-// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { OutputNodeContent, OutputFormat } from '../types/nodes';
 import { isEqual } from 'lodash';
-// import { Node as ReactFlowNode } from '@xyflow/react'; // Removed ReactFlowNode dependency
-import { OutputFormat } from '../types/nodes'; // Keep OutputFormat type
 
 /**
  * Custom hook to manage Output node state and operations.
@@ -17,7 +15,7 @@ export const useOutputNodeData = (nodeId: string) => {
   // Use a selector with shallow comparison to get the entire content object
   const content = useNodeContentStore(
     useCallback(
-      (state) => state.getNodeContent<OutputNodeContent>(nodeId, 'output'), // Get Output specific content
+      (state) => state.getNodeContent(nodeId, 'output') as OutputNodeContent,
       [nodeId]
     ),
     shallow // Use shallow comparison
@@ -35,15 +33,15 @@ export const useOutputNodeData = (nodeId: string) => {
   /**
    * Utility function to update content in the store, ensuring defaults and types.
    */
-  const updateOutputContent = useCallback((updates: Partial<Omit<OutputNodeContent, keyof NodeContent | 'isDirty'>>) => {
+  const updateOutputContent = useCallback((updates: Partial<OutputNodeContent>) => {
     // Create the full update object based on current content
-    const currentContent = useNodeContentStore.getState().getNodeContent<OutputNodeContent>(nodeId, 'output');
+    const currentContent = useNodeContentStore.getState().getNodeContent(nodeId, 'output') as OutputNodeContent;
     const newContent: Partial<OutputNodeContent> = { ...currentContent, ...updates };
     
     // Check if the update actually changes anything using deep comparison
     if (!isEqual(currentContent, newContent)) {
         console.log(`[useOutputNodeData ${nodeId}] Updating content with:`, updates);
-        setNodeContent<OutputNodeContent>(nodeId, newContent);
+        setNodeContent(nodeId, newContent);
     } else {
         console.log(`[useOutputNodeData ${nodeId}] Skipping content update - no changes (deep equal).`);
     }

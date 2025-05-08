@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { useNodeContent, ConditionalNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
-import { ConditionType } from '../types/nodes';
+import { ConditionalNodeContent, ConditionType } from '../types/nodes';
 
 /**
  * Custom hook to manage Conditional node state and operations using Zustand store.
@@ -12,21 +12,23 @@ export const useConditionalNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContent hook with correct type and nodeType
-  const { 
-    content: generalContent, 
-    updateContent,
-  } = useNodeContent<ConditionalNodeContent>(nodeId, 'conditional');
+  // Get the content directly from store
+  const content = useNodeContentStore(state => 
+    state.getNodeContent(nodeId, 'conditional')
+  ) as ConditionalNodeContent;
   
-  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
-
-  // Cast the general content to ConditionalNodeContent type
-  const content = generalContent as ConditionalNodeContent;
+  // Get the setNodeContent function
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
   // Destructure content for easier access
   const conditionType = content.conditionType || 'contains';
   const conditionValue = content.conditionValue || '';
   const label = content.label || 'Conditional Node';
+
+  // Helper function to update content
+  const updateContent = useCallback((updates: Partial<ConditionalNodeContent>) => {
+    setNodeContent(nodeId, updates);
+  }, [nodeId, setNodeContent]);
 
   /**
    * Handle condition type change with deep equality check
@@ -81,7 +83,6 @@ export const useConditionalNodeData = ({
     conditionType,
     conditionValue,
     label,
-    // isDirty: isContentDirty, // Removed
     
     // Event handlers
     handleConditionTypeChange,

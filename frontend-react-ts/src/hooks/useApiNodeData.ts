@@ -17,7 +17,7 @@ export const useApiNodeData = ({
   const { 
     content: generalContent, 
     updateContent,
-  } = useNodeContent<APINodeContent>(nodeId, 'api');
+  } = useNodeContent(nodeId, 'api') as { content: APINodeContent, updateContent: (updates: Partial<APINodeContent>) => void };
 
   // Get isDirty status directly from the store
   // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
@@ -193,7 +193,7 @@ export const useApiNodeData = ({
       if (isRunning && nodeContent !== undefined) {
         console.warn(`[APINode ${nodeId}] Unmounting while API call was in progress. Resetting state.`);
         // Use the store's setter directly as the hook's context might be gone
-        useNodeContentStore.getState().setNodeContent<APINodeContent>(nodeId, { isRunning: false });
+        useNodeContentStore.getState().setNodeContent(nodeId, { isRunning: false });
       }
     };
   }, [nodeId, isRunning]);

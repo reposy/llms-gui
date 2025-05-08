@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { useNodeContent, LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { LLMMode } from '../types/nodes';
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { LLMNodeContent, LLMMode } from '../types/nodes';
 
 /**
  * Simplified hook for LLM node data - minimal implementation that just connects to the store
