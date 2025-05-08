@@ -11,7 +11,7 @@ import { getNodeContent, setNodeContent, InputNodeContent } from './useNodeConte
  * Hook for using InputNode content with type safety
  */
 export function useInputNodeContent(nodeId: string) {
-  const content = getNodeContent<InputNodeContent>(nodeId, 'input');
+  const content = getInputNodeContent(nodeId);
   
   // Create a type-safe setter function
   const setContent = (partialContent: Partial<InputNodeContent>) => {
@@ -22,4 +22,11 @@ export function useInputNodeContent(nodeId: string) {
     content,
     setContent
   };
+}
+
+// InputNodeContent 형태의 콘텐츠를 가져오는 함수
+export function getInputNodeContent(nodeId: string) {
+  // 타입 제네릭을 제거하고 결과를 타입 캐스팅
+  const content = getNodeContent(nodeId, 'input') as InputNodeContent;
+  return content;
 } 

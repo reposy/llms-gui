@@ -1,5 +1,5 @@
 import { Node } from '../../core/Node';
-import { getNodeContent, NodeContent } from '../../store/nodeContentStore';
+import { getNodeContent, NodeContent } from '../../store/useNodeContentStore';
 
 /**
  * 속성 타입별 동기화 처리 함수를 위한 타입 정의

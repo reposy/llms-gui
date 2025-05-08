@@ -1,4 +1,5 @@
 import { FileLikeObject } from '../../types/nodes';
+import { InputNodeContent } from '../../types/nodes';
 
 /**
  * Base content type for all nodes
@@ -119,7 +120,7 @@ export type NodeContent =
  * Type guard to check if content is InputNodeContent
  */
 export const isInputNodeContent = (content: NodeContent): content is InputNodeContent => {
-  return !!content && typeof content === 'object' && 'items' in content;
+  return content && (content as any).type === 'input';
 };
 
 /**

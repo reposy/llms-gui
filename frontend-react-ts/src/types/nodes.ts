@@ -248,7 +248,9 @@ export interface InputNodeContent extends BaseNodeData {
 }
 
 export interface OutputNodeContent extends BaseNodeData {
-  // Output specific fields
+  format?: 'json' | 'text';
+  content?: any;  // Add content property
+  mode?: 'read' | 'write';
 }
 
 export interface TextNodeContent extends BaseNodeData {
@@ -256,7 +258,7 @@ export interface TextNodeContent extends BaseNodeData {
 }
 
 export interface ConditionalNodeContent extends BaseNodeData {
-  conditionType: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'regex'; // Example types
+  conditionType: ConditionType;
   conditionValue: string;
 }
 
@@ -338,4 +340,24 @@ export interface MergerNodeContent extends BaseNodeData {
   waitForAll?: boolean;
   // Array to store manually edited/managed items
   items?: any[];
+  // Processing mode
+  mode?: string;
+  // Additional parameters
+  params?: any[];
+  // Results
+  result?: any[];
+}
+
+// HTMLParserNodeContent 인터페이스 업데이트 - extractionRules 속성 추가
+export interface HTMLParserNodeContent extends BaseNodeData {
+  url?: string;
+  selector?: string;
+  responseText?: string;
+  extractionRules?: {
+    name: string;
+    selector: string;
+    target: 'text' | 'html' | 'attribute';
+    attribute_name?: string;
+    multiple: boolean;
+  }[];
 }

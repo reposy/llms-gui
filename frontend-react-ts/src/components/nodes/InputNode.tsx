@@ -1,5 +1,5 @@
 // src/components/nodes/InputNode.tsx
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeData, InputNodeContent } from '../../types/nodes';
 import clsx from 'clsx';
@@ -7,29 +7,21 @@ import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
-import { InputItemList } from '../input/InputItemList';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContentStore, useNodeContent, getNodeContent } from '../../store/useNodeContentStore';
+import { useNodeContentStore, useNodeContent } from '../../store/useNodeContentStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { VIEW_MODES } from '../../store/viewModeStore';
-import { v4 as uuidv4 } from 'uuid';
 import { TrashIcon } from '@heroicons/react/20/solid';
-import { FiFile, FiType } from 'react-icons/fi';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
 import { runSingleNodeExecution } from '../../core/executionUtils';
 
 // Node component
 export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
-  const inputData = data as InputNodeData;
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
   const setZustandNodeContent = useNodeContentStore(state => state.setNodeContent);
-  const { incomingConnections } = useNodeConnections(id);
-  const isRootNode = incomingConnections.length === 0;
+  const { incoming } = useNodeConnections(id);
+  const isRootNode = incoming.length === 0;
   const currentNodes = useFlowStructureStore(state => state.nodes); 
   const { content: nodeContent } = useNodeContent<InputNodeContent>(id, 'input');
 
@@ -40,19 +32,10 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     items,
     textBuffer,
     chainingUpdateMode,
-    editingItemId,
-    editingText,
     handleTextChange,
     handleAddText,
     handleFileChange,
-    handleDeleteItem,
     handleClearItems,
-    handleUpdateChainingMode: handleChainingModeChange,
-    handleMoveChainingItem,
-    handleStartEditingTextItem,
-    handleEditingTextChange,
-    handleFinishEditingTextItem,
-    handleCancelEditingTextItem,
     label,
   } = useInputNodeData({ nodeId: id });
   
@@ -68,7 +51,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
       node.id === updatedNodeId ? { ...node, data: { ...node.data, label: newLabel } } : node
     );
     setNodes(updatedNodes);
-  }, [currentNodes, setZustandNodeContent, setNodes]);
+  }, [currentNodes, setZustandNodeContent]);
 
   // Run handler - Simplified
   const handleRun = useCallback(() => {
@@ -258,26 +241,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                  </div>
                )}
             </div>
-
-            {/* Note: The full item list (InputItemList) is intended for the sidebar */}
-            {/* We pass necessary props here if needed, but rendering is likely in a sidebar component */} 
-            {/* Example of passing props (actual rendering might differ): */}
-            {/* 
-            <InputItemList 
-              chainingItems={formattedChainingItems}
-              commonItems={formattedCommonItems}
-              items={formattedItems}
-              onDeleteItem={handleDeleteItem}
-              onMoveItem={handleMoveChainingItem}
-              onStartEditing={handleStartEditingTextItem}
-              onFinishEditing={handleFinishEditingTextItem}
-              onCancelEditing={handleCancelEditingTextItem}
-              onEditingTextChange={handleEditingTextChange}
-              editingItemId={editingItemId}
-              editingText={editingText}
-              disabled={isRunning}
-            />
-            */}
           </div>
         </div>
       </div>
@@ -285,4 +248,4 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   );
 };
 
-export default InputNode; 
+export default InputNode;

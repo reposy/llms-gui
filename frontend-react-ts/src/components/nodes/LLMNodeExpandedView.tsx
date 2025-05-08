@@ -19,6 +19,28 @@ interface LLMNodeExpandedViewProps {
   onToggleView: () => void;
 }
 
+// LLMResult를 ReactNode로 변환하는 함수 추가
+const renderResponseContent = (content: string | any | React.ReactNode): React.ReactNode => {
+  if (content === null || content === undefined) {
+    return <span className="text-gray-400">No result yet.</span>;
+  }
+  
+  if (React.isValidElement(content)) {
+    return content;
+  }
+  
+  if (typeof content === 'string') {
+    return content;
+  }
+  
+  // LLMResult 또는 객체인 경우 JSON으로 변환하여 표시
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch (error) {
+    return String(content);
+  }
+};
+
 export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.memo(({
   id,
   data,
@@ -43,10 +65,14 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     setMode
   } = useLlmNodeData({ nodeId: id });
   
-  const { hasImageInputs } = useNodeConnections(id);
+  const { incoming } = useNodeConnections(id);
   
+  const hasImageInputs = useMemo(() => {
+    return incoming.length > 0;
+  }, [incoming]);
+
   const canEnableVisionMode = useMemo(() => {
-    const hasInputs = hasImageInputs();
+    const hasInputs = hasImageInputs;
     if (DEBUG_LOGS) {
       console.log(`[LLMNodeExpandedView] Node ${id} can${hasInputs ? '' : 'not'} use vision mode (has image inputs: ${hasInputs})`);
     }
@@ -163,11 +189,8 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
         </div>
       </div>
       {/* Result 영역 추가 */}
-      <div className="mt-4">
-        <label className="text-xs font-medium text-gray-600">Result:</label>
-        <div className="llm-node-result border border-gray-200 rounded p-2 min-h-[40px] bg-gray-50 text-xs text-gray-800 overflow-hidden line-clamp-3">
-          {responseContent ? responseContent : <span className="text-gray-400">No result yet.</span>}
-        </div>
+      <div className="mt-3 text-sm font-mono p-2 bg-gray-100 rounded max-h-[150px] overflow-auto">
+        {renderResponseContent(responseContent)}
       </div>
     </div>
   );

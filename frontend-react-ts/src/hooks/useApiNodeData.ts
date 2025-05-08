@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useNodeContent, APINodeContent, useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
-import { HTTPMethod, RequestBodyType, APIResponse } from '../types/nodes';
+import { HTTPMethod, RequestBodyType, APIResponse, APINodeContent } from '../types/nodes';
 import { isValidUrl } from '../utils/web/urlUtils';
 
 /**
@@ -13,110 +13,102 @@ export const useApiNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Use the general NodeContent hook with correct type and nodeType
-  const { 
-    content: generalContent, 
-    updateContent,
-  } = useNodeContent(nodeId, 'api') as { content: APINodeContent, updateContent: (updates: Partial<APINodeContent>) => void };
-
-  // Get isDirty status directly from the store
-  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
-
-  // Cast the general content to APINodeContent type
-  const content = generalContent as APINodeContent;
+  // Get the content using proper selector pattern with callback
+  const content = useNodeContentStore(
+    useCallback(
+      (state) => state.getNodeContent(nodeId, 'api') as APINodeContent,
+      [nodeId]
+    )
+  );
+  
+  // Get the setNodeContent function
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
   // Destructure content for easier access, providing defaults
-  const url = content.url || '';
-  const method = content.method || 'GET';
-  const label = content.label || 'API Call';
-  const requestBodyType = content.requestBodyType || 'none';
-  const requestBody = content.requestBody || '';
-  const requestHeaders = content.requestHeaders || {};
-  const response = content.response; 
-  const statusCode = content.statusCode;
-  const executionTime = content.executionTime;
-  const errorMessage = content.errorMessage;
-  const isRunning = content.isRunning || false;
+  const url = content?.url || '';
+  const method = content?.method || 'GET';
+  const label = content?.label || 'API Call';
+  const requestBodyType = content?.requestBodyType || 'none';
+  const requestBody = content?.requestBody || '';
+  const requestHeaders = content?.requestHeaders || {};
+  const response = content?.response; 
+  const statusCode = content?.statusCode;
+  const executionTime = content?.executionTime;
+  const errorMessage = content?.errorMessage;
+  const isRunning = content?.isRunning || false;
 
-  // const { setNodes } = useReactFlow<APINodeContent>(); // Removed unused hook causing type error
   const lastRunTimeRef = useRef<number | null>(null);
   
   /**
-   * Deep equality checks to prevent unnecessary updates
+   * Update content with deep equality check to prevent unnecessary updates
    */
-  const updateContentIfChanged = useCallback((updates: Partial<APINodeContent>) => {
+  const updateApiContent = useCallback((updates: Partial<APINodeContent>) => {
+    // Check if any individual updates differ from current values
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof APINodeContent];
       return !isEqual(currentValue, value);
     });
     
     if (!hasChanges) {
-      console.log(`[APINode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    const newContent = { ...content, ...updates };
-
-    if (isEqual(newContent, content)) {
-      console.log(`[APINode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      console.log(`[APINode ${nodeId}] Skipping content update - no changes (deep equal)`);
       return;
     }
     
     console.log(`[APINode ${nodeId}] Updating content with:`, updates);
-    updateContent(updates);
-  }, [nodeId, content, updateContent]);
+    setNodeContent(nodeId, updates);
+  }, [nodeId, content, setNodeContent]);
 
   // Specific event handlers using the central updater
   const handleUrlChange = useCallback((newUrl: string) => {
-    updateContentIfChanged({ url: newUrl });
-  }, [updateContentIfChanged]);
+    updateApiContent({ url: newUrl });
+  }, [updateApiContent]);
   
   const handleMethodChange = useCallback((newMethod: HTTPMethod) => {
-    updateContentIfChanged({ method: newMethod });
-  }, [updateContentIfChanged]);
+    updateApiContent({ method: newMethod });
+  }, [updateApiContent]);
 
   const handleLabelChange = useCallback((newLabel: string) => {
-    updateContentIfChanged({ label: newLabel });
-  }, [updateContentIfChanged]);
+    updateApiContent({ label: newLabel });
+  }, [updateApiContent]);
 
   const handleRequestBodyTypeChange = useCallback((newType: RequestBodyType) => {
-    updateContentIfChanged({ requestBodyType: newType });
-  }, [updateContentIfChanged]);
+    updateApiContent({ requestBodyType: newType });
+  }, [updateApiContent]);
   
   const handleRequestBodyChange = useCallback((newBody: string) => {
-    updateContentIfChanged({ requestBody: newBody });
-  }, [updateContentIfChanged]);
+    updateApiContent({ requestBody: newBody });
+  }, [updateApiContent]);
 
   const handleHeadersChange = useCallback((newHeaders: Record<string, string>) => {
-    updateContentIfChanged({ requestHeaders: newHeaders });
-  }, [updateContentIfChanged]);
+    updateApiContent({ requestHeaders: newHeaders });
+  }, [updateApiContent]);
 
   const handleResponseChange = useCallback((newResponse: APIResponse | null) => {
-    updateContentIfChanged({ response: newResponse });
-  }, [updateContentIfChanged]);
+    updateApiContent({ response: newResponse });
+  }, [updateApiContent]);
 
   const handleStatusCodeChange = useCallback((newStatusCode: number | null) => {
-    updateContentIfChanged({ statusCode: newStatusCode });
-  }, [updateContentIfChanged]);
+    updateApiContent({ statusCode: newStatusCode });
+  }, [updateApiContent]);
 
   const handleExecutionTimeChange = useCallback((newTime: number | null) => {
-    updateContentIfChanged({ executionTime: newTime });
-  }, [updateContentIfChanged]);
+    updateApiContent({ executionTime: newTime });
+  }, [updateApiContent]);
 
   const handleErrorMessageChange = useCallback((newError: string | null) => {
-    updateContentIfChanged({ errorMessage: newError });
-  }, [updateContentIfChanged]);
+    updateApiContent({ errorMessage: newError });
+  }, [updateApiContent]);
 
   const setIsRunning = useCallback((running: boolean) => {
-    updateContentIfChanged({ isRunning: running });
-  }, [updateContentIfChanged]);
+    updateApiContent({ isRunning: running });
+  }, [updateApiContent]);
 
   /**
    * Trigger API execution (implementation likely uses worker or backend call)
    */
   const executeApiCall = useCallback(async () => {
     if (!isValidUrl(url)) {
-      updateContentIfChanged({ 
+      updateApiContent({ 
         errorMessage: 'Invalid URL',
         isRunning: false,
         response: null,
@@ -131,7 +123,7 @@ export const useApiNodeData = ({
     }
 
     setIsRunning(true);
-    updateContentIfChanged({ 
+    updateApiContent({ 
       errorMessage: null, 
       response: null, 
       statusCode: null, 
@@ -150,7 +142,7 @@ export const useApiNodeData = ({
       const simulatedStatusCode = 200;
       const simulatedTime = Date.now() - (lastRunTimeRef.current ?? Date.now());
       
-      updateContentIfChanged({
+      updateApiContent({
         response: simulatedResponse,
         statusCode: simulatedStatusCode,
         executionTime: simulatedTime,
@@ -158,21 +150,10 @@ export const useApiNodeData = ({
         isRunning: false,
       });
       console.log(`[APINode ${nodeId}] API call successful.`);
-
-      // Trigger visual update/feedback if needed (REMOVED _flash logic)
-      // setNodes((nds: Node<APINodeContent>[]) => nds.map((n: Node<APINodeContent>) => {
-      //   if (n.id === nodeId) {
-      //     // Ensure data merging preserves existing data
-      //     const updatedData = { ...n.data, _flash: Date.now() };
-      //     return { ...n, data: updatedData }; // Add flash trigger
-      //   }
-      //   return n;
-      // }));
-
     } catch (error) {
       console.error(`[APINode ${nodeId}] API call failed:`, error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      updateContentIfChanged({
+      updateApiContent({
         errorMessage: message,
         response: null,
         statusCode: null,
@@ -181,8 +162,7 @@ export const useApiNodeData = ({
       });
     }
   }, [
-    nodeId, url, method, requestBodyType, requestBody, requestHeaders, 
-    updateContentIfChanged, setIsRunning, isRunning, /* setNodes, */ content
+    nodeId, url, method, isRunning, updateApiContent, setIsRunning
   ]);
   
   // Effect to potentially clear 'isRunning' if component unmounts unexpectedly
@@ -213,8 +193,7 @@ export const useApiNodeData = ({
     executionTime,
     errorMessage,
     isRunning,
-    // isDirty: isContentDirty, // Removed
-
+    
     // Event Handlers / Updaters
     handleUrlChange,
     handleMethodChange,
@@ -226,7 +205,7 @@ export const useApiNodeData = ({
     handleStatusCodeChange,
     handleExecutionTimeChange,
     handleErrorMessageChange,
-    updateContent: updateContentIfChanged,
+    updateContent: updateApiContent,
     setIsRunning,
 
     // Actions

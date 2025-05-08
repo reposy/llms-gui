@@ -124,14 +124,14 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
         <div className="flex space-x-1">
           <Button
             onClick={() => handleUpdateRule(index, 'name', rule.name)}
-            size="xs"
+            size="sm"
             className="text-blue-600 hover:text-blue-800"
           >
             <Icons.penLine className="h-4 w-4" />
           </Button>
           <Button
             onClick={() => handleDeleteRule(index)}
-            size="xs"
+            size="sm"
             className="text-red-600 hover:text-red-800"
           >
             <Icons.trash className="h-4 w-4" />

@@ -1,110 +1,140 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { useNodeContentStore } from '../store/useNodeContentStore';
 import { LLMNodeContent, LLMMode } from '../types/nodes';
+import { isEqual } from 'lodash';
 
 /**
- * Simplified hook for LLM node data - minimal implementation that just connects to the store
+ * Custom hook to manage LLM node state and operations using Zustand store.
+ * Centralizes logic for LLMNode component.
  */
 export const useLlmNodeData = ({ 
   nodeId
 }: { 
   nodeId: string
 }) => {
-  // Remove shallow from this call as well
+  // Use the content selector pattern consistent with other hooks
   const content = useNodeContentStore(
-    state => state.contents[nodeId] || {},
-  ) as LLMNodeContent;
-  
-  // And remove shallow from this call
-  const updateContent = useNodeContentStore(
-    state => state.setNodeContent,
+    useCallback(
+      (state) => state.getNodeContent(nodeId, 'llm') as LLMNodeContent,
+      [nodeId]
+    )
   );
   
-  // Memoize extracted values to prevent recreation
-  const values = useMemo(() => ({
-    prompt: content.prompt || '',
-    model: content.model || '',
-    temperature: content.temperature ?? 0.7,
-    provider: content.provider || 'ollama',
-    ollamaUrl: content.ollamaUrl || 'http://localhost:11434',
-    openaiApiKey: content.openaiApiKey || '',
-    mode: content.mode || 'text',
-    label: content.label || 'LLM Node',
-    responseContent: content.content || ''
-  }), [content]);
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+
+  // Destructure content with defaults for easier access
+  const prompt = content?.prompt || '';
+  const model = content?.model || '';
+  const temperature = content?.temperature ?? 0.7;
+  const provider = content?.provider || 'ollama';
+  const ollamaUrl = content?.ollamaUrl || 'http://localhost:11434';
+  const openaiApiKey = content?.openaiApiKey || '';
+  const mode = content?.mode || 'text';
+  const label = content?.label || 'LLM Node';
+  const responseContent = content?.responseContent || '';
+
+  /**
+   * Update content with deep equality check to prevent unnecessary updates
+   */
+  const updateLlmContent = useCallback((updates: Partial<LLMNodeContent>) => {
+    const hasChanges = Object.entries(updates).some(([key, value]) => {
+      const currentValue = content[key as keyof LLMNodeContent];
+      return !isEqual(currentValue, value);
+    });
+    
+    if (!hasChanges) {
+      console.log(`[LLMNode ${nodeId}] Skipping content update - no changes (deep equal)`);
+      return;
+    }
+    
+    console.log(`[LLMNode ${nodeId}] Updating content with:`, updates);
+    setNodeContent(nodeId, updates);
+  }, [nodeId, content, setNodeContent]);
 
   /**
    * Handle prompt change
    */
   const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateContent(nodeId, { prompt: event.target.value });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ prompt: event.target.value });
+  }, [updateLlmContent]);
 
   /**
    * Handle model change
    */
   const handleModelChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { model: event.target.value });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ model: event.target.value });
+  }, [updateLlmContent]);
 
   /**
    * Handle temperature change
    */
   const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { temperature: parseFloat(event.target.value) });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ temperature: parseFloat(event.target.value) });
+  }, [updateLlmContent]);
 
   /**
    * Set temperature directly
    */
   const setTemperature = useCallback((newTemperature: number) => {
-    updateContent(nodeId, { temperature: newTemperature });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ temperature: newTemperature });
+  }, [updateLlmContent]);
 
   /**
    * Handle provider change
    */
   const handleProviderChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    updateContent(nodeId, { provider: event.target.value as 'ollama' | 'openai' });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ provider: event.target.value as 'ollama' | 'openai' });
+  }, [updateLlmContent]);
 
   /**
    * Set provider directly
    */
   const setProvider = useCallback((newProvider: 'ollama' | 'openai') => {
-    updateContent(nodeId, { provider: newProvider });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ provider: newProvider });
+  }, [updateLlmContent]);
 
   /**
    * Handle Ollama URL change
    */
   const handleOllamaUrlChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { ollamaUrl: event.target.value });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ ollamaUrl: event.target.value });
+  }, [updateLlmContent]);
 
   /**
    * Handle OpenAI API key change
    */
   const handleOpenaiApiKeyChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { openaiApiKey: event.target.value });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ openaiApiKey: event.target.value });
+  }, [updateLlmContent]);
 
   /**
    * Handle mode change
    */
   const handleModeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    updateContent(nodeId, { mode: event.target.value as LLMMode });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ mode: event.target.value as LLMMode });
+  }, [updateLlmContent]);
 
   /**
    * Set mode directly
    */
   const setMode = useCallback((newMode: LLMMode) => {
-    updateContent(nodeId, { mode: newMode });
-  }, [updateContent, nodeId]);
+    updateLlmContent({ mode: newMode });
+  }, [updateLlmContent]);
 
-  // Memoize the handlers
-  const handlers = useMemo(() => ({
+  return {
+    // Data
+    content,
+    prompt,
+    model,
+    temperature,
+    provider,
+    ollamaUrl,
+    openaiApiKey,
+    mode,
+    label,
+    responseContent,
+    
+    // Event handlers
     handlePromptChange,
     handleModelChange,
     handleTemperatureChange,
@@ -115,17 +145,8 @@ export const useLlmNodeData = ({
     handleOpenaiApiKeyChange,
     handleModeChange,
     setMode,
-    setContent: (newContent: Partial<LLMNodeContent>) => updateContent(nodeId, newContent)
-  }), [
-    handlePromptChange, handleModelChange, handleTemperatureChange, 
-    setTemperature, handleProviderChange, setProvider, 
-    handleOllamaUrlChange, handleOpenaiApiKeyChange, 
-    handleModeChange, setMode, updateContent, nodeId
-  ]);
-
-  // Return combined values and handlers with proper memoization
-  return {
-    ...values,
-    ...handlers
+    
+    // Direct update method
+    updateContent: updateLlmContent
   };
 }; 

@@ -6,7 +6,7 @@ import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
 import { NodeData, NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
-import { createNewNode, calculateNodePosition, getRootNodeIds } from '../utils/flow/flowUtils';
+import { createNewNode, calculateNodePosition, getRootNodeIds, getRootNodeIdsWithTypeConversion } from '../utils/flow/flowUtils';
 import { setNodeContent, NodeContent, useNodeContentStore } from '../store/useNodeContentStore';
 import { 
   useNodes, 
@@ -99,7 +99,7 @@ export const FlowEditor = () => {
     console.log('[FlowEditor] Run Flow button clicked.');
     
     // 1. Identify all root nodes in the current flow
-    const rootNodeIds = getRootNodeIds(nodes, edges);
+    const rootNodeIds = getRootNodeIdsWithTypeConversion(nodes, edges);
     console.log(`[FlowEditor] Identified ${rootNodeIds.length} root nodes:`, rootNodeIds);
 
     if (rootNodeIds.length === 0) {

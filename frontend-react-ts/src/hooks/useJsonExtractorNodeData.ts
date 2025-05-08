@@ -1,113 +1,73 @@
 import { useCallback } from 'react';
-import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-import { useNodeContentStore, NodeContent, JSONExtractorNodeContent } from '../store/useNodeContentStore'; // Import main store and types
-// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
+import { useNodeContentStore, JSONExtractorNodeContent } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
-// import { Node as ReactFlowNode } from '@xyflow/react'; // Removed ReactFlowNode dependency
-import { JSONExtractorNodeData } from '../types/nodes'; // Keep type if needed elsewhere
 
 /**
  * Custom hook to manage JSON Extractor node state and operations.
- * All state (label, path, defaultValue, result/content) is managed via useNodeContentStore.
+ * All state is managed via useNodeContentStore.
  */
-export const useJsonExtractorNodeData = ({
-  nodeId
-}: {
-  nodeId: string
-}) => {
-  // --- Content Store Access (Unified State Management) ---
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
-
-  // Use a selector with shallow comparison to get the entire content object
+export const useJsonExtractorNodeData = (nodeId: string) => {
+  // Get the content using proper selector pattern
   const content = useNodeContentStore(
     useCallback(
-      (state) => state.getNodeContent<JSONExtractorNodeContent>(nodeId, 'json-extractor'), // Get JSON Extractor specific content
+      (state) => state.getNodeContent(nodeId, 'json-extractor') as JSONExtractorNodeContent,
       [nodeId]
-    ),
-    shallow // Use shallow comparison
+    )
   );
+  
+  // Get the setNodeContent function
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId)); // Removed: Use useDirtyTracker instead
-
-  // --- Derived State (from content store) ---
-  // Provide defaults directly when accessing
+  // Extract properties with defaults for safety
   const path = content?.path || '';
-  const label = content?.label || 'JSON Extractor Node';
-  const defaultValue = content?.defaultValue || '';
-  const result = content?.content; // The extracted result is stored in the generic 'content' field
-  const jsonPath = content?.path || '';
-  const outputContentType = content?.outputContentType || '';
+  const label = content?.label || 'JSON Extractor';
+  const defaultValue = content?.defaultValue; // Optional, no default
 
   /**
-   * Utility function to update content in the store, ensuring defaults and types.
+   * Update content with deep equality check to prevent unnecessary updates
    */
-  const updateExtractorContent = useCallback((updates: Partial<Omit<JSONExtractorNodeContent, keyof NodeContent | 'isDirty' | 'content'>>) => {
-    const currentContent = useNodeContentStore.getState().getNodeContent<JSONExtractorNodeContent>(nodeId, 'json-extractor');
-    // Filter out the 'content' field from updates as it's managed separately (result)
-    const newContent: Partial<JSONExtractorNodeContent> = { ...currentContent, ...updates };
-
-    if (!isEqual(currentContent, newContent)) {
-        console.log(`[useJsonExtractorNodeData ${nodeId}] Updating config content with:`, updates);
-        setNodeContent<JSONExtractorNodeContent>(nodeId, newContent);
-    } else {
-        console.log(`[useJsonExtractorNodeData ${nodeId}] Skipping config content update - no changes (deep equal).`);
+  const updateExtractorContent = useCallback((updates: Partial<JSONExtractorNodeContent>) => {
+    // Check if any individual updates differ from current values
+    const hasChanges = Object.entries(updates).some(([key, value]) => {
+      const currentValue = content[key as keyof JSONExtractorNodeContent];
+      return !isEqual(currentValue, value);
+    });
+    
+    if (!hasChanges) {
+      console.log(`[JSONExtractorNode ${nodeId}] Skipping content update - no changes (deep equal)`);
+      return;
     }
-  }, [nodeId, setNodeContent]);
+    
+    console.log(`[JSONExtractorNode ${nodeId}] Updating content with:`, updates);
+    setNodeContent(nodeId, updates);
+  }, [nodeId, content, setNodeContent]);
 
-
-  /**
-   * Handle path configuration change
-   */
+  // Change handlers using the central updater
   const handlePathChange = useCallback((newPath: string) => {
     updateExtractorContent({ path: newPath });
   }, [updateExtractorContent]);
 
-  /**
-   * Handle label configuration change
-   */
-   const handleLabelChange = useCallback((newLabel: string) => {
+  const handleLabelChange = useCallback((newLabel: string) => {
     updateExtractorContent({ label: newLabel });
-   }, [updateExtractorContent]);
+  }, [updateExtractorContent]);
 
-   /**
-    * Handle defaultValue configuration change
-    */
-   const handleDefaultValueChange = useCallback((newDefaultValue: string) => {
+  const handleDefaultValueChange = useCallback((newDefaultValue: any) => {
     updateExtractorContent({ defaultValue: newDefaultValue });
-   }, [updateExtractorContent]);
-
-  /**
-   * Handle the extracted result content update (called by the execution logic)
-   */
-  const handleResultChange = useCallback((newResult: any) => {
-      console.log(`[useJsonExtractorNodeData ${nodeId}] Updating result content.`);
-      // Only update the 'content' field which represents the result
-      setNodeContent<JSONExtractorNodeContent>(nodeId, { content: newResult });
-  }, [nodeId, setNodeContent]);
-
+  }, [updateExtractorContent]);
 
   return {
-    // Configuration Data (from nodeContentStore)
+    // Data
+    content,
     path,
     label,
     defaultValue,
-    jsonPath,
-    content,
-    outputContentType,
-
-    // Result Data (from nodeContentStore.content)
-    result,
-
-    // Configuration Change Handlers
+    
+    // Change Handlers
     handlePathChange,
     handleLabelChange,
     handleDefaultValueChange,
-    // handleConfigChange, // Removed
-
-    // Result Update Handler (optional, if needed by UI)
-    handleResultChange,
-
-    // Provide the unified config update function if direct partial updates are needed
-    // updateConfig: updateExtractorContent
+    
+    // Direct update method
+    updateContent: updateExtractorContent
   };
 }; 

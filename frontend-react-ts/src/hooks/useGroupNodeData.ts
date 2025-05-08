@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { useNodeContent, GroupNodeContent, useNodeContentStore, createDefaultNodeContent } from '../store/useNodeContentStore';
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { GroupNodeContent } from '../types/nodes';
 import { isEqual } from 'lodash';
 
 /**
@@ -11,65 +12,53 @@ export const useGroupNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  const contentSelector = useCallback(
-    (state) => state.getNodeContent(nodeId, 'group') as GroupNodeContent,
-    [nodeId]
+  // Get the content directly from store with proper typing
+  const content = useNodeContentStore(
+    useCallback(
+      (state) => state.getNodeContent(nodeId, 'group') as GroupNodeContent,
+      [nodeId]
+    )
   );
-  const content = useNodeContentStore(contentSelector);
+  
+  // Get the setNodeContent function
+  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Use optional chaining for safety
+  // Extract properties with defaults for safety
   const isCollapsed = content?.isCollapsed || false;
-  const label = content?.label || ''; // Get the current label
-
-  const updateContent = useNodeContentStore(state => state.setNodeContent);
-
-  // Ensure content is defined and provide defaults defensively
-  const contentFromHook = content || createDefaultNodeContent('group', nodeId) as GroupNodeContent;
+  const label = content?.label || '';
 
   /**
-   * Handle label change to match EditableNodeLabel signature
-   */
-  const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
-    console.log(`[GroupNode ${nodeId}] Handling label change with new label:`, newLabel);
-    updateContent(nodeId, { label: newLabel });
-  }, [nodeId, updateContent]);
-
-  /**
-   * Toggle collapse state with deep equality check
-   */
-  const toggleCollapse = useCallback(() => {
-    const newCollapsed = !isCollapsed;
-    if (isEqual(newCollapsed, isCollapsed)) {
-      console.log(`[GroupNode ${nodeId}] Skipping collapse toggle - no change (deep equal)`);
-      return;
-    }
-    updateContent(nodeId, { isCollapsed: newCollapsed });
-  }, [nodeId, isCollapsed, updateContent]);
-
-  /**
-   * Update multiple properties at once with deep equality check
+   * Update content with deep equality check to prevent unnecessary updates
    */
   const updateGroupContent = useCallback((updates: Partial<GroupNodeContent>) => {
+    // Check if any individual updates differ from current values
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof GroupNodeContent];
       return !isEqual(currentValue, value);
     });
     
     if (!hasChanges) {
-      console.log(`[GroupNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    const newContent = { ...content, ...updates };
-
-    if (isEqual(newContent, content)) {
-      console.log(`[GroupNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      console.log(`[GroupNode ${nodeId}] Skipping content update - no changes (deep equal)`);
       return;
     }
     
     console.log(`[GroupNode ${nodeId}] Updating content with:`, updates);
-    updateContent(nodeId, updates);
-  }, [nodeId, content, updateContent]);
+    setNodeContent(nodeId, updates);
+  }, [nodeId, content, setNodeContent]);
+
+  /**
+   * Handle label change to match EditableNodeLabel signature
+   */
+  const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
+    updateGroupContent({ label: newLabel });
+  }, [updateGroupContent]);
+
+  /**
+   * Toggle collapse state
+   */
+  const toggleCollapse = useCallback(() => {
+    updateGroupContent({ isCollapsed: !isCollapsed });
+  }, [isCollapsed, updateGroupContent]);
 
   return {
     // Data
@@ -80,6 +69,6 @@ export const useGroupNodeData = ({
     // Event handlers
     handleLabelChange,
     toggleCollapse,
-    updateGroupContent,
+    updateContent: updateGroupContent,
   };
 }; 

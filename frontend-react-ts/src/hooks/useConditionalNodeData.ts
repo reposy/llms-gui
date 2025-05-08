@@ -12,70 +12,54 @@ export const useConditionalNodeData = ({
 }: { 
   nodeId: string
 }) => {
-  // Get the content directly from store
-  const content = useNodeContentStore(state => 
-    state.getNodeContent(nodeId, 'conditional')
-  ) as ConditionalNodeContent;
+  // Get the content using proper selector pattern
+  const content = useNodeContentStore(
+    useCallback(
+      (state) => state.getNodeContent(nodeId, 'conditional') as ConditionalNodeContent,
+      [nodeId]
+    )
+  );
   
   // Get the setNodeContent function
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
 
-  // Destructure content for easier access
-  const conditionType = content.conditionType || 'contains';
-  const conditionValue = content.conditionValue || '';
-  const label = content.label || 'Conditional Node';
-
-  // Helper function to update content
-  const updateContent = useCallback((updates: Partial<ConditionalNodeContent>) => {
-    setNodeContent(nodeId, updates);
-  }, [nodeId, setNodeContent]);
+  // Extract properties with defaults for safety
+  const conditionType = content?.conditionType || 'contains';
+  const conditionValue = content?.conditionValue || '';
+  const label = content?.label || 'Conditional Node';
 
   /**
-   * Handle condition type change with deep equality check
-   */
-  const handleConditionTypeChange = useCallback((newType: ConditionType) => {
-    if (isEqual(newType, conditionType)) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping condition type update - no change (deep equal)`);
-      return;
-    }
-    updateContent({ conditionType: newType });
-  }, [nodeId, conditionType, updateContent]);
-
-  /**
-   * Handle condition value change with deep equality check
-   */
-  const handleValueChange = useCallback((newValue: string) => {
-    if (isEqual(newValue, conditionValue)) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping condition value update - no change (deep equal)`);
-      return;
-    }
-    updateContent({ conditionValue: newValue });
-  }, [nodeId, conditionValue, updateContent]);
-
-  /**
-   * Update multiple properties at once with deep equality check
+   * Update content with deep equality check to prevent unnecessary updates
    */
   const updateConditionalContent = useCallback((updates: Partial<ConditionalNodeContent>) => {
+    // Check if any individual updates differ from current values
     const hasChanges = Object.entries(updates).some(([key, value]) => {
       const currentValue = content[key as keyof ConditionalNodeContent];
       return !isEqual(currentValue, value);
     });
     
     if (!hasChanges) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    const newContent = { ...content, ...updates };
-
-    if (isEqual(newContent, content)) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
+      console.log(`[ConditionalNode ${nodeId}] Skipping content update - no changes (deep equal)`);
       return;
     }
     
     console.log(`[ConditionalNode ${nodeId}] Updating content with:`, updates);
-    updateContent(updates);
-  }, [nodeId, content, updateContent]);
+    setNodeContent(nodeId, updates);
+  }, [nodeId, content, setNodeContent]);
+
+  /**
+   * Handle condition type change
+   */
+  const handleConditionTypeChange = useCallback((newType: ConditionType) => {
+    updateConditionalContent({ conditionType: newType });
+  }, [updateConditionalContent]);
+
+  /**
+   * Handle condition value change
+   */
+  const handleValueChange = useCallback((newValue: string) => {
+    updateConditionalContent({ conditionValue: newValue });
+  }, [updateConditionalContent]);
 
   return {
     // Data
@@ -87,6 +71,6 @@ export const useConditionalNodeData = ({
     // Event handlers
     handleConditionTypeChange,
     handleValueChange,
-    updateConditionalContent,
+    updateContent: updateConditionalContent,
   };
 }; 

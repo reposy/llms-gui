@@ -6,6 +6,9 @@ import { NodeData } from '../types/nodes';
 import { createIDBStorage } from '../utils/storage/idbStorage';
 import { shallow } from 'zustand/shallow';
 
+// 로깅 설정 - 자세한 로그를 보고 싶을 때 true로 설정
+const VERBOSE_LOGGING = false;
+
 // Type for the store
 interface FlowStructureState {
   nodes: Node<NodeData>[];
@@ -69,10 +72,13 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
       // React Flow change handlers implementation
       onNodesChange: (changes: NodeChange[]) => {
         set({
-          nodes: applyNodeChanges(changes, get().nodes),
+          nodes: applyNodeChanges(changes, get().nodes as any) as any,
         });
+        // 필요한 경우 변경 사항 로깅
         // Optionally log changes
-        // console.log('Nodes changed:', changes);
+        if (VERBOSE_LOGGING) {
+          console.log(`[FlowStructureStore] Applied ${changes.length} node changes`);
+        }
       },
       
       onEdgesChange: (changes: EdgeChange[]) => {
@@ -136,3 +142,8 @@ export const onEdgesChange = (changes: EdgeChange[]) => useFlowStructureStore.ge
 export const useNodes = () => useFlowStructureStore(state => state.nodes);
 export const useEdges = () => useFlowStructureStore(state => state.edges);
 export const useSelectedNodeIds = () => useFlowStructureStore(state => state.selectedNodeIds);
+
+// 타입 변환을 추가하여 호환성 문제 해결
+const applyChangesTyped = (changes: NodeChange[], nodes: Node[]) => {
+  return applyNodeChanges(changes, nodes as unknown as Node<NodeData>[]) as unknown as Node[];
+};

@@ -10,7 +10,7 @@ import {
   WebCrawlerNodeContent, 
   APINodeContent, 
   ConditionalNodeContent, 
-  JSONExtractorNodeData, // Note: Assuming JSONExtractor uses NodeData, not Content specific type
+  JSONExtractorNodeData, // Import the data type
   GroupNodeContent, 
   NodeContent, // Import the union type
   HTTPMethod, // Import necessary utility types
@@ -19,6 +19,10 @@ import {
   // FileLikeObject // Appears unused
 } from '../types/nodes'; 
 import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
+
+// Use the JSONExtractorNodeData as JSONExtractorNodeContent for now
+// This ensures compatibility until we create a proper JSONExtractorNodeContent type
+export type JSONExtractorNodeContent = JSONExtractorNodeData;
 
 // Export types for use in other components
 export type {
@@ -30,8 +34,10 @@ export type {
   ConditionalNodeContent,
   GroupNodeContent,
   WebCrawlerNodeContent,
-  JSONExtractorNodeData
 };
+// Export JSONExtractorNodeContent separately to avoid conflicts
+// since we've already defined it as a type in this file
+// No need to re-export it in the type block above
 
 /**
  * Creates the default content for a given node type.

@@ -404,15 +404,15 @@ export function getInputNodes(nodes: Node[], edges: Edge[]): Node[] {
  * @returns Array of root node IDs
  */
 export function getRootNodeIds(nodes: Node<NodeData>[], edges: Edge[]): string[] {
+  // Create a set of all target nodes
   const incomingTargets = new Set(edges.map(edge => edge.target));
-  
-  const rootNodes = nodes.filter(node => {
-    // A node is a root if it has no incoming edges AND it is not inside a group node
-    // (Nodes inside groups are handled by the group execution logic)
-    return !incomingTargets.has(node.id) && !node.parentNode; // Check parentNode for group membership
-  });
 
-  return rootNodes.map(node => node.id);
+  // Filter out nodes that don't have any incoming edges and aren't a child of any node
+  return nodes
+    .filter(node => {
+      return !incomingTargets.has(node.id) && !node.parentId; // Check parentId for group membership
+    })
+    .map(node => node.id);
 }
 
 /**
@@ -540,4 +540,44 @@ export function getChildNodeIdsFromGraph(nodeId: string, graph: Map<string, Grap
 export function getParentNodeIdsFromGraph(nodeId: string, graph: Map<string, GraphNode>): string[] {
   const node = graph.get(nodeId);
   return node ? node.parentIds : [];
+}
+
+// findAllDescendantNodeIds 함수 구현체 추가
+export const findAllDescendantNodeIds = (
+  startNodeId: string,
+  nodes: Node<NodeData>[],
+  edges: Edge[],
+  allNodes: Set<string> = new Set()
+): Set<string> => {
+  // 이미 방문한 노드는 다시 방문하지 않습니다
+  if (allNodes.has(startNodeId)) {
+    return allNodes;
+  }
+  
+  // 현재 노드 추가
+  allNodes.add(startNodeId);
+  
+  // 현재 노드에서 나가는 모든 엣지 찾기
+  const outgoingEdges = edges.filter(edge => edge.source === startNodeId);
+  
+  // 각 타겟 노드에 대해 재귀적으로 후손 노드 찾기
+  for (const edge of outgoingEdges) {
+    findAllDescendantNodeIds(edge.target, nodes, edges, allNodes);
+  }
+  
+  return allNodes;
+};
+
+// 타입 호환성 문제 수정 - Node[] 배열을 Node<NodeData>[] 타입으로 변환하는 방법 추가
+export const getRootNodeIdsWithTypeConversion = (nodes: Node[], edges: Edge[]): string[] => {
+  // 명시적인 타입 변환을 통해 Node[]를 Node<NodeData>[]로 처리
+  const typedNodes = nodes as Node<NodeData>[];
+  return getRootNodeIds(typedNodes, edges);
+};
+
+// findRootNodes 함수에서 getRootNodeIds 호출 부분 변경
+export function findRootNodes(nodes: Node[], edges: Edge[]): Node[] {
+  // 타입 변환 함수 호출로 변경
+  const rootNodeIds = getRootNodeIdsWithTypeConversion(nodes, edges);
+  return nodes.filter(node => rootNodeIds.includes(node.id));
 } 
