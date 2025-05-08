@@ -49,7 +49,7 @@ export class LlmNode extends Node {
         if (typeof item === 'object') return JSON.stringify(item, null, 2);
         return String(item);
       }).join('\n');
-      this.context?.log(`LlmNode(${this.id}): Array input converted to text: ${textInput.substring(0, 100)}...`);
+      this._log(`Array input converted to text: ${textInput.substring(0, 100)}...`);
       return prompt.replace(/\{\{input\}\}/g, textInput);
     } else if (input && typeof input === 'object') {
        try {
@@ -59,11 +59,11 @@ export class LlmNode extends Node {
          } else {
              // For File or FileLikeObject, maybe use a placeholder or filename?
              const fileName = (input as any).name || '[File Input]';
-             this.context?.log(`LlmNode(${this.id}): Replacing {{input}} with file name: ${fileName}`);
+             this._log(`Replacing {{input}} with file name: ${fileName}`);
              return prompt.replace(/\{\{input\}\}/g, fileName); // Or handle differently?
          }
        } catch (e) {
-         this.context?.log(`LlmNode(${this.id}): Failed to stringify object input, using placeholder.`);
+         this._log('Failed to stringify object input, using placeholder.');
          return prompt.replace(/\{\{input\}\}/g, '[Object Input]');
        }
     } else {
@@ -107,7 +107,7 @@ export class LlmNode extends Node {
 
       if (!provider || !model) {
           const errorMsg = "Missing required properties: provider or model.";
-          this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}. Properties were: ${JSON.stringify(this.property)}`);
+          this._log(`Error - ${errorMsg}. Properties were: ${JSON.stringify(this.property)}`);
           return errorMsg;
       }
       return null; // Validation passed
@@ -128,7 +128,7 @@ export class LlmNode extends Node {
 
       // 1. Input is Array
       if (Array.isArray(input)) {
-          this.context?.log(`${this.type}(${this.id}): Input is Array.`);
+          this._log('Input is Array.');
           if (mode === 'vision') {
               const imageFiles: File[] = [];
               input.forEach(item => {
@@ -137,7 +137,7 @@ export class LlmNode extends Node {
                   } else if (item instanceof File && item.type.startsWith('image/')) {
                       imageFiles.push(item);
                   } else if (item instanceof File) {
-                      this.context?.log(`${this.type}(${this.id}): Skipping non-image file in vision mode: ${item.name}`);
+                      this._log(`Skipping non-image file in vision mode: ${item.name}`);
                   }
               });
               inputFileObjects = imageFiles;
@@ -148,14 +148,14 @@ export class LlmNode extends Node {
               } else {
                   finalPrompt = basePrompt; // Use original if no text found
               }
-              this.context?.log(`${this.type}(${this.id}): Vision mode (Array) - Found ${inputFileObjects?.length ?? 0} images, ${textInputs.length} text pieces.`);
+              this._log(`Vision mode (Array) - Found ${inputFileObjects?.length ?? 0} images, ${textInputs.length} text pieces.`);
           } else { // mode === 'text'
               finalPrompt = this.resolvePrompt(input); // resolvePrompt handles array for text mode
           }
 
       // 2. Input is File
       } else if (input instanceof File) {
-          this.context?.log(`${this.type}(${this.id}): Input is File: ${input.name}`);
+          this._log(`Input is File: ${input.name}`);
           if (mode === 'vision') {
               if (input.type.startsWith('image/')) {
                   inputFileObjects = [input];
@@ -166,7 +166,7 @@ export class LlmNode extends Node {
                   textInputs.push(filenameText);
                   finalPrompt = this.resolvePrompt(filenameText);
                   inputFileObjects = []; // No image file to pass
-                  this.context?.log(`${this.type}(${this.id}): Vision mode (File) - Input File is not an image, treating as text.`);
+                  this._log('Vision mode (File) - Input File is not an image, treating as text.');
               }
           } else { // mode === 'text'
               finalPrompt = this.resolvePrompt(input); // resolvePrompt uses filename for text mode
@@ -174,35 +174,35 @@ export class LlmNode extends Node {
 
       // 3. Input is String
       } else if (typeof input === 'string') {
-          this.context?.log(`${this.type}(${this.id}): Input is String.`);
+          this._log('Input is String.');
           textInputs.push(input); // Treat string as text input regardless of mode
           finalPrompt = this.resolvePrompt(input);
           inputFileObjects = []; // Cannot use string as image input
           if (mode === 'vision' && hasImageExtension(input)) {
-               this.context?.log(`${this.type}(${this.id}): Vision mode (String) - Warning: Image path string received, cannot process as image. Treated as text.`);
+               this._log('Vision mode (String) - Warning: Image path string received, cannot process as image. Treated as text.');
           }
 
       // 4. Input is Object (and not File or Array)
       } else if (input && typeof input === 'object') {
-          this.context?.log(`${this.type}(${this.id}): Input is Object.`);
+          this._log('Input is Object.');
           // Treat object as text input (resolvePrompt handles stringification)
           const objectAsString = JSON.stringify(input, null, 2); // Example stringification
           textInputs.push(objectAsString); // Store the stringified version
           finalPrompt = this.resolvePrompt(input);
           inputFileObjects = []; // Cannot use plain object as image input
           if (mode === 'vision') {
-              this.context?.log(`${this.type}(${this.id}): Vision mode (Object) - Treating object as text.`);
+              this._log('Vision mode (Object) - Treating object as text.');
           }
 
       // 5. Other Input Types (null, undefined, number, boolean)
       } else {
-          this.context?.log(`${this.type}(${this.id}): Input is ${typeof input}.`);
+          this._log(`Input is ${typeof input}.`);
           const stringifiedInput = String(input ?? ''); // Convert to string
           textInputs.push(stringifiedInput); // Store the stringified version
           finalPrompt = this.resolvePrompt(input); // resolvePrompt handles stringification
           inputFileObjects = []; // Cannot use this type as image input
           if (mode === 'vision') {
-               this.context?.log(`${this.type}(${this.id}): Vision mode (${typeof input}) - Treating as text.`);
+               this._log(`Vision mode (${typeof input}) - Treating as text.`);
           }
       }
 
@@ -235,11 +235,11 @@ export class LlmNode extends Node {
           }
           // Log if proceeding without images, but text was extracted from non-array/file inputs
           if (!Array.isArray(originalInput) && !(originalInput instanceof File) && textInputs.length > 0) {
-              this.context?.log(`${this.type}(${this.id}): Vision mode proceeding with text only (input was not Array or File).`);
+              this._log('Vision mode proceeding with text only (input was not Array or File).');
           }
           // Log if proceeding without images, but text was extracted from an array
           else if (Array.isArray(originalInput) && textInputs.length > 0) {
-               this.context?.log(`${this.type}(${this.id}): Vision mode proceeding with text only (no images found in array).`);
+               this._log('Vision mode proceeding with text only (no images found in array).');
           }
       }
       // If it's text mode, or vision mode with images/text, validation passes
@@ -254,13 +254,14 @@ export class LlmNode extends Node {
   private _validateAndPrepareNodeConfig(): { mode: 'text' | 'vision'; basePrompt: string } {
     const propError = this._validateRequiredProperties();
     if (propError) {
-      this.context?.log(`${this.type}(${this.id}): Error - ${propError}`);
+      this.context?.markNodeError(this.id, propError);
+      this._log(`Error - ${propError}`);
       throw new Error(propError);
     }
 
     const mode = this.property.mode ?? 'text';
     const basePrompt = this.property.prompt ?? '';
-    this.context?.log(`${this.type}(${this.id}): Config - Mode: ${mode}, Provider: ${this.property.provider}, Model: ${this.property.model}`);
+    this._log(`Config - Mode: ${mode}, Provider: ${this.property.provider}, Model: ${this.property.model}`);
     return { mode, basePrompt };
   }
 
@@ -272,12 +273,13 @@ export class LlmNode extends Node {
    * @returns The formatted result text from the LLM.
    */
   private async _callLlmServiceAndFormatResult(params: LLMRequestParams, originalInput: any): Promise<string> {
-    this.context?.log(`${this.type}(${this.id}): Calling llmService with final prompt: "${params.prompt.substring(0, 50)}..." and ${params.images?.length ?? 0} file object(s).`);
+    this._log(`Calling LLM service with provider: ${params.provider}, model: ${params.model}, mode: ${params.mode}`);
 
     const llmResult = await runLLM(params);
     if (llmResult === null || llmResult === undefined) {
       const errorMsg = 'LLM service returned null or undefined unexpectedly.';
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      this.context?.markNodeError(this.id, errorMsg);
+      this._log(`Error - ${errorMsg}`);
       throw new Error(errorMsg);
     }
 
@@ -285,52 +287,75 @@ export class LlmNode extends Node {
     const prefix = this._getResultPrefix(originalInput); // Prefix based on original input type
     if (prefix) {
       resultText = prefix + resultText;
-      this.context?.log(`${this.type}(${this.id}): Prepended prefix: ${prefix.substring(0, 50)}...`);
+      this._log(`Prepended prefix: ${prefix.substring(0, 50)}...`);
     }
-    this.context?.log(`${this.type}(${this.id}): LLM call successful, result length: ${resultText.length}`);
+    this._log(`LLM call successful, result length: ${resultText.length}`);
     return resultText;
   }
 
   /**
-   * Execute the LLM node
-   * @param input The input to process
-   * @returns The LLM response text or null on error (if error is not thrown)
+   * Main execution method for the LLMNode.
+   * Validates properties, prepares inputs, calls the LLM service, and handles results.
+   * @param input The input data, which can be a string, File, or array of these.
+   * @returns The generated text from the LLM, or null if an error occurs.
    */
   async execute(input: any): Promise<string | null> {
-    this.context?.log(`${this.type}(${this.id}): Entering execute`);
+    this._log('Executing LLMNode');
+
+    const validationError = this._validateRequiredProperties();
+    if (validationError) {
+      this.context?.markNodeError(this.id, validationError);
+      // _log for this error is already in _validateRequiredProperties
+      return null;
+    }
+
+    const config = this._validateAndPrepareNodeConfig();
+    if (!config) { // Error already logged and marked in the helper
+      return null;
+    }
+    const { mode, basePrompt } = config;
+    this._log(`Mode: ${mode}, Base prompt: ${basePrompt.substring(0, 50)}...`);
+
+    const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
+    this._log(`Prepared LLM inputs. Final prompt: ${preparedInputs.finalPrompt.substring(0,50)}..., Images: ${preparedInputs.inputFileObjects?.length ?? 0}`);
+
+    const preparedInputValidationError = this._validatePreparedInputs(mode, input, preparedInputs);
+    if (preparedInputValidationError) {
+      this.context?.markNodeError(this.id, preparedInputValidationError);
+      this._log(`Error after preparing inputs: ${preparedInputValidationError}`);
+      return null;
+    }
+
+    // If vision mode, but no images and no text prompt, it's an issue.
+    if (mode === 'vision' && 
+        (!preparedInputs.inputFileObjects || preparedInputs.inputFileObjects.length === 0) && 
+        (!preparedInputs.finalPrompt || preparedInputs.finalPrompt.trim() === '' || preparedInputs.finalPrompt.trim() === basePrompt.trim())) {
+      const errorMsg = "Vision mode requires at least one image or a non-empty prompt if no images are provided.";
+      this.context?.markNodeError(this.id, errorMsg);
+      this._log(`Error: ${errorMsg}`);
+      return null;
+    }
+
+    const params: LLMRequestParams = {
+      provider: this.property.provider!,
+      model: this.property.model!,
+      prompt: preparedInputs.finalPrompt,
+      temperature: this.property.temperature,
+      maxTokens: this.property.maxTokens,
+      mode: mode, // Pass the determined mode
+      inputFiles: preparedInputs.inputFileObjects, // Pass the File objects for vision
+      ollamaUrl: this.property.ollamaUrl,
+      openaiApiKey: this.property.openaiApiKey,
+    };
 
     try {
-      const { mode, basePrompt } = this._validateAndPrepareNodeConfig();
-      
-      const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
-      
-      const inputValidationError = this._validatePreparedInputs(mode, input, preparedInputs);
-      if (inputValidationError) {
-        this.context?.log(`${this.type}(${this.id}): Error - ${inputValidationError}`);
-        throw new Error(inputValidationError);
-      }
-
-      const { finalPrompt, inputFileObjects } = preparedInputs;
-
-      const llmParams: LLMRequestParams = {
-        provider: this.property.provider!, // Already validated non-null by _validateAndPrepareNodeConfig
-        model: this.property.model!,     // Already validated non-null by _validateAndPrepareNodeConfig
-        prompt: finalPrompt,
-        temperature: this.property.temperature ?? 0.7,
-        ollamaUrl: this.property.ollamaUrl,
-        openaiApiKey: this.property.openaiApiKey,
-        images: inputFileObjects
-      };
-
-      const resultText = await this._callLlmServiceAndFormatResult(llmParams, input);
-      return resultText;
-
+      const result = await this._callLlmServiceAndFormatResult(params, input);
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      // Error logging is already done within the helper methods or Node.process will catch and log
-      // this.context?.log(`${this.type}(${this.id}): Execute failed: ${errorMessage}`);
-      // Node.process will handle marking the node as error.
-      throw error; // Re-throw for Node.process to handle uniformly
+      this.context?.markNodeError(this.id, errorMessage);
+      this._log(`Error during LLM service call: ${errorMessage}`);
+      return null;
     }
   }
 } 

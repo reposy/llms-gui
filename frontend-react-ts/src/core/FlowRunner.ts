@@ -1,12 +1,3 @@
-import { Node as ReactFlowNode, Edge } from '@xyflow/react';
-import { v4 as uuidv4 } from 'uuid';
-import { FlowExecutionContext } from './FlowExecutionContext';
-import { NodeFactory } from './NodeFactory';
-import { getRootNodeIds } from '../utils/flow/flowUtils';
-import { registerAllNodeTypes } from './NodeRegistry';
-import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
-import { NodeData } from '../types/nodes';
-import { getNodeContent } from '../store/useNodeContentStore';
 import { runFullFlowExecution } from './executionUtils'; // Import the new utility
 
 /**
@@ -25,9 +16,6 @@ export class FlowRunner {
    * @deprecated Use runFullFlowExecution from executionUtils instead.
    */
   static async executeFlow(
-    nodes: ReactFlowNode<NodeData>[], // Parameter might become unused
-    edges: Edge[], // Parameter might become unused
-    nodeFactory: NodeFactory, // Parameter might become unused
     startNodeId?: string 
   ): Promise<void> {
     // The core logic is now moved to runFullFlowExecution
@@ -54,8 +42,6 @@ export class FlowRunner {
  * @returns Promise that resolves when the flow execution is complete
  */
 export async function runFlow(
-  nodesFromStore: ReactFlowNode<NodeData | any>[], // Parameter might become unused
-  edges: Edge[], // Parameter might become unused
   startNodeId?: string 
 ): Promise<void> {
   // ... (Type assertion for nodes remains useful if directly used, but maybe not needed) ...
