@@ -1,5 +1,6 @@
 import { Node } from '../../core/Node';
-import { getNodeContent, NodeContent } from '../../store/useNodeContentStore';
+import { getNodeContent } from '../../store/useNodeContentStore';
+import { NodeContent } from '../../types/nodes';
 
 /**
  * 속성 타입별 동기화 처리 함수를 위한 타입 정의
@@ -55,7 +56,8 @@ export function syncNodeProperties(
     } = config;
 
     // 소스 값 가져오기 (스토어 컨텐츠)
-    const sourceValue = content[contentName];
+    // any로 타입 단언하여 인덱스 시그니처 문제 해결
+    const sourceValue = (content as any)[contentName];
     
     // 값이 없고 필수가 아니면 건너뛰기
     if (sourceValue === undefined && !required) continue;

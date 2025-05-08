@@ -1,85 +1,65 @@
 import { useCallback } from 'react';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { createNodeDataHook } from './useNodeDataFactory';
 import { MergerNodeContent } from '../types/nodes';
-import { isEqual } from 'lodash';
+
+/**
+ * Default values for Merger node content
+ */
+const MERGER_DEFAULTS: Partial<MergerNodeContent> = {
+  label: 'Merger Node',
+  mergeMode: 'concat',
+  strategy: 'array',
+  keys: [],
+  items: [],
+  mode: 'default',
+  params: [],
+  result: []
+};
 
 /**
  * Custom hook to manage Merger node state and operations.
- * All state is managed via useNodeContentStore.
+ * Uses the standardized hook factory pattern.
  */
-export const useMergerNodeData = ({
-  nodeId
-}: {
-  nodeId: string
-}) => {
-  // Get the content using proper selector pattern
-  const content = useNodeContentStore(
-    useCallback(
-      (state) => state.getNodeContent(nodeId, 'merger') as MergerNodeContent,
-      [nodeId]
-    )
-  );
-  
-  // Get the setNodeContent function
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+export const useMergerNodeData = ({ nodeId }: { nodeId: string }) => {
+  // Use the factory to create the base hook functionality
+  const { 
+    content, 
+    updateContent: updateMergerContent, 
+    createChangeHandler 
+  } = createNodeDataHook<MergerNodeContent>('merger', MERGER_DEFAULTS)({ nodeId });
 
-  // Provide defaults when accessing properties
-  const label = content?.label || 'Merger Node';
-  const mergeMode = content?.mergeMode || 'concat';
-  const strategy = content?.strategy || 'array';
-  const keys = content?.keys || [];
-  const items = content?.items || [];
-  const itemCount = items.length;
-  const mode = content?.mode || 'default';
-  const params = content?.params || [];
-  const result = content?.result || [];
+  // Extract properties with defaults for easier access
+  const label = content?.label || MERGER_DEFAULTS.label;
+  const mergeMode = content?.mergeMode || MERGER_DEFAULTS.mergeMode;
+  const strategy = content?.strategy || MERGER_DEFAULTS.strategy;
+  const keys = content?.keys || MERGER_DEFAULTS.keys;
+  const items = content?.items || MERGER_DEFAULTS.items;
+  const itemCount = items?.length || 0;
+  const mode = content?.mode || MERGER_DEFAULTS.mode;
+  const params = content?.params || MERGER_DEFAULTS.params;
+  const result = content?.result || MERGER_DEFAULTS.result;
 
-  /**
-   * Update content with deep equality check to prevent unnecessary updates
-   */
-  const updateMergerContent = useCallback((updates: Partial<MergerNodeContent>) => {
-    // Check if any individual updates differ from current values
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof MergerNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[MergerNode ${nodeId}] Skipping content update - no changes (deep equal)`);
-      return;
-    }
-    
-    console.log(`[MergerNode ${nodeId}] Updating content with:`, updates);
-    setNodeContent(nodeId, updates);
-  }, [nodeId, content, setNodeContent]);
-
-  // Change handlers using the central updater
-  const handleLabelChange = useCallback((newLabel: string) => {
-    updateMergerContent({ label: newLabel });
-  }, [updateMergerContent]);
-
-  const handleStrategyChange = useCallback((newStrategy: 'array' | 'object') => {
-    updateMergerContent({ strategy: newStrategy });
-  }, [updateMergerContent]);
-
-  const handleKeysChange = useCallback((newKeys: string[]) => {
-    updateMergerContent({ keys: newKeys });
-  }, [updateMergerContent]);
+  // Create standard change handlers
+  const handleLabelChange = createChangeHandler('label');
+  const handleStrategyChange = createChangeHandler('strategy');
+  const handleKeysChange = createChangeHandler('keys');
 
   /**
    * Add a new item to the accumulated items.
    */
   const addItem = useCallback((item: any) => {
-    const newItems = [...items, item]; 
+    // items가 정의되지 않은 경우 빈 배열로 초기화
+    const currentItems = items || [];
+    const newItems = [...currentItems, item]; 
     console.log(`[MergerNode ${nodeId}] Adding item. New count: ${newItems.length}`);
     updateMergerContent({ items: newItems });
-  }, [nodeId, items, updateMergerContent]); 
+  }, [nodeId, items, updateMergerContent]);
 
   /**
    * Reset all accumulated items.
    */
   const resetItems = useCallback(() => {
-    if (items.length === 0) return;
+    if (!items || items.length === 0) return;
 
     console.log(`[MergerNode ${nodeId}] Resetting ${items.length} items`);
     updateMergerContent({ items: [] });

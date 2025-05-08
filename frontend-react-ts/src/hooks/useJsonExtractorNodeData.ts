@@ -1,59 +1,36 @@
 import { useCallback } from 'react';
-import { useNodeContentStore, JSONExtractorNodeContent } from '../store/useNodeContentStore';
-import { isEqual } from 'lodash';
+import { createNodeDataHook } from './useNodeDataFactory';
+import { JSONExtractorNodeContent } from '../types/nodes';
+
+/**
+ * Default values for JSON Extractor node content
+ */
+const JSON_EXTRACTOR_DEFAULTS: Partial<JSONExtractorNodeContent> = {
+  path: '',
+  label: 'JSON Extractor'
+};
 
 /**
  * Custom hook to manage JSON Extractor node state and operations.
- * All state is managed via useNodeContentStore.
+ * Uses the standardized hook factory pattern.
  */
 export const useJsonExtractorNodeData = (nodeId: string) => {
-  // Get the content using proper selector pattern
-  const content = useNodeContentStore(
-    useCallback(
-      (state) => state.getNodeContent(nodeId, 'json-extractor') as JSONExtractorNodeContent,
-      [nodeId]
-    )
-  );
-  
-  // Get the setNodeContent function
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  // Use the factory to create the base hook functionality
+  const { 
+    content, 
+    updateContent: updateExtractorContent, 
+    createChangeHandler 
+  } = createNodeDataHook<JSONExtractorNodeContent>('json-extractor', JSON_EXTRACTOR_DEFAULTS)({ nodeId });
 
   // Extract properties with defaults for safety
-  const path = content?.path || '';
-  const label = content?.label || 'JSON Extractor';
+  const path = content?.path || JSON_EXTRACTOR_DEFAULTS.path;
+  const label = content?.label || JSON_EXTRACTOR_DEFAULTS.label;
   const defaultValue = content?.defaultValue; // Optional, no default
 
-  /**
-   * Update content with deep equality check to prevent unnecessary updates
-   */
-  const updateExtractorContent = useCallback((updates: Partial<JSONExtractorNodeContent>) => {
-    // Check if any individual updates differ from current values
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof JSONExtractorNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[JSONExtractorNode ${nodeId}] Skipping content update - no changes (deep equal)`);
-      return;
-    }
-    
-    console.log(`[JSONExtractorNode ${nodeId}] Updating content with:`, updates);
-    setNodeContent(nodeId, updates);
-  }, [nodeId, content, setNodeContent]);
-
-  // Change handlers using the central updater
-  const handlePathChange = useCallback((newPath: string) => {
-    updateExtractorContent({ path: newPath });
-  }, [updateExtractorContent]);
-
-  const handleLabelChange = useCallback((newLabel: string) => {
-    updateExtractorContent({ label: newLabel });
-  }, [updateExtractorContent]);
-
-  const handleDefaultValueChange = useCallback((newDefaultValue: any) => {
-    updateExtractorContent({ defaultValue: newDefaultValue });
-  }, [updateExtractorContent]);
+  // Create standard change handlers
+  const handlePathChange = createChangeHandler('path');
+  const handleLabelChange = createChangeHandler('label');
+  const handleDefaultValueChange = createChangeHandler('defaultValue');
 
   return {
     // Data

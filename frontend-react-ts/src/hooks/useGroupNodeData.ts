@@ -1,53 +1,33 @@
 import { useCallback } from 'react';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { createNodeDataHook } from './useNodeDataFactory';
 import { GroupNodeContent } from '../types/nodes';
-import { isEqual } from 'lodash';
 
 /**
- * Custom hook to manage Group node state and operations using Zustand store.
- * Centralizes logic for GroupNode component
+ * Default values for Group node content
  */
-export const useGroupNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Get the content directly from store with proper typing
-  const content = useNodeContentStore(
-    useCallback(
-      (state) => state.getNodeContent(nodeId, 'group') as GroupNodeContent,
-      [nodeId]
-    )
-  );
-  
-  // Get the setNodeContent function
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+const GROUP_DEFAULTS: Partial<GroupNodeContent> = {
+  isCollapsed: false,
+  label: ''
+};
 
-  // Extract properties with defaults for safety
-  const isCollapsed = content?.isCollapsed || false;
-  const label = content?.label || '';
+/**
+ * Custom hook to manage Group node state and operations.
+ * Uses the standardized hook factory pattern.
+ */
+export const useGroupNodeData = ({ nodeId }: { nodeId: string }) => {
+  // Use the factory to create the base hook functionality
+  const { 
+    content, 
+    updateContent: updateGroupContent 
+  } = createNodeDataHook<GroupNodeContent>('group', GROUP_DEFAULTS)({ nodeId });
 
-  /**
-   * Update content with deep equality check to prevent unnecessary updates
-   */
-  const updateGroupContent = useCallback((updates: Partial<GroupNodeContent>) => {
-    // Check if any individual updates differ from current values
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof GroupNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[GroupNode ${nodeId}] Skipping content update - no changes (deep equal)`);
-      return;
-    }
-    
-    console.log(`[GroupNode ${nodeId}] Updating content with:`, updates);
-    setNodeContent(nodeId, updates);
-  }, [nodeId, content, setNodeContent]);
+  // Extract properties with defaults for easier access
+  const isCollapsed = content?.isCollapsed || GROUP_DEFAULTS.isCollapsed;
+  const label = content?.label || GROUP_DEFAULTS.label;
 
   /**
    * Handle label change to match EditableNodeLabel signature
+   * Note: This has a special signature different from standard handlers
    */
   const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
     updateGroupContent({ label: newLabel });

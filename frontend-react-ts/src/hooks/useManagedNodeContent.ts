@@ -2,12 +2,10 @@ import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow';
 import { isEqual } from 'lodash';
 
+import { NodeContent } from '../types/nodes';
 import {
-  NodeContent,
   useNodeContentStore,
-  setNodeContent,
-  // isNodeDirty, // Removed
-  getNodeContent
+  setNodeContent
 } from '../store/useNodeContentStore';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 

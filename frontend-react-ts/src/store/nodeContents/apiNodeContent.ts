@@ -8,13 +8,12 @@ export const createDefaultApiNodeContent = (label?: string): APINodeContent => {
     label: label || 'API Node',
     url: '',
     method: 'GET',
-    headers: {},
-    body: '',
+    requestHeaders: {},
+    requestBody: '',
     queryParams: {},
     useInputAsBody: false,
     contentType: 'application/json',
-    bodyFormat: 'raw',
-    bodyParams: [],
+    requestBodyType: 'none',
     isDirty: false
   };
 };
@@ -44,18 +43,9 @@ export const validateApiNodeContent = (content: APINodeContent): string[] => {
   
   // Validate content type for POST/PUT/PATCH
   if (['POST', 'PUT', 'PATCH'].includes(content.method || '') && 
-      content.bodyFormat === 'raw' && 
+      content.requestBodyType === 'raw' && 
       (!content.contentType || content.contentType.trim() === '')) {
     errors.push('Content type is required when using raw body format');
-  }
-  
-  // Validate body parameters for key-value format
-  if (content.bodyFormat === 'key-value' && content.bodyParams) {
-    for (const param of content.bodyParams) {
-      if (param.enabled && (!param.key || param.key.trim() === '')) {
-        errors.push('All enabled body parameters must have a key');
-      }
-    }
   }
   
   return errors;

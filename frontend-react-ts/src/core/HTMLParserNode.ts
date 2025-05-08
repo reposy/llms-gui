@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { useNodeContentStore } from '../store/useNodeContentStore';
-import { HTMLParserNodeData } from '../types/nodes';
+import { HTMLParserNodeContent } from '../types/nodes';
 
 /**
  * HTML 문자열에서 CSS 선택자를 사용하여 요소를 추출하는 함수
@@ -97,7 +97,7 @@ function getHtmlContentFromInput(input: any, log: (message: string) => void): st
  * WebCrawler 등에서 전달받은 HTML을 파싱하여 구조화된 데이터로 변환
  */
 export class HTMLParserNode extends Node {
-  declare property: HTMLParserNodeData;
+  declare property: HTMLParserNodeContent;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'html-parser', property);
@@ -127,7 +127,7 @@ export class HTMLParserNode extends Node {
     }
 
     // 최신 노드 설정 가져오기
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as HTMLParserNodeData;
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as HTMLParserNodeContent;
     const extractionRules = nodeContent.extractionRules || [];
 
     // If no rules, maybe return the HTML itself or null?

@@ -1,107 +1,61 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useNodeContentStore } from '../store/useNodeContentStore';
-import { isEqual } from 'lodash';
+import { createNodeDataHook } from './useNodeDataFactory';
 import { HTTPMethod, RequestBodyType, APIResponse, APINodeContent } from '../types/nodes';
 import { isValidUrl } from '../utils/web/urlUtils';
 
 /**
- * Custom hook to manage API node state and operations using Zustand store.
- * Centralizes logic for APINode component
+ * Default values for API node content
  */
-export const useApiNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Get the content using proper selector pattern with callback
-  const content = useNodeContentStore(
-    useCallback(
-      (state) => state.getNodeContent(nodeId, 'api') as APINodeContent,
-      [nodeId]
-    )
-  );
-  
-  // Get the setNodeContent function
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+const API_DEFAULTS: Partial<APINodeContent> = {
+  url: '',
+  method: 'GET',
+  label: 'API Call',
+  requestBodyType: 'none',
+  requestBody: '',
+  requestHeaders: {},
+  isRunning: false
+};
 
-  // Destructure content for easier access, providing defaults
-  const url = content?.url || '';
-  const method = content?.method || 'GET';
-  const label = content?.label || 'API Call';
-  const requestBodyType = content?.requestBodyType || 'none';
-  const requestBody = content?.requestBody || '';
-  const requestHeaders = content?.requestHeaders || {};
-  const response = content?.response; 
+/**
+ * Custom hook to manage API node state and operations.
+ * Uses the standardized hook factory pattern.
+ */
+export const useApiNodeData = ({ nodeId }: { nodeId: string }) => {
+  // Use the factory to create the base hook functionality
+  const { 
+    content, 
+    updateContent: updateApiContent, 
+    createChangeHandler,
+    getStoreState 
+  } = createNodeDataHook<APINodeContent>('api', API_DEFAULTS)({ nodeId });
+
+  // Extract properties with defaults for easier access
+  const url = content?.url || API_DEFAULTS.url;
+  const method = content?.method || API_DEFAULTS.method;
+  const label = content?.label || API_DEFAULTS.label;
+  const requestBodyType = content?.requestBodyType || API_DEFAULTS.requestBodyType;
+  const requestBody = content?.requestBody || API_DEFAULTS.requestBody;
+  const requestHeaders = content?.requestHeaders || API_DEFAULTS.requestHeaders;
+  const response = content?.response;
   const statusCode = content?.statusCode;
   const executionTime = content?.executionTime;
   const errorMessage = content?.errorMessage;
-  const isRunning = content?.isRunning || false;
+  const isRunning = content?.isRunning || API_DEFAULTS.isRunning;
 
   const lastRunTimeRef = useRef<number | null>(null);
   
-  /**
-   * Update content with deep equality check to prevent unnecessary updates
-   */
-  const updateApiContent = useCallback((updates: Partial<APINodeContent>) => {
-    // Check if any individual updates differ from current values
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof APINodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[APINode ${nodeId}] Skipping content update - no changes (deep equal)`);
-      return;
-    }
-    
-    console.log(`[APINode ${nodeId}] Updating content with:`, updates);
-    setNodeContent(nodeId, updates);
-  }, [nodeId, content, setNodeContent]);
-
-  // Specific event handlers using the central updater
-  const handleUrlChange = useCallback((newUrl: string) => {
-    updateApiContent({ url: newUrl });
-  }, [updateApiContent]);
-  
-  const handleMethodChange = useCallback((newMethod: HTTPMethod) => {
-    updateApiContent({ method: newMethod });
-  }, [updateApiContent]);
-
-  const handleLabelChange = useCallback((newLabel: string) => {
-    updateApiContent({ label: newLabel });
-  }, [updateApiContent]);
-
-  const handleRequestBodyTypeChange = useCallback((newType: RequestBodyType) => {
-    updateApiContent({ requestBodyType: newType });
-  }, [updateApiContent]);
-  
-  const handleRequestBodyChange = useCallback((newBody: string) => {
-    updateApiContent({ requestBody: newBody });
-  }, [updateApiContent]);
-
-  const handleHeadersChange = useCallback((newHeaders: Record<string, string>) => {
-    updateApiContent({ requestHeaders: newHeaders });
-  }, [updateApiContent]);
-
-  const handleResponseChange = useCallback((newResponse: APIResponse | null) => {
-    updateApiContent({ response: newResponse });
-  }, [updateApiContent]);
-
-  const handleStatusCodeChange = useCallback((newStatusCode: number | null) => {
-    updateApiContent({ statusCode: newStatusCode });
-  }, [updateApiContent]);
-
-  const handleExecutionTimeChange = useCallback((newTime: number | null) => {
-    updateApiContent({ executionTime: newTime });
-  }, [updateApiContent]);
-
-  const handleErrorMessageChange = useCallback((newError: string | null) => {
-    updateApiContent({ errorMessage: newError });
-  }, [updateApiContent]);
-
-  const setIsRunning = useCallback((running: boolean) => {
-    updateApiContent({ isRunning: running });
-  }, [updateApiContent]);
+  // Create standardized change handlers using the factory's createChangeHandler
+  const handleUrlChange = createChangeHandler('url');
+  const handleMethodChange = createChangeHandler('method');
+  const handleLabelChange = createChangeHandler('label');
+  const handleRequestBodyTypeChange = createChangeHandler('requestBodyType');
+  const handleRequestBodyChange = createChangeHandler('requestBody');
+  const handleHeadersChange = createChangeHandler('requestHeaders');
+  const handleResponseChange = createChangeHandler('response');
+  const handleStatusCodeChange = createChangeHandler('statusCode');
+  const handleExecutionTimeChange = createChangeHandler('executionTime');
+  const handleErrorMessageChange = createChangeHandler('errorMessage');
+  const setIsRunning = createChangeHandler('isRunning');
 
   /**
    * Trigger API execution (implementation likely uses worker or backend call)
@@ -169,15 +123,14 @@ export const useApiNodeData = ({
   useEffect(() => {
     return () => {
       // Check if the component is still mounted and if the node still exists
-      const nodeContent = useNodeContentStore.getState().contents[nodeId];
+      const nodeContent = getStoreState().contents[nodeId];
       if (isRunning && nodeContent !== undefined) {
         console.warn(`[APINode ${nodeId}] Unmounting while API call was in progress. Resetting state.`);
         // Use the store's setter directly as the hook's context might be gone
-        useNodeContentStore.getState().setNodeContent(nodeId, { isRunning: false });
+        getStoreState().setNodeContent(nodeId, { isRunning: false });
       }
     };
-  }, [nodeId, isRunning]);
-
+  }, [nodeId, isRunning, getStoreState]);
 
   return {
     // State / Data
