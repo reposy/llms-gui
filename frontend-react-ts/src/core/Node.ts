@@ -66,69 +66,88 @@ export abstract class Node {
   }
 
   /**
-   * Get array of child nodes using the node factory from property
-   * @returns Array of child Node instances
+   * Get array of child nodes using the node factory and the current execution context.
+   * This method ensures that the latest graph structure from the context is used
+   * and attempts to reuse existing node instances from the factory's cache.
+   * 
+   * @returns Array of child Node instances.
    */
   getChildNodes(): Node[] {
-    // Skip if no factory or context
-    const nodeFactory = this.property.nodeFactory;
-    if (!this.context || !nodeFactory) {
-      this.context?.log(`${this.type}(${this.id}): No node factory or context found. Cannot get child nodes.`);
+    // Ensure context and nodeFactory are available
+    if (!this.context || !this.property.nodeFactory) {
+      this.context?.log(`[Node:${this.id}] Context or NodeFactory missing in getChildNodes.`);
       return [];
     }
-    
-    // If we have nodes and edges in property, use those to determine childIds dynamically
-    if (this.property.nodes && this.property.edges) {
-      // this.context?.log(`${this.type}(${this.id}): Using dynamic relationship resolution from edges`); // Verbose log
-      
-      // Get outgoing connections based on the edges
-      const childNodeIds = this.property.edges
-        .filter((edge: any) => edge.source === this.id)
-        .map((edge: any) => edge.target);
-      
-      // this.context?.log(`${this.type}(${this.id}): Found ${childNodeIds.length} child nodes from edges: [${childNodeIds.join(', ')}]`); // Verbose log
-      
-      // Create child node instances
-      return childNodeIds
-        .map((childId: string) => {
-          const nodeData = this.property.nodes.find((n: any) => n.id === childId);
+    const { nodeFactory } = this.context;
+    const currentEdges = this.context.edges;
+    const currentNodes = this.context.nodes;
+
+    // Find child node IDs using edges from the current context
+    const childNodeIds = currentEdges
+      .filter(edge => edge.source === this.id)
+      .map(edge => edge.target);
+
+    if (childNodeIds.length === 0) {
+      // It's normal for leaf nodes to have no children, so log might be too verbose.
+      // Consider logging only if specifically debugging connections.
+      // log(`[Node:${this.id}] No child node IDs found based on current context edges.`);
+      return [];
+    }
+
+    this.context.log(`[Node:${this.id}] Found ${childNodeIds.length} child node ID(s): [${childNodeIds.join(', ')}] based on context edges.`);
+
+    // Attempt to get or create instances for each child ID
+    return childNodeIds
+      .map((childId: string) => {
+        let nodeInstance = nodeFactory.getNode(childId); // Try getting from factory cache first
+
+        if (nodeInstance) {
+          this.context.log(`[Node:${this.id}] Reusing existing instance for child node ${childId}.`);
+          // Ensure the reused instance has the current context if it differs?
+          // This could be complex. Assume factory manages instance lifecycle correctly for now.
+          // Or perhaps the context should be passed during process, not stored long-term in the node?
+          // For now, we just reuse the instance.
+          
+          // Update graph structure in property for reused instance?
+          // This ensures it can find its own children later using the latest structure.
+          nodeInstance.property = {
+            ...nodeInstance.property,
+            // nodes: currentNodes, // Avoid storing large structures if possible
+            // edges: currentEdges,
+            nodeFactory: nodeFactory // Ensure factory is present
+          };
+
+        } else {
+          this.context.log(`[Node:${this.id}] No existing instance found for child ${childId}. Creating new one.`);
+          const nodeData = currentNodes.find((n: any) => n.id === childId);
           if (!nodeData) {
-            this.context?.log(`${this.type}(${this.id}): Child node data not found for ${childId}`);
+            this.context.log(`[Node:${this.id}] Node data for child ${childId} not found in current context nodes.`);
             return null;
           }
-          
-          // Create the node instance with the same factory, nodes, edges
-          const node = nodeFactory.create(
-            nodeData.id,
-            nodeData.type,
-            nodeData.data,
-            this.context // Pass the current context
-          );
-          
-          // Pass along graph structure to the child node
-          node.property = {
-            ...node.property,
-            nodes: this.property.nodes,
-            edges: this.property.edges,
-            nodeFactory: this.property.nodeFactory
-          };
-          
-          return node;
-        })
-        .filter(Boolean) as Node[];
-    }
-    
-    // Fallback to potentially outdated stored childIds (should ideally not happen if graph is passed)
-    this.context?.log(`${this.type}(${this.id}): Warning - Falling back to stored childIds: [${this.childIds.join(', ')}]`);
-    return this.childIds
-      .map(childId => {
-        const node = nodeFactory.getNode(childId); // getNode might not be the right method, create is safer
-        if (!node) {
-          this.context?.log(`${this.type}(${this.id}): Child node ${childId} not found via fallback`);
+          try {
+            nodeInstance = nodeFactory.create(
+              nodeData.id,
+              nodeData.type,
+              nodeData.data,
+              this.context // Pass the current context
+            );
+            // Newly created instance already has nodeFactory injected by create()
+             // and its properties are based on latest store content + reactFlowProps (if needed)
+          } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              this.context.log(`[Node:${this.id}] Error creating child node instance ${childId} (type: ${nodeData?.type}): ${errorMessage}`);
+              return null;
+          }
         }
-        return node;
+        
+        // Ensure the instance has the necessary context info, perhaps just nodeFactory?
+        // Passing full nodes/edges into property might be inefficient.
+        // The instance should ideally use its own context to get nodes/edges when needed.
+        // Let's rely on the context object passed during creation/retrieval for now.
+
+        return nodeInstance;
       })
-      .filter(Boolean) as Node[];
+      .filter((node): node is Node => node !== null); // Use type predicate for filtering nulls
   }
 
   /**

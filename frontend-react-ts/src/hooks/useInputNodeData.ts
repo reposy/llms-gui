@@ -75,7 +75,11 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
    * 처리 모드 (Batch/Foreach) 토글
    */
   const handleToggleProcessingMode = useCallback(() => {
-    updateInputContent({ iterateEachRow: !iterateEachRow });
+    const newIterateEachRow = !iterateEachRow;
+    updateInputContent({
+      iterateEachRow: newIterateEachRow,
+      executionMode: newIterateEachRow ? 'foreach' : 'batch'
+    });
   }, [iterateEachRow, updateInputContent]);
 
   /**

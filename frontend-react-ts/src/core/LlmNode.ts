@@ -1,6 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { LLMNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { LLMNodeContent } from '../types/nodes.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
 import { filterImageFiles, hasImageExtension } from '../utils/data/fileUtils.ts';
@@ -29,7 +30,7 @@ export class LlmNode extends Node {
    */
   private resolvePrompt(input: any): string {
     let prompt = this.property.prompt;
-    const nodeContent = useNodeContentStore.getState().getNodeContent<LLMNodeContent>(this.id, this.type);
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as LLMNodeContent;
     if (nodeContent.prompt) {
       prompt = nodeContent.prompt;
     }
@@ -241,62 +242,90 @@ export class LlmNode extends Node {
   }
 
   /**
-   * Execute the LLM node
-   * @param input The input to process
-   * @returns The LLM response text or null on error
+   * Validates core node properties and prepares initial configuration.
+   * @throws Error if required properties (provider, model) are missing.
+   * @returns Object containing mode and basePrompt.
    */
-  async execute(input: any): Promise<string | null> {
-    this.context?.log(`${this.type}(${this.id}): Entering execute`);
-
-    // 1. Validate required properties
+  private _validateAndPrepareNodeConfig(): { mode: 'text' | 'vision'; basePrompt: string } {
     const propError = this._validateRequiredProperties();
     if (propError) {
-        throw new Error(propError);
+      this.context?.log(`${this.type}(${this.id}): Error - ${propError}`);
+      throw new Error(propError);
     }
 
     const mode = this.property.mode ?? 'text';
     const basePrompt = this.property.prompt ?? '';
-    this.context?.log(`${this.type}(${this.id}): Mode: ${mode}, Provider: ${this.property.provider}, Model: ${this.property.model}`);
+    this.context?.log(`${this.type}(${this.id}): Config - Mode: ${mode}, Provider: ${this.property.provider}, Model: ${this.property.model}`);
+    return { mode, basePrompt };
+  }
 
-    // 2. Prepare inputs based on type and mode
-    const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
+  /**
+   * Calls the LLM service with prepared parameters and formats the result.
+   * @param params The parameters for the LLM service call.
+   * @param originalInput The original input passed to the execute method (used for prefix generation).
+   * @throws Error if LLM service returns null or undefined.
+   * @returns The formatted result text from the LLM.
+   */
+  private async _callLlmServiceAndFormatResult(params: LLMRequestParams, originalInput: any): Promise<string> {
+    this.context?.log(`${this.type}(${this.id}): Calling llmService with final prompt: "${params.prompt.substring(0, 50)}..." and ${params.images?.length ?? 0} file object(s).`);
 
-    // 3. Validate the prepared inputs
-    const inputError = this._validatePreparedInputs(mode, input, preparedInputs);
-    if (inputError) {
-        this.context?.log(`${this.type}(${this.id}): Error - ${inputError}`);
-        throw new Error(inputError);
-    }
-
-    const { finalPrompt, inputFileObjects } = preparedInputs;
-
-    // 4. Prepare LLM parameters
-    const params: LLMRequestParams = {
-      provider: this.property.provider!, // Already validated non-null
-      model: this.property.model!,     // Already validated non-null
-      prompt: finalPrompt,
-      temperature: this.property.temperature ?? 0.7,
-      ollamaUrl: this.property.ollamaUrl,
-      openaiApiKey: this.property.openaiApiKey,
-      images: inputFileObjects // Pass the File objects directly to the service
-    };
-    this.context?.log(`${this.type}(${this.id}): Calling llmService with final prompt: "${finalPrompt.substring(0, 50)}..." and ${params.images?.length ?? 0} file object(s).`);
-
-    // 5. Call LLM Service
     const llmResult = await runLLM(params);
     if (llmResult === null || llmResult === undefined) {
-         throw new Error('LLM service returned null or undefined unexpectedly.');
+      const errorMsg = 'LLM service returned null or undefined unexpectedly.';
+      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
-    // 6. Process and prepend prefix to the result
     let resultText = llmResult.response;
-    const prefix = this._getResultPrefix(input); // Prefix based on original input type
+    const prefix = this._getResultPrefix(originalInput); // Prefix based on original input type
     if (prefix) {
       resultText = prefix + resultText;
       this.context?.log(`${this.type}(${this.id}): Prepended prefix: ${prefix.substring(0, 50)}...`);
     }
-
-    this.context?.log(`${this.type}(${this.id}): Execution successful, result length: ${resultText.length}`);
+    this.context?.log(`${this.type}(${this.id}): LLM call successful, result length: ${resultText.length}`);
     return resultText;
+  }
+
+  /**
+   * Execute the LLM node
+   * @param input The input to process
+   * @returns The LLM response text or null on error (if error is not thrown)
+   */
+  async execute(input: any): Promise<string | null> {
+    this.context?.log(`${this.type}(${this.id}): Entering execute`);
+
+    try {
+      const { mode, basePrompt } = this._validateAndPrepareNodeConfig();
+      
+      const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
+      
+      const inputValidationError = this._validatePreparedInputs(mode, input, preparedInputs);
+      if (inputValidationError) {
+        this.context?.log(`${this.type}(${this.id}): Error - ${inputValidationError}`);
+        throw new Error(inputValidationError);
+      }
+
+      const { finalPrompt, inputFileObjects } = preparedInputs;
+
+      const llmParams: LLMRequestParams = {
+        provider: this.property.provider!, // Already validated non-null by _validateAndPrepareNodeConfig
+        model: this.property.model!,     // Already validated non-null by _validateAndPrepareNodeConfig
+        prompt: finalPrompt,
+        temperature: this.property.temperature ?? 0.7,
+        ollamaUrl: this.property.ollamaUrl,
+        openaiApiKey: this.property.openaiApiKey,
+        images: inputFileObjects
+      };
+
+      const resultText = await this._callLlmServiceAndFormatResult(llmParams, input);
+      return resultText;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Error logging is already done within the helper methods or Node.process will catch and log
+      // this.context?.log(`${this.type}(${this.id}): Execute failed: ${errorMessage}`);
+      // Node.process will handle marking the node as error.
+      throw error; // Re-throw for Node.process to handle uniformly
+    }
   }
 } 
