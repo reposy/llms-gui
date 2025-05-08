@@ -271,7 +271,8 @@ export type NodeContent =
   | OutputNodeContent
   | TextNodeContent
   | ConditionalNodeContent
-  | GroupNodeContent;
+  | GroupNodeContent
+  | MergerNodeContent;
 
 // Overwrite React Flow's Node type to use our specific data structure
 // Ensure this aligns with how nodes are created/used in React Flow
@@ -285,6 +286,7 @@ export type NodeTypeMap = {
   text: TextNodeContent;
   conditional: ConditionalNodeContent;
   group: GroupNodeContent;
+  merger: MergerNodeContent;
 };
 
 // Modify LLMNodeContent to extend BaseNodeData
@@ -318,4 +320,19 @@ export interface WebCrawlerNodeContent extends BaseNodeData { // Changed BaseNod
   extractElementSelector?: string; // New: Selector for extracting a specific element's HTML
   outputFormat?: 'text' | 'html' | 'markdown' | 'json'; // Existing output format
   // includeHtml?: boolean; // Likely deprecated by outputFormat
+}
+
+export interface MergerNodeContent extends BaseNodeData {
+  // Merge mode determines how values are combined
+  mergeMode?: 'concat' | 'join' | 'object';
+  // Join string for join mode
+  joinSeparator?: string;
+  // Strategy for handling array items
+  strategy?: 'array' | 'object';
+  // Keys for object mode
+  keys?: string[];
+  // Whether to wait for all inputs or process as they arrive
+  waitForAll?: boolean;
+  // Array to store manually edited/managed items
+  items?: any[];
 }

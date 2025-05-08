@@ -108,6 +108,7 @@ export class FlowExecutionContext implements ExecutionContext {
     this.nodes = nodes;
     this.edges = edges;
     this.nodeFactory = nodeFactory;
+    this.logs = []; // Ensure logs is initialized in constructor too
   }
 
   /**
@@ -124,10 +125,20 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   log(message: string): void {
     const timestamp = new Date().toISOString();
-    this.logs.push(`[${timestamp}] ${message}`);
-    
-    // Also log to console for debugging
-    console.log(`[ExecutionContext:${this.executionId}] ${message}`);
+    // Defensive check for this.logs
+    if (!Array.isArray(this.logs)) {
+        console.error(`[ExecutionContext:${this.executionId}] CRITICAL: this.logs is not an array! Attempting recovery. Logs was:`, this.logs);
+        this.logs = []; // Attempt recovery
+    }
+    try {
+        // Ensure message is a string before pushing
+        const finalMessage = typeof message === 'string' ? message : JSON.stringify(message);
+        this.logs.push(`[${timestamp}] ${finalMessage}`); 
+    } catch (e) {
+        console.error(`[ExecutionContext:${this.executionId}] FAILED to push log: ${e}`, message);
+    }
+    // Console log remains
+    console.log(`[ExecutionContext:${this.executionId}] ${message}`); // Log original message to console
   }
 
   /**

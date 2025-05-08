@@ -120,7 +120,7 @@ const _startExecutionProcess = async (
       context.markNodeRunning(nodeId);
 
       // Execute the node's process method
-      await nodeInstance.process({}); // Start with empty input for root/trigger nodes
+      await nodeInstance.process({}, context);
 
       // Mark executed AFTER successful process call
       context.markNodeExecuted(nodeId);

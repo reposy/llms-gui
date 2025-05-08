@@ -1,7 +1,8 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { extractValue } from '../utils/flow/executionUtils.ts';
-import { JSONExtractorNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { JSONExtractorNodeData } from '../types/nodes.ts';
 
 /**
  * JSON Extractor node properties
@@ -21,7 +22,7 @@ export class JsonExtractorNode extends Node {
   /**
    * Type assertion for property
    */
-  declare property: JSONExtractorNodeContent;
+  declare property: JSONExtractorNodeData;
 
   /**
    * Constructor for JsonExtractorNode
@@ -31,8 +32,14 @@ export class JsonExtractorNode extends Node {
     property: Record<string, any> = {},
     context?: FlowExecutionContext
   ) {
-    super(id, 'json-extractor', property, context);
+    super(id, 'json-extractor', property);
+    
+    // 생성자에서 context를 명시적으로 설정
+    if (context) {
+      this.context = context;
+    }
   }
+
 
   /**
    * Execute the node's specific logic
@@ -40,10 +47,10 @@ export class JsonExtractorNode extends Node {
    * @returns The extracted value or null if not found
    */
   async execute(input: any): Promise<any> {
-    this.context?.log(`${this.type}(${this.id}): Executing`);
+    this._log('Executing');
 
     // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent<JSONExtractorNodeContent>(this.id, this.type);
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as JSONExtractorNodeData;
     
     const { 
       path,
@@ -53,11 +60,11 @@ export class JsonExtractorNode extends Node {
     if (!path) {
       const errorMsg = "JSON Path is required for JSONExtractorNode.";
       this.context?.markNodeError(this.id, errorMsg);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      this._log(`Error - ${errorMsg}`);
       return defaultValue; // Return default value on configuration error
     }
 
-    this.context?.log(`${this.type}(${this.id}): Extracting path: ${path}`);
+    this._log(`Extracting path: ${path}`);
 
     try {
       // Input can be a JSON string or a JavaScript object
@@ -65,10 +72,10 @@ export class JsonExtractorNode extends Node {
       if (typeof input === 'string') {
         try {
           jsonInput = JSON.parse(input);
-          this.context?.log(`${this.type}(${this.id}): Parsed string input as JSON`);
+          this._log('Parsed string input as JSON');
         } catch (parseError) {
           // If parsing fails, pass the raw string to extractValue, which might handle basic paths
-          this.context?.log(`${this.type}(${this.id}): Input string is not valid JSON, attempting extraction on raw string.`);
+          this._log('Input string is not valid JSON, attempting extraction on raw string.');
           // No need to throw error here, let extractValue handle the raw string
         }
       }
@@ -77,17 +84,17 @@ export class JsonExtractorNode extends Node {
       const result = extractValue(jsonInput, path);
       
       if (result === undefined) {
-        this.context?.log(`${this.type}(${this.id}): Path not found or extraction failed, returning default value`);
+        this._log('Path not found or extraction failed, returning default value');
         return defaultValue;
       } else {
-        this.context?.log(`${this.type}(${this.id}): Extraction successful`);
+        this._log('Extraction successful');
         return result;
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.context?.markNodeError(this.id, errorMessage);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMessage}`);
+      this._log(`Error - ${errorMessage}`);
       return defaultValue;
     }
   }

@@ -2,7 +2,8 @@ import { Node } from '../core/Node';
 import { findNodeById, getOutgoingConnections } from '../utils/flow/flowUtils.ts';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent } from '../store/useNodeContentStore.ts';
-import { ConditionalNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { ConditionalNodeContent } from '../types/nodes.ts';
 import { evaluateCondition } from '../utils/flow/executionUtils.ts';
 
 /**
@@ -49,7 +50,13 @@ export class ConditionalNode extends Node {
     property: Record<string, any> = {},
     context?: FlowExecutionContext
   ) {
-    super(id, 'conditional', property, context);
+    super(id, 'conditional', property);
+    
+    // 생성자에서 context를 명시적으로 설정
+    if (context) {
+      this.context = context;
+    }
+    
     // Initialize with default values if not provided
     this.property.conditionType = this.property.conditionType || 'equalTo';
     this.property.conditionValue = this.property.conditionValue || '';
@@ -62,98 +69,105 @@ export class ConditionalNode extends Node {
    * @returns The original input and path result for child propagation
    */
   async execute(input: any): Promise<any> {
-    this.context?.log(`${this.type}(${this.id}): Executing`);
+    this._log('Executing'); // Will use inherited _log
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent<ConditionalNodeContent>(this.id, this.type);
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as ConditionalNodeContent;
     
     const { 
-      conditionType = 'contains', // Default condition type
+      conditionType = 'contains', 
       conditionValue
     } = nodeContent;
 
     if (conditionValue === undefined || conditionValue === null) {
       const errorMsg = "Condition value is required for ConditionalNode.";
       this.context?.markNodeError(this.id, errorMsg);
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
-      // Allow execution to continue, but the condition will likely evaluate to false
-      // Depending on the desired behavior, we might return null here instead.
+      this._log(`Error - ${errorMsg}`); // Will use inherited _log
     }
 
-    this.context?.log(`${this.type}(${this.id}): Condition Type: ${conditionType}, Value: ${conditionValue}`);
+    this._log(`Condition Type: ${conditionType}, Value: ${String(conditionValue)}`); // Will use inherited _log
     
     let conditionResult = false;
     try {
       conditionResult = evaluateCondition(input, conditionType, conditionValue);
-      this.context?.log(`${this.type}(${this.id}): Condition evaluated to: ${conditionResult}`);
+      this._log(`Condition evaluated to: ${conditionResult}`); // Will use inherited _log
+      // Store the result in the context's output for this node so getChildNodes can use it.
+      this.context?.storeOutput(this.id, conditionResult);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.context?.markNodeError(this.id, `Condition evaluation error: ${errorMessage}`);
-      this.context?.log(`${this.type}(${this.id}): Error evaluating condition - ${errorMessage}`);
-      // Treat evaluation errors as false? Or return null?
-      // For now, let it proceed as false.
+      this._log(`Error evaluating condition - ${errorMessage}`); // Will use inherited _log
+      // Store false in context if evaluation fails, to ensure defined path.
+      this.context?.storeOutput(this.id, false);
     }
     
-    // The actual branching logic happens in the getChildNodes method
-    // which needs to be overridden for ConditionalNode.
-    // execute simply evaluates the condition and returns the input for potential chaining.
-    return input; // Pass input along, branching is handled by custom getChildNodes
+    // The actual branching logic happens in the getChildNodes method.
+    // execute simply evaluates the condition and returns the input.
+    return input; 
   }
 
   /**
    * Get child nodes based on the condition result path
    */
   getChildNodes(): Node[] {
-    this.context?.log(`${this.type}(${this.id}): Custom getChildNodes executing`);
-    const nodeFactory = this.property.nodeFactory;
-    if (!nodeFactory || !this.property.nodes || !this.property.edges) {
-      this.context?.log(`${this.type}(${this.id}): Missing factory, nodes, or edges for dynamic resolution`);
+    this._log('Custom getChildNodes executing'); // Will use inherited _log
+    
+    if (!this.context) {
+      console.error(`[ConditionalNode:${this.id}] CRITICAL - this.context is UNDEFINED in getChildNodes.`);
+      return [];
+    }
+    const { nodeFactory, nodes: contextNodes, edges: contextEdges } = this.context;
+
+    if (!nodeFactory || !contextNodes || !contextEdges) {
+      this._log('Missing factory, nodes, or edges from context for dynamic resolution'); // Will use inherited _log
       return [];
     }
     
-    // Get the result of the condition evaluation from the context
-    const conditionResult = this.context?.getOutput(this.id) as boolean | undefined;
-    // Default to false if result is not explicitly boolean true
+    // Get the result of the condition evaluation from this node's output in the context
+    const outputs = this.context.getOutput(this.id);
+    // Condition result should be the last (or only) output stored by execute()
+    const conditionResult = outputs.length > 0 ? outputs[outputs.length -1] as boolean : undefined; 
+    
     const outcome = conditionResult === true ? 'true' : 'false'; 
     
-    this.context?.log(`${this.type}(${this.id}): Branching based on outcome: ${outcome}`);
+    this._log(`Branching based on outcome: ${outcome}`); // Will use inherited _log
 
-    // Determine the source handle based on the outcome
-    const sourceHandle = outcome === 'true' ? 'source-true' : 'source-false';
+    const sourceHandle = outcome === 'true' ? `${this.id}-source-true` : `${this.id}-source-false`;
+    this._log(`Looking for edges from sourceHandle: ${sourceHandle}`);
 
-    // Find edges originating from the correct source handle
-    const childNodeIds = this.property.edges
+
+    const childNodeIds = contextEdges
       .filter((edge: any) => edge.source === this.id && edge.sourceHandle === sourceHandle)
       .map((edge: any) => edge.target);
       
-    this.context?.log(`${this.type}(${this.id}): Found ${childNodeIds.length} child nodes for outcome ${outcome}: [${childNodeIds.join(', ')}]`);
+    this._log(`Found ${childNodeIds.length} child nodes for outcome ${outcome}: [${childNodeIds.join(', ')}]`); // Will use inherited _log
 
-    // Create node instances for the children connected to the determined path
     return childNodeIds
       .map((childId: string) => {
-        const nodeData = this.property.nodes.find((n: any) => n.id === childId);
+        const nodeData = contextNodes.find((n: any) => n.id === childId);
         if (!nodeData) {
-          this.context?.log(`${this.type}(${this.id}): Child node data not found for ${childId}`);
+          this._log(`Child node data not found for ${childId}`); // Will use inherited _log
           return null;
         }
         
-        const node = nodeFactory.create(
-          nodeData.id,
-          nodeData.type,
-          nodeData.data,
-          this.context
-        );
-        
-        // Pass along graph structure to the child node
-        node.property = {
-          ...node.property,
-          nodes: this.property.nodes,
-          edges: this.property.edges,
-          nodeFactory: this.property.nodeFactory
-        };
-        
-        return node;
+        if (typeof nodeData.type !== 'string') {
+          this._log(`Child node data for ${childId} has invalid or missing type: ${nodeData.type}. Skipping creation.`);
+          return null;
+        }
+
+        try {
+            const nodeInstance = nodeFactory.create(
+              nodeData.id,
+              nodeData.type,
+              nodeData.data,
+              this.context // Pass context to child creation
+            );
+            return nodeInstance;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this._log(`Error creating child node instance ${childId} (type: ${nodeData?.type}): ${errorMessage}`);
+            return null;
+        }
       })
-      .filter(Boolean) as Node[];
+      .filter((node): node is Node => node !== null);
   }
 } 

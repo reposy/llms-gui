@@ -22,7 +22,12 @@ export class LlmNode extends Node {
   declare property: LLMNodeContent;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
-    super(id, 'llm', property, context);
+    super(id, 'llm', property);
+    
+    // 생성자에서 context를 명시적으로 설정 (NodeFactory에서 전달될 때 사용됨)
+    if (context) {
+      this.context = context;
+    }
   }
 
   /**

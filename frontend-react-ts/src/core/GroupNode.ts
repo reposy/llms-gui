@@ -1,250 +1,237 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { Node as FlowNode } from '@xyflow/react'; // Edge 타입은 직접 사용 안 할 수 있지만, FlowNode는 필요
 
 interface GroupNodeProperty {
   label: string;
-  // Reference to flow structure (will be provided by FlowRunner)
-  nodes?: any[];
+  nodes?: any[]; // GroupNode 자체의 property에는 전체 노드/엣지 정보가 있을 수 있음 (초기 설정용)
   edges?: any[];
   nodeFactory?: any;
-  executionGraph?: any;
+  // executionGraph?: any; // 내부 실행 그래프는 동적으로 생성
 }
 
 export class GroupNode extends Node {
   declare property: GroupNodeProperty;
-  // 결과 수집을 위한 배열
-  private items: any[] = [];
+  private items: any[] = []; // 결과 수집용
 
-  /**
-   * Constructor for GroupNode
-   */
   constructor(
     id: string, 
     property: Record<string, any> = {},
     context?: FlowExecutionContext
   ) {
-    super(id, 'group', property, context);
-    // Ensure label has a default value
+    super(id, 'group', property);
+    
+    // 생성자에서 context를 명시적으로 설정 (NodeFactory에서 전달될 때 사용됨)
+    if (context) {
+      this.context = context;
+    }
+    
     this.property.label = property.label || 'Group';
   }
 
-  /**
-   * Prepares the necessary data structures for executing the group's internal flow.
-   * Filters nodes/edges, builds the execution graph, identifies root and leaf nodes.
-   * @returns An object containing execution context details, or null if preparation fails.
-   */
-  private _prepareInternalExecution() {
-    // Get nodes, edges, factory from properties
-    const allNodes = this.property.nodes || [];
-    const allEdges = this.property.edges || [];
-    const nodeFactory = this.property.nodeFactory;
+  private _findInternalLeafNodeIds(
+    internalNodes: FlowNode[],
+    internalExecutionGraph: Map<string, string[]>
+  ): Set<string> {
+    if (internalNodes.length === 0) {
+      return new Set<string>();
+    }
+    const leafNodeIds = new Set<string>(
+      internalNodes
+        .map((n: FlowNode) => n.id)
+        .filter((nodeId: string) => (internalExecutionGraph.get(nodeId) || []).length === 0)
+    );
+    this._log(`Identified ${leafNodeIds.size} internal leaf nodes: ${Array.from(leafNodeIds).join(', ')}`);
+    return leafNodeIds;
+  }
 
-    if (!nodeFactory || allNodes.length === 0) {
-      this.context?.log(`${this.type}(${this.id}): No node factory or nodes found. Cannot prepare execution.`);
+  private _prepareInternalExecution(): {
+    internalNodes: FlowNode[];
+    rootNodeIds: string[];
+    internalLeafNodeIds: Set<string>;
+  } | null {
+    // 컨텍스트 유효성 검사 강화
+    const currentContext = this.context;
+    if (!currentContext || !currentContext.nodes || !currentContext.edges) {
+      this._log('Context, context.nodes, or context.edges missing. Cannot prepare execution.');
       return null;
     }
 
-    // Filter internal nodes and edges belonging to this group
-    const internalNodes = allNodes.filter((n: any) => n.parentId === this.id);
-    const internalNodeIds = new Set(internalNodes.map((n: any) => n.id));
-    const internalEdges = allEdges.filter((e: any) => 
+    const { nodes: allNodesInContext, edges: allEdgesInContext } = currentContext;
+    
+    const internalNodes = allNodesInContext.filter((n: FlowNode) => n.parentId === this.id);
+    if (internalNodes.length === 0) {
+      this._log('No internal nodes found for this group.');
+      return { internalNodes: [], rootNodeIds: [], internalLeafNodeIds: new Set<string>() };
+    }
+    const internalNodeIds = new Set(internalNodes.map((n: FlowNode) => n.id));
+    
+    const internalEdges = allEdgesInContext.filter(e => 
         internalNodeIds.has(e.source) && internalNodeIds.has(e.target)
     );
-    this.context?.log(`${this.type}(${this.id}): Prepared with ${internalNodes.length} internal nodes and ${internalEdges.length} internal edges.`);
+    this._log(`Prepared with ${internalNodes.length} internal nodes and ${internalEdges.length} internal edges.`);
 
-    // Build internal execution graph
     const executionGraph = this.buildExecutionGraph(internalNodes, internalEdges);
-    
-    // Find internal root nodes (nodes with no incoming edges within the group)
     const rootNodeIds = this.findRootNodes(executionGraph, internalNodes);
-    this.context?.log(`${this.type}(${this.id}): Found ${rootNodeIds.length} internal root nodes: ${rootNodeIds.join(', ')}`);
+    this._log(`Found ${rootNodeIds.length} internal root nodes: ${rootNodeIds.join(', ')}`);
 
-    // Identify internal leaf nodes (nodes with no outgoing edges within the group)
-    const internalLeafNodeIds = new Set(
-      internalNodes
-        .map((n: any) => n.id)
-        .filter((nodeId: string) => (executionGraph.get(nodeId) || []).length === 0)
-    );
-    this.context?.log(`${this.type}(${this.id}): Identified ${internalLeafNodeIds.size} internal leaf nodes: ${Array.from(internalLeafNodeIds).join(', ')}`);
+    const internalLeafNodeIds = this._findInternalLeafNodeIds(internalNodes, executionGraph);
 
-    return { internalNodes, executionGraph, rootNodeIds, internalLeafNodeIds, nodeFactory };
+    return { internalNodes, rootNodeIds, internalLeafNodeIds };
   }
 
-
-  /**
-   * Execute logic for a group node by finding and executing root nodes within the group
-   * @param input The input to process
-   * @returns The processed result (array of accumulated leaf node results)
-   */
-  async execute(input: any): Promise<any> {
-    this.context?.log(`${this.type}(${this.id}): Executing group node`);
-    this.items = []; // 매 GroupNode 실행마다 items 초기화
-
-    try {
-      // 1. Prepare internal execution context (nodes, graph, roots, leaves)
-      const prepResult = this._prepareInternalExecution();
-      if (!prepResult) {
-        this.context?.log(`${this.type}(${this.id}): Group execution preparation failed.`);
-        return null; // Preparation failed
-      }
-      const { internalNodes, executionGraph, rootNodeIds, internalLeafNodeIds, nodeFactory } = prepResult;
-
-      // If no root nodes found inside, stop execution
-      if (rootNodeIds.length === 0) {
-        this.context?.log(`${this.type}(${this.id}): No root nodes found inside the group. Group execution stopped.`);
-        return null; // 결과 없이 종료
-      }
-
-      // 2. Execute internal flow starting from root nodes
-      const executedNodes = new Set<string>(); // Track executed nodes within this run
-
-      // --- Start processing all internal root nodes concurrently --- 
-      const executionPromises = rootNodeIds.map(rootNodeId => {
-          const nodeData = internalNodes.find((n: any) => n.id === rootNodeId);
-          if (!nodeData) {
-              this.context?.log(`${this.type}(${this.id}): Root node ${rootNodeId} data not found during execution. Skipping.`);
-              return Promise.resolve(); // Skip missing node
-          }
-          // Process the node and its chain, accumulating results from leaf nodes
-          return this._processInternalNodeAndCollectLeafResult( // Renamed method call
-              nodeData,
-              input,
-              executionGraph, 
-              executedNodes,
-              nodeFactory,
-              internalLeafNodeIds // Pass leaf node IDs for result collection
-          );
-      });
-
-      // Wait for all branches starting from root nodes to complete
-      await Promise.all(executionPromises);
-      this.context?.log(`${this.type}(${this.id}): All internal root branches finished processing.`);
-      // ------------------------------------------------------------------
-      
-      // 3. Collect results from internal leaf nodes
-      this.items = []; // Reset items before collecting final results
-      for (const leafNodeId of internalLeafNodeIds) {
-        // Get the potentially accumulated array of outputs for this leaf node
-        const leafOutputs = this.context?.getOutput(leafNodeId);
-        if (Array.isArray(leafOutputs) && leafOutputs.length > 0) {
-          this.context?.log(`${this.type}(${this.id}): Collecting ${leafOutputs.length} results for leaf node ${leafNodeId}`);
-          this.items.push(...leafOutputs); // Spread the results into the group's items
-        } else {
-          // Log if a leaf node didn't produce output (or context returned non-array)
-          this.context?.log(`${this.type}(${this.id}): No output collected for leaf node ${leafNodeId}.`);
-        }
-      }
-      
-      this.context?.log(`${this.type}(${this.id}): Finished executing group, returning collected ${this.items.length} results.`);
-      return this.items; // Return the array of results collected from leaf nodes
-
-    } catch (error) {
-      // Catch any unexpected errors during group execution orchestration
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context?.log(`${this.type}(${this.id}): Error in group execution orchestration: ${errorMessage}`);
-      this.context?.markNodeError(this.id, `Group execution failed: ${errorMessage}`); // Mark the group node itself as errored
-      return null; // 오류 발생 시 null 반환
-    }
-  }
-
-  /**
-   * Processes a single node within the group's internal flow using its `process` method.
-   * If the processed node is a leaf node within the group and finishes successfully, 
-   * its result is retrieved from the context and added to `this.items`.
-   */
-  private async _processInternalNodeAndCollectLeafResult( // Renamed method
-    nodeData: any, // Consider using a more specific type if available e.g., ReactFlowNode
+  private async _executeInternalRootNodes(
+    internalNodes: FlowNode[], 
+    rootNodeIds: string[], 
     input: any,
-    executionGraph: Map<string, string[]>, // Graph of internal connections
-    executedNodes: Set<string>, // Tracks nodes executed in this specific group run
-    nodeFactory: any, // Consider defining a type for the factory
-    internalLeafNodeIds: Set<string> // Set of IDs for leaf nodes within this group
-  ): Promise<void> { // This method accumulates results in this.items, doesn't return directly
-    const nodeId = nodeData.id;
-
-    // Prevent re-execution within the same group run (handles diamond shapes in graph)
-    if (executedNodes.has(nodeId)) {
-      this.context?.log(`${this.type}(${this.id}): Node ${nodeId} already processed in this group execution. Skipping.`);
+    currentContext: FlowExecutionContext // 컨텍스트를 명시적으로 전달받도록 변경
+  ): Promise<void> {
+    if (!currentContext || !currentContext.nodeFactory) {
+      this._log('Context or nodeFactory missing. Cannot execute internal root nodes.');
       return;
     }
-    executedNodes.add(nodeId);
+    const { nodeFactory } = currentContext;
 
-    // Mark the node as running in the global context
-    this.context?.markNodeRunning(nodeId);
+    const executionPromises = rootNodeIds.map(async (rootNodeId) => {
+      const nodeData = internalNodes.find((n: FlowNode) => n.id === rootNodeId);
+      if (!nodeData) {
+        this._log(`Root node data for ${rootNodeId} not found. Skipping.`);
+        return;
+      }
+      if (typeof nodeData.type !== 'string') {
+          this._log(`Root node ${rootNodeId} has invalid or missing type: ${nodeData.type}. Skipping.`);
+          return;
+      }
+
+      try {
+          const rootNodeInstance = nodeFactory.create(
+              nodeData.id,
+              nodeData.type,
+              nodeData.data,
+              currentContext // 명시적으로 전달받은 컨텍스트 사용
+          );
+          this._log(`Processing internal root node ${rootNodeId} via its process method.`);
+          await rootNodeInstance.process(input, currentContext); // 컨텍스트 명시적 전달
+      } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          this._log(`Error processing internal root node ${rootNodeId}: ${errorMsg}`);
+          if (currentContext) { // 명시적으로 전달받은 컨텍스트 사용
+            currentContext.markNodeError(nodeData.id, `Error in group child: ${errorMsg}`);
+          }
+      }
+    });
+
+    await Promise.all(executionPromises);
+    this._log('All internal root branches finished processing.');
+  }
+
+  private _collectLeafNodeResults(
+    internalLeafNodeIds: Set<string>,
+    currentContext: FlowExecutionContext // 컨텍스트를 명시적으로 전달받도록 변경
+  ): any[] {
+    if (!currentContext) {
+      this._log('Context missing. Cannot collect leaf node results.');
+      return [];
+    }
+    const collectedItems: any[] = [];
+    for (const leafNodeId of internalLeafNodeIds) {
+      const leafOutputs = currentContext.getOutput(leafNodeId);
+      if (Array.isArray(leafOutputs) && leafOutputs.length > 0) {
+        this._log(`Collecting ${leafOutputs.length} results for leaf node ${leafNodeId}`);
+        collectedItems.push(...leafOutputs);
+      } else if (leafOutputs !== undefined && !Array.isArray(leafOutputs) && leafOutputs !== null) { 
+        this._log(`Collecting single result for leaf node ${leafNodeId}`);
+        collectedItems.push(leafOutputs);
+      } else {
+        this._log(`No output collected or empty/null for leaf node ${leafNodeId}.`);
+      }
+    }
+    return collectedItems;
+  }
+
+  async execute(input: any): Promise<any> {
+    this._log('Executing group node');
+    
+    // 컨텍스트를 지역 변수로 캡처하여 참조 안정성 확보
+    const currentContext = this.context;
+    
+    if (!currentContext) {
+      // This initial check is crucial. If context is already undefined here, nothing else will work.
+      console.error(`[GroupNode:${this.id}] Critical: Execution context is missing at the beginning of execute(). Cannot proceed.`);
+      // markNodeError cannot be called here as context is missing.
+      return null;
+    }
 
     try {
-        // Create the actual node instance using the factory
-        const nodeInstance = nodeFactory.create(
-            nodeData.id,
-            nodeData.type as string,
-            nodeData.data, // Pass node-specific data/settings
-            this.context // Pass the execution context
-        );
+      const prepResult = this._prepareInternalExecution();
+      if (!prepResult) {
+        this._log('Group execution preparation failed.');
+        // currentContext를 사용하여 오류 상태 설정
+        currentContext.markNodeError(this.id, 'Group preparation failed');
+        return null;
+      }
+      const { internalNodes, rootNodeIds, internalLeafNodeIds } = prepResult;
 
-        // Provide necessary graph structure info to the node instance (if needed by its logic)
-        nodeInstance.property = {
-            ...nodeInstance.property,
-            nodes: this.property.nodes, // Full graph nodes
-            edges: this.property.edges, // Full graph edges
-            nodeFactory: this.property.nodeFactory, // Factory reference
-            executionGraph: executionGraph // Internal graph specific to this group
-        };
-
-        this.context?.log(`${this.type}(${this.id}): Processing internal node ${nodeId} with input...`);
-        // Execute the node's logic and trigger downstream processing via its process method
-        await nodeInstance.process(input);
-        this.context?.log(`${this.type}(${this.id}): Finished processing internal node ${nodeId}.`);
+      if (rootNodeIds.length === 0 && internalLeafNodeIds.size === 0) {
+        // If there are no roots AND no leaves (e.g. empty group), it means nothing to run, and nothing to collect.
+        this._log('Group is empty or has no executable paths. Execution stopped.');
+        currentContext.markNodeSuccess(this.id, []);
+        return [];
+      } else if (rootNodeIds.length === 0 && internalLeafNodeIds.size > 0) {
+        // No roots, but some leaves exist (e.g. disconnected nodes in a group). These leaves won't be processed.
+        // So, effectively, the group produces no new results from execution.
+        this._log('No root nodes to execute, but leaf nodes exist (will not be processed). Group execution produces no new results.');
+        currentContext.markNodeSuccess(this.id, []);
+        return [];
+      }
+      
+      // 컨텍스트를 명시적으로 전달
+      await this._executeInternalRootNodes(internalNodes, rootNodeIds, input, currentContext);
+      
+      // 컨텍스트를 명시적으로 전달
+      const finalResults = this._collectLeafNodeResults(internalLeafNodeIds, currentContext);
+      
+      this._log(`Finished executing group, returning ${finalResults.length} collected results.`);
+      // 컨텍스트를 사용하여 성공 상태 설정
+      currentContext.markNodeSuccess(this.id, finalResults);
+      return finalResults;
 
     } catch (error) {
-        // This catch block handles errors specifically from creating or calling process on nodeInstance
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.context?.log(`${this.type}(${this.id}): Error occurred while processing internal node ${nodeId}: ${errorMessage}`);
-        // The error state (e.g., 'error') should ideally be marked on the node 
-        // within its own 'process' or 'execute' method, or by the context if process throws.
-        // Avoid marking error redundantly here if possible.
-        // Allow other branches of the group execution to continue.
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this._log(`Critical error in group execution orchestration: ${errorMessage}`);
+      // 캡처된 컨텍스트 사용
+      if (currentContext) {
+        currentContext.markNodeError(this.id, `Group execution orchestration failed: ${errorMessage}`);
+      }
+      return null;
     }
   }
 
-  /**
-   * Builds an execution graph (adjacency list) for the nodes within the group.
-   * @param nodes - Array of node data objects belonging to the group.
-   * @param edges - Array of edge data objects connecting nodes within the group.
-   * @returns A Map where keys are source node IDs and values are arrays of target node IDs.
-   */
-  private buildExecutionGraph(nodes: any[], edges: any[]): Map<string, string[]> {
+  private buildExecutionGraph(nodes: FlowNode[], edges: any[]): Map<string, string[]> {
     const graph = new Map<string, string[]>();
-    
-    // Use the provided (already filtered) nodes
+    const internalNodeIds = new Set(nodes.map(n => n.id));
+
     for (const node of nodes) {
       graph.set(node.id, []);
     }
     
-    // Use the provided (already filtered) edges
     for (const edge of edges) {
       const sourceId = edge.source;
       const targetId = edge.target;
       
-      // Check if both source and target nodes exist in the internal node list
-      if (graph.has(sourceId) && graph.has(targetId)) {
-          const children = graph.get(sourceId)!; // Already checked existence
-          children.push(targetId);
-          // graph.set(sourceId, children); // No need to set again, children is a reference
+      if (internalNodeIds.has(sourceId) && internalNodeIds.has(targetId)) {
+          const children = graph.get(sourceId)!;
+          if (children) { 
+            children.push(targetId);
+          }
       } else {
-          this.context?.log(`${this.type}(${this.id}): Edge (${edge.id}) connects nodes outside the current group filter. Source: ${sourceId}, Target: ${targetId}. Skipping edge.`);
+          this._log(`Edge (${edge.id}) in buildExecutionGraph connects nodes outside the provided internal nodes list. Source: ${sourceId}, Target: ${targetId}. Skipping.`);
       }
     }
-    
     return graph;
   }
 
-  /**
-   * Finds root nodes within the group (nodes with no incoming edges from other nodes in the group).
-   * @param graph - The internal execution graph.
-   * @param nodes - Array of node data objects belonging to the group.
-   * @returns An array of root node IDs.
-   */
-  private findRootNodes(graph: Map<string, string[]>, nodes: any[]): string[] {
+  private findRootNodes(graph: Map<string, string[]>, nodes: FlowNode[]): string[] {
     const allNodeIds = new Set(nodes.map(n => n.id));
     const allChildren = new Set<string>();
     for (const children of graph.values()) {
@@ -253,6 +240,6 @@ export class GroupNode extends Node {
     
     return nodes
         .map(n => n.id)
-        .filter(nodeId => !allChildren.has(nodeId) && allNodeIds.has(nodeId)); // Ensure the node is actually in the group node list
+        .filter(nodeId => !allChildren.has(nodeId) && allNodeIds.has(nodeId));
   }
 }
