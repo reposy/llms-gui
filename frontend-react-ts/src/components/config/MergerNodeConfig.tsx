@@ -1,20 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { MergerNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
 import { DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 
 interface MergerNodeConfigProps {
   nodeId: string;
-  data: MergerNodeData;
-}
-
-// We need to extend MergerNodeData for runtime properties
-interface RuntimeMergerNodeData extends MergerNodeData {
-  property?: {
-    separator?: string;
-    [key: string]: any;
-  };
 }
 
 // Map old merge mode values to new output format values for backward compatibility
@@ -38,16 +28,15 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </label>
 );
 
-export const MergerNodeConfig: React.FC<MergerNodeConfigProps> = ({ nodeId, data }) => {
+export const MergerNodeConfig: React.FC<MergerNodeConfigProps> = ({ nodeId }) => {
   console.log(`[MergerNodeConfig] Rendering for node ID: ${nodeId}`);
   
   const nodeState = useNodeState(nodeId);
-  const { items, itemCount, resetItems } = useMergerNodeData({ nodeId });
+  const { items, itemCount, mergeMode, joinSeparator, resetItems } = useMergerNodeData({ nodeId });
   
-  // Get merge mode from data and convert to our format nomenclature
-  const runtimeData = data as RuntimeMergerNodeData;
-  const outputFormat = legacyModeMapping[data.mergeMode || 'concat'] || 'array';
-  const separator = runtimeData.property?.separator || ', ';
+  // Get output format based on merge mode
+  const outputFormat = legacyModeMapping[mergeMode || 'concat'] || 'array';
+  const separator = joinSeparator || ', ';
   
   // Local state for copy feedback
   const [showCopied, setShowCopied] = useState(false);

@@ -25,12 +25,13 @@ export const useFormattedGroupNodeResults = (nodeId: string | null): FormattedGr
   const rawResults = Array.isArray(nodeState.result) ? nodeState.result : undefined;
 
   if (nodeState.status === 'success' && rawResults) {
-    formattedResults = rawResults.map((outputValue, index) => ({
+    formattedResults = rawResults.map((outputValue) => ({
       item: outputValue, 
       finalOutput: outputValue,
       status: 'success', 
       error: undefined,
       conditionalBranch: undefined,
+      nodeResults: {} // 빈 객체라도 nodeResults 속성 추가
     }));
   }
 

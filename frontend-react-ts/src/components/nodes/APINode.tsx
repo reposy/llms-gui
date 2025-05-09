@@ -62,7 +62,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     executeApiCall
   } = useApiNodeData({ nodeId: id });
 
-  const queryParams = content.queryParams || {};
+  const queryParams = content?.queryParams || {};
 
   const [urlDraft, setUrlDraft] = useState(url || '');
   const [paramDrafts, setParamDrafts] = useState<QueryParamDrafts>({});

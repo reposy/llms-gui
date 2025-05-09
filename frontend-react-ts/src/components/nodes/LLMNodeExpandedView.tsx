@@ -60,7 +60,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
     handlePromptChange,
     handleModelChange,
     handleTemperatureChange,
-    handleProviderChange,
+    updateContent,
     handleOllamaUrlChange,
     setMode
   } = useLlmNodeData({ nodeId: id });
@@ -106,7 +106,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
             type="text"
             name="model"
             value={model}
-            onChange={handleModelChange}
+            onChange={(e) => handleModelChange(e.target.value)}
             onKeyDown={handleKeyDown}
             className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
             placeholder="e.g., llama3:latest"
@@ -117,7 +117,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
           <label className="text-xs font-medium text-gray-600">Prompt:</label>
           <textarea
             value={prompt}
-            onChange={handlePromptChange}
+            onChange={(e) => handlePromptChange(e.target.value)}
             onKeyDown={handleKeyDown}
             className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
             placeholder="Enter your prompt here..."
@@ -127,7 +127,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
         <div className="flex flex-col space-y-1">
           <label className="text-xs font-medium text-gray-600 flex justify-between">
             <span>Temperature:</span>
-            <span>{temperature.toFixed(1)}</span>
+            <span>{temperature !== undefined ? temperature.toFixed(1) : '0.0'}</span>
           </label>
           <input
             type="range"
@@ -135,7 +135,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
             max="2"
             step="0.1"
             value={temperature}
-            onChange={handleTemperatureChange}
+            onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
             className="nodrag nopan w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
           />
         </div>
@@ -143,8 +143,11 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
         <div className="flex flex-col space-y-1">
           <label className="text-xs font-medium text-gray-600">Provider:</label>
           <select
-            value={provider}
-            onChange={handleProviderChange}
+            value={provider || 'ollama'}
+            onChange={(e) => {
+              const newValue = e.target.value as 'ollama' | 'openai';
+              updateContent({ provider: newValue });
+            }}
             className="nodrag nopan border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-black"
           >
             <option value="ollama">Ollama</option>

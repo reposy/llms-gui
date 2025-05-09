@@ -3,23 +3,49 @@ import { useNodeContentStore } from '../store/useNodeContentStore';
 import { isEqual } from 'lodash';
 import { NodeContent } from '../types/nodes';
 
+// NodeContentState 타입 직접 정의
+type NodeContentState = {
+  getNodeContent: (nodeId: string, nodeType?: string) => NodeContent | undefined;
+  setNodeContent: (nodeId: string, updates: Partial<NodeContent>) => void;
+  contents: Record<string, NodeContent>;
+  // 기타 필요한 속성들
+};
+
 /**
  * Factory function that creates standardized node data hooks.
  * This provides a consistent pattern for all node data hooks.
  * 
+ * The improved version supports extending the hook with custom functionality.
+ * 
  * @param nodeType The type of node (e.g., 'llm', 'api', 'input')
+ * @param extendHook A function that extends the base hook with custom functionality
  * @param defaultValues Default values for node content properties
  * @returns A custom hook to manage node state and operations
  */
-export function createNodeDataHook<T extends NodeContent>(
+export function createNodeDataHook<
+  T extends NodeContent,
+  TExtended = {
+    content: T | undefined;
+    updateContent: (updates: Partial<T>) => void;
+    createChangeHandler: <K extends keyof T>(propName: K) => (value: T[K]) => void;
+    getStoreState: () => NodeContentState;
+  }
+>(
   nodeType: string,
-  defaultValues: Partial<T> = {}
+  extendHook?: (params: {
+    nodeId: string;
+    content: T | undefined;
+    updateContent: (updates: Partial<T>) => void;
+    createChangeHandler: <K extends keyof T>(propName: K) => (value: T[K]) => void;
+    getStoreState: () => NodeContentState;
+  }) => TExtended,
+  defaultValues: Partial<T> = {} as Partial<T>
 ) {
-  return function useNodeData({ nodeId }: { nodeId: string }) {
+  return function useNodeData({ nodeId }: { nodeId: string }): TExtended {
     // Get the content using proper selector pattern
     const content = useNodeContentStore(
       useCallback(
-        (state) => state.getNodeContent(nodeId, nodeType) as T,
+        (state) => state.getNodeContent(nodeId, nodeType) as T | undefined,
         [nodeId]
       )
     );
@@ -31,6 +57,13 @@ export function createNodeDataHook<T extends NodeContent>(
      * Update content with deep equality check to prevent unnecessary updates
      */
     const updateContent = useCallback((updates: Partial<T>) => {
+      // Handle undefined content case - initialize with defaults
+      if (!content) {
+        console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Initializing content with:`, {...defaultValues, ...updates});
+        setNodeContent(nodeId, {...defaultValues, ...updates} as Partial<NodeContent>);
+        return;
+      }
+      
       // Check if any individual updates differ from current values
       const hasChanges = Object.entries(updates).some(([key, value]) => {
         const currentValue = content[key as keyof T];
@@ -43,8 +76,8 @@ export function createNodeDataHook<T extends NodeContent>(
       }
       
       console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Updating content with:`, updates);
-      setNodeContent(nodeId, updates);
-    }, [nodeId, content, setNodeContent]);
+      setNodeContent(nodeId, updates as Partial<NodeContent>);
+    }, [nodeId, content, setNodeContent, defaultValues]);
     
     /**
      * Creates property change handlers for each property
@@ -58,12 +91,23 @@ export function createNodeDataHook<T extends NodeContent>(
       }, [updateContent]);
     };
 
-    return {
+    const baseHook = {
       content,
       updateContent,
       createChangeHandler,
       // Method to directly access the store state (for use in cleanup effects)
       getStoreState: useNodeContentStore.getState,
     };
+
+    // If extendHook is provided, use it to extend the base hook
+    if (extendHook) {
+      return extendHook({
+        nodeId,
+        ...baseHook
+      });
+    }
+
+    // Otherwise, return the base hook
+    return baseHook as unknown as TExtended;
   };
 } 

@@ -15,7 +15,7 @@ import { runFlow } from '../../core/FlowRunner';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   // Use useNodeContent hook correctly
-  const { content: crawlerData, updateContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
+  const { content: crawlerData, setContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
 
   // Get node execution state
   const nodeState = useNodeState(id);
@@ -43,7 +43,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     // 1. Update NodeContentStore using the updateContent function from the hook
-    updateContent({ label: newLabel }); 
+    setContent({ label: newLabel }); 
 
     // 2. Update FlowStructureStore (React Flow rendering state)
     const { nodes, setNodes } = useFlowStructureStore.getState(); // Get latest nodes/setNodes
@@ -60,7 +60,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     );
     setNodes(updatedNodes);
     console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
-  }, [id, updateContent]);
+  }, [id, setContent]);
   
   // Handle toggle view
   const handleToggleView = useCallback(() => {

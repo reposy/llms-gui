@@ -221,6 +221,10 @@ export interface LLMNodeContent extends BaseNodeContent {
   openaiApiKey?: string;
   mode?: LLMMode;
   responseContent?: LLMResult | string;
+  isStreaming?: boolean;
+  streamingResult?: string;
+  selectedFiles?: File[];
+  hasImageInputs?: boolean;
 }
 
 // API 노드 컨텐츠
@@ -233,10 +237,10 @@ export interface APINodeContent extends BaseNodeContent {
   queryParams?: Record<string, string>;
   useInputAsBody?: boolean;
   contentType?: string;
-  response?: APIResponse | null;
-  statusCode?: number | null;
-  executionTime?: number | null;
-  errorMessage?: string | null;
+  response?: APIResponse | undefined;
+  statusCode?: number | undefined;
+  executionTime?: number | undefined;
+  errorMessage?: string | undefined;
   isRunning?: boolean;
 }
 

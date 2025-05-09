@@ -69,7 +69,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
     handleClearElementItems,
   } = useInputNodeData({ nodeId });
   
-  const { content, updateContent } = useNodeContent<InputNodeContent>(nodeId, 'input');
+  const { content, setContent } = useNodeContent<InputNodeContent>(nodeId, 'input');
 
   // Explicitly type the mode for clarity within this component scope
   const currentMode = chainingUpdateMode as 'common' | 'replaceCommon' | 'element' | 'none' | 'replaceElement';
@@ -103,7 +103,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
   // Handler for Accumulation Mode change
   const handleAccumulationModeChange = (value: 'always' | 'oncePerContext' | 'none') => {
     if (value) { // Ensure a value is selected
-      updateContent({ accumulationMode: value });
+      setContent({ accumulationMode: value });
     }
   };
 

@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { useNodeContent, useNodeContentStore, HTMLParserNodeContent } from '../store/useNodeContentStore';
+import { useNodeContent } from '../store/useNodeContentStore';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Checkbox } from './ui/checkbox';
-import { Icons } from './Icons';
 
 interface ExtractionRule {
   name: string;
@@ -13,6 +11,13 @@ interface ExtractionRule {
   target: 'text' | 'html' | 'attribute';
   attribute_name?: string;
   multiple: boolean;
+}
+
+// HTMLParserNodeContent 인터페이스 정의
+interface HTMLParserNodeContent {
+  extractionRules?: ExtractionRule[];
+  label?: string;
+  [key: string]: any;
 }
 
 interface HTMLParserNodeConfigProps {
@@ -23,8 +28,7 @@ interface HTMLParserNodeConfigProps {
  * HTML Parser 노드의 설정 패널 컴포넌트
  */
 export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
-  const nodeContent = useNodeContent<HTMLParserNodeContent>(nodeId);
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const { content, setContent } = useNodeContent<HTMLParserNodeContent>(nodeId, 'html-parser');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
@@ -50,7 +54,7 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
 
   // 노드 라벨 변경 핸들러
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNodeContent(nodeId, { label: e.target.value });
+    setContent({ label: e.target.value });
   };
 
   // 새 규칙 입력값 변경 핸들러
@@ -75,14 +79,14 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
     }
 
     // 중복 이름 검사
-    if (nodeContent.extractionRules?.some(rule => rule.name === newRule.name)) {
+    if (content?.extractionRules?.some(rule => rule.name === newRule.name)) {
       showMessage('동일한 이름의 규칙이 이미 존재합니다.', 'error');
       return;
     }
 
     // 현재 규칙 목록에 새 규칙 추가
-    const updatedRules = [...(nodeContent.extractionRules || []), { ...newRule }];
-    setNodeContent(nodeId, { extractionRules: updatedRules });
+    const updatedRules = [...(content?.extractionRules || []), { ...newRule }];
+    setContent({ extractionRules: updatedRules });
     
     // 새 규칙 폼 초기화
     setNewRule({
@@ -98,23 +102,23 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
 
   // 규칙 삭제 핸들러
   const handleDeleteRule = (index: number) => {
-    if (!nodeContent.extractionRules) return;
+    if (!content?.extractionRules) return;
     
-    const updatedRules = [...nodeContent.extractionRules];
+    const updatedRules = [...content.extractionRules];
     updatedRules.splice(index, 1);
     
-    setNodeContent(nodeId, { extractionRules: updatedRules });
+    setContent({ extractionRules: updatedRules });
     showMessage('규칙이 삭제되었습니다.', 'info');
   };
 
   // 기존 규칙 수정 핸들러
   const handleUpdateRule = (index: number, field: keyof ExtractionRule, value: any) => {
-    if (!nodeContent.extractionRules) return;
+    if (!content?.extractionRules) return;
     
-    const updatedRules = [...nodeContent.extractionRules];
+    const updatedRules = [...content.extractionRules];
     updatedRules[index] = { ...updatedRules[index], [field]: value };
     
-    setNodeContent(nodeId, { extractionRules: updatedRules });
+    setContent({ extractionRules: updatedRules });
   };
 
   const renderRule = (rule: ExtractionRule, index: number) => (
@@ -127,14 +131,14 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
             size="sm"
             className="text-blue-600 hover:text-blue-800"
           >
-            <Icons.penLine className="h-4 w-4" />
+            <span className="h-4 w-4">✎</span>
           </Button>
           <Button
             onClick={() => handleDeleteRule(index)}
             size="sm"
             className="text-red-600 hover:text-red-800"
           >
-            <Icons.trash className="h-4 w-4" />
+            <span className="h-4 w-4">🗑️</span>
           </Button>
         </div>
       </div>
@@ -171,11 +175,10 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
         <Label htmlFor="nodeName">노드 이름</Label>
         <Input
           id="nodeName"
-          value={nodeContent.label || ''}
+          value={content?.label || ''}
           onChange={handleLabelChange}
           placeholder="HTML Parser 노드 이름"
           className="mt-1"
-          fullWidth
         />
       </div>
 
@@ -192,12 +195,12 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
         </div>
 
         <div className="space-y-3 mt-3 max-w-full">
-          {nodeContent.extractionRules?.length === 0 ? (
+          {content?.extractionRules?.length === 0 ? (
             <p className="text-gray-500 text-sm">
               추출 규칙을 추가하세요. CSS 선택자를 이용해 HTML에서 원하는 정보를 추출할 수 있습니다.
             </p>
           ) : (
-            nodeContent.extractionRules.map(renderRule)
+            content?.extractionRules?.map(renderRule)
           )}
         </div>
       </div>

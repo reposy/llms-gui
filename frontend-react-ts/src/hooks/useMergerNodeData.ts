@@ -6,88 +6,66 @@ import { MergerNodeContent } from '../types/nodes';
  * Default values for Merger node content
  */
 const MERGER_DEFAULTS: Partial<MergerNodeContent> = {
-  label: 'Merger Node',
   mergeMode: 'concat',
-  strategy: 'array',
-  keys: [],
-  items: [],
-  mode: 'default',
-  params: [],
-  result: []
+  joinSeparator: ', ',
+  items: []
 };
 
 /**
- * Custom hook to manage Merger node state and operations.
- * Uses the standardized hook factory pattern.
+ * Return type for useMergerNodeData hook
  */
-export const useMergerNodeData = ({ nodeId }: { nodeId: string }) => {
-  // Use the factory to create the base hook functionality
-  const { 
-    content, 
-    updateContent: updateMergerContent, 
-    createChangeHandler 
-  } = createNodeDataHook<MergerNodeContent>('merger', MERGER_DEFAULTS)({ nodeId });
+interface MergerNodeDataHook {
+  content: MergerNodeContent | undefined;
+  items: any[];
+  itemCount: number;
+  mergeMode: string;
+  joinSeparator: string;
+  updateContent: (updates: Partial<MergerNodeContent>) => void;
+  resetItems: () => void;
+  addItem: (item: any) => void;
+}
 
-  // Extract properties with defaults for easier access
-  const label = content?.label || MERGER_DEFAULTS.label;
-  const mergeMode = content?.mergeMode || MERGER_DEFAULTS.mergeMode;
-  const strategy = content?.strategy || MERGER_DEFAULTS.strategy;
-  const keys = content?.keys || MERGER_DEFAULTS.keys;
-  const items = content?.items || MERGER_DEFAULTS.items;
-  const itemCount = items?.length || 0;
-  const mode = content?.mode || MERGER_DEFAULTS.mode;
-  const params = content?.params || MERGER_DEFAULTS.params;
-  const result = content?.result || MERGER_DEFAULTS.result;
+/**
+ * Custom hook for managing Merger node data
+ */
+export const useMergerNodeData = createNodeDataHook<MergerNodeContent, MergerNodeDataHook>(
+  'merger',
+  (params) => {
+    const { nodeId, content, updateContent } = params;
 
-  // Create standard change handlers
-  const handleLabelChange = createChangeHandler('label');
-  const handleStrategyChange = createChangeHandler('strategy');
-  const handleKeysChange = createChangeHandler('keys');
-
-  /**
-   * Add a new item to the accumulated items.
-   */
-  const addItem = useCallback((item: any) => {
-    // items가 정의되지 않은 경우 빈 배열로 초기화
-    const currentItems = items || [];
-    const newItems = [...currentItems, item]; 
-    console.log(`[MergerNode ${nodeId}] Adding item. New count: ${newItems.length}`);
-    updateMergerContent({ items: newItems });
-  }, [nodeId, items, updateMergerContent]);
-
-  /**
-   * Reset all accumulated items.
-   */
-  const resetItems = useCallback(() => {
-    if (!items || items.length === 0) return;
-
-    console.log(`[MergerNode ${nodeId}] Resetting ${items.length} items`);
-    updateMergerContent({ items: [] });
-  }, [nodeId, items, updateMergerContent]);
-
-  return {
-    // Data
-    content,
-    label,
-    mergeMode,
-    strategy,
-    keys,
-    items,
-    itemCount,
-    mode,
-    params,
-    result,
-
-    // Change Handlers
-    handleLabelChange,
-    handleStrategyChange,
-    handleKeysChange,
-
-    // Result Item Handlers
-    addItem,
-    resetItems,
+    // 아이템 목록
+    const items = content?.items || [];
     
-    // Direct update method
-    updateContent: updateMergerContent
-  };
-}; 
+    // 아이템 개수
+    const itemCount = items.length;
+    
+    // 병합 모드
+    const mergeMode = content?.mergeMode || MERGER_DEFAULTS.mergeMode || 'concat';
+    
+    // 조인 구분자
+    const joinSeparator = content?.joinSeparator || MERGER_DEFAULTS.joinSeparator || ', ';
+
+    // 아이템 목록 초기화
+    const resetItems = useCallback(() => {
+      updateContent({ items: [] });
+    }, [updateContent]);
+
+    // 아이템 추가
+    const addItem = useCallback((item: any) => {
+      const updatedItems = [...items, item];
+      updateContent({ items: updatedItems });
+    }, [items, updateContent]);
+
+    return {
+      content,
+      items,
+      itemCount,
+      mergeMode,
+      joinSeparator,
+      updateContent,
+      resetItems,
+      addItem
+    };
+  },
+  MERGER_DEFAULTS
+); 

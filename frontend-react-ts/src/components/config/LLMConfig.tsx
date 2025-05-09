@@ -68,14 +68,14 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
     handlePromptChange,
     handleModelChange,
     handleTemperatureChange,
-    setProvider,
+    handleProviderChange,
     handleOllamaUrlChange,
-    handleOpenaiApiKeyChange,
+    handleOpenAIApiKeyChange,
     setMode,
   } = useLlmNodeData({ nodeId });
   
   // Check if the current model supports vision features using the local placeholder
-  const supportsVision = model && isVisionModel(provider, model);
+  const supportsVision = model && isVisionModel(provider || 'ollama', model);
   
   // Vision button is always enabled from UI perspective
   // const canEnableVisionButton = useMemo(() => {
@@ -121,7 +121,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => setProvider('ollama')}
+            onClick={() => handleProviderChange('ollama')}
             onKeyDown={handleKeyDown}
           >
             Ollama
@@ -132,7 +132,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
-            onClick={() => setProvider('openai')}
+            onClick={() => handleProviderChange('openai')}
             onKeyDown={handleKeyDown}
           >
             OpenAI
@@ -147,7 +147,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
           type="text"
           className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
           value={model}
-          onChange={handleModelChange}
+          onChange={(e) => handleModelChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={provider === 'ollama' ? 'llama3' : 'gpt-3.5-turbo'}
         />
@@ -189,7 +189,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
               }
               
               // 이미지 입력 연결 여부 확인 (알림용)
-              if (!hasImageInputs()) {
+              if (!hasImageInputs) {
                 alert('비전 모드는 이미지 입력이 필요합니다. 이미지 입력 노드를 연결하세요.');
                 // 입력이 없어도 모드 변경은 허용
               }
@@ -220,7 +220,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
             type="text"
             className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
             value={ollamaUrl}
-            onChange={handleOllamaUrlChange}
+            onChange={(e) => handleOllamaUrlChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="http://localhost:11434"
           />
@@ -235,7 +235,7 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
             type="password"
             className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
             value={openaiApiKey}
-            onChange={handleOpenaiApiKeyChange}
+            onChange={(e) => handleOpenAIApiKeyChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="sk-..."
           />
@@ -246,58 +246,57 @@ export const LLMConfig: React.FC<LLMConfigProps> = ({ nodeId }) => {
       <div>
         <div className="flex justify-between items-center">
           <ConfigLabel>Temperature</ConfigLabel>
-          <span className="text-sm text-gray-600">{temperature.toFixed(1)}</span>
+          <span className="text-sm text-gray-600">{temperature?.toFixed(1) || '0.0'}</span>
         </div>
         <input
           type="range"
           min="0"
-          max="1"
+          max="2"
           step="0.1"
-          className="w-full"
-          value={temperature}
-          onChange={handleTemperatureChange}
+          value={temperature || 0}
+          onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
           onKeyDown={handleKeyDown}
+          className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
         />
       </div>
 
-      {/* Prompt Input */}
+      {/* Prompt Textarea */}
       <div>
         <ConfigLabel>Prompt</ConfigLabel>
         <textarea
-          className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-mono text-sm"
+          className="w-full p-2.5 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 h-36"
           value={prompt}
-          onChange={handlePromptChange}
+          onChange={(e) => handlePromptChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          rows={8}
           placeholder="Enter your prompt here..."
         />
-        {mode === 'vision' && (
-          <div className="mt-1 text-xs text-gray-500">
-            ℹ️ 프롬프트에 {'{{input}}'} 을 포함하면 이미지 파일명으로 대체됩니다.
-          </div>
-        )}
+        {/* Optional character count or helper text */}
+        <div className="mt-1 text-xs text-gray-500 flex justify-between">
+          <span>{prompt?.length || 0} characters</span>
+          {prompt?.length > 0 && (
+            <button
+              className="text-blue-500 hover:text-blue-700"
+              onClick={() => handlePromptChange('')}
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Full Execution Result (if available) - Moved below Prompt */}
-      {(executionState?.status === 'success' || executionState?.result) && (
-        <div>
-          <ConfigLabel>Full Result</ConfigLabel>
-          <div className="p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 font-mono text-sm max-h-40 overflow-auto whitespace-pre-wrap">
-            {executionState.result !== null && executionState.result !== undefined
-              ? (typeof executionState.result === 'string' 
-              ? executionState.result 
-                  : JSON.stringify(executionState.result, null, 2))
-              : <span className="text-gray-400 italic">No result available.</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Error Message (if any) */}
-      {executionState?.status === 'error' && executionState?.error && (
-        <div>
-          <ConfigLabel>Error</ConfigLabel>
-          <div className="p-2.5 bg-red-50 border border-red-300 rounded-lg text-red-700 font-mono text-sm">
-            {executionState.error}
+      {/* Execution Status */}
+      {executionState && (
+        <div className="mt-4">
+          <div className={`px-4 py-3 rounded-md text-sm ${
+            executionState.status === 'running' ? 'bg-blue-50 text-blue-700' :
+            executionState.status === 'success' ? 'bg-green-50 text-green-700' :
+            executionState.status === 'error' ? 'bg-red-50 text-red-700' :
+            'bg-gray-50 text-gray-700'
+          }`}>
+            {executionState.status === 'running' && 'Processing your request...'}
+            {executionState.status === 'success' && 'Request completed successfully.'}
+            {executionState.status === 'error' && `Error: ${executionState.error || 'Unknown error'}`}
+            {executionState.status === 'idle' && 'Ready to process your request.'}
           </div>
         </div>
       )}

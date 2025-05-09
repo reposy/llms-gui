@@ -46,85 +46,91 @@ interface WebCrawlerNodeDataHook {
  */
 export const useWebCrawlerNodeData = ({ nodeId }: { nodeId: string }): WebCrawlerNodeDataHook => {
   // Use the factory to create the base hook functionality
-  const { 
-    content, 
-    updateContent: updateWebCrawlerContent 
-  } = createNodeDataHook<WebCrawlerNodeContent>('web-crawler', WEBCRAWLER_DEFAULTS)({ nodeId });
+  return createNodeDataHook<WebCrawlerNodeContent, WebCrawlerNodeDataHook>(
+    'web-crawler',
+    (params) => {
+      const { 
+        content, 
+        updateContent: updateWebCrawlerContent 
+      } = params;
 
-  // Extract properties with defaults for easier access
-  const url = content?.url || WEBCRAWLER_DEFAULTS.url || '';
-  const waitForSelectorOnPage = content?.waitForSelectorOnPage || WEBCRAWLER_DEFAULTS.waitForSelectorOnPage || '';
-  const iframeSelector = content?.iframeSelector || WEBCRAWLER_DEFAULTS.iframeSelector || '';
-  const waitForSelectorInIframe = content?.waitForSelectorInIframe || WEBCRAWLER_DEFAULTS.waitForSelectorInIframe || '';
-  const timeout = content?.timeout || WEBCRAWLER_DEFAULTS.timeout || 30000;
-  const headers = content?.headers || WEBCRAWLER_DEFAULTS.headers || {};
-  const extractElementSelector = content?.extractElementSelector || WEBCRAWLER_DEFAULTS.extractElementSelector || '';
+      // Extract properties with defaults for easier access
+      const url = content?.url || WEBCRAWLER_DEFAULTS.url || '';
+      const waitForSelectorOnPage = content?.waitForSelectorOnPage || WEBCRAWLER_DEFAULTS.waitForSelectorOnPage || '';
+      const iframeSelector = content?.iframeSelector || WEBCRAWLER_DEFAULTS.iframeSelector || '';
+      const waitForSelectorInIframe = content?.waitForSelectorInIframe || WEBCRAWLER_DEFAULTS.waitForSelectorInIframe || '';
+      const timeout = content?.timeout || WEBCRAWLER_DEFAULTS.timeout || 30000;
+      const headers = content?.headers || WEBCRAWLER_DEFAULTS.headers || {};
+      const extractElementSelector = content?.extractElementSelector || WEBCRAWLER_DEFAULTS.extractElementSelector || '';
 
-  // Convenience update methods
-  const updateUrl = useCallback((newUrl: string) => {
-    updateWebCrawlerContent({ url: newUrl });
-  }, [updateWebCrawlerContent]);
+      // Convenience update methods
+      const updateUrl = useCallback((newUrl: string) => {
+        updateWebCrawlerContent({ url: newUrl });
+      }, [updateWebCrawlerContent]);
 
-  const updateWaitForSelectorOnPage = useCallback((selector: string) => {
-    updateWebCrawlerContent({ waitForSelectorOnPage: selector });
-  }, [updateWebCrawlerContent]);
+      const updateWaitForSelectorOnPage = useCallback((selector: string) => {
+        updateWebCrawlerContent({ waitForSelectorOnPage: selector });
+      }, [updateWebCrawlerContent]);
 
-  const updateIframeSelector = useCallback((selector: string) => {
-    updateWebCrawlerContent({ iframeSelector: selector });
-  }, [updateWebCrawlerContent]);
+      const updateIframeSelector = useCallback((selector: string) => {
+        updateWebCrawlerContent({ iframeSelector: selector });
+      }, [updateWebCrawlerContent]);
 
-  const updateWaitForSelectorInIframe = useCallback((selector: string) => {
-    updateWebCrawlerContent({ waitForSelectorInIframe: selector });
-  }, [updateWebCrawlerContent]);
+      const updateWaitForSelectorInIframe = useCallback((selector: string) => {
+        updateWebCrawlerContent({ waitForSelectorInIframe: selector });
+      }, [updateWebCrawlerContent]);
 
-  const updateTimeout = useCallback((newTimeout: number) => {
-    updateWebCrawlerContent({ timeout: newTimeout });
-  }, [updateWebCrawlerContent]);
+      const updateTimeout = useCallback((newTimeout: number) => {
+        updateWebCrawlerContent({ timeout: newTimeout });
+      }, [updateWebCrawlerContent]);
 
-  const updateHeaders = useCallback((newHeaders: Record<string, string>) => {
-    updateWebCrawlerContent({ headers: newHeaders });
-  }, [updateWebCrawlerContent]);
+      const updateHeaders = useCallback((newHeaders: Record<string, string>) => {
+        updateWebCrawlerContent({ headers: newHeaders });
+      }, [updateWebCrawlerContent]);
 
-  const addHeader = useCallback((key: string, value: string) => {
-    updateWebCrawlerContent({ 
-      headers: { 
-        ...headers, 
-        [key]: value 
-      } 
-    });
-  }, [headers, updateWebCrawlerContent]);
+      const addHeader = useCallback((key: string, value: string) => {
+        updateWebCrawlerContent({ 
+          headers: { 
+            ...headers, 
+            [key]: value 
+          } 
+        });
+      }, [headers, updateWebCrawlerContent]);
 
-  const removeHeader = useCallback((key: string) => {
-    const updatedHeaders = { ...headers };
-    delete updatedHeaders[key];
-    updateWebCrawlerContent({ headers: updatedHeaders });
-  }, [headers, updateWebCrawlerContent]);
+      const removeHeader = useCallback((key: string) => {
+        const updatedHeaders = { ...headers };
+        delete updatedHeaders[key];
+        updateWebCrawlerContent({ headers: updatedHeaders });
+      }, [headers, updateWebCrawlerContent]);
 
-  const updateExtractElementSelector = useCallback((selector: string) => {
-    updateWebCrawlerContent({ extractElementSelector: selector });
-  }, [updateWebCrawlerContent]);
+      const updateExtractElementSelector = useCallback((selector: string) => {
+        updateWebCrawlerContent({ extractElementSelector: selector });
+      }, [updateWebCrawlerContent]);
 
-  return {
-    // Data
-    content,
-    url,
-    waitForSelectorOnPage,
-    iframeSelector,
-    waitForSelectorInIframe,
-    timeout,
-    headers,
-    extractElementSelector,
-    
-    // Update methods
-    updateContent: updateWebCrawlerContent,
-    updateUrl,
-    updateWaitForSelectorOnPage,
-    updateIframeSelector,
-    updateWaitForSelectorInIframe,
-    updateTimeout,
-    updateHeaders,
-    addHeader,
-    removeHeader,
-    updateExtractElementSelector
-  };
+      return {
+        // Data
+        content,
+        url,
+        waitForSelectorOnPage,
+        iframeSelector,
+        waitForSelectorInIframe,
+        timeout,
+        headers,
+        extractElementSelector,
+        
+        // Update methods
+        updateContent: updateWebCrawlerContent,
+        updateUrl,
+        updateWaitForSelectorOnPage,
+        updateIframeSelector,
+        updateWaitForSelectorInIframe,
+        updateTimeout,
+        updateHeaders,
+        addHeader,
+        removeHeader,
+        updateExtractElementSelector
+      };
+    },
+    WEBCRAWLER_DEFAULTS
+  )({ nodeId });
 }; 
