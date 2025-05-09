@@ -10,8 +10,9 @@ const ExecutorPage: React.FC = () => {
   // 파일 입력 참조
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // 상태 관리 - 로컬 상태는 최소한으로 유지
+  // 로컬 상태
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [hasSubmittedInput, setHasSubmittedInput] = useState<boolean>(false);
   
   // Zustand 스토어에서 상태와 액션 가져오기
   const {
@@ -33,7 +34,12 @@ const ExecutorPage: React.FC = () => {
     if (flowJson && stage === 'upload') {
       setStage('input');
     }
-  }, [flowJson, stage, setStage]);
+    
+    // 저장된 입력 데이터가 있으면 제출 상태 설정
+    if (inputData && inputData.length > 0) {
+      setHasSubmittedInput(true);
+    }
+  }, [flowJson, stage, setStage, inputData]);
 
   // 플로우 JSON 업로드 처리
   const handleFileUpload = (jsonData: any) => {
@@ -46,6 +52,8 @@ const ExecutorPage: React.FC = () => {
   // 입력 데이터 처리
   const handleInputDataSubmit = (data: any[]) => {
     setInputData(data);
+    setHasSubmittedInput(true);
+    console.log('Input data submitted:', data);
   };
 
   // 워크플로우 실행
@@ -53,6 +61,13 @@ const ExecutorPage: React.FC = () => {
     if (!flowJson) {
       setError('먼저 플로우 JSON 파일을 업로드해주세요.');
       return;
+    }
+    
+    // 입력 데이터가 Submit 되었는지 확인
+    if (!hasSubmittedInput || !inputData || inputData.length === 0) {
+      if (!window.confirm('입력 데이터가 제출되지 않았습니다. 빈 입력 데이터로 실행하시겠습니까?')) {
+        return;
+      }
     }
 
     setIsExecuting(true);
@@ -62,7 +77,7 @@ const ExecutorPage: React.FC = () => {
     try {
       const response = await executeFlow({
         flowJson,
-        inputs: inputData,
+        inputs: inputData || [],
       });
 
       if (response.status === 'error') {
@@ -85,6 +100,11 @@ const ExecutorPage: React.FC = () => {
       // 파일 선택 대화상자 직접 열기
       fileInputRef.current?.click();
     }
+  };
+  
+  // Input 단계로 되돌아가기
+  const handleBackToInput = () => {
+    setStage('input');
   };
 
   return (
@@ -109,7 +129,9 @@ const ExecutorPage: React.FC = () => {
                 <span className="mt-2">Upload Flow</span>
               </div>
               <div className={`flex-1 h-1 mx-2 ${stage !== 'upload' ? 'bg-blue-300' : 'bg-gray-300'}`}></div>
-              <div className={`flex flex-col items-center ${stage === 'input' ? 'text-blue-600' : (stage === 'upload' ? 'text-gray-400' : 'text-gray-600')}`}>
+              <div 
+                className={`flex flex-col items-center ${stage === 'input' ? 'text-blue-600' : (stage === 'upload' ? 'text-gray-400' : 'text-gray-600')}`}
+              >
                 <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'input' ? 'bg-blue-100 border-blue-500' : (stage !== 'upload' ? 'bg-gray-100 border-gray-300' : 'bg-gray-100 border-gray-200')} border-2`}>2</div>
                 <span className="mt-2">Provide Input</span>
               </div>
@@ -170,9 +192,14 @@ const ExecutorPage: React.FC = () => {
                 <div className="flex justify-center mt-6">
                   <button
                     onClick={handleExecute}
-                    className="px-6 py-3 rounded-lg text-white font-medium bg-green-600 hover:bg-green-700 transition-colors"
+                    className={`px-6 py-3 rounded-lg text-white font-medium ${
+                      hasSubmittedInput ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                    } transition-colors`}
+                    title={hasSubmittedInput ? '제출된 입력 데이터로 실행' : '입력 데이터가 아직 제출되지 않음'}
                   >
-                    Execute Flow
+                    {hasSubmittedInput 
+                      ? 'Execute Flow' 
+                      : 'Execute Flow (Submit Input First)'}
                   </button>
                 </div>
               )}
@@ -191,15 +218,9 @@ const ExecutorPage: React.FC = () => {
             <div className="flex justify-center mt-6">
               <button
                 onClick={handleExecute}
-                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors mr-4"
+                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
               >
                 Run Again
-              </button>
-              <button
-                onClick={handleReset}
-                className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-              >
-                Start Over
               </button>
             </div>
           )}
