@@ -1,101 +1,55 @@
 // src/components/config/WebCrawlerNodeConfig.tsx
-import React, { useState, useCallback, useEffect } from 'react';
-// Remove unused type if needed
-// import { WebCrawlerNodeData } from '../../types/nodes';
-import { useNodeContent } from '../../store/useNodeContentStore';
-import { WebCrawlerNodeContent } from '../../types/nodes';
+import React, { useState, useCallback } from 'react';
+// Remove unused imports
+// import { useNodeContent } from '../../store/useNodeContentStore';
+// import { WebCrawlerNodeContent } from '../../types/nodes';
+import { useWebCrawlerNodeData } from '../../hooks/useWebCrawlerNodeData';
 
 interface WebCrawlerNodeConfigProps {
   nodeId: string;
 }
 
 export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ nodeId }) => {
-  const { 
-    content, 
-    updateContent
-  } = useNodeContent<WebCrawlerNodeContent>(nodeId, 'web-crawler'); 
+  // Use the new custom hook instead of useNodeContent
+  const {
+    url,
+    waitForSelectorOnPage,
+    iframeSelector,
+    waitForSelectorInIframe,
+    timeout,
+    headers,
+    extractElementSelector,
+    updateUrl,
+    updateWaitForSelectorOnPage,
+    updateIframeSelector,
+    updateWaitForSelectorInIframe,
+    updateTimeout,
+    updateContent,
+    addHeader,
+    removeHeader
+  } = useWebCrawlerNodeData({ nodeId });
   
-  // Local state for form fields
-  const [url, setUrl] = useState(content?.url || '');
-  const [waitForSelectorOnPage, setWaitForSelectorOnPage] = useState(content?.waitForSelectorOnPage || '');
-  const [iframeSelector, setIframeSelector] = useState(content?.iframeSelector || '');
-  const [waitForSelectorInIframe, setWaitForSelectorInIframe] = useState(content?.waitForSelectorInIframe || '');
-  const [timeout, setTimeout] = useState(content?.timeout || 30000);
-  // Headers state
-  const [headers, setHeaders] = useState<Record<string, string>>(content?.headers || {});
+  // Local state for new header input fields
   const [newHeaderKey, setNewHeaderKey] = useState('');
   const [newHeaderValue, setNewHeaderValue] = useState('');
-
-  // Sync local state if content from store changes
-  useEffect(() => {
-    if (content) {
-      setUrl(content.url || '');
-      setWaitForSelectorOnPage(content.waitForSelectorOnPage || '');
-      setIframeSelector(content.iframeSelector || '');
-      setWaitForSelectorInIframe(content.waitForSelectorInIframe || '');
-      setTimeout(content.timeout || 30000);
-      setHeaders(content.headers || {});
-    }
-  }, [content]);
   
-  const handleUpdateField = useCallback((field: keyof WebCrawlerNodeContent, value: any) => {
-    updateContent({ [field]: value });
-  }, [updateContent]);
-  
-  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newUrl = e.target.value;
-    setUrl(newUrl);
-    handleUpdateField('url', newUrl);
-  }, [handleUpdateField]);
-  
-  const handleWaitSelectorOnPageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newWaitSelector = e.target.value;
-    setWaitForSelectorOnPage(newWaitSelector);
-    handleUpdateField('waitForSelectorOnPage', newWaitSelector);
-  }, [handleUpdateField]);
-  
-  const handleIframeSelectorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newIframeSelector = e.target.value;
-    setIframeSelector(newIframeSelector);
-    handleUpdateField('iframeSelector', newIframeSelector);
-  }, [handleUpdateField]);
-  
-  const handleWaitForSelectorInIframeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newSelector = e.target.value;
-    setWaitForSelectorInIframe(newSelector);
-    handleUpdateField('waitForSelectorInIframe', newSelector);
-  }, [handleUpdateField]);
-  
-  const handleTimeoutChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTimeout = parseInt(e.target.value, 10) || 30000;
-    setTimeout(newTimeout);
-    handleUpdateField('timeout', newTimeout);
-  }, [handleUpdateField]);
-
-  // --- Header Management --- 
+  // Handle new header addition
   const handleAddHeader = useCallback(() => {
     if (newHeaderKey && newHeaderValue) {
-      const updatedHeaders = {
-        ...headers,
-        [newHeaderKey]: newHeaderValue
-      };
-      setHeaders(updatedHeaders);
-      handleUpdateField('headers', updatedHeaders);
+      addHeader(newHeaderKey, newHeaderValue);
       setNewHeaderKey('');
       setNewHeaderValue('');
     }
-  }, [newHeaderKey, newHeaderValue, headers, handleUpdateField]);
+  }, [newHeaderKey, newHeaderValue, addHeader]);
 
+  // Handle header removal
   const handleRemoveHeader = useCallback((key: string) => {
-    const updatedHeaders = { ...headers };
-    delete updatedHeaders[key];
-    setHeaders(updatedHeaders);
-    handleUpdateField('headers', updatedHeaders);
-  }, [headers, handleUpdateField]);
-  // --- End Header Management ---
+    removeHeader(key);
+  }, [removeHeader]);
   
+  // Prevent event propagation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-      e.stopPropagation();
+    e.stopPropagation();
   }, []);
   
   return (
@@ -110,7 +64,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             id="crawler-url"
             type="text"
             value={url}
-            onChange={handleUrlChange}
+            onChange={(e) => updateUrl(e.target.value)}
             placeholder="https://example.com"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
@@ -125,7 +79,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             id="wait-selector-page"
             type="text"
             value={waitForSelectorOnPage}
-            onChange={handleWaitSelectorOnPageChange}
+            onChange={(e) => updateWaitForSelectorOnPage(e.target.value)}
             placeholder=".main-content, body"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
@@ -140,7 +94,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             id="iframe-selector"
             type="text"
             value={iframeSelector}
-            onChange={handleIframeSelectorChange}
+            onChange={(e) => updateIframeSelector(e.target.value)}
             placeholder="#entryIframe, iframe[name='content']"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
@@ -155,7 +109,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             id="wait-selector-iframe"
             type="text"
             value={waitForSelectorInIframe}
-            onChange={handleWaitForSelectorInIframeChange}
+            onChange={(e) => updateWaitForSelectorInIframe(e.target.value)}
             placeholder="#_title, .article-body"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
@@ -173,7 +127,7 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
             id="timeout"
             type="number"
             value={timeout}
-            onChange={handleTimeoutChange}
+            onChange={(e) => updateTimeout(parseInt(e.target.value, 10) || 30000)}
             min="1000"
             max="120000"
             step="1000"
@@ -183,23 +137,20 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
           <p className="mt-1 text-xs text-gray-500">Maximum total time to wait in milliseconds</p>
         </div>
 
-        {/* NEW: Extract Element Selector Input */}
+        {/* Extract Element Selector Input */}
         <div>
           <label htmlFor="extract-selector" className="block text-xs font-medium text-gray-700">Extract Element Selector (Optional)</label>
           <input
             id="extract-selector"
             type="text"
-            value={content?.extractElementSelector || ''} // Use optional chaining
-            onChange={(e) => handleUpdateField('extractElementSelector', e.target.value)}
+            value={extractElementSelector}
+            onChange={(e) => updateContent({ extractElementSelector: e.target.value })}
             placeholder=".content-area, #main-article"
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm text-black bg-white"
             onKeyDown={handleKeyDown}
           />
           <p className="mt-1 text-xs text-gray-500">If provided, only the inner HTML of the first matching element will be returned.</p>
         </div>
-
-        {/* REMOVED: Output Format Selector */}
-        {/* REMOVED: Include HTML Toggle */}
       </div>
       
       {/* --- Headers Section --- */}
@@ -249,21 +200,20 @@ export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ node
                 </div>
                 <button
                   onClick={() => handleRemoveHeader(key)}
-                  className="text-red-500 hover:text-red-700 text-xs ml-2"
+                  className="ml-2 bg-red-50 text-red-500 rounded-md p-1"
                   onKeyDown={handleKeyDown}
                 >
-                  Remove
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-gray-500">No custom headers defined. Add one above (e.g., User-Agent).</p>
+          <p className="text-sm text-gray-500 italic">No headers defined. Custom headers are optional.</p>
         )}
       </div>
-      {/* --- End Headers Section --- */}
-
-      {/* REMOVED: CSS Selectors Section */}
     </div>
   );
 }; 

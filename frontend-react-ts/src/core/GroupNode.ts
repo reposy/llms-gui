@@ -1,6 +1,8 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { Node as FlowNode } from '@xyflow/react'; // Edge 타입은 직접 사용 안 할 수 있지만, FlowNode는 필요
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { GroupNodeContent } from '../types/nodes';
 
 interface GroupNodeProperty {
   label: string;
@@ -12,7 +14,6 @@ interface GroupNodeProperty {
 
 export class GroupNode extends Node {
   declare property: GroupNodeProperty;
-  private items: any[] = []; // 결과 수집용
 
   constructor(
     id: string, 
@@ -149,60 +150,78 @@ export class GroupNode extends Node {
     return collectedItems;
   }
 
+  /**
+   * GroupNodeContent의 items 속성을 업데이트합니다.
+   */
+  private _updateContentItems(items: any[]): void {
+    try {
+      const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, 'group') as GroupNodeContent;
+      useNodeContentStore.getState().setNodeContent(this.id, {
+        ...nodeContent,
+        items: items && items.length > 0 ? items : []
+      });
+    } catch (error) {
+      this._log(`Error updating content items: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async execute(input: any): Promise<any> {
     this._log('Executing group node');
     
-    // 컨텍스트를 지역 변수로 캡처하여 참조 안정성 확보
+    // 초기화: 빈 배열로 결과 초기화 (실행 시작 시점에 한번만)
+    this._updateContentItems([]);
+    
     const currentContext = this.context;
     
     if (!currentContext) {
-      // This initial check is crucial. If context is already undefined here, nothing else will work.
-      console.error(`[GroupNode:${this.id}] Critical: Execution context is missing at the beginning of execute(). Cannot proceed.`);
-      // markNodeError cannot be called here as context is missing.
+      console.error(`[GroupNode:${this.id}] Critical: Execution context is missing. Cannot proceed.`);
       return null;
     }
 
     try {
       const prepResult = this._prepareInternalExecution();
       if (!prepResult) {
-        this._log('Group execution preparation failed.');
-        // currentContext를 사용하여 오류 상태 설정
         currentContext.markNodeError(this.id, 'Group preparation failed');
         return null;
       }
       const { internalNodes, rootNodeIds, internalLeafNodeIds } = prepResult;
 
-      if (rootNodeIds.length === 0 && internalLeafNodeIds.size === 0) {
-        // If there are no roots AND no leaves (e.g. empty group), it means nothing to run, and nothing to collect.
-        this._log('Group is empty or has no executable paths. Execution stopped.');
-        currentContext.markNodeSuccess(this.id, []);
-        return [];
-      } else if (rootNodeIds.length === 0 && internalLeafNodeIds.size > 0) {
-        // No roots, but some leaves exist (e.g. disconnected nodes in a group). These leaves won't be processed.
-        // So, effectively, the group produces no new results from execution.
-        this._log('No root nodes to execute, but leaf nodes exist (will not be processed). Group execution produces no new results.');
+      if (rootNodeIds.length === 0 && (internalNodes.length === 0 || internalLeafNodeIds.size === 0)) {
+        this._log('Group is empty or has no executable paths. Returning empty array.');
+        this._updateContentItems([]); // 명시적으로 빈 배열 업데이트
         currentContext.markNodeSuccess(this.id, []);
         return [];
       }
       
-      // 컨텍스트를 명시적으로 전달
-      await this._executeInternalRootNodes(internalNodes, rootNodeIds, input, currentContext);
+      let processedInput = input;
+      if (input === undefined || input === null) {
+        this._log(`Group received undefined/null input.`);
+        processedInput = undefined;
+      }
       
-      // 컨텍스트를 명시적으로 전달
+      await this._executeInternalRootNodes(internalNodes, rootNodeIds, processedInput, currentContext);
+      
       const finalResults = this._collectLeafNodeResults(internalLeafNodeIds, currentContext);
       
-      this._log(`Finished executing group, returning ${finalResults.length} collected results.`);
-      // 컨텍스트를 사용하여 성공 상태 설정
+      // execute의 최종 반환값으로 NodeContent를 업데이트
+      this._updateContentItems(finalResults);
+
+      if (finalResults.length === 0) {
+        this._log('No results collected. Group returns empty array.');
+      } else {
+        this._log(`Group finished. Returning ${finalResults.length} collected results.`);
+      }
+      
       currentContext.markNodeSuccess(this.id, finalResults);
       return finalResults;
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this._log(`Critical error in group execution orchestration: ${errorMessage}`);
-      // 캡처된 컨텍스트 사용
+      this._log(`Critical error in group execution: ${errorMessage}`);
       if (currentContext) {
-        currentContext.markNodeError(this.id, `Group execution orchestration failed: ${errorMessage}`);
+        currentContext.markNodeError(this.id, `Group execution failed: ${errorMessage}`);
       }
+      this._updateContentItems([]); // 오류 발생 시 items를 빈 배열로 설정
       return null;
     }
   }

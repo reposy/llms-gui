@@ -216,6 +216,7 @@ export interface LLMNodeContent extends BaseNodeContent {
   model: string;
   prompt: string;
   temperature: number;
+  maxTokens?: number;
   ollamaUrl?: string;
   openaiApiKey?: string;
   mode?: LLMMode;
@@ -272,6 +273,7 @@ export interface ConditionalNodeContent extends BaseNodeContent {
 // Group 노드 컨텐츠
 export interface GroupNodeContent extends BaseNodeContent {
   isCollapsed: boolean;
+  items?: any[];
 }
 
 // Merger 노드 컨텐츠

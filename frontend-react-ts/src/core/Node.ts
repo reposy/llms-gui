@@ -46,6 +46,9 @@ export abstract class Node {
    * @param message The message to log
    */
   protected _log(message: string): void {
+    // 개발 모드인 경우에만 로그 출력
+    if (process.env.NODE_ENV !== 'development') return;
+
     if (this.context?.log) {
       this.context.log(`${this.type}(${this.id}): ${message}`);
     } else {
@@ -70,10 +73,7 @@ export abstract class Node {
       return []; 
     }
     
-    const { nodeFactory, nodes: contextNodes, edges: contextEdges, log: contextLog } = this.context;
-    
-    // 로그 헬퍼를 _log로 교체
-    const log = (message: string) => this._log(message);
+    const { nodeFactory, nodes: contextNodes, edges: contextEdges } = this.context;
 
     // 컨텍스트의 엣지 정보에서 직접 자식 노드 ID 계산 (childIds 필드 대신)
     const childNodeIds = contextEdges
@@ -84,26 +84,30 @@ export abstract class Node {
       return [];
     }
 
-    log(`Found ${childNodeIds.length} child node ID(s): [${childNodeIds.join(', ')}] based on context edges.`);
+    // 불필요한 로그 제거
+    if (childNodeIds.length > 3) {
+      this._log(`Found ${childNodeIds.length} child nodes`);
+    } else {
+      this._log(`Found child nodes: ${childNodeIds.join(', ')}`);
+    }
 
     return childNodeIds
       .map((childId: string) => {
         let nodeInstance = nodeFactory.getNode(childId);
 
         if (nodeInstance) {
-          log(`Reusing existing instance for child node ${childId}.`);
+          // 불필요한 로그 제거
           if (nodeFactory && (!nodeInstance.property.nodeFactory)) {
             nodeInstance.property.nodeFactory = nodeFactory;
           }
         } else {
-          log(`No existing instance found for child ${childId}. Creating new one.`);
           const nodeData = contextNodes.find((n: FlowNode) => n.id === childId);
           if (!nodeData) {
-            log(`Node data for child ${childId} not found in context nodes.`);
+            this._log(`Node data for child ${childId} not found in context nodes.`);
             return null;
           }
           if (typeof nodeData.type !== 'string') {
-            log(`Node data for child ${childId} has invalid or missing type: ${nodeData.type}. Skipping creation.`);
+            this._log(`Node data for child ${childId} has invalid or missing type: ${nodeData.type}. Skipping creation.`);
             return null;
           }
           try {
@@ -115,7 +119,7 @@ export abstract class Node {
             );
           } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error);
-              log(`Error creating child node instance ${childId} (type: ${nodeData?.type}): ${errorMessage}`);
+              this._log(`Error creating child node instance ${childId}: ${errorMessage}`);
               return null;
           }
         }
@@ -146,41 +150,34 @@ export abstract class Node {
     const currentContext = this.context; // Use a const for clarity within the scope if preferred
     
     currentContext.markNodeRunning(this.id);
+    // 핵심 로그만 남김
     this._log('Process started.');
 
     try {
-      this._log('Calling execute...');
       // execute uses this.context, which is now set
       const output = await this.execute(input);
-      this._log(`Execute returned. Output type: ${typeof output}, isArray: ${Array.isArray(output)}`);
-
+      
       if (output !== null && output !== undefined) {
         if (Array.isArray(output)) {
           if (output.length > 0) {
-            this._log(`Execute returned an array with ${output.length} items. Storing each item.`);
+            this._log(`Execute returned array (${output.length} items)`);
             for (const item of output) {
               currentContext.storeOutput(this.id, item); 
             }
             currentContext.markNodeSuccess(this.id, output); 
-            this._log('Marked success with array result.');
           } else {
-             this._log('Execute returned empty array.');
              currentContext.markNodeSuccess(this.id, []); 
           }
         } else {
-          this._log('Execute returned a single item. Storing it.');
+          this._log('Execute returned single item');
           currentContext.storeOutput(this.id, output); 
           currentContext.markNodeSuccess(this.id, output);
         }
         
-        this._log(`Context is VALID before getChildNodes. executionId: ${currentContext.executionId}`);
-        
         // getChildNodes uses this.context, which is set
         const children = this.getChildNodes(); 
         if (children.length > 0) {
-           this._log(`Executing ${children.length} child node(s) in parallel. Context executionId: ${currentContext.executionId}`);
            const childPromises = children.map(child => {
-             this._log(`Preparing child ${child.id}. Output type to child: ${typeof output}, isArray: ${Array.isArray(output)}. Context executionId: ${currentContext.executionId}`);
              if (!child) {
                  console.error(`[Node:${this.id}] Null child found in children array.`);
                  return Promise.resolve(); // Skip null child
@@ -190,12 +187,10 @@ export abstract class Node {
              return child.process(output, currentContext); 
            });
            await Promise.all(childPromises); 
-           this._log(`Finished executing child node(s). Context executionId: ${currentContext.executionId}`);
-        } else {
-           this._log('No child nodes to execute.');
+           this._log(`Processed ${children.length} child node(s)`);
         }
       } else {
-           this._log('Execute returned null or undefined. Stopping branch.');
+           this._log('Execute returned null/undefined. Stopping branch.');
            currentContext.markNodeSuccess(this.id, output); 
       }
 
@@ -209,13 +204,6 @@ export abstract class Node {
       } else {
         console.error(`[Node:${this.id}] Error during execution (CONTEXT LOST IN CATCH): ${errorMessage}`, error);
       }
-    }
-    
-    // Check currentContext again before final log - 변경: this.context 대신 currentContext 사용
-    if (currentContext) {
-        this._log('Process finished.');
-    } else {
-        console.log(`[Node:${this.id}] Process finished (CONTEXT WAS LOST).`);
     }
   }
 

@@ -7,14 +7,30 @@ import { GroupNodeContent } from '../types/nodes';
  */
 const GROUP_DEFAULTS: Partial<GroupNodeContent> = {
   isCollapsed: false,
-  label: ''
+  label: '',
+  items: []
 };
+
+/**
+ * Return type for useGroupNodeData hook
+ * Explicitly defining return type helps TypeScript understand the guarantees we're making
+ */
+interface GroupNodeDataHook {
+  content: GroupNodeContent | undefined;
+  label: string; // Explicitly marked as string (not string | undefined)
+  isCollapsed: boolean;
+  items: any[];
+  handleLabelChange: (nodeId: string, newLabel: string) => void;
+  toggleCollapse: () => void;
+  updateContent: (updates: Partial<GroupNodeContent>) => void;
+  updateItems: (newItems: any[]) => void;
+}
 
 /**
  * Custom hook to manage Group node state and operations.
  * Uses the standardized hook factory pattern.
  */
-export const useGroupNodeData = ({ nodeId }: { nodeId: string }) => {
+export const useGroupNodeData = ({ nodeId }: { nodeId: string }): GroupNodeDataHook => {
   // Use the factory to create the base hook functionality
   const { 
     content, 
@@ -22,8 +38,10 @@ export const useGroupNodeData = ({ nodeId }: { nodeId: string }) => {
   } = createNodeDataHook<GroupNodeContent>('group', GROUP_DEFAULTS)({ nodeId });
 
   // Extract properties with defaults for easier access
-  const isCollapsed = content?.isCollapsed || GROUP_DEFAULTS.isCollapsed;
-  const label = content?.label || GROUP_DEFAULTS.label;
+  const isCollapsed = content?.isCollapsed || GROUP_DEFAULTS.isCollapsed || false;
+  // Ensure label is always a string
+  const label = content?.label || GROUP_DEFAULTS.label || '';
+  const items = content?.items || GROUP_DEFAULTS.items || [];
 
   /**
    * Handle label change to match EditableNodeLabel signature
@@ -40,15 +58,24 @@ export const useGroupNodeData = ({ nodeId }: { nodeId: string }) => {
     updateGroupContent({ isCollapsed: !isCollapsed });
   }, [isCollapsed, updateGroupContent]);
 
+  /**
+   * Update items (execution results)
+   */
+  const updateItems = useCallback((newItems: any[]) => {
+    updateGroupContent({ items: newItems });
+  }, [updateGroupContent]);
+
   return {
     // Data
     content,
     label,
     isCollapsed,
+    items,
     
     // Event handlers
     handleLabelChange,
     toggleCollapse,
     updateContent: updateGroupContent,
+    updateItems
   };
 }; 

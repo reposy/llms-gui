@@ -120,25 +120,37 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Log a message to the execution log
+   * Log a message in the context
    * @param message The message to log
    */
   log(message: string): void {
-    const timestamp = new Date().toISOString();
-    // Defensive check for this.logs
+    // 개발 모드에서만 로그를 저장하거나 출력
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    if (!isDevelopment) return;
+
+    const timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
     if (!Array.isArray(this.logs)) {
         console.error(`[ExecutionContext:${this.executionId}] CRITICAL: this.logs is not an array! Attempting recovery. Logs was:`, this.logs);
         this.logs = []; // Attempt recovery
     }
+    
     try {
+        // 로그 길이 제한 (최대 100개)
+        if (this.logs.length >= 100) {
+          this.logs.shift(); // 가장 오래된 로그 제거
+        }
+      
         // Ensure message is a string before pushing
         const finalMessage = typeof message === 'string' ? message : JSON.stringify(message);
         this.logs.push(`[${timestamp}] ${finalMessage}`); 
     } catch (e) {
         console.error(`[ExecutionContext:${this.executionId}] FAILED to push log: ${e}`, message);
     }
-    // Console log remains
-    console.log(`[ExecutionContext:${this.executionId}] ${message}`); // Log original message to console
+    
+    // 개발 모드에서만 콘솔 로그 출력
+    if (isDevelopment) {
+      console.log(`[ExecutionContext:${this.executionId}] ${message}`);
+    }
   }
 
   /**
@@ -230,48 +242,51 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param output The node output to append
    */
   storeOutput(nodeId: string, output: any): void {
-    this.log(`Storing output for node ${nodeId}`);
+    // 개발 모드에서만 로그 출력
+    if (process.env.NODE_ENV === 'development') {
+      this.log(`Storing output for node ${nodeId}`);
+    }
 
-    // --- Result Accumulation Logic ---
     let outputArray = this.outputs.get(nodeId);
     if (!outputArray) {
       outputArray = [];
       this.outputs.set(nodeId, outputArray);
     }
     outputArray.push(output);
-    this.log(`Appended output for node ${nodeId}. Total outputs for this node in context: ${outputArray.length}`);
-    // --- End Accumulation Logic ---
-
-    // Log a summary of the *current* output being added
-    let outputSummary = '';
-    if (Array.isArray(output)) {
-      outputSummary = `Array with ${output.length} items`;
-    } else if (output && typeof output === 'object') {
-      outputSummary = `Object with keys: ${Object.keys(output).join(', ')}`;
-    } else if (typeof output === 'string') {
-      outputSummary = output.length > 100 ? `String (${output.length} chars): "${output.substring(0, 100)}..."` : `String: "${output}"`;
-    } else {
-      outputSummary = String(output);
+    
+    if (process.env.NODE_ENV === 'development') {
+      this.log(`Appended output for node ${nodeId}. Total outputs: ${outputArray.length}`);
     }
-    this.log(`Node ${nodeId} current output item: ${outputSummary}`);
 
-    // Update node state in the store with the *latest* output
     this.markNodeSuccess(nodeId, output);
 
-    // Update the nodeContentStore with the *latest* output for UI
     try {
-      // Use dynamic import to avoid circular dependencies
       import('../store/useNodeContentStore').then(({ setNodeContent, getNodeContent }) => {
-        // Get existing content first
         const existingContent = getNodeContent(nodeId);
-        // Update content with result
-        setNodeContent(nodeId, {
+        const currentNode = this.nodes.find(n => n.id === nodeId); // 현재 노드 정보 가져오기
+
+        const contentUpdates: Record<string, any> = {
           ...existingContent,
-          content: output,
-          responseContent: output,
           outputTimestamp: Date.now()
-        });
-        this.log(`Updated node content store for node ${nodeId} (latest output)`);
+        };
+        
+        if (typeof output !== 'undefined') {
+          contentUpdates.responseContent = output;
+          
+          if (existingContent && 'format' in existingContent) { // OutputNode
+            contentUpdates.content = output;
+          }
+          
+          // 현재 노드가 GroupNode가 아니고, items 속성이 있으며, output이 배열인 경우에만 items 업데이트
+          if (currentNode?.type !== 'group' && existingContent && 'items' in existingContent && Array.isArray(output)) {
+            contentUpdates.items = output;
+          }
+        }
+        
+        setNodeContent(nodeId, contentUpdates);
+        if (process.env.NODE_ENV === 'development') {
+          this.log(`Updated node content store for node ${nodeId}`);
+        }
       }).catch(err => {
         console.error(`Failed to update node content store: ${err}`);
       });

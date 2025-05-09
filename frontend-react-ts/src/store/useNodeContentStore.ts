@@ -103,6 +103,7 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
     case 'group':
       return {
         isCollapsed: false,
+        items: []
       } as GroupNodeContent;
 
     default:

@@ -55,8 +55,12 @@ export class InputNode extends Node {
     let newCommonItems = [...(nodeContent.commonItems || [])];
     let updatePerformed = false;
 
-    if (input !== undefined && input !== null) {
-      this._log(`Received chained input.`); 
+    // 유효한 input인 경우에만 처리 (undefined, null, empty string 등 제외)
+    if (input !== undefined && input !== null && input !== '' && 
+        !(typeof input === 'string' && input.trim() === '') &&
+        !(Array.isArray(input) && input.length === 0) &&
+        !(typeof input === 'object' && input !== null && Object.keys(input).length === 0)) {
+      this._log(`Received valid chained input.`); 
       const { chainingUpdateMode, accumulationMode } = nodeContent;
       const itemsToAdd = Array.isArray(input) ? input : [input];
 
@@ -92,15 +96,14 @@ export class InputNode extends Node {
       }
 
       if (updatePerformed) {
-        // TODO: Ideally, the context should handle persistence too,
-        // or return the updated content to the runner to handle.
-        // For now, keep the direct store call, but acknowledge it's not ideal.
         useNodeContentStore.getState().setNodeContent(this.id, {
           items: newItems,
           commonItems: newCommonItems,
         });
-        this._log(`Updated node content in store after processing chained input. Items: ${newItems.length}, CommonItems: ${newCommonItems.length}`);
+        this._log(`Updated node content with items: ${newItems.length}, commonItems: ${newCommonItems.length}`);
       }
+    } else if (input !== undefined) {
+      this._log(`Received empty or invalid input. Skipping chained input processing.`);
     }
     return { newItems, newCommonItems, updatePerformed };
   }
@@ -324,26 +327,25 @@ export class InputNode extends Node {
     switch (chainingUpdateMode) {
       case 'common':
         newCommonItems.push(...itemsToAdd);
-        this._log(`Applied chained input to commonItems (add). New commonItems count: ${newCommonItems.length}.`);
+        this._log(`Added items to commonItems. New count: ${newCommonItems.length}.`);
         updatePerformed = true;
         break;
       case 'replaceCommon':
         newCommonItems = [...itemsToAdd];
-        this._log(`Applied chained input to commonItems (replace). New commonItems count: ${newCommonItems.length}.`);
+        this._log(`Replaced commonItems. New count: ${newCommonItems.length}.`);
         updatePerformed = true;
         break;
       case 'element':
         newItems.push(...itemsToAdd);
-        this._log(`Applied chained input to items (add). New items count: ${newItems.length}.`);
+        this._log(`Added items to items array. New count: ${newItems.length}.`);
         updatePerformed = true;
         break;
       case 'replaceElement':
         newItems = [...itemsToAdd];
-        this._log(`Applied chained input to items (replace). New items count: ${newItems.length}.`);
+        this._log(`Replaced items array. New count: ${newItems.length}.`);
         updatePerformed = true;
         break;
       default:
-        this._log(`No update to items/commonItems due to chainingUpdateMode: ${chainingUpdateMode}.`);
         break;
     }
     return { newItems, newCommonItems, updatePerformed };

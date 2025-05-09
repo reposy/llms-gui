@@ -4,7 +4,8 @@ import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useGroupExecutionController, useGroupExecutionState } from '../../store/useGroupExecutionController';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
-import { GroupExecutionItemResult } from '../../types/execution';
+// GroupExecutionItemResult 타입은 훅 내부에서 사용되므로 여기서는 직접 필요 없을 수 있습니다.
+// import { GroupExecutionItemResult } from '../../types/execution';
 
 // Import new component modules
 import GroupInfoBox from '../group/GroupInfoBox';
@@ -13,6 +14,8 @@ import GroupResultList from '../group/GroupResultList';
 import GroupExecutionToolbar from '../group/GroupExecutionToolbar';
 // Import useGroupNodeData hook
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
+// Import the new custom hook
+import { useFormattedGroupNodeResults } from '../../hooks/useFormattedGroupNodeResults';
 
 interface GroupDetailSidebarProps {
   selectedNodeIds: string[];
@@ -22,7 +25,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   const { nodes: allNodes } = useFlowStructureStore();
   // 단일 그룹 노드만 허용
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
-  const nodeState = useNodeState(selectedNodeId || '');
+  // const nodeState = useNodeState(selectedNodeId || ''); // 이제 훅을 통해 가져옵니다.
   const executionState = useGroupExecutionState();
 
   // 무선택 또는 다중 선택 시 안내
@@ -43,8 +46,13 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
   // Get the latest label using the hook
   const { label } = useGroupNodeData({ nodeId: selectedNodeId || '' });
 
-  // Get results from node state
-  const groupResults = nodeState.result as GroupExecutionItemResult[] | undefined;
+  // Use the new hook to get formatted results and status
+  const {
+    status: currentGroupStatus,
+    error: currentGroupError,
+    // rawResults, // 필요하다면 rawResults도 사용할 수 있습니다.
+    formattedResults,
+  } = useFormattedGroupNodeResults(selectedNodeId);
 
   // Handle group execution
   const handleRunGroup = useCallback(() => {
@@ -55,10 +63,11 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
 
   // Handle JSON export
   const handleExportJson = useCallback(() => {
-    if (!groupNode || nodeState.status !== 'success' || !Array.isArray(nodeState.result)) return;
+    // Use data from the hook for consistency
+    if (!groupNode || currentGroupStatus !== 'success' || !formattedResults || formattedResults.length === 0) return;
 
-    const resultsToExport = nodeState.result as GroupExecutionItemResult[];
-    const jsonString = JSON.stringify(resultsToExport, null, 2);
+    // const resultsToExport = nodeState.result as GroupExecutionItemResult[]; // 이전 로직
+    const jsonString = JSON.stringify(formattedResults, null, 2); // 포맷팅된 결과를 내보냅니다.
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -68,7 +77,7 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [groupNode, nodeState.status, nodeState.result]);
+  }, [groupNode, currentGroupStatus, formattedResults]);
 
   return (
     <div className="w-96 flex-none bg-white border-l border-gray-200 p-6 shadow-lg z-10 overflow-y-auto flex flex-col h-full">
@@ -79,8 +88,8 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
         type={groupNode?.type}
         sourceNode={sourceNode}
         sourceNodeId={sourceNodeId}
-        status={nodeState.status}
-        error={nodeState.error}
+        status={currentGroupStatus} // Use status from the hook
+        error={typeof currentGroupError === 'string' ? currentGroupError : ''} // Explicitly ensure string type
         currentIterationIndex={executionState.currentIterationIndex}
         totalItems={executionState.currentGroupTotalItems}
       />
@@ -90,14 +99,14 @@ export const GroupDetailSidebar: React.FC<GroupDetailSidebarProps> = ({ selected
       
       {/* Results list */}
       <GroupResultList 
-        status={nodeState.status} 
-        results={groupResults} 
+        status={currentGroupStatus} // Use status from the hook
+        results={formattedResults}  // Use formattedResults from the hook
       />
       
       {/* Execution controls */}
       <GroupExecutionToolbar
-        status={nodeState.status}
-        results={groupResults}
+        status={currentGroupStatus} // Use status from the hook
+        results={formattedResults}  // Use formattedResults from the hook
         onRunGroup={handleRunGroup}
         onExportJson={handleExportJson}
       />

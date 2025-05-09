@@ -33,12 +33,12 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {
     console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
-    // Call runFlow with the current node's ID as the startNodeId
-    runFlow(nodes, edges, id).catch((error: Error) => {
+    // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
+    runFlow(id).catch((error: Error) => {
         console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
         // Optionally, mark the node as error in UI state here if needed
     });
-  }, [id, nodes, edges]);
+  }, [id]); // 의존성 배열에서 nodes, edges 제거
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
