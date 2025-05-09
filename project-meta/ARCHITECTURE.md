@@ -68,7 +68,7 @@ llms-gui는 다음과 같은 두 가지 주요 부분으로 구성된 클라이�
 Zustand를 사용하여 모듈화된 여러 스토어(Store)를 통해 애플리케이션 상태를 관리합니다.
 
 *   **`useFlowStructureStore`:** 플로우의 구조적인 정보 (노드 목록, 엣지 목록, 선택된 노드 ID 등)를 관리합니다. React Flow 컴포넌트와 직접적으로 상호작용합니다.
-*   **`useNodeContentStore`:** 각 노드의 **설정 내용(콘텐츠)**을 관리합니다. 노드 ID를 키로 사용하여 각 노드의 `label`, `extractionRules`, `prompt`, `url` 등 설정 패널에서 사용자가 입력하는 데이터를 저장하고 업데이트합니다. `NodeConfigSidebar` 및 각 노드의 설정 UI 컴포넌트(`ConfigFactory` 통해 로드됨)에서 주로 사용됩니다.
+*   **`useNodeContentStore`:** 각 노드의 **설정 내용(콘텐츠)**을 관리합니다. 노드 ID를 키로 사용하여 각 노드의 `label`, `extractionRules`, `prompt`, `url` 등 설정 패널에서 사용자가 입력하는 데이터를 저장하고 업데이트합니다. `NodeConfigSidebar` 및 각 노드의 설정 UI 컴포넌트(`ConfigFactory` 통해 로드됨)에서 주로 사용됩니다. 주요 메소드로는 `setNodeContent`를 제공하여 노드 콘텐츠를 업데이트합니다.
 *   **`useNodeStateStore`:** 각 노드의 **실행 상태**를 관리합니다. 노드 ID를 키로 사용하여 각 노드의 실행 상태(`status`: 'idle', 'running', 'success', 'error'), 마지막 실행 결과(`result`), 오류 메시지(`error`) 등을 저장합니다. `Flow Runner` 및 각 노드의 `execute` 메서드에서 상태를 업데이트하며, 노드 UI 컴포넌트와 `NodeConfigSidebar`의 결과 표시 영역에서 이 상태를 구독하여 표시합니다.
 *   **`useGroupExecutionController` / `useGroupExecutionState`:** 그룹 노드의 실행 제어 및 관련 UI 상태(현재 실행 중인 그룹, 그룹 반복 상태 등)를 관리합니다. 사용자가 그룹 노드의 실행 버튼을 눌렀을 때 트리거됩니다.
 *   **`useExecutionGraphStore`:** 노드와 엣지 정보를 기반으로 생성된 실행 순서 그래프를 저장합니다. 실제 플로우 실행 시 이 그래프를 참조하여 노드 실행 순서를 결정합니다.

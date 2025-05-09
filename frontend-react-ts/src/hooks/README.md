@@ -27,7 +27,7 @@ Each hook returns:
 - `content`: The full content object fetched from the store
 - Individual properties extracted from content with defaults
 - Change handlers for updating specific properties
-- `updateContent`: A method to update multiple properties at once
+- `setContent`: A method to update multiple properties at once
 - Additional functionality specific to the node type
 
 ## Example Usage
@@ -42,7 +42,7 @@ function MyNodeComponent({ id }) {
     someProperty,
     anotherProperty,
     handleSomePropertyChange,
-    updateContent
+    setContent
   } = useMyNodeData({ nodeId: id });
 
   // Use properties and handlers in your component
@@ -53,7 +53,7 @@ function MyNodeComponent({ id }) {
         onChange={(e) => handleSomePropertyChange(e.target.value)} 
       />
       <button 
-        onClick={() => updateContent({ 
+        onClick={() => setContent({ 
           someProperty: 'new value',
           anotherProperty: 123 
         })}
@@ -95,7 +95,7 @@ export const useYourNodeData = ({ nodeId }: { nodeId: string }) => {
   // Use the factory to create the base hook functionality
   const { 
     content, 
-    updateContent, 
+    setContent, 
     createChangeHandler 
   } = createNodeDataHook<YourNodeContent>('your-node-type', YOUR_NODE_DEFAULTS)({ nodeId });
 
@@ -119,6 +119,6 @@ export const useYourNodeData = ({ nodeId }: { nodeId: string }) => {
     handleProperty1Change,
     handleProperty2Change,
     someSpecialFunction,
-    updateContent
+    setContent
   };
 }; 
