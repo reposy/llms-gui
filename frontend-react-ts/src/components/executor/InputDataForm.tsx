@@ -178,25 +178,6 @@ const InputDataForm: React.FC<InputDataFormProps> = ({ onInputDataSubmit }) => {
             </svg>
             Add Row
           </button>
-          
-          <div className="relative">
-            <input
-              type="file"
-              id="file-upload"
-              multiple
-              onChange={handleFileChange}
-              className="opacity-0 absolute inset-0 w-full cursor-pointer"
-            />
-            <label
-              htmlFor="file-upload"
-              className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 transition-colors text-sm flex items-center cursor-pointer"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-              </svg>
-              Choose Files
-            </label>
-          </div>
         </div>
       </div>
       
@@ -241,7 +222,26 @@ const InputDataForm: React.FC<InputDataFormProps> = ({ onInputDataSubmit }) => {
 
       {error && <p className="mt-2 text-red-500 text-sm">{error}</p>}
 
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center">
+        <div className="relative">
+          <input
+            type="file"
+            id="file-upload"
+            multiple
+            onChange={handleFileChange}
+            className="opacity-0 absolute inset-0 w-full cursor-pointer"
+          />
+          <label
+            htmlFor="file-upload"
+            className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 transition-colors text-sm flex items-center cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+            Choose Files
+          </label>
+        </div>
+        
         <button
           onClick={handleSubmit}
           className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"

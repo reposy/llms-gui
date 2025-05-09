@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import FileUploader from '../components/executor/FileUploader';
 import InputDataForm from '../components/executor/InputDataForm';
 import ResultDisplay from '../components/executor/ResultDisplay';
-import FlowTreeVisualization from '../components/executor/FlowTreeVisualization';
 import { executeFlow } from '../services/flowExecutionService';
 
 const ExecutorPage: React.FC = () => {
