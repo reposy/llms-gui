@@ -635,7 +635,7 @@ const InputDataForm: React.FC<InputDataFormProps> = ({ onInputDataSubmit }) => {
   };
 
   return (
-    <div className="mb-6 p-4 border border-gray-300 rounded-lg bg-white">
+    <div className="mb-6 p-3 border border-gray-300 rounded-lg bg-white">
       <div className="flex justify-between items-center mb-3">
         <div className="flex items-center space-x-3">
           <h2 className="text-lg font-medium">Input Data</h2>

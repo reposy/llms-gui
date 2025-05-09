@@ -163,9 +163,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error 
   };
 
   return (
-    <div className="p-4 border border-gray-300 rounded-lg bg-white">
-      <h2 className="text-lg font-medium mb-3">실행 결과</h2>
-      
+    <div className="p-3 border border-gray-300 rounded-lg bg-white">
       {isLoading ? (
         <div className="flex items-center justify-center p-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>

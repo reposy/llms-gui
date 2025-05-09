@@ -119,50 +119,58 @@ const ExecutorPage: React.FC = () => {
         </Link>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
-        <div className="max-w-4xl mx-auto">
-          {/* 진행 단계 표시 */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between w-full">
-              <div className={`flex flex-col items-center ${stage === 'upload' ? 'text-blue-600' : 'text-gray-600'}`}>
-                <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'upload' ? 'bg-blue-100 border-blue-500' : 'bg-gray-100 border-gray-300'} border-2`}>1</div>
-                <span className="mt-2">Upload Flow</span>
-              </div>
-              <div className={`flex-1 h-1 mx-2 ${stage !== 'upload' ? 'bg-blue-300' : 'bg-gray-300'}`}></div>
-              <div 
-                className={`flex flex-col items-center ${stage === 'input' ? 'text-blue-600' : (stage === 'upload' ? 'text-gray-400' : 'text-gray-600')}`}
-              >
-                <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'input' ? 'bg-blue-100 border-blue-500' : (stage !== 'upload' ? 'bg-gray-100 border-gray-300' : 'bg-gray-100 border-gray-200')} border-2`}>2</div>
-                <span className="mt-2">Provide Input</span>
-              </div>
-              <div className={`flex-1 h-1 mx-2 ${stage === 'executing' || stage === 'result' ? 'bg-blue-300' : 'bg-gray-300'}`}></div>
-              <div className={`flex flex-col items-center ${stage === 'executing' || stage === 'result' ? 'text-blue-600' : 'text-gray-400'}`}>
-                <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'executing' || stage === 'result' ? 'bg-blue-100 border-blue-500' : 'bg-gray-100 border-gray-200'} border-2`}>3</div>
-                <span className="mt-2">View Results</span>
-              </div>
+      <div className="flex-1 overflow-hidden p-4 bg-gray-50">
+        {/* 진행 단계 표시 */}
+        <div className="mb-6 max-w-[95%] mx-auto">
+          <div className="flex items-center justify-between w-full">
+            <div className={`flex flex-col items-center ${stage === 'upload' ? 'text-blue-600' : 'text-gray-600'}`}>
+              <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'upload' ? 'bg-blue-100 border-blue-500' : 'bg-gray-100 border-gray-300'} border-2`}>1</div>
+              <span className="mt-2">Upload Flow</span>
+            </div>
+            <div className={`flex-1 h-1 mx-2 ${stage !== 'upload' ? 'bg-blue-300' : 'bg-gray-300'}`}></div>
+            <div 
+              className={`flex flex-col items-center ${stage === 'input' ? 'text-blue-600' : (stage === 'upload' ? 'text-gray-400' : 'text-gray-600')}`}
+            >
+              <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'input' ? 'bg-blue-100 border-blue-500' : (stage !== 'upload' ? 'bg-gray-100 border-gray-300' : 'bg-gray-100 border-gray-200')} border-2`}>2</div>
+              <span className="mt-2">Provide Input</span>
+            </div>
+            <div className={`flex-1 h-1 mx-2 ${stage === 'executing' || stage === 'result' ? 'bg-blue-300' : 'bg-gray-300'}`}></div>
+            <div className={`flex flex-col items-center ${stage === 'executing' || stage === 'result' ? 'text-blue-600' : 'text-gray-400'}`}>
+              <div className={`w-10 h-10 flex items-center justify-center rounded-full ${stage === 'executing' || stage === 'result' ? 'bg-blue-100 border-blue-500' : 'bg-gray-100 border-gray-200'} border-2`}>3</div>
+              <span className="mt-2">View Results</span>
             </div>
           </div>
+        </div>
 
-          {/* 변경 시 필요한 숨겨진 파일 입력 */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept=".json,application/json"
-            onChange={(e) => {
-              // FileUploader에 이벤트 전달을 위한 빈 핸들러
-              // 실제 처리는 FileUploader 컴포넌트에서 수행됨
-            }}
-          />
+        {/* 변경 시 필요한 숨겨진 파일 입력 */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept=".json,application/json"
+          onChange={(e) => {
+            // FileUploader에 이벤트 전달을 위한 빈 핸들러
+            // 실제 처리는 FileUploader 컴포넌트에서 수행됨
+          }}
+        />
 
-          {stage === 'upload' && (
+        {stage === 'upload' && (
+          <div className="max-w-[95%] mx-auto">
             <FileUploader onFileUpload={handleFileUpload} externalFileInputRef={fileInputRef} />
-          )}
+          </div>
+        )}
 
-          {(stage === 'input' || stage === 'executing' || stage === 'result') && (
-            <div className="mb-6">
-              <div className="p-4 border border-gray-300 rounded-lg bg-white mb-6">
-                <div className="flex justify-between items-center mb-3">
+        {/* 좌우 분할 레이아웃 (input, executing, result 단계에서 적용) */}
+        {(stage === 'input' || stage === 'executing' || stage === 'result') && (
+          <div className={`${stage === 'result' ? 'flex flex-row h-[calc(100%-4rem)]' : 'flex flex-col'} gap-4 max-w-[95%] mx-auto`}>
+            {/* 왼쪽 패널: Flow Configuration과 Input Data */}
+            <div className={`${stage === 'result' ? 'w-1/2 overflow-y-auto pr-4 h-full' : 'w-full'}`}>
+              {stage === 'result' && (
+                <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">입력 설정</h2>
+              )}
+
+              <div className="p-3 border border-gray-300 rounded-lg bg-white mb-6">
+                <div className="flex justify-between items-center mb-2">
                   <h2 className="text-lg font-medium">Flow Configuration</h2>
                   <button 
                     onClick={handleReset}
@@ -171,7 +179,7 @@ const ExecutorPage: React.FC = () => {
                     Change Flow
                   </button>
                 </div>
-                <div className="p-3 bg-gray-50 rounded border border-gray-200">
+                <div className="p-2 bg-gray-50 rounded border border-gray-200">
                   <p className="font-medium">{flowJson?.name || 'Uploaded Flow'}</p>
                   <p className="text-sm text-gray-600">
                     {flowJson?.nodes?.length || 0} nodes, {flowJson?.edges?.length || 0} connections
@@ -179,14 +187,7 @@ const ExecutorPage: React.FC = () => {
                 </div>
               </div>
 
-              {(stage === 'input' || stage === 'executing' || stage === 'result') && (
-                <InputDataForm onInputDataSubmit={handleInputDataSubmit} />
-              )}
-
-              {/* 플로우 트리 시각화 주석 처리 */}
-              {/* {(stage === 'input' || stage === 'executing' || stage === 'result') && (
-                <FlowTreeVisualization flowJson={flowJson} />
-              )} */}
+              <InputDataForm onInputDataSubmit={handleInputDataSubmit} />
 
               {stage === 'input' && (
                 <div className="flex justify-center mt-6">
@@ -204,27 +205,39 @@ const ExecutorPage: React.FC = () => {
                 </div>
               )}
             </div>
-          )}
 
-          {(stage === 'executing' || stage === 'result') && (
-            <ResultDisplay 
-              result={result} 
-              isLoading={isExecuting} 
-              error={error} 
-            />
-          )}
+            {/* 분할선 - 결과 단계에서만 표시 */}
+            {stage === 'result' && (
+              <div className="h-full w-px bg-gray-300"></div>
+            )}
 
-          {stage === 'result' && !isExecuting && (
-            <div className="flex justify-center mt-6">
-              <button
-                onClick={handleExecute}
-                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
-              >
-                Run Again
-              </button>
-            </div>
-          )}
-        </div>
+            {/* 오른쪽 패널: 실행 결과 (executing, result 단계에서만 표시) */}
+            {(stage === 'executing' || stage === 'result') && (
+              <div className={`${stage === 'result' ? 'w-1/2 overflow-y-auto pl-4 h-full' : 'w-full'}`}>
+                {stage === 'result' && (
+                  <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">실행 결과</h2>
+                )}
+                
+                <ResultDisplay 
+                  result={result} 
+                  isLoading={isExecuting} 
+                  error={error} 
+                />
+                
+                {stage === 'result' && !isExecuting && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={handleExecute}
+                      className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                      Run Again
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
