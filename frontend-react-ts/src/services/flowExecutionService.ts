@@ -1,10 +1,9 @@
-import axios from 'axios';
-
-// FastAPI 백엔드의 기본 URL (환경 변수에서 가져오거나 기본값 사용)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import { runFullFlowExecution } from '../core/executionUtils';
+import { importFlowFromJson, FlowData } from '../utils/data/importExportUtils';
+import { getAllOutputs } from '../core/outputCollector';
 
 interface ExecuteFlowParams {
-  flowJson: any;
+  flowJson: FlowData;
   inputs: any[];
 }
 
@@ -16,103 +15,59 @@ interface ExecutionResponse {
 }
 
 /**
- * 백엔드에 플로우 JSON과 입력 데이터를 전송하여 실행합니다.
+ * Flow Editor와 동일한 방식으로 플로우를 실행합니다.
+ * 백엔드 호출 대신 클라이언트에서 처리하며, Flow Editor의 runFullFlowExecution을 재사용합니다.
  */
 export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   try {
-    // 파일 데이터가 포함된 경우 FormData로 처리
-    if (params.inputs.some(input => input instanceof File)) {
-      const formData = new FormData();
-      formData.append('flow_json', JSON.stringify(params.flowJson));
-      
-      // 파일인 경우 files 배열에 추가, 아닌 경우 text_inputs 배열에 추가
-      const textInputs: string[] = [];
-      
-      params.inputs.forEach((input, index) => {
-        if (input instanceof File) {
-          formData.append('files', input, input.name);
-        } else {
-          textInputs.push(typeof input === 'string' ? input : JSON.stringify(input));
-        }
-      });
-      
-      // 텍스트 입력이 있는 경우 JSON 문자열로 추가
-      if (textInputs.length > 0) {
-        formData.append('text_inputs', JSON.stringify(textInputs));
-      }
-      
-      const response = await axios.post<ExecutionResponse>(
-        `${API_BASE_URL}/api/execute-flow`, 
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-      
-      return response.data;
-    } 
-    // 파일이 없는 경우 JSON으로 처리
-    else {
-      const response = await axios.post<ExecutionResponse>(
-        `${API_BASE_URL}/api/execute-flow`,
-        {
-          flow_json: params.flowJson,
-          inputs: params.inputs,
-        }
-      );
-      
-      return response.data;
-    }
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response) {
-      console.error('Error executing flow:', error.response.data);
-      return {
-        executionId: '',
-        outputs: null,
-        status: 'error',
-        error: error.response.data.detail || 'Failed to execute flow',
-      };
-    }
+    console.log('[flowExecutionService] Starting local flow execution');
     
+    // 1. 플로우 JSON을 Flow Editor 상태에 적용
+    // (이미 FileUploader에서 수행됨)
+    
+    // 2. 루트 노드 실행 (입력 데이터와 함께)
+    await runFullFlowExecution(undefined, params.inputs);
+    
+    // 3. 리프 노드의 결과 수집
+    const outputs = getAllOutputs();
+    
+    return {
+      executionId: `local-exec-${Date.now()}`,
+      outputs,
+      status: 'success'
+    };
+  } catch (error) {
     console.error('Error executing flow:', error);
     return {
       executionId: '',
       outputs: null,
       status: 'error',
-      error: 'Network or server error',
+      error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
     };
   }
 };
 
 /**
- * 실행 결과를 가져옵니다 (비동기 실행을 위해 필요한 경우).
+ * 실행 결과를 가져옵니다. 
+ * 현재는 로컬 실행만 지원하므로 호출되지 않지만, 인터페이스 호환성을 위해 유지합니다.
  */
 export const getExecutionResult = async (executionId: string): Promise<ExecutionResponse> => {
   try {
-    const response = await axios.get<ExecutionResponse>(
-      `${API_BASE_URL}/api/execution-result/${executionId}`
-    );
-    
-    return response.data;
+    // 로컬 실행은 즉시 결과를 반환하므로 이 함수는 현재 사용되지 않습니다.
+    // 백엔드 연동 시를 위해 인터페이스만 유지
+    return {
+      executionId,
+      outputs: null,
+      status: 'error',
+      error: '백엔드 실행 결과 조회는 지원되지 않습니다. 로컬 실행만 가능합니다.'
+    };
   } catch (error) {
-    if (axios.isAxiosError(error) && error.response) {
-      console.error('Error getting execution result:', error.response.data);
-      return {
-        executionId,
-        outputs: null,
-        status: 'error',
-        error: error.response.data.detail || 'Failed to get execution result',
-      };
-    }
-    
     console.error('Error getting execution result:', error);
     return {
       executionId,
       outputs: null,
       status: 'error',
-      error: 'Network or server error',
+      error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
     };
   }
 }; 
