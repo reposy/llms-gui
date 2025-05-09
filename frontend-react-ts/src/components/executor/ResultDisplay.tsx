@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-
-interface NodeResult {
-  nodeId: string;
-  nodeType: string;
-  result: any;
-}
+import { NodeResult } from '../../core/outputCollector';
 
 interface ResultDisplayProps {
   result: NodeResult[] | null;
@@ -31,7 +26,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error 
 
   // 개별 노드 결과 렌더링
   const renderNodeResult = (nodeResult: NodeResult, index: number) => {
-    const { nodeId, nodeType, result: nodeOutput } = nodeResult;
+    const { nodeId, nodeName, nodeType, result: nodeOutput } = nodeResult;
     
     // 결과 데이터를 문자열로 변환
     const resultText = typeof nodeOutput === 'object' 
@@ -43,7 +38,10 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error 
         <div className="flex justify-between items-center mb-3">
           <div>
             <h3 className="font-medium text-blue-600">
-              {nodeType === 'unknown' ? '출력 노드' : nodeType} ({nodeId})
+              {nodeName}
+              <span className="ml-2 text-xs text-gray-500">
+                {nodeType !== 'unknown' ? `(${nodeType})` : ''}
+              </span>
             </h3>
           </div>
           <button

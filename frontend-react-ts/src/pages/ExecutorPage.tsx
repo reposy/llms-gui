@@ -1,17 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import FileUploader from '../components/executor/FileUploader';
 import InputDataForm from '../components/executor/InputDataForm';
 import ResultDisplay from '../components/executor/ResultDisplay';
 import { executeFlow } from '../services/flowExecutionService';
+import { useExecutorStateStore } from '../store/useExecutorStateStore';
 
 const ExecutorPage: React.FC = () => {
-  const [flowJson, setFlowJson] = useState<any>(null);
-  const [inputData, setInputData] = useState<any[]>([]);
-  const [result, setResult] = useState<any>(null);
+  // 파일 입력 참조
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 상태 관리 - 로컬 상태는 최소한으로 유지
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<'upload' | 'input' | 'executing' | 'result'>('upload');
+  
+  // Zustand 스토어에서 상태와 액션 가져오기
+  const {
+    flowJson,
+    inputData,
+    result,
+    error,
+    stage,
+    setFlowJson,
+    setInputData,
+    setResult,
+    setError,
+    setStage
+  } = useExecutorStateStore();
+  
+  // Zustand 상태가 변경되면 동기화
+  useEffect(() => {
+    // 이전 세션에서 이미 플로우를 불러왔다면 해당 단계부터 시작
+    if (flowJson && stage === 'upload') {
+      setStage('input');
+    }
+  }, [flowJson, stage, setStage]);
 
   // 플로우 JSON 업로드 처리
   const handleFileUpload = (jsonData: any) => {
@@ -29,7 +51,7 @@ const ExecutorPage: React.FC = () => {
   // 워크플로우 실행
   const handleExecute = async () => {
     if (!flowJson) {
-      setError('Please upload a flow JSON file first.');
+      setError('먼저 플로우 JSON 파일을 업로드해주세요.');
       return;
     }
 
@@ -44,27 +66,24 @@ const ExecutorPage: React.FC = () => {
       });
 
       if (response.status === 'error') {
-        setError(response.error || 'An unknown error occurred while executing the flow.');
+        setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
       } else {
         setResult(response.outputs);
       }
     } catch (err) {
-      setError('Failed to execute the flow. Please check your input and try again.');
-      console.error('Execution error:', err);
+      setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
+      console.error('실행 오류:', err);
     } finally {
       setIsExecuting(false);
       setStage('result');
     }
   };
 
-  // 처음부터 다시 시작
+  // 처음부터 다시 시작 - Change Flow 버튼 클릭 시
   const handleReset = () => {
     if (window.confirm('다른 플로우를 가져오면 Flow Editor에 반영됩니다. 계속하시겠습니까? Flow Editor에 저장되지 않은 내용이 있다면 덮어쓰게 됩니다.')) {
-      setFlowJson(null);
-      setInputData([]);
-      setResult(null);
-      setError(null);
-      setStage('upload');
+      // 파일 선택 대화상자 직접 열기
+      fileInputRef.current?.click();
     }
   };
 
@@ -102,8 +121,20 @@ const ExecutorPage: React.FC = () => {
             </div>
           </div>
 
+          {/* 변경 시 필요한 숨겨진 파일 입력 */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept=".json,application/json"
+            onChange={(e) => {
+              // FileUploader에 이벤트 전달을 위한 빈 핸들러
+              // 실제 처리는 FileUploader 컴포넌트에서 수행됨
+            }}
+          />
+
           {stage === 'upload' && (
-            <FileUploader onFileUpload={handleFileUpload} />
+            <FileUploader onFileUpload={handleFileUpload} externalFileInputRef={fileInputRef} />
           )}
 
           {(stage === 'input' || stage === 'executing' || stage === 'result') && (
