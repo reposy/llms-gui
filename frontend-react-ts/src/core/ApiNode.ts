@@ -1,8 +1,8 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { callApi } from '../services/apiService.ts';
-import { ApiNodeContent, useNodeContentStore } from '../store/useNodeContentStore.ts';
-import { HTTPMethod } from '../types/nodes.ts';
+import { useNodeContentStore } from '../store/useNodeContentStore.ts';
+import { HTTPMethod, APINodeContent } from '../types/nodes.ts';
 
 /**
  * API node properties
@@ -25,20 +25,25 @@ export interface ApiNodeProperty {
  * ApiNode for making API requests
  */
 export class ApiNode extends Node {
-  declare property: ApiNodeContent;
+  declare property: APINodeContent;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
-    super(id, 'api', property, context);
+    super(id, 'api', property);
+    
+    // 생성자에서 context를 명시적으로 설정
+    if (context) {
+      this.context = context;
+    }
   }
 
   /**
    * Execute the API request
    */
   async execute(input: any): Promise<any> {
-    this.context?.log(`${this.type}(${this.id}): Executing`);
+    this._log('Executing');
 
     // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent<ApiNodeContent>(this.id, this.type);
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as APINodeContent;
     
     const { 
       url,
@@ -56,10 +61,10 @@ export class ApiNode extends Node {
     let targetUrl = url;
     if (!targetUrl && typeof input === 'string' && input.startsWith('http')) {
       targetUrl = input;
-      this.context?.log(`${this.type}(${this.id}): Using input as URL: ${targetUrl}`);
+      this._log(`Using input as URL: ${targetUrl}`);
     } else if (!targetUrl) {
       const errorMsg = "URL is required for ApiNode.";
-      this.context?.log(`${this.type}(${this.id}): Error - ${errorMsg}`);
+      this._log(`Error - ${errorMsg}`);
       throw new Error(errorMsg);
     }
     
@@ -67,7 +72,7 @@ export class ApiNode extends Node {
     let requestBody: any = null;
     if (useInputAsBody) {
       requestBody = input;
-      this.context?.log(`${this.type}(${this.id}): Using input as request body.`);
+      this._log('Using input as request body.');
     } else if (method !== 'GET' && method !== 'DELETE') { // Only consider body for relevant methods
       if (bodyFormat === 'key-value' && Array.isArray(bodyParams)) {
         requestBody = bodyParams
@@ -76,10 +81,10 @@ export class ApiNode extends Node {
             obj[param.key] = param.value;
             return obj;
           }, {} as Record<string, string>);
-        this.context?.log(`${this.type}(${this.id}): Using key-value body format.`);
+        this._log('Using key-value body format.');
       } else { // Default to raw body
         requestBody = rawBody;
-        this.context?.log(`${this.type}(${this.id}): Using raw body format.`);
+        this._log('Using raw body format.');
       }
     }
 
@@ -87,10 +92,10 @@ export class ApiNode extends Node {
     const finalHeaders = { ...headers };
     if (requestBody && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
       finalHeaders['Content-Type'] = contentType;
-      this.context?.log(`${this.type}(${this.id}): Setting Content-Type header to ${contentType}`);
+      this._log(`Setting Content-Type header to ${contentType}`);
     }
 
-    this.context?.log(`${this.type}(${this.id}): Calling API: ${method} ${targetUrl}`);
+    this._log(`Calling API: ${method} ${targetUrl}`);
 
     const result = await callApi({
       url: targetUrl,
@@ -100,7 +105,7 @@ export class ApiNode extends Node {
       queryParams
     });
     
-    this.context?.log(`${this.type}(${this.id}): API call successful, result type: ${typeof result}`);
+    this._log(`API call successful, result type: ${typeof result}`);
     return result;
   }
 } 

@@ -8,22 +8,24 @@ import NodeErrorBoundary from './NodeErrorBoundary';
 import { downloadFile } from '../../utils/data/downloadUtils';
 import { useNodeContent } from '../../store/useNodeContentStore';
 import { isEqual } from 'lodash';
+import { NodeProps } from 'reactflow';
+import { useIsRootNode } from '../../store/useNodeGraphUtils';
+import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
+import { NodeHeader } from './shared/NodeHeader';
+import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
+import { OutputNodeContent } from '../../types/nodes';
 
-interface Props {
-  id: string;
-  data: OutputNodeData;
-  selected?: boolean;
-  isConnectable?: boolean;
-}
+interface Props extends NodeProps {}
 
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
-  const { content, updateContent } = useNodeContent(id);
+  const isRootNode = useIsRootNode(id);
+  const { content, setContent } = useNodeContent<OutputNodeContent>(id, 'output');
   const format = content?.format || 'text';
   
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
-    updateContent({ format: newFormat });
-  }, [updateContent]);
+    setContent({ format: newFormat });
+  }, [setContent]);
   
   /**
    * Format a result based on the selected format

@@ -420,3 +420,177 @@ const getActiveModifierKey = useCallback(() => {
 - **인자 명시**: 함수가 필요로 하는 모든 데이터를 명시적인 인자로 전달합니다.
 
 이러한 가이드라인을 따르면 코드베이스의 품질과 유지보수성이 지속적으로 향상될 것입니다.
+
+# 프론트엔드 아키텍처 상세 가이드
+
+## 노드 데이터 훅 사용 가이드
+
+이 문서는 리팩토링된 llms-gui 프로젝트에서 노드 데이터 훅을 사용하는 방법과 모범 사례를 설명합니다.
+
+### 1. 기본 훅 사용 패턴
+
+모든 노드 데이터 훅은 `useNodeContent` 기반으로 통일된 패턴을 따릅니다:
+
+```tsx
+// 컴포넌트에서 훅 사용하기
+function MyNodeComponent({ id }) {
+  // 1. 훅 호출 - 항상 nodeId와 노드 타입을 전달
+  const { content, setContent } = useNodeContent<MyNodeContent>(id, 'my-node-type');
+  
+  // 2. 콘텐츠 값 사용
+  const myProperty = content?.myProperty || 'default value';
+  
+  // 3. 업데이트 함수 사용
+  const handleChange = (newValue) => {
+    setContent({ myProperty: newValue });
+  };
+  
+  return (
+    // 컴포넌트 렌더링...
+  );
+}
+```
+
+### 2. 주요 개선사항
+
+#### 함수명 통일
+
+이전에는 `updateContent`와 `setContent`가 혼용되었으나, 모든 훅에서 `setContent`로 통일했습니다:
+
+```tsx
+// ❌ 이전 방식 - 혼용으로 인한 문제 발생
+const { updateContent } = useNodeContent(...); // 어떤 훅에서는 이렇게
+const { setContent } = useNodeContent(...);    // 다른 훅에서는 이렇게
+
+// ✅ 현재 방식 - 모든 훅에서 동일하게
+const { setContent } = useNodeContent(...);    // 항상 setContent로 통일
+```
+
+#### 타입 안전성 강화
+
+null 대신 undefined를 사용하여 옵셔널 체이닝과의 호환성을 높였습니다:
+
+```tsx
+// ❌ 이전 방식 - null 사용으로 옵셔널 체이닝과 문제 발생 가능
+const value = content?.property ?? null;
+
+// ✅ 현재 방식 - undefined 사용으로 옵셔널 체이닝과 호환
+const value = content?.property || defaultValue;
+```
+
+### 3. 노드 타입별 훅 사용 예시
+
+#### HTML Parser 노드
+
+```tsx
+function HTMLParserNodeConfig({ nodeId }) {
+  const { content, setContent } = useNodeContent<HTMLParserNodeContent>(nodeId, 'html-parser');
+  
+  // 추출 규칙 업데이트
+  const addExtractionRule = (rule: ExtractionRule) => {
+    const updatedRules = [...(content?.extractionRules || []), rule];
+    setContent({ extractionRules: updatedRules });
+  };
+  
+  return (
+    // 설정 UI 렌더링...
+  );
+}
+```
+
+#### LLM 노드
+
+```tsx
+function LLMNodeConfig({ nodeId }) {
+  const { content, setContent } = useNodeContent<LLMNodeContent>(nodeId, 'llm');
+  
+  // 모델 업데이트
+  const handleModelChange = (model: string) => {
+    setContent({ model });
+  };
+  
+  // 템플릿 업데이트
+  const handlePromptChange = (prompt: string) => {
+    setContent({ prompt });
+  };
+  
+  return (
+    // 설정 UI 렌더링...
+  );
+}
+```
+
+### 4. 모범 사례
+
+#### 기본값 처리
+
+컴포넌트에서 항상 기본값을 제공하여 undefined를 안전하게 처리하세요:
+
+```tsx
+// ✅ 권장 패턴
+const { content } = useNodeContent<MyNodeContent>(nodeId, 'my-type');
+const value = content?.someProperty || defaultValue;
+
+// ❌ 위험한 패턴 - content가 undefined일 수 있음
+const { content } = useNodeContent<MyNodeContent>(nodeId, 'my-type');
+const value = content.someProperty; // 오류 위험!
+```
+
+#### 배치 업데이트
+
+여러 필드를 한 번에 업데이트할 때는 단일 setContent 호출을 사용하세요:
+
+```tsx
+// ✅ 권장 패턴 - 한 번의 호출로 여러 필드 업데이트
+setContent({
+  field1: value1,
+  field2: value2,
+  field3: value3
+});
+
+// ❌ 비효율적인 패턴 - 여러 번의 리렌더링 유발
+setContent({ field1: value1 });
+setContent({ field2: value2 });
+setContent({ field3: value3 });
+```
+
+#### 이벤트 핸들러 처리
+
+이벤트 핸들러에서 값을 업데이트할 때는 적절한 타입 변환을 고려하세요:
+
+```tsx
+// ✅ 적절한 타입 변환
+<input
+  type="number"
+  value={content?.temperature || 0.7}
+  onChange={(e) => setContent({ temperature: parseFloat(e.target.value) })}
+/>
+
+// ❌ 잘못된 타입 변환 - 문자열이 저장됨
+<input
+  type="number"
+  value={content?.temperature || 0.7}
+  onChange={(e) => setContent({ temperature: e.target.value })} // 문자열로 저장됨!
+/>
+```
+
+### 5. 작업 순서 모범 사례
+
+새로운 노드 타입을 개발할 때 권장하는 작업 순서:
+
+1. 노드 콘텐츠 인터페이스 정의 (`src/types/nodes.ts`)
+2. 기본값과 함께 훅 구현 (`src/hooks/useMyNodeData.ts`)
+3. 노드 설정 컴포넌트 구현 (`src/components/config/MyNodeConfig.tsx`)
+4. 노드 실행 로직 구현 (`src/core/MyNode.ts`)
+5. 노드 UI 컴포넌트 구현 (`src/components/nodes/MyNode.tsx`)
+
+### 6. 마이그레이션 가이드
+
+기존에 `updateContent`를 사용하는 코드를 업데이트하는 방법:
+
+1. 모든 `updateContent` 이름을 `setContent`로 변경
+2. null 체크를 undefined 체크로 변경 (`??` 대신 `||` 사용)
+3. 각 노드 훅의 타입을 명시적으로 지정
+4. 테스트를 통해 변경사항이 올바르게 작동하는지 확인
+
+이 가이드를 따라 일관성 있는 코드 작성을 통해 더 견고하고 유지보수하기 쉬운 애플리케이션을 만들 수 있습니다.

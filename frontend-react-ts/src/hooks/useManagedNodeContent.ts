@@ -1,12 +1,11 @@
 import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow';
+import { isEqual } from 'lodash';
 
+import { NodeContent } from '../types/nodes';
 import {
-  NodeContent,
   useNodeContentStore,
-  setNodeContent,
-  markNodeDirty,
-  isNodeDirty
+  setNodeContent
 } from '../store/useNodeContentStore';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 
@@ -62,21 +61,19 @@ export const useManagedNodeContent = (nodeId: string): UseManagedNodeContentResu
    * Marks the content as clean in Zustand store.
    */
   const saveContent = useCallback(() => {
-    // Check dirtiness directly from the Zustand store state/selector
-    if (isNodeDirty(nodeId)) { 
-      console.log(`[useManagedNodeContent ${nodeId}] Marking content as clean...`);
-      
-      // Mark content as clean in the Zustand store
-      markNodeDirty(nodeId, false);
-
-      // Create snapshot when content is saved
-      pushCurrentSnapshot();
-      
-      console.log(`[useManagedNodeContent ${nodeId}] Content marked clean and snapshot created.`);
+    /* Removed: Rely on useDirtyTracker
+    if (isNodeDirty(nodeId)) {
+      // Logic to persist the changes, e.g., save to backend or local storage
+      // This is a placeholder - actual save logic depends on application needs
+      console.log(`[useManagedNodeContent ${nodeId}] Saving changes...`, content);
+      // After saving, mark the node as not dirty
+      // markNodeNotDirty(nodeId); // Assuming such a function exists
     } else {
-      console.log(`[useManagedNodeContent ${nodeId}] No dirty content in store to save.`);
+      console.log(`[useManagedNodeContent ${nodeId}] No changes to save.`);
     }
-  }, [nodeId]);
+    */
+    console.warn(`[useManagedNodeContent ${nodeId}] saveContent called - actual persistence logic not implemented here.`);
+  }, [nodeId, content]);
 
   // Return state directly from Zustand selector and the simplified callbacks
   return {

@@ -1,6 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { HTMLParserNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodeContentStore } from '../store/useNodeContentStore';
+import { HTMLParserNodeContent } from '../types/nodes';
 
 /**
  * HTML 문자열에서 CSS 선택자를 사용하여 요소를 추출하는 함수
@@ -99,8 +100,14 @@ export class HTMLParserNode extends Node {
   declare property: HTMLParserNodeContent;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
-    super(id, 'html-parser', property, context);
+    super(id, 'html-parser', property);
+    
+    // 생성자에서 context를 명시적으로 설정
+    if (context) {
+      this.context = context;
+    }
   }
+
 
   /**
    * HTMLParserNode의 핵심 실행 메서드
@@ -108,87 +115,63 @@ export class HTMLParserNode extends Node {
    * @returns 파싱된 결과 객체 또는 오류 시 null
    */
   async execute(input: any): Promise<any> {
-    // Define logger specific to this execution context
-    const log = (message: string) => this.context?.log(`${this.type}(${this.id}): ${message}`);
+    this._log('실행 시작');
+
+    // Extract HTML content using the helper function
+    const htmlContent = getHtmlContentFromInput(input, (message) => this._log(message));
+
+    // If no valid HTML content, stop processing this branch
+    if (!htmlContent || htmlContent.trim().length === 0) {
+      this._log('유효한 HTML 콘텐츠를 찾을 수 없습니다. 브랜치 실행을 중단합니다.');
+      return null;
+    }
+
+    // 최신 노드 설정 가져오기
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as HTMLParserNodeContent;
+    const extractionRules = nodeContent.extractionRules || [];
+
+    // If no rules, maybe return the HTML itself or null?
+    // Returning the HTML makes it act like a pass-through if no rules defined.
+    if (extractionRules.length === 0) {
+      this._log('경고 - 추출 규칙이 정의되지 않았습니다. 추출된 HTML 콘텐츠를 반환합니다.');
+      return htmlContent; // Return HTML content directly
+    }
+
+    // 클라이언트 사이드에서 직접 파싱
+    this._log(`HTML 파싱 시작 - ${extractionRules.length}개 규칙 적용`);
     
-    // try...catch is now handled by Node.process
-    // try { // REMOVED try
-      log('실행 시작');
-      // REMOVED: this.context?.markNodeRunning(this.id);
-
-      // Extract HTML content using the helper function
-      const htmlContent = getHtmlContentFromInput(input, log);
-
-      // If no valid HTML content, stop processing this branch
-      if (!htmlContent || htmlContent.trim().length === 0) {
-        log('유효한 HTML 콘텐츠를 찾을 수 없습니다. 브랜치 실행을 중단합니다.');
-        // Returning null will stop propagation in the new Node.process
-        return null;
-        // REMOVED: this.context?.storeOutput(this.id, input);
-        // REMOVED: this.context?.markNodeSuccess(this.id, input);
-        // REMOVED: return input;
-      }
-
-      // 최신 노드 설정 가져오기
-      const nodeContent = useNodeContentStore.getState().getNodeContent<HTMLParserNodeContent>(this.id, this.type);
-      const extractionRules = nodeContent.extractionRules || [];
-
-      // If no rules, maybe return the HTML itself or null?
-      // Returning the HTML makes it act like a pass-through if no rules defined.
-      if (extractionRules.length === 0) {
-        log('경고 - 추출 규칙이 정의되지 않았습니다. 추출된 HTML 콘텐츠를 반환합니다.');
-        // REMOVED: this.context?.storeOutput(this.id, htmlContent);
-        // REMOVED: this.context?.markNodeSuccess(this.id, htmlContent);
-        return htmlContent; // Return HTML content directly
-      }
-
-      // 클라이언트 사이드에서 직접 파싱
-      log(`HTML 파싱 시작 - ${extractionRules.length}개 규칙 적용`);
+    const result: Record<string, string | string[]> = {};
+    
+    // 각 규칙에 대해 결과 추출
+    for (const rule of extractionRules) {
+      if (!rule.selector) continue;
       
-      const result: Record<string, string | string[]> = {};
-      
-      // 각 규칙에 대해 결과 추출
-      for (const rule of extractionRules) {
-        if (!rule.selector) continue;
-        
-        const elements = extractFromHTML(htmlContent, rule.selector);
-        // If querySelectorAll throws (invalid selector), extractFromHTML returns null
-        if (elements === null) {
-           throw new Error(`Invalid CSS selector in rule '${rule.name}': ${rule.selector}`);
-        }
-        
-        if (elements.length === 0) {
-          result[rule.name] = rule.multiple ? [] : '';
-          continue;
-        }
-        
-        const extractedValues = extractContent(
-          elements, 
-          rule.target,
-          rule.target === 'attribute' ? rule.attribute_name : undefined
-        );
-        
-        if (rule.multiple) {
-          result[rule.name] = extractedValues;
-        } else {
-          result[rule.name] = extractedValues.length > 0 ? extractedValues[0] : '';
-        }
+      const elements = extractFromHTML(htmlContent, rule.selector);
+      // If querySelectorAll throws (invalid selector), extractFromHTML returns null
+      if (elements === null) {
+         throw new Error(`Invalid CSS selector in rule '${rule.name}': ${rule.selector}`);
       }
+      
+      if (elements.length === 0) {
+        result[rule.name] = rule.multiple ? [] : '';
+        continue;
+      }
+      
+      const extractedValues = extractContent(
+        elements, 
+        rule.target,
+        rule.target === 'attribute' ? rule.attribute_name : undefined
+      );
+      
+      if (rule.multiple) {
+        result[rule.name] = extractedValues;
+      } else {
+        result[rule.name] = extractedValues.length > 0 ? extractedValues[0] : '';
+      }
+    }
 
-      // 결과 반환
-      log('실행 성공, 데이터 추출됨');
-      // REMOVED: this.context?.storeOutput(this.id, result);
-      // REMOVED: this.context?.markNodeSuccess(this.id, result);
-      // console.log(">>>>>>>>", result) // Keep console log for debugging if needed
-      return result; // Return the result object
-
-    // } catch (error) { // REMOVED catch
-      // Error is now thrown and caught by Node.process
-      // const errorMessage = error instanceof Error ? error.message : String(error);
-      // log(`오류 - ${errorMessage}`);
-      // REMOVED: this.context?.markNodeError(this.id, errorMessage);
-      // throw error; // Re-throw
-      // REMOVED: return input; // Removed - let Node.process handle error propagation
-    // }
+    // 결과 반환
+    this._log('실행 성공, 데이터 추출됨');
+    return result; // Return the result object
   }
 } 

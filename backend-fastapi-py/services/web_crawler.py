@@ -174,9 +174,9 @@ async def crawl_webpage(
     wait_for_selector_on_page: Optional[str] = None,
     wait_for_selector_in_iframe: Optional[str] = None,
     extract_selectors: Optional[Dict[str, str]] = None,
+    extract_element_selector: Optional[str] = None,
     timeout: int = 30000,
     headers: Optional[Dict[str, str]] = None,
-    include_html: bool = False
 ) -> Dict[str, Any]:
     """
     Crawls a webpage using Playwright, potentially focusing on a specific iframe,
@@ -188,20 +188,21 @@ async def crawl_webpage(
         wait_for_selector_on_page: Optional CSS selector to wait for on the main page.
         wait_for_selector_in_iframe: Optional CSS selector to wait for within the target iframe.
         extract_selectors: Dictionary of name:selector pairs for targeted extraction within the context.
+        extract_element_selector: Optional CSS selector to extract a specific element's HTML.
         timeout: Total timeout for the operation in milliseconds
         headers: HTTP headers to send with the request
-        include_html: Whether to include the HTML of the target context in the response
         
     Returns:
         Dictionary with page data including status and potential error.
     """
-    logger.info(f"Crawling URL: {url} with timeout {timeout}ms. Target iframe: {iframe_selector}")
+    logger.info(f"Crawling URL: {url} with timeout {timeout}ms. Target iframe: {iframe_selector}, Extract Element: {extract_element_selector}")
     
     result = {
         "url": url,
         "title": None,
         "text": None,
         "html": None,
+        "extracted_content": None,
         "extracted_data": {},
         "status": "success",
         "error": None
@@ -240,32 +241,56 @@ async def crawl_webpage(
              await _wait_for_optional_selector(target_context, wait_for_selector_in_iframe, int(iframe_wait_timeout), context_name=context_name)
         # else: The page context wait was done in step 2.
 
-        # Step 5: Extract content from the determined context
-        title, text, html = await _extract_content(target_context, include_html)
-        result["title"] = title # Title is only taken if context is Page
-        result["text"] = text
-        result["html"] = html # HTML of the target context
+        # Step 5: Extract content or specific element
+        if extract_element_selector:
+            logger.info(f"[{context_name}] Attempting to extract element with selector: {extract_element_selector}")
+            element = await target_context.query_selector(extract_element_selector)
+            if element:
+                # Decide whether to use inner_html or outer_html
+                # inner_html excludes the element itself, outer_html includes it.
+                extracted_html = await element.inner_html() # Or outer_html()
+                result["extracted_content"] = extracted_html
+                logger.info(f"[{context_name}] Successfully extracted element HTML (length: {len(extracted_html)}). Setting full html to None.")
+                result["html"] = None # Don't include full HTML if element is extracted
+                # Optionally extract text content of the specific element too? 
+                # result["text"] = await element.text_content()
+            else:
+                error_message = f"Could not find element matching selector: {extract_element_selector}"
+                logger.warning(f"[{context_name}] {error_message}")
+                result["status"] = "error"
+                result["error"] = error_message
+                # Return early if the required element wasn't found?
+                # return result # Optional: stop processing here
+        else:
+            # Original behavior: Extract full content if no specific element selector is given
+            logger.info(f"[{context_name}] No specific element selector provided, extracting full content.")
+            # Determine if full HTML is needed (might be needed for text extraction anyway)
+            needs_full_html = True # Assume needed for text extraction or if requested explicitly later
+            title, text, html = await _extract_content(target_context, needs_full_html)
+            result["title"] = title 
+            result["text"] = text
+            result["html"] = html # Store the full HTML
 
-        # Step 6: Extract specific selectors from the determined context
-        # Note: Ensure extract_selectors are relevant to the target_context
-        extracted_data = await _extract_selectors_data(target_context, extract_selectors)
-        result["extracted_data"] = extracted_data
-            
-        logger.info(f"Successfully processed context '{context_name}' for {url}")
-            
+        # Step 6: Extract specific selectors (can run even if specific element was extracted)
+        # If result is already error, maybe skip this?
+        if result["status"] == "success":
+            result["extracted_data"] = await _extract_selectors_data(target_context, extract_selectors)
+
     except PlaywrightError as pe:
-        logger.error(f"Playwright error during crawl of {url}: {str(pe)}")
+        error_msg = f"Playwright Error: {str(pe)}"
+        logger.error(f"{error_msg} during crawl of {url}")
         result["status"] = "error"
-        result["error"] = f"Playwright Error: {str(pe)}"
+        result["error"] = error_msg
     except Exception as e:
-        logger.error(f"Generic error during crawl of {url}: {str(e)}", exc_info=True)
+        error_msg = f"Unexpected Error: {str(e)}"
+        logger.exception(f"{error_msg} during crawl of {url}")
         result["status"] = "error"
-        result["error"] = f"Unexpected Error: {str(e)}"
+        result["error"] = error_msg
     finally:
-        if browser and browser.is_connected():
+        if browser:
             logger.info("Closing browser.")
             await browser.close()
-    
+            
     return result
 
 # Removed unused helper functions sanitize_content and structure_content

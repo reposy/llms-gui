@@ -20,12 +20,13 @@ export const ConditionalNode: React.FC<NodeProps> = memo(({ id, data, selected, 
 
   // Use the Zustand hook
   const {
+    content,
     conditionType,
     conditionValue,
     label,
     handleConditionTypeChange,
     handleValueChange,
-    updateConditionalContent,
+    updateContent,
   } = useConditionalNodeData({ nodeId: id });
 
   // Get functions from stores

@@ -1,110 +1,71 @@
-import { useCallback, useMemo } from 'react';
-import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-import { useNodeContentStore, MergerNodeContent, NodeContent } from '../store/useNodeContentStore';
-// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
-import { isEqual } from 'lodash';
-// import { Node as ReactFlowNode } from '@xyflow/react'; // Removed ReactFlowNode dependency
-import { MergerNodeData } from '../types/nodes'; // Keep type if needed elsewhere, but hook logic shouldn't rely on it
+import { useCallback } from 'react';
+import { createNodeDataHook } from './useNodeDataFactory';
+import { MergerNodeContent } from '../types/nodes';
 
 /**
- * Custom hook to manage Merger node state and operations.
- * All state (label, strategy, keys, items) is managed via useNodeContentStore.
+ * Default values for Merger node content
  */
-export const useMergerNodeData = ({
-  nodeId
-}: {
-  nodeId: string
-}) => {
-  // --- Content Store Access (Unified State Management) ---
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+const MERGER_DEFAULTS: Partial<MergerNodeContent> = {
+  mergeMode: 'concat',
+  joinSeparator: ', ',
+  items: []
+};
 
-  // Use a selector with shallow comparison to get the entire content object
-  const content = useNodeContentStore(
-    useCallback(
-      (state) => state.getNodeContent<MergerNodeContent>(nodeId, 'merger'), // Get Merger specific content
-      [nodeId]
-    ),
-    shallow // Use shallow comparison
-  );
+/**
+ * Return type for useMergerNodeData hook
+ */
+interface MergerNodeDataHook {
+  content: MergerNodeContent | undefined;
+  items: any[];
+  itemCount: number;
+  mergeMode: string;
+  joinSeparator: string;
+  updateContent: (updates: Partial<MergerNodeContent>) => void;
+  resetItems: () => void;
+  addItem: (item: any) => void;
+}
 
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+/**
+ * Custom hook for managing Merger node data
+ */
+export const useMergerNodeData = createNodeDataHook<MergerNodeContent, MergerNodeDataHook>(
+  'merger',
+  (params) => {
+    const { nodeId, content, updateContent } = params;
 
-  // --- Derived State (from content store) ---
-  // Provide defaults directly when accessing
-  const label = content?.label || 'Merger Node';
-  const strategy = content?.strategy || 'array';
-  const keys = content?.keys || [];
-  const items = content?.items || [];
-  const itemCount = items.length;
-
-  /**
-   * Utility function to update content in the store, ensuring defaults and types.
-   */
-  const updateMergerContent = useCallback((updates: Partial<Omit<MergerNodeContent, keyof NodeContent | 'isDirty'>>) => {
-    const currentContent = useNodeContentStore.getState().getNodeContent<MergerNodeContent>(nodeId, 'merger');
-    const newContent: Partial<MergerNodeContent> = { ...currentContent, ...updates };
-
-    if (!isEqual(currentContent, newContent)) {
-        console.log(`[useMergerNodeData ${nodeId}] Updating content with:`, updates);
-        setNodeContent<MergerNodeContent>(nodeId, newContent);
-    } else {
-        console.log(`[useMergerNodeData ${nodeId}] Skipping content update - no changes (deep equal).`);
-    }
-  }, [nodeId, setNodeContent]);
-
-  // --- Change Handlers (using updateMergerContent) ---
-  const handleLabelChange = useCallback((newLabel: string) => {
-    updateMergerContent({ label: newLabel });
-  }, [updateMergerContent]);
-
-  const handleStrategyChange = useCallback((newStrategy: 'array' | 'object') => {
-    updateMergerContent({ strategy: newStrategy });
-  }, [updateMergerContent]);
-
-  const handleKeysChange = useCallback((newKeys: string[]) => {
-    updateMergerContent({ keys: newKeys });
-  }, [updateMergerContent]);
-
-  /**
-   * Add a new item to the accumulated items.
-   */
-  const addItem = useCallback((item: any) => {
-    // Get current items directly from derived state within the hook
-    const newItems = [...items, item]; 
-    console.log(`[MergerNode ${nodeId}] Adding item. New count: ${newItems.length}`);
-    updateMergerContent({ items: newItems });
-  }, [nodeId, items, updateMergerContent]); // Depend on items from hook state
-
-  /**
-   * Reset all accumulated items.
-   */
-  const resetItems = useCallback(() => {
-    if (items.length === 0) return; // Use items from hook state
-
-    console.log(`[MergerNode ${nodeId}] Resetting ${items.length} items`);
-    updateMergerContent({ items: [] });
-  }, [nodeId, items, updateMergerContent]); // Depend on items from hook state
-
-  return {
-    // State Data (all from useNodeContentStore)
-    label,
-    strategy,
-    keys,
-    items,
-    itemCount,
-    isDirty: isContentDirty,
-
-    // Change Handlers
-    handleLabelChange,
-    handleStrategyChange,
-    handleKeysChange,
-    // handleConfigChange, // Removed
-
-    // Result Item Handlers
-    addItem,
-    resetItems,
+    // 아이템 목록
+    const items = content?.items || [];
     
-    // Provide the unified update function if direct partial updates are needed
-    // updateContent: updateMergerContent
-  };
-}; 
+    // 아이템 개수
+    const itemCount = items.length;
+    
+    // 병합 모드
+    const mergeMode = content?.mergeMode || MERGER_DEFAULTS.mergeMode || 'concat';
+    
+    // 조인 구분자
+    const joinSeparator = content?.joinSeparator || MERGER_DEFAULTS.joinSeparator || ', ';
+
+    // 아이템 목록 초기화
+    const resetItems = useCallback(() => {
+      updateContent({ items: [] });
+    }, [updateContent]);
+
+    // 아이템 추가
+    const addItem = useCallback((item: any) => {
+      const updatedItems = [...items, item];
+      updateContent({ items: updatedItems });
+    }, [items, updateContent]);
+
+    return {
+      content,
+      items,
+      itemCount,
+      mergeMode,
+      joinSeparator,
+      updateContent,
+      resetItems,
+      addItem
+    };
+  },
+  MERGER_DEFAULTS
+); 

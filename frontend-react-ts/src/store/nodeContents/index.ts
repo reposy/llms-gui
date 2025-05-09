@@ -9,7 +9,7 @@ import { Node as ReactFlowNode } from '@xyflow/react';
 
 // Import all node content types and utilities
 import { 
-  NodeContent, 
+  NodeContent,
   isInputNodeContent,
   MAX_PERSISTED_CONTENT_LENGTH
 } from './common';

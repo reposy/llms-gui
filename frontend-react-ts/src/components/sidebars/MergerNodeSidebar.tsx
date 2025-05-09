@@ -11,7 +11,7 @@ interface MergerNodeSidebarProps {
 }
 
 export const MergerNodeSidebar: React.FC<MergerNodeSidebarProps> = ({ nodeId, nodeData, nodeState }) => {
-  const { updateContent } = useNodeContent(nodeId);
+  const { content, setContent } = useNodeContent(nodeId);
   
   // State for editable custom items
   const [customItems, setCustomItems] = useState<string[]>(nodeData.items || []);
@@ -30,27 +30,27 @@ export const MergerNodeSidebar: React.FC<MergerNodeSidebarProps> = ({ nodeId, no
     newItems[index] = value;
     setCustomItems(newItems);
     // Update nodeData in Zustand store
-    updateContent({ items: newItems });
+    setContent({ items: newItems });
   };
 
   const handleAddCustomItem = () => {
     const newItems = [...customItems, '']; // Add an empty string
     setCustomItems(newItems);
-    updateContent({ items: newItems });
+    setContent({ items: newItems });
   };
 
   const handleRemoveCustomItem = (index: number) => {
     const newItems = customItems.filter((_, i) => i !== index);
     setCustomItems(newItems);
-    updateContent({ items: newItems });
+    setContent({ items: newItems });
   };
   
   // Optional: Copy execution results to custom items
   const copyResultsToCustom = useCallback(() => {
     const newCustomItems = executionResults.map(String); // Convert all results to string
     setCustomItems(newCustomItems);
-    updateContent({ items: newCustomItems });
-  }, [executionResults, updateContent]);
+    setContent({ items: newCustomItems });
+  }, [executionResults, setContent]);
 
   return (
     <div className="p-4 space-y-6">

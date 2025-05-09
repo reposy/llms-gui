@@ -8,8 +8,8 @@ import {
 
 interface DOMTreeViewProps {
   element: Element | null;
-  depth?: number;
-  path?: string;
+  parentPath?: string; // Path of the parent node
+  indexInParent?: number; // Index of this node within its parent's element children
   maxDepth?: number;
   selectedElementPath: string;
   onElementSelect: (path: string, selector: string, preview: string) => void;
@@ -20,8 +20,8 @@ interface DOMTreeViewProps {
 
 const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
   element,
-  depth = 0,
-  path = "",
+  parentPath = "",
+  indexInParent = 0,
   maxDepth = 3,
   selectedElementPath,
   onElementSelect,
@@ -31,8 +31,9 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
 }) => {
   const nodeRef = useRef<HTMLDivElement>(null);
 
-  const tagName = safeGetTagName(element);
-  const currentPath = element && tagName ? (path ? `${path}/${depth}-${tagName}` : `${depth}-${tagName}`) : '';
+  const tagName: string | null = safeGetTagName(element);
+  const currentPathPart: string = element && tagName ? `${indexInParent}-${tagName}` : '';
+  const currentPath: string = parentPath ? `${parentPath}/${currentPathPart}` : currentPathPart;
 
   useEffect(() => {
     if (highlightedPath === currentPath && nodeRef.current) {
@@ -42,13 +43,19 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
 
   if (!element || !tagName) return null;
 
-  const isHead = tagName === 'head';
-  const isSelected = selectedElementPath === currentPath;
-  const isHighlighted = highlightedPath === currentPath;
-  const isExpanded = expandedPaths.has(currentPath);
+  const isHead: boolean = tagName === 'head';
+  const isSelected: boolean = selectedElementPath === currentPath;
+  const isHighlighted: boolean = highlightedPath === currentPath;
+  const isExpanded: boolean = expandedPaths.has(currentPath);
   const children = safeGetChildren(element);
+  const elementChildren: Element[] = React.useMemo(() => 
+    Array.from(children).filter(node => node.nodeType === Node.ELEMENT_NODE) as Element[], 
+    [children]
+  );
 
-  if (isHead && depth > 0) {
+  const depth: number = currentPath.split('/').length - 1;
+
+  if (isHead && depth > 0 && !isExpanded) {
     return (
       <div
         className="ml-4 py-1 pl-2 flex items-center text-gray-500 cursor-default rounded-md"
@@ -57,7 +64,7 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
       >
         <span 
           className="text-xs mr-1 cursor-pointer" 
-          onClick={(e) => { e.stopPropagation(); toggleExpand(currentPath); }}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); toggleExpand(currentPath); }}
         >
           ▶
         </span>
@@ -66,7 +73,7 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
     );
   }
 
-  let textContent = "";
+  let textContent: string = "";
   try {
     textContent = element.textContent?.trim() || "";
     if (textContent && textContent.length > 30) {
@@ -76,18 +83,18 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
     console.error("텍스트 내용 접근 오류:", e);
   }
 
-  let attributes = "";
+  let attributes: string = "";
   try {
     if (element.id) attributes += ` id="${element.id}"`;
-    const classList = safeGetClassList(element);
+    const classList: string[] = safeGetClassList(element);
     if (classList.length > 0) attributes += ` class="${classList.join(' ')}"`;
   } catch (e) {
     console.error("속성 접근 오류:", e);
   }
 
-  const handleSelect = () => {
-      const selector = generateSelector(element);
-      let preview = '';
+  const handleSelect = (): void => {
+      const selector: string = generateSelector(element);
+      let preview: string = '';
       try {
           preview = element.outerHTML || `<${tagName}${attributes}>${element.innerHTML || ""}</${tagName}>`;
       } catch (e) {
@@ -97,22 +104,22 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
       onElementSelect(currentPath, selector, preview);
   };
 
-  const handleToggleClick = (e: React.MouseEvent) => {
+  const handleToggleClick = (e: React.MouseEvent): void => {
       e.stopPropagation();
       toggleExpand(currentPath);
   }
 
   return (
-    <div key={currentPath} ref={nodeRef}>
+    <div key={currentPath} ref={nodeRef} data-path={currentPath}>
       <div
         className={`py-1 pl-2 flex items-center cursor-pointer hover:bg-gray-100 rounded-md 
                     ${isSelected ? 'bg-blue-100 border border-blue-300' : ''} 
                     ${isHighlighted ? 'bg-yellow-100 border border-yellow-300' : ''}`}
-        onClickCapture={(e) => {
+        onClickCapture={(e: React.MouseEvent) => {
           e.stopPropagation(); 
           e.preventDefault();
           handleSelect(); 
-          if (children.length > 0) {
+          if (elementChildren.length > 0) {
             toggleExpand(currentPath);
           }
         }}
@@ -121,7 +128,7 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
            className="text-xs mr-1 text-gray-500 cursor-pointer w-4 text-center" 
            onClick={handleToggleClick}
         >
-          {children.length > 0 ? (isExpanded ? '▼' : '▶') : ''}
+          {elementChildren.length > 0 ? (isExpanded ? '▼' : '▶') : ''}
         </span>
         <span className="text-xs font-mono text-gray-700">
           {`<${tagName}${attributes}>`}
@@ -133,14 +140,14 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
         )}
       </div>
       
-      {isExpanded && children.length > 0 && (
+      {isExpanded && elementChildren.length > 0 && (
         <div className="ml-4"> 
-          {children.map((child, index) => (
+          {elementChildren.map((child: Element, index: number) => (
             <DOMTreeNode
               key={`${currentPath}-child-${index}`}
               element={child}
-              depth={depth + 1}
-              path={currentPath}
+              parentPath={currentPath}
+              indexInParent={index}
               maxDepth={maxDepth}
               selectedElementPath={selectedElementPath}
               onElementSelect={onElementSelect}

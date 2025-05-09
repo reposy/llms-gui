@@ -178,23 +178,63 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
 
 /**
  * Exports the current flow state as a JSON-serializable object
- * @returns The complete flow data object with nodes, edges, and contents
+ * @param includeExecutionData If true, includes 'responseContent' and 'content' fields.
+ * @returns The complete flow data object with nodes, edges, and contents (conditionally filtered)
  */
-export const exportFlowAsJson = (): FlowData => {
+export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowData => {
   // Get the nodes and edges from the Zustand store
-  const nodes = useFlowStructureStore.getState().nodes;
+  const nodesFromStructureStore = useFlowStructureStore.getState().nodes;
   const edges = useFlowStructureStore.getState().edges;
   
   // Get the node contents from the Zustand store
   const nodeContents = getAllNodeContents();
 
+  let finalNodes = nodesFromStructureStore;
+  let finalContents = nodeContents;
+
+  // If execution data should NOT be included, filter it out
+  if (!includeExecutionData) {
+    // Filter contents
+    const contentsToExport: Record<string, Partial<NodeContent>> = {};
+    for (const nodeId in nodeContents) {
+      if (Object.prototype.hasOwnProperty.call(nodeContents, nodeId)) {
+        const originalContent = nodeContents[nodeId];
+        const contentToSave = { ...originalContent };
+        if ('responseContent' in contentToSave) {
+          delete contentToSave.responseContent;
+        }
+        if ('content' in contentToSave) {
+          delete contentToSave.content;
+        }
+        contentsToExport[nodeId] = contentToSave;
+      }
+    }
+    finalContents = contentsToExport;
+
+    // Filter node data within nodes array
+    finalNodes = nodesFromStructureStore.map(node => {
+      const { data, ...restNode } = node;
+      const dataToSave = { ...data };
+      if ('responseContent' in dataToSave) {
+        delete dataToSave.responseContent;
+      }
+      if ('content' in dataToSave) {
+        delete dataToSave.content;
+      }
+      return {
+        ...restNode,
+        data: dataToSave, 
+      };
+    });
+  }
+
   // Combine everything into a single flow object
   const flowData: FlowData = {
     name: `Flow ${new Date().toLocaleString()}`,
     createdAt: new Date().toISOString(),
-    nodes,
+    nodes: finalNodes, // Use potentially filtered nodes
     edges,
-    contents: nodeContents,
+    contents: finalContents, // Use potentially filtered contents
     meta: {
       llmDefaults: {
         provider: 'ollama',
@@ -203,10 +243,10 @@ export const exportFlowAsJson = (): FlowData => {
     }
   };
 
-  console.log('[exportFlowAsJson] Created flow data with:', {
-    nodes: nodes.length,
+  console.log(`[exportFlowAsJson] Created flow data (includeExecutionData: ${includeExecutionData}) with:`, {
+    nodes: finalNodes.length,
     edges: edges.length,
-    nodeContents: Object.keys(nodeContents).length
+    nodeContents: Object.keys(finalContents).length
   });
 
   return flowData;

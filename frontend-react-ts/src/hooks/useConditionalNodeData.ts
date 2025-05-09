@@ -1,92 +1,65 @@
-import { useCallback } from 'react';
-import { useNodeContent, ConditionalNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { isEqual } from 'lodash';
-import { ConditionType } from '../types/nodes';
+import { createNodeDataHook } from './useNodeDataFactory';
+import { ConditionalNodeContent, ConditionType } from '../types/nodes';
 
 /**
- * Custom hook to manage Conditional node state and operations using Zustand store.
- * Centralizes logic for ConditionalNode component
+ * Default values for Conditional node content
  */
-export const useConditionalNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Use the general NodeContent hook with correct type and nodeType
-  const { 
-    content: generalContent, 
-    updateContent,
-  } = useNodeContent<ConditionalNodeContent>(nodeId, 'conditional');
-  
-  // Get isDirty status directly from the store
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+const CONDITIONAL_DEFAULTS: Partial<ConditionalNodeContent> = {
+  conditionType: 'contains',
+  conditionValue: '',
+  label: 'Conditional Node'
+};
 
-  // Cast the general content to ConditionalNodeContent type
-  const content = generalContent as ConditionalNodeContent;
+/**
+ * Return type for useConditionalNodeData hook
+ */
+interface ConditionalNodeDataHook {
+  content: ConditionalNodeContent | undefined;
+  conditionType: ConditionType | undefined;
+  conditionValue: string;
+  label: string;
+  handleConditionTypeChange: (value: ConditionType) => void;
+  handleValueChange: (value: string) => void;
+  updateContent: (updates: Partial<ConditionalNodeContent>) => void;
+}
 
-  // Destructure content for easier access
-  const conditionType = content.conditionType || 'contains';
-  const conditionValue = content.conditionValue || '';
-  const label = content.label || 'Conditional Node';
+/**
+ * Custom hook to manage Conditional node state and operations.
+ * Uses the standardized hook factory pattern.
+ */
+export const useConditionalNodeData = ({ nodeId }: { nodeId: string }): ConditionalNodeDataHook => {
+  // Use the factory to create the base hook functionality
+  return createNodeDataHook<ConditionalNodeContent, ConditionalNodeDataHook>(
+    'conditional',
+    (params) => {
+      const { 
+        content, 
+        updateContent: updateConditionalContent, 
+        createChangeHandler 
+      } = params;
 
-  /**
-   * Handle condition type change with deep equality check
-   */
-  const handleConditionTypeChange = useCallback((newType: ConditionType) => {
-    if (isEqual(newType, conditionType)) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping condition type update - no change (deep equal)`);
-      return;
-    }
-    updateContent({ conditionType: newType });
-  }, [nodeId, conditionType, updateContent]);
+      // Extract properties with defaults for easier access
+      const conditionType = content?.conditionType || CONDITIONAL_DEFAULTS.conditionType;
+      const conditionValue = content?.conditionValue || CONDITIONAL_DEFAULTS.conditionValue || '';
+      const label = content?.label || CONDITIONAL_DEFAULTS.label || '';
 
-  /**
-   * Handle condition value change with deep equality check
-   */
-  const handleValueChange = useCallback((newValue: string) => {
-    if (isEqual(newValue, conditionValue)) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping condition value update - no change (deep equal)`);
-      return;
-    }
-    updateContent({ conditionValue: newValue });
-  }, [nodeId, conditionValue, updateContent]);
+      // Create standard change handlers
+      const handleConditionTypeChange = createChangeHandler('conditionType');
+      const handleValueChange = createChangeHandler('conditionValue');
 
-  /**
-   * Update multiple properties at once with deep equality check
-   */
-  const updateConditionalContent = useCallback((updates: Partial<ConditionalNodeContent>) => {
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof ConditionalNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    const newContent = { ...content, ...updates };
-
-    if (isEqual(newContent, content)) {
-      console.log(`[ConditionalNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
-      return;
-    }
-    
-    console.log(`[ConditionalNode ${nodeId}] Updating content with:`, updates);
-    updateContent(updates);
-  }, [nodeId, content, updateContent]);
-
-  return {
-    // Data
-    content,
-    conditionType,
-    conditionValue,
-    label,
-    isDirty: isContentDirty,
-    
-    // Event handlers
-    handleConditionTypeChange,
-    handleValueChange,
-    updateConditionalContent,
-  };
+      return {
+        // Data
+        content,
+        conditionType,
+        conditionValue,
+        label,
+        
+        // Event handlers
+        handleConditionTypeChange,
+        handleValueChange,
+        updateContent: updateConditionalContent,
+      };
+    },
+    CONDITIONAL_DEFAULTS
+  )({ nodeId });
 }; 

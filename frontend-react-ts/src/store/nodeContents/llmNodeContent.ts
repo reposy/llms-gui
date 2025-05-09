@@ -13,7 +13,7 @@ export const createDefaultLlmNodeContent = (label?: string): LLMNodeContent => {
     ollamaUrl: 'http://localhost:11434',
     openaiApiKey: '',
     mode: 'text',
-    content: '',
+    responseContent: '',
     isDirty: false
   };
 };
@@ -65,14 +65,19 @@ export const truncateLlmContentForStorage = (
   content: LLMNodeContent, 
   maxLength: number = 1000
 ): LLMNodeContent => {
-  if (!content) return {};
+  if (!content) return {
+    provider: 'ollama',
+    model: '',
+    prompt: '',
+    temperature: 0.7
+  };
   
   const result = { ...content };
   
-  if (content.content && 
-      typeof content.content === 'string' && 
-      content.content.length > maxLength) {
-    result.content = `[Content truncated for storage: ${content.content.length} chars]`;
+  if (content.responseContent && 
+      typeof content.responseContent === 'string' && 
+      content.responseContent.length > maxLength) {
+    result.responseContent = `[Content truncated for storage: ${content.responseContent.length} chars]`;
   }
   
   return result;

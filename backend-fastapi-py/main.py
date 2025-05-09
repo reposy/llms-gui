@@ -40,7 +40,8 @@ class WebCrawlerRequest(BaseModel):
     waitForSelectorInIframe: Optional[str] = Field(None, alias='waitForSelectorInIframe')
     timeout: int = 30000
     headers: Optional[Dict[str, str]] = None
-    include_html: bool = True
+    extract_element_selector: Optional[str] = Field(None, alias='extractElementSelector')
+    output_format: Optional[str] = 'html'
 
 class WebCrawlerResponse(BaseModel):
     url: str
@@ -49,6 +50,7 @@ class WebCrawlerResponse(BaseModel):
     title: Optional[str] = None
     text: Optional[str] = None
     html: Optional[str] = None
+    extracted_content: Optional[str] = None
     extracted_data: Optional[Dict[str, Any]] = None
 
 # HTML Parser API endpoint
@@ -68,7 +70,7 @@ async def root():
 @app.post("/api/web-crawler/fetch", response_model=WebCrawlerResponse)
 async def fetch_webpage_content(request: WebCrawlerRequest):
     logger.info(f"Received crawl request for URL: {request.url}")
-    logger.info(f"Request details: iframe={request.iframeSelector}, waitPage={request.waitForSelectorOnPage}, waitIframe={request.waitForSelectorInIframe}")
+    logger.info(f"Request details: iframe={request.iframeSelector}, waitPage={request.waitForSelectorOnPage}, waitIframe={request.waitForSelectorInIframe}, extractSelector={request.extract_element_selector}")
     try:
         result = await crawl_webpage(
             url=str(request.url),
@@ -77,7 +79,7 @@ async def fetch_webpage_content(request: WebCrawlerRequest):
             wait_for_selector_in_iframe=request.waitForSelectorInIframe,
             timeout=request.timeout,
             headers=request.headers,
-            include_html=request.include_html
+            extract_element_selector=request.extract_element_selector
         )
         
         logger.info(f"Crawl for {request.url} finished with status: {result.get('status')}")
@@ -92,6 +94,7 @@ async def fetch_webpage_content(request: WebCrawlerRequest):
             title=None,
             text=None,
             html=None,
+            extracted_content=None,
             extracted_data=None
         )
 

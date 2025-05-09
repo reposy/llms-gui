@@ -1,42 +1,46 @@
-import { useCallback } from 'react';
-import { useNodeContentStore, InputNodeContent, NodeContent } from '../store/useNodeContentStore';
+import { useCallback, useState } from 'react';
+import { InputNodeContent, BaseNodeData } from '../types/nodes';
+import { useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
- * InputNode 데이터 관리 훅 (useNodeContentStore 기반 통합 버전)
+ * InputNode 데이터 관리 훅 (세 가지 아이템 목록 지원)
  * 
- * Input 노드의 상태(items, textBuffer, iterateEachRow)를 관리하고,
- * 관련 액션 핸들러를 제공합니다. 모든 상태는 useNodeContentStore와 동기화됩니다.
+ * Input 노드의 상태(chainingItems, commonItems, items, textBuffer, chainingUpdateMode, iterateEachRow)
+ * 를 관리하고 관련 액션 핸들러를 제공합니다. 모든 상태는 useNodeContentStore와 동기화됩니다.
  */
 export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   // useNodeContentStore 훅 사용
   const setNodeContent = useNodeContentStore(state => state.setNodeContent);
   
-  // 노드 컨텐츠 가져오기 (selector 사용, InputNodeContent 타입 지정)
-  // getNodeContent는 노드가 없거나 타입이 다를 경우 기본값을 반환하도록 설계됨
+  // 노드 컨텐츠 가져오기
   const content = useNodeContentStore(
     useCallback(
-      (state) => state.getNodeContent<InputNodeContent>(nodeId, 'input'),
+      (state) => state.getNodeContent(nodeId, 'input') as InputNodeContent,
       [nodeId]
     )
   );
 
   // 컨텐츠 필드 접근 (기본값 처리 포함)
+  const chainingItems: (string | File)[] = (content?.chainingItems as (string | File)[]) || [];
+  const commonItems: (string | File)[] = (content?.commonItems as (string | File)[]) || [];
   const items: (string | File)[] = (content?.items as (string | File)[]) || [];
   const textBuffer: string = content?.textBuffer || '';
   const iterateEachRow: boolean = content?.iterateEachRow || false;
+  const chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none' = content?.chainingUpdateMode || 'element';
+
+  // 텍스트 아이템 편집 상태 관리 (로컬 UI 상태)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
 
   /**
-   * 부분적인 컨텐츠 업데이트를 위한 유틸리티 함수
-   * 항상 전체 InputNodeContent 객체 구조를 유지하며 업데이트합니다.
+   * 부분적인 컨텐츠 업데이트 유틸리티 함수
    */
-  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeContent, keyof NodeContent>>) => {
-    // 현재 content 객체를 기반으로 업데이트 적용
+  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeContent, keyof BaseNodeData>>) => {
     setNodeContent<InputNodeContent>(nodeId, {
-      ...content, // 기존 content 보존 (label 등 Base 속성 포함)
-      ...updates, // 새로운 변경 사항 적용
+      ...content,
+      ...updates,
     });
   }, [nodeId, content, setNodeContent]);
-
 
   /**
    * 텍스트 버퍼 변경 핸들러
@@ -46,102 +50,226 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   }, [updateInputContent]);
 
   /**
-   * 텍스트 버퍼 내용을 아이템으로 추가하는 핸들러
+   * 공통 또는 개별 항목으로 텍스트 추가
    */
-  const handleAddText = useCallback(() => {
+  const handleAddText = useCallback((itemType: 'common' | 'element') => {
     const trimmedText = textBuffer.trim();
     if (!trimmedText) return;
     
-    const updatedItems = [...items, trimmedText];
-    updateInputContent({ 
-      items: updatedItems,
-      textBuffer: '' // 텍스트 추가 후 버퍼 비우기
-    });
-  }, [textBuffer, items, updateInputContent]);
+    if (itemType === 'common') {
+      const updatedCommonItems = [...commonItems, trimmedText];
+      updateInputContent({ 
+        commonItems: updatedCommonItems,
+        textBuffer: '' // 버퍼 비우기
+      });
+    } else {
+      const updatedItems = [...items, trimmedText];
+      updateInputContent({ 
+        items: updatedItems,
+        textBuffer: '' // 버퍼 비우기
+      });
+    }
+  }, [textBuffer, commonItems, items, updateInputContent]);
 
   /**
-   * 처리 모드 (Batch/Foreach) 토글 핸들러
+   * 처리 모드 (Batch/Foreach) 토글
    */
   const handleToggleProcessingMode = useCallback(() => {
-    updateInputContent({ 
-      iterateEachRow: !iterateEachRow
+    const newIterateEachRow = !iterateEachRow;
+    updateInputContent({
+      iterateEachRow: newIterateEachRow,
+      executionMode: newIterateEachRow ? 'foreach' : 'batch'
     });
   }, [iterateEachRow, updateInputContent]);
 
   /**
-   * 파일 읽기 Promise 헬퍼
+   * 자동 Chaining 업데이트 모드 변경
    */
-   const readFileAsText = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = (e) => reject(e);
-      reader.readAsText(file);
-    });
-  };
+  const handleUpdateChainingMode = useCallback((newMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none') => {
+    updateInputContent({ chainingUpdateMode: newMode });
+  }, [updateInputContent]);
+
 
   /**
-   * 파일 입력 변경 핸들러
-   * File 객체를 FileLikeObject로 변환하여 items에 추가합니다.
+   * 공통 또는 개별 항목으로 파일 추가
    */
-  const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>, itemType: 'common' | 'element') => {
     if (!event.target.files?.length) return;
     const files = Array.from(event.target.files);
     
     try {
-      const newFiles: File[] = [];
-
-      for (const file of files) {
-        newFiles.push(file);
-      }
+      const newFiles: File[] = files; // File 객체 그대로 사용
 
       if (newFiles.length > 0) {
-        console.log(`[useInputNodeData] Adding ${newFiles.length} File objects to items.`);
-        const updatedItems = [...items, ...newFiles];
-        updateInputContent({ items: updatedItems });
+        if (itemType === 'common') {
+          const updatedCommonItems = [...commonItems, ...newFiles];
+          updateInputContent({ commonItems: updatedCommonItems });
+        } else {
+          const updatedItems = [...items, ...newFiles];
+          updateInputContent({ items: updatedItems });
+        }
       }
     } catch (error) {
        console.error("Error processing files:", error);
-       // 사용자에게 오류 알림 등의 처리 추가 가능
     } finally {
-       // 파일 입력 초기화 (동일 파일 재업로드 가능하도록)
        event.target.value = ''; 
     }
-  }, [items, updateInputContent]);
+  }, [commonItems, items, updateInputContent]);
 
   /**
-   * 특정 인덱스의 아이템 삭제 핸들러
+   * 특정 인덱스의 아이템 삭제 (chaining, common, element 구분)
    */
-  const handleDeleteItem = useCallback((index: number) => {
-    if (index < 0 || index >= items.length) return; // 유효하지 않은 인덱스
-    const updatedItems = [...items];
-    updatedItems.splice(index, 1);
-    updateInputContent({ items: updatedItems });
-  }, [items, updateInputContent]);
+  const handleDeleteItem = useCallback((index: number, itemType: 'chaining' | 'common' | 'element') => {
+    if (itemType === 'chaining') {
+      if (index < 0 || index >= chainingItems.length) return;
+      const updatedChainingItems = [...chainingItems];
+      updatedChainingItems.splice(index, 1);
+      updateInputContent({ chainingItems: updatedChainingItems });
+    } else if (itemType === 'common') {
+      if (index < 0 || index >= commonItems.length) return;
+      const updatedCommonItems = [...commonItems];
+      updatedCommonItems.splice(index, 1);
+      updateInputContent({ commonItems: updatedCommonItems });
+    } else {
+      if (index < 0 || index >= items.length) return;
+      const updatedItems = [...items];
+      updatedItems.splice(index, 1);
+      updateInputContent({ items: updatedItems });
+    }
+  }, [chainingItems, commonItems, items, updateInputContent]);
 
   /**
-   * 모든 아이템 삭제 핸들러
+   * 모든 아이템 또는 특정 타입 아이템 삭제
    */
-  const handleClearItems = useCallback(() => {
-    updateInputContent({ items: [] });
+  const handleClearItems = useCallback((itemType: 'chaining' | 'common' | 'element' | 'all' = 'all') => {
+    const updates: Partial<InputNodeContent> = {};
+    if (itemType === 'chaining' || itemType === 'all') {
+      updates.chainingItems = [];
+    }
+    if (itemType === 'common' || itemType === 'all') {
+      updates.commonItems = [];
+    }
+    if (itemType === 'element' || itemType === 'all') {
+      updates.items = [];
+    }
+    if (Object.keys(updates).length > 0) {
+      updateInputContent(updates);
+    }
   }, [updateInputContent]);
+
+  /**
+   * Chaining 아이템을 Common 또는 Element 아이템으로 이동
+   */
+  const handleMoveChainingItem = useCallback((index: number, targetType: 'common' | 'element') => {
+    if (index < 0 || index >= chainingItems.length) return;
+
+    const itemToMove = chainingItems[index];
+    const updatedChainingItems = [...chainingItems];
+    updatedChainingItems.splice(index, 1);
+
+    let updatedCommonItems = [...commonItems];
+    let updatedItems = [...items];
+
+    if (targetType === 'common') {
+      updatedCommonItems.push(itemToMove);
+    } else {
+      updatedItems.push(itemToMove);
+    }
+
+    updateInputContent({ 
+      chainingItems: updatedChainingItems,
+      commonItems: updatedCommonItems,
+      items: updatedItems
+    });
+    setEditingText('');
+  }, [chainingItems, commonItems, items, updateInputContent]);
+
+  /**
+   * 텍스트 아이템 편집 시작 (UI 상태 설정)
+   */
+  const handleStartEditingTextItem = useCallback((index: number, itemType: 'common' | 'element') => {
+    const targetArray = itemType === 'common' ? commonItems : items;
+    if (index >= 0 && index < targetArray.length && typeof targetArray[index] === 'string') {
+      setEditingItemId(`${itemType}-${index}`);
+      setEditingText(targetArray[index] as string);
+    }
+  }, [commonItems, items]);
+
+  /**
+   * 편집 중인 텍스트 변경 (UI 상태 설정)
+   */
+  const handleEditingTextChange = useCallback((event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setEditingText(event.target.value);
+  }, []);
+
+  /**
+   * 텍스트 아이템 편집 완료 (Store 업데이트)
+   */
+  const handleFinishEditingTextItem = useCallback(() => {
+    if (!editingItemId) return;
+
+    const [itemType, indexStr] = editingItemId.split('-');
+    const index = parseInt(indexStr, 10);
+
+    if (itemType === 'common') {
+      if (index >= 0 && index < commonItems.length && typeof commonItems[index] === 'string') {
+        const updatedCommonItems = [...commonItems];
+        updatedCommonItems[index] = editingText;
+        updateInputContent({ commonItems: updatedCommonItems });
+      }
+    } else if (itemType === 'element') {
+      if (index >= 0 && index < items.length && typeof items[index] === 'string') {
+        const updatedItems = [...items];
+        updatedItems[index] = editingText;
+        updateInputContent({ items: updatedItems });
+      }
+    }
+    setEditingItemId(null);
+    setEditingText('');
+  }, [editingItemId, editingText, commonItems, items, updateInputContent]);
+
+  /**
+   * 텍스트 아이템 편집 취소 (UI 상태 리셋)
+   */
+  const handleCancelEditingTextItem = useCallback(() => {
+    setEditingItemId(null);
+    setEditingText('');
+  }, []);
+
+  // Define specific clear handlers
+  const handleClearChainingItems = useCallback(() => handleClearItems('chaining'), [handleClearItems]);
+  const handleClearCommonItems = useCallback(() => handleClearItems('common'), [handleClearItems]);
+  const handleClearElementItems = useCallback(() => handleClearItems('element'), [handleClearItems]);
 
   return {
     // 상태 값
+    chainingItems,
+    commonItems,
     items,
     textBuffer,
     iterateEachRow,
+    chainingUpdateMode,
+    editingItemId, // UI 편집 상태 노출
+    editingText,   // UI 편집 상태 노출
+    label: content?.label || '',
     
     // 핸들러 함수
     handleTextChange,
     handleAddText,
     handleFileChange,
     handleDeleteItem,
-    handleClearItems,
+    handleClearItems, // Generic clear handler
     handleToggleProcessingMode,
-
-    // 직접 content를 수정해야 할 경우를 위한 함수 (주의해서 사용)
-    // setContent: updateInputContent 
-    // setNodeContent 원본을 직접 노출하는 것보다 updateInputContent를 제공하는 것이 안전함
+    handleUpdateChainingMode,
+    handleMoveChainingItem, // Add this back (used as handleMoveItem in Config)
+    handleStartEditingTextItem,
+    handleEditingTextChange,
+    handleFinishEditingTextItem,
+    handleCancelEditingTextItem,
+    
+    // Specific clear handlers for Config/ItemList
+    handleClearChainingItems,
+    handleClearCommonItems,
+    handleClearElementItems,
   };
 }; 

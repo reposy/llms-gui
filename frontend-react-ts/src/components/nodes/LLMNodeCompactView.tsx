@@ -39,7 +39,7 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   const { prompt, model, provider, mode, label } = useLlmNodeData({ nodeId: id });
 
   // Use the local placeholder function
-  const supportsVision = model && isVisionModel(provider, model);
+  const supportsVision = model && isVisionModel(provider || 'ollama', model);
 
   // Use compact display with truncated prompt
   const truncatedPrompt = prompt.length > 50

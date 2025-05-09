@@ -2,12 +2,27 @@ import { Node, Edge } from '@xyflow/react';
 import { NodeViewMode } from '../store/viewModeStore';
 // import { LLMMode } from '../api/llm'; // Remove deleted import
 
-export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger' | 'web-crawler' | 'html-parser';
-export type OutputFormat = 'json' | 'text';
-export type APIMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
-export type LLMMode = 'text' | 'vision'; // Define LLMMode directly here
+// =========== 공통 타입 정의 ===========
 
-// Define ExtractionRule interface
+// 노드 타입 (사용 가능한 모든 노드 타입)
+export type NodeType = 'llm' | 'api' | 'output' | 'json-extractor' | 'input' | 'group' | 'conditional' | 'merger' | 'web-crawler' | 'html-parser';
+
+// 출력 포맷 타입
+export type OutputFormat = 'json' | 'text';
+
+// API 메소드 타입
+export type HTTPMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+
+// LLM 모드 타입
+export type LLMMode = 'text' | 'vision';
+
+// 요청 바디 타입
+export type RequestBodyType = 'none' | 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw';
+
+// 조건 타입
+export type ConditionType = 'contains' | 'greater_than' | 'less_than' | 'equal_to' | 'json_path';
+
+// HTML 추출 규칙 인터페이스
 export interface ExtractionRule {
   id?: string;
   name: string;
@@ -15,17 +30,17 @@ export interface ExtractionRule {
   selector: string;
   attribute_name?: string;
   multiple: boolean;
-  pathSteps?: { level: number; tag: string; details: string }[]; // Optional: Path steps from DOM selection
+  pathSteps?: { level: number; tag: string; details: string }[];
 }
 
-// Define a FileLikeObject type for file content
+// 파일형 객체 인터페이스
 export interface FileLikeObject {
-  file: string; // File name
-  type: string; // MIME type
-  content?: string | ArrayBuffer; // Optional file content
+  file: string; 
+  type: string;
+  content?: string | ArrayBuffer;
 }
 
-// LLM 응답 타입 정의
+// LLM 결과 인터페이스
 export interface LLMResult {
   text?: string;
   completion?: string;
@@ -33,7 +48,15 @@ export interface LLMResult {
   [key: string]: any;
 }
 
-// 플로우 실행 상태 관리
+// API 응답 인터페이스
+export interface APIResponse {
+  data: any;
+  headers: Record<string, string>;
+  status?: number;
+  statusText?: string;
+}
+
+// 플로우 실행 상태 인터페이스
 export interface FlowExecutionState {
   isExecuting: boolean;
   currentNodeId?: string;
@@ -41,16 +64,17 @@ export interface FlowExecutionState {
   nodeStates: Record<string, any>;
 }
 
-// React Flow Node 타입에 부모 관계 타입을 명시적으로 추가
+// 확장된 노드 속성 인터페이스
 export interface ExtendedNodeProps {
-  parentId?: string;  // 부모 노드 ID (React Flow의 parentNode와 일관성을 위해 사용)
-  // parentNode 속성은 내부적으로만 사용되므로 타입에서 제거
-  // React Flow 전달 시 필요한 경우 parentId를 parentNode로 복사하는 헬퍼 함수 사용
+  parentId?: string;
 }
 
-// 공통 노드 데이터 타입
+// =========== 노드 데이터 타입 정의 (React Flow 노드 타입) ===========
+
+// 기본 노드 데이터 인터페이스 - 모든 노드 데이터 타입의 기반
 export interface BaseNodeData {
   label?: string;
+  // 향후 모든 노드가 공유할 속성을 여기에 추가
   [key: string]: any;
 }
 
@@ -70,7 +94,7 @@ export interface LLMNodeData extends BaseNodeData {
 // API 노드 데이터
 export interface APINodeData extends BaseNodeData {
   type: 'api';
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  method: HTTPMethod;
   url: string;
   headers?: Record<string, string>;
   queryParams?: Record<string, string>;
@@ -85,30 +109,32 @@ export interface APINodeData extends BaseNodeData {
 // Output 노드 데이터
 export interface OutputNodeData extends BaseNodeData {
   type: 'output';
-  format?: 'json' | 'text';
+  format?: OutputFormat;
   content?: string;
   mode?: 'read' | 'write';
-  label?: string;
   viewMode?: NodeViewMode;
 }
 
-// JSON Extractor node data
+// JSON Extractor 노드 데이터
 export interface JSONExtractorNodeData extends BaseNodeData {
-  label?: string;
+  type: 'json-extractor';
   path: string;
+  defaultValue?: any;
   viewMode?: NodeViewMode;
 }
 
-// Add InputNodeData
+// Input 노드 데이터
 export interface InputNodeData extends BaseNodeData {
   type: 'input';
-  label: string;
-  inputType?: 'text' | 'file' | 'list'; // Type of input
-  text?: string; // For single text input
-  textBuffer?: string; // Buffer for in-progress text entry
-  items?: string[]; // For array of text and file paths
-  iterateEachRow?: boolean; // Whether to execute downstream nodes for each row
-  executionMode?: 'batch' | 'foreach'; // Mode of execution, set by the UI
+  inputType?: 'text' | 'file' | 'list';
+  text?: string;
+  textBuffer?: string;
+  items?: (string | File)[];
+  commonItems?: (string | File)[];
+  chainingItems?: (string | File)[];
+  iterateEachRow?: boolean;
+  executionMode?: 'batch' | 'foreach';
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none';
   iterationStatus?: {
     currentIndex: number;
     totalItems: number;
@@ -116,50 +142,37 @@ export interface InputNodeData extends BaseNodeData {
   };
 }
 
-// Add GroupNodeData
+// Group 노드 데이터
 export interface GroupNodeData extends BaseNodeData {
   type: 'group';
-  label?: string;
-  isCollapsed?: boolean; // For UI later
-  // Config to link this group to an iterable data source for looping
+  isCollapsed?: boolean;
   iterationConfig?: {
-    sourceNodeId: string; // ID of the node providing the array (e.g., an InputNode)
-    // sourceHandleId?: string; // Optional: specify which output handle if source has multiple
+    sourceNodeId: string;
   };
 }
 
-// Add ConditionalNodeData
-export type ConditionType = 'contains' | 'greater_than' | 'less_than' | 'equal_to' | 'json_path';
+// Conditional 노드 데이터
 export interface ConditionalNodeData extends BaseNodeData {
   type: 'conditional';
-  label?: string;
   conditionType: ConditionType;
-  conditionValue: string; // Value to compare against or JSON path
-  lastEvaluationResult?: boolean | null; // Store the result of the last evaluation
+  conditionValue: string;
+  lastEvaluationResult?: boolean | null;
 }
 
-// Add MergerNodeData
+// Merger 노드 데이터
 export interface MergerNodeData extends BaseNodeData {
   type: 'merger';
-  label?: string;
-  // Merge mode determines how values are combined
   mergeMode?: 'concat' | 'join' | 'object';
-  // Join string for join mode
   joinSeparator?: string;
-  // Strategy for handling array items
   arrayStrategy?: 'flatten' | 'preserve';
-  // Custom property names for object mode
   propertyNames?: string[];
-  // Whether to wait for all inputs or process as they arrive
   waitForAll?: boolean;
-  // Array to store manually edited/managed items via sidebar
-  items?: string[];
+  items?: any[];
 }
 
-// Add WebCrawlerNodeData
+// Web Crawler 노드 데이터
 export interface WebCrawlerNodeData extends BaseNodeData {
   type: 'web-crawler';
-  label?: string;
   url?: string;
   waitForSelector?: string;
   extractSelectors?: Record<string, string>;
@@ -169,14 +182,13 @@ export interface WebCrawlerNodeData extends BaseNodeData {
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
 }
 
-// HTML Parser Node 데이터 인터페이스
+// HTML Parser 노드 데이터
 export interface HTMLParserNodeData extends BaseNodeData {
   type: 'html-parser';
-  label?: string;
   extractionRules?: ExtractionRule[];
 }
 
-// Update NodeData union type
+// 전체 노드 데이터 유니온 타입
 export type NodeData = 
   | LLMNodeData 
   | APINodeData 
@@ -189,92 +201,168 @@ export type NodeData =
   | WebCrawlerNodeData
   | HTMLParserNodeData;
 
+// =========== 노드 컨텐츠 타입 정의 (상태 관리) ===========
+
+// 기본 노드 컨텐츠 인터페이스 - 모든 노드 컨텐츠 타입의 기반
+export interface BaseNodeContent {
+  label?: string;
+  isDirty?: boolean;
+  _forceUpdate?: number;
+}
+
+// LLM 노드 컨텐츠
+export interface LLMNodeContent extends BaseNodeContent {
+  provider: 'ollama' | 'openai';
+  model: string;
+  prompt: string;
+  temperature: number;
+  maxTokens?: number;
+  ollamaUrl?: string;
+  openaiApiKey?: string;
+  mode?: LLMMode;
+  responseContent?: LLMResult | string;
+  isStreaming?: boolean;
+  streamingResult?: string;
+  selectedFiles?: File[];
+  hasImageInputs?: boolean;
+}
+
+// API 노드 컨텐츠
+export interface APINodeContent extends BaseNodeContent { 
+  url: string;
+  method: HTTPMethod;
+  requestBodyType: RequestBodyType;
+  requestBody?: string;
+  requestHeaders?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  useInputAsBody?: boolean;
+  contentType?: string;
+  response?: APIResponse | undefined;
+  statusCode?: number | undefined;
+  executionTime?: number | undefined;
+  errorMessage?: string | undefined;
+  isRunning?: boolean;
+}
+
+// Input 노드 컨텐츠
+export interface InputNodeContent extends BaseNodeContent {
+  items?: (string | File)[];
+  commonItems?: (string | File)[];
+  chainingItems?: (string | File)[];
+  textBuffer?: string;
+  iterateEachRow?: boolean;
+  executionMode?: 'batch' | 'foreach';
+  chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none';
+  accumulationMode?: 'always' | 'oncePerContext' | 'none';
+}
+
+// Output 노드 컨텐츠
+export interface OutputNodeContent extends BaseNodeContent {
+  format?: OutputFormat;
+  content?: any;
+  mode?: 'read' | 'write';
+}
+
+// Text 노드 컨텐츠
+export interface TextNodeContent extends BaseNodeContent {
+  text: string;
+}
+
+// Conditional 노드 컨텐츠
+export interface ConditionalNodeContent extends BaseNodeContent {
+  conditionType: ConditionType;
+  conditionValue: string;
+}
+
+// Group 노드 컨텐츠
+export interface GroupNodeContent extends BaseNodeContent {
+  isCollapsed: boolean;
+  items?: any[];
+}
+
+// Merger 노드 컨텐츠
+export interface MergerNodeContent extends BaseNodeContent {
+  mergeMode?: 'concat' | 'join' | 'object';
+  joinSeparator?: string;
+  strategy?: 'array' | 'object';
+  keys?: string[];
+  waitForAll?: boolean;
+  items?: any[];
+  mode?: string;
+  params?: any[];
+  result?: any[];
+}
+
+// Web Crawler 노드 컨텐츠
+export interface WebCrawlerNodeContent extends BaseNodeContent {
+  url?: string;
+  waitForSelectorOnPage?: string;
+  iframeSelector?: string;
+  waitForSelectorInIframe?: string;
+  timeout?: number;
+  headers?: Record<string, string>;
+  extractSelectors?: Record<string, string>;
+  extractElementSelector?: string;
+  outputFormat?: 'text' | 'html' | 'markdown' | 'json';
+}
+
+// JSON Extractor 노드 컨텐츠
+export interface JSONExtractorNodeContent extends BaseNodeContent {
+  path: string;
+  defaultValue?: any;
+}
+
+// HTML Parser 노드 컨텐츠
+export interface HTMLParserNodeContent extends BaseNodeContent {
+  url?: string;
+  selector?: string;
+  responseText?: string;
+  extractionRules?: ExtractionRule[];
+}
+
+// 전체 노드 컨텐츠 유니온 타입
+export type NodeContent = 
+  | LLMNodeContent
+  | APINodeContent 
+  | InputNodeContent 
+  | OutputNodeContent
+  | TextNodeContent
+  | ConditionalNodeContent
+  | GroupNodeContent
+  | MergerNodeContent
+  | WebCrawlerNodeContent
+  | JSONExtractorNodeContent
+  | HTMLParserNodeContent;
+
+// =========== 유틸리티 타입 정의 ===========
+
+// 플로우 상태 인터페이스
 export interface FlowState {
   nodes: Node<NodeData>[];
   edges: Edge[];
   selectedNodeId: string | null;
 }
 
+// 플로우 노드 및 엣지 타입
 export type FlowNode = Node<NodeData>;
 export type FlowEdge = Edge;
 
-export type LLMProvider = 'ollama' | 'openai';
-
-// Add these types if they don't exist or modify if they do
-
-export type HTTPMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
-
-export type RequestBodyType = 'none' | 'json' | 'form-data' | 'x-www-form-urlencoded' | 'raw';
-
-export interface APIResponse {
-  data: any; // Or define a more specific type
-  headers: Record<string, string>;
-  // Add other relevant response properties if needed (e.g., status, statusText)
-}
-
-// ... ensure other node data types like APINodeContent, ConditionalNodeContent etc. exist ...
-
-// If APINodeContent exists, ensure it includes the necessary fields
-export interface APINodeContent extends BaseNodeData {
-  url: string;
-  method: HTTPMethod;
-  requestBodyType: RequestBodyType;
-  requestBody?: string; // For JSON, raw text
-  requestHeaders?: Record<string, string>;
-  // Add fields for form-data or x-www-form-urlencoded if needed
-  // Response data
-  response?: APIResponse | null;
-  statusCode?: number | null;
-  executionTime?: number | null;
-  // Internal state
-  // _flash?: number; // Removed for visual feedback separation
-}
-
-// Define other specific node content types
-export interface InputNodeContent extends BaseNodeData {
-  value: string;
-}
-
-export interface OutputNodeContent extends BaseNodeData {
-  // Output specific fields
-}
-
-export interface TextNodeContent extends BaseNodeData {
-  text: string;
-}
-
-export interface ConditionalNodeContent extends BaseNodeData {
-  conditionType: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'regex'; // Example types
-  conditionValue: string;
-}
-
-export interface GroupNodeContent extends BaseNodeData {
-  isCollapsed: boolean;
-}
-
-// Union type for all possible node content types
-export type NodeContent = 
-  | APINodeContent 
-  | InputNodeContent 
-  | OutputNodeContent
-  | TextNodeContent
-  | ConditionalNodeContent
-  | GroupNodeContent;
-
-// Overwrite React Flow's Node type to use our specific data structure
-// Ensure this aligns with how nodes are created/used in React Flow
+// 커스텀 노드 타입
 export type CustomNode<T extends BaseNodeData = BaseNodeData> = Node<T, NodeType>;
 
-// Type mapping for content based on node type
+// 노드 타입과 컨텐츠 타입 매핑
 export type NodeTypeMap = {
-  api: APINodeContent;
-  input: InputNodeContent;
-  output: OutputNodeContent;
-  text: TextNodeContent;
-  conditional: ConditionalNodeContent;
-  group: GroupNodeContent;
+  'api': APINodeContent;
+  'input': InputNodeContent;
+  'output': OutputNodeContent;
+  'text': TextNodeContent;
+  'conditional': ConditionalNodeContent;
+  'group': GroupNodeContent;
+  'merger': MergerNodeContent;
+  'llm': LLMNodeContent;
+  'web-crawler': WebCrawlerNodeContent;
+  'json-extractor': JSONExtractorNodeContent;
+  'html-parser': HTMLParserNodeContent;
 };
 
-export interface LLMNodeContent extends NodeContent {
-  // ... existing code ...
-}
+export type LLMProvider = 'ollama' | 'openai';

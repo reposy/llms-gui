@@ -31,7 +31,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const executionContextRef = useRef<FlowExecutionContext | null>(null);
   
   const { 
-    label: initialLabel,
+    label,
     isCollapsed, 
   } = useGroupNodeData({ nodeId: id });
 
@@ -85,9 +85,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
   const handleRunGroup = useCallback(() => {
     if (isRunning) return;
     
-    // Get the current nodes and edges from the store
-    const { nodes: currentNodes, edges: currentEdges } = useFlowStructureStore.getState();
-    
     console.log(`[GroupNode] ${id}: Triggering execution of group via runFlow`);
     
     // --- REPLACE complex internal logic with a call to runFlow --- 
@@ -96,7 +93,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     // creating its instance (with proper properties like nodes, edges, factory),
     // and calling its process() method.
     // Note: Now we pass the group's ID as the startNodeId.
-    runFlow(currentNodes, currentEdges, id).catch((error: Error) => {
+    runFlow(id).catch((error: Error) => {
       console.error(`Error running flow triggered by group ${id}:`, error);
       // Optionally, mark the group node as error in the UI state
       // This requires access to FlowExecutionContext or similar mechanism outside runFlow
@@ -200,7 +197,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         >
           <EditableNodeLabel
             nodeId={id}
-            initialLabel={initialLabel}
+            initialLabel={label}
             placeholderLabel="Group"
             onLabelUpdate={handleLabelUpdate}
             labelClassName="text-xs text-orange-800 font-medium mr-2"

@@ -1,5 +1,5 @@
 import { FileLikeObject } from '../../types/nodes';
-import { InputNodeContent, isInputNodeContent, NodeContent } from './common';
+import { InputNodeContent, NodeContent, isInputNodeContent } from './common';
 import { isEqual } from 'lodash';
 
 /**

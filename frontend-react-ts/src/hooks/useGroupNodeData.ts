@@ -1,87 +1,87 @@
 import { useCallback } from 'react';
-import { useNodeContent, GroupNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { isEqual } from 'lodash';
+import { createNodeDataHook } from './useNodeDataFactory';
+import { GroupNodeContent } from '../types/nodes';
 
 /**
- * Custom hook to manage Group node state and operations using Zustand store.
- * Centralizes logic for GroupNode component
+ * Default values for Group node content
  */
-export const useGroupNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Use the general NodeContent hook with correct type and nodeType
-  const { 
-    content: generalContent, 
-    updateContent,
-  } = useNodeContent<GroupNodeContent>(nodeId, 'group');
+const GROUP_DEFAULTS: Partial<GroupNodeContent> = {
+  isCollapsed: false,
+  label: '',
+  items: []
+};
 
-  // Get isDirty status directly from the store
-  const isContentDirty = useNodeContentStore(state => state.isNodeDirty(nodeId));
+/**
+ * Return type for useGroupNodeData hook
+ * Explicitly defining return type helps TypeScript understand the guarantees we're making
+ */
+interface GroupNodeDataHook {
+  content: GroupNodeContent | undefined;
+  label: string; // Explicitly marked as string (not string | undefined)
+  isCollapsed: boolean;
+  items: any[];
+  handleLabelChange: (nodeId: string, newLabel: string) => void;
+  toggleCollapse: () => void;
+  updateContent: (updates: Partial<GroupNodeContent>) => void;
+  updateItems: (newItems: any[]) => void;
+}
 
-  // Cast the general content to GroupNodeContent type
-  const content = generalContent as GroupNodeContent;
+/**
+ * Custom hook to manage Group node state and operations.
+ * Uses the standardized hook factory pattern.
+ */
+export const useGroupNodeData = ({ nodeId }: { nodeId: string }): GroupNodeDataHook => {
+  // Use the factory to create the base hook functionality
+  return createNodeDataHook<GroupNodeContent, GroupNodeDataHook>(
+    'group', 
+    (params) => {
+      const { 
+        content, 
+        updateContent: updateGroupContent 
+      } = params;
 
-  // Destructure content for easier access
-  const label = content.label || 'Group';
-  const isCollapsed = content.isCollapsed || false;
+      // Extract properties with defaults for easier access
+      const isCollapsed = content?.isCollapsed || GROUP_DEFAULTS.isCollapsed || false;
+      // Ensure label is always a string
+      const label = content?.label || GROUP_DEFAULTS.label || '';
+      const items = content?.items || GROUP_DEFAULTS.items || [];
 
-  /**
-   * Handle label change to match EditableNodeLabel signature
-   */
-  const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
-    console.log(`[GroupNode ${nodeId}] Handling label change with new label:`, newLabel);
-    updateContent({ label: newLabel });
-  }, [nodeId, updateContent]);
+      /**
+       * Handle label change to match EditableNodeLabel signature
+       * Note: This has a special signature different from standard handlers
+       */
+      const handleLabelChange = useCallback((_nodeId: string, newLabel: string) => {
+        updateGroupContent({ label: newLabel });
+      }, [updateGroupContent]);
 
-  /**
-   * Toggle collapse state with deep equality check
-   */
-  const toggleCollapse = useCallback(() => {
-    const newCollapsed = !isCollapsed;
-    if (isEqual(newCollapsed, isCollapsed)) {
-      console.log(`[GroupNode ${nodeId}] Skipping collapse toggle - no change (deep equal)`);
-      return;
-    }
-    updateContent({ isCollapsed: newCollapsed });
-  }, [nodeId, isCollapsed, updateContent]);
+      /**
+       * Toggle collapse state
+       */
+      const toggleCollapse = useCallback(() => {
+        updateGroupContent({ isCollapsed: !isCollapsed });
+      }, [isCollapsed, updateGroupContent]);
 
-  /**
-   * Update multiple properties at once with deep equality check
-   */
-  const updateGroupContent = useCallback((updates: Partial<GroupNodeContent>) => {
-    const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof GroupNodeContent];
-      return !isEqual(currentValue, value);
-    });
-    
-    if (!hasChanges) {
-      console.log(`[GroupNode ${nodeId}] Skipping content update - no changes in update object (deep equal)`);
-      return;
-    }
-    
-    const newContent = { ...content, ...updates };
+      /**
+       * Update items (execution results)
+       */
+      const updateItems = useCallback((newItems: any[]) => {
+        updateGroupContent({ items: newItems });
+      }, [updateGroupContent]);
 
-    if (isEqual(newContent, content)) {
-      console.log(`[GroupNode ${nodeId}] Skipping content update - merged content unchanged (deep equal)`);
-      return;
-    }
-    
-    console.log(`[GroupNode ${nodeId}] Updating content with:`, updates);
-    updateContent(updates);
-  }, [nodeId, content, updateContent]);
-
-  return {
-    // Data
-    content,
-    label,
-    isCollapsed,
-    isDirty: isContentDirty,
-    
-    // Event handlers
-    handleLabelChange,
-    toggleCollapse,
-    updateGroupContent,
-  };
+      return {
+        // Data
+        content,
+        label,
+        isCollapsed,
+        items,
+        
+        // Event handlers
+        handleLabelChange,
+        toggleCollapse,
+        updateContent: updateGroupContent,
+        updateItems
+      };
+    },
+    GROUP_DEFAULTS
+  )({ nodeId });
 }; 

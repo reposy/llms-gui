@@ -1,26 +1,21 @@
 import React, { useCallback, useState } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { WebCrawlerNodeData } from '../../types/nodes';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { NodeBody } from './shared/NodeBody';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
-import { v4 as uuidv4 } from 'uuid';
-import { buildExecutionGraphFromFlow, getExecutionGraph } from '../../store/useExecutionGraphStore';
-import { useNodeContent, WebCrawlerNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
+import { WebCrawlerNodeData, WebCrawlerNodeContent } from '../../types/nodes';
+import { useNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';
 import { runFlow } from '../../core/FlowRunner';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
-  // Use useNodeContent hook to get the latest content
-  const { content: crawlerData, updateContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
+  // Use useNodeContent hook correctly
+  const { content: crawlerData, setContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
 
   // Get node execution state
   const nodeState = useNodeState(id);
@@ -38,19 +33,20 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {
     console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
-    // Call runFlow with the current node's ID as the startNodeId
-    runFlow(nodes, edges, id).catch((error: Error) => {
+    // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
+    runFlow(id).catch((error: Error) => {
         console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
         // Optionally, mark the node as error in UI state here if needed
     });
-  }, [id, nodes, edges]);
+  }, [id]); // 의존성 배열에서 nodes, edges 제거
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore (config state)
-    setNodeContentGlobal(nodeId, { label: newLabel }); // Use imported setNodeContent
+    // 1. Update NodeContentStore using the updateContent function from the hook
+    setContent({ label: newLabel }); 
 
     // 2. Update FlowStructureStore (React Flow rendering state)
+    const { nodes, setNodes } = useFlowStructureStore.getState(); // Get latest nodes/setNodes
     const updatedNodes = nodes.map(node =>
       node.id === nodeId
         ? {
@@ -62,9 +58,9 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
           }
         : node
     );
-    setNodes(updatedNodes); // Use setNodes obtained from the hook
+    setNodes(updatedNodes);
     console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
-  }, [nodes, setNodes, updateContent]); // Add nodes and setNodes to dependencies, keep updateContent for potential future use or remove if unused by setNodeContentGlobal directly
+  }, [id, setContent]);
   
   // Handle toggle view
   const handleToggleView = useCallback(() => {
@@ -80,12 +76,12 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
     : 'idle';
   
   // Format URL for display
-  const displayUrl = crawlerData.url 
+  const displayUrl = crawlerData?.url
     ? (crawlerData.url.length > 30 ? crawlerData.url.substring(0, 27) + '...' : crawlerData.url)
     : 'No URL set';
   
   // Count extractors
-  const extractorCount = crawlerData.extractSelectors ? Object.keys(crawlerData.extractSelectors).length : 0;
+  const extractorCount = crawlerData?.extractSelectors ? Object.keys(crawlerData.extractSelectors).length : 0;
   
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -104,7 +100,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
 
         <NodeHeader 
           nodeId={id}
-          label={crawlerData.label || "Web Crawler"}
+          label={crawlerData?.label || "Web Crawler"}
           placeholderLabel="Web Crawler"
           isRootNode={true}
           isRunning={isRunning}
@@ -122,7 +118,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
               <span className="ml-1 font-mono text-blue-600">{displayUrl}</span>
             </div>
             
-            {crawlerData.waitForSelector && (
+            {crawlerData?.waitForSelector && (
               <div className="text-xs">
                 <span className="font-semibold">Wait for:</span> 
                 <span className="ml-1 font-mono">{crawlerData.waitForSelector}</span>
@@ -138,7 +134,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
             
             <div className="text-xs">
               <span className="font-semibold">Output:</span> 
-              <span className="ml-1 capitalize">{crawlerData.outputFormat || 'full'}</span>
+              <span className="ml-1 capitalize">{crawlerData?.outputFormat || 'full'}</span>
             </div>
             
             {/* Error message display */}

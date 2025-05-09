@@ -1,151 +1,43 @@
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
-import { FileLikeObject, HTTPMethod, ExtractionRule } from '../types/nodes';
-import { shallow } from 'zustand/shallow'; // Use shallow for store selectors
-import { useNodeContentStore, OutputNodeContent, NodeContent } from '../store/useNodeContentStore';
-// Import ExtractionRule type here as well if needed, or ensure it's exported from the store
-// import { useFlowStructureStore } from '../store/useFlowStructureStore'; // Removed FlowStructureStore dependency
-
-/**
- * 노드 컨텐츠의 기본 인터페이스
- * 모든 노드 타입별 컨텐츠는 이를 확장함
- */
-export interface BaseNodeContent {
-  isDirty?: boolean;
-  label?: string;
-  content?: any;
-  [key: string]: any;
-}
-
-/**
- * 입력 노드 컨텐츠
- */
-export interface InputNodeContent extends BaseNodeContent {
-  items: (string | File)[];
-  textBuffer?: string;
-  iterateEachRow: boolean;
-}
-
-/**
- * LLM 노드 컨텐츠
- */
-export interface LLMNodeContent extends BaseNodeContent {
-  prompt: string;
-  model: string;
-  temperature: number;
-  provider: 'ollama' | 'openai';
-  ollamaUrl?: string;
-  openaiApiKey?: string;
-  mode?: 'text' | 'vision';
-}
-
-/**
- * 출력 노드 컨텐츠
- */
-export interface OutputNodeContent extends BaseNodeContent {
-  format: 'json' | 'text';
-  content?: string;
-  mode?: 'read' | 'write';
-}
-
-/**
- * Represents the content specific to a Web Crawler node.
- */
-export interface WebCrawlerNodeContent {
-  type: 'web-crawler';
-  label: string;
-  url?: string;
-  waitForSelectorOnPage?: string;
-  iframeSelector?: string;
-  waitForSelectorInIframe?: string;
-  timeout?: number;
-  headers?: Record<string, string>;
-}
-
-/**
- * HTML Parser 노드 콘텐츠
- */
-export interface HTMLParserNodeContent extends BaseNodeContent {
-  extractionRules?: ExtractionRule[];
-}
-
-/**
- * API 노드 컨텐츠
- */
-export interface APINodeContent extends BaseNodeContent {
-  url: string;
-  method: HTTPMethod;
-  headers?: Record<string, string>;
-  body?: string;
-  queryParams?: Record<string, string>;
-  useInputAsBody?: boolean;
-  contentType?: string;
-  bodyFormat?: 'key-value' | 'raw';
-  bodyParams?: Array<{ key: string; value: string; enabled: boolean }>;
-}
-
-/**
- * 조건부 노드 컨텐츠
- */
-export interface ConditionalNodeContent extends BaseNodeContent {
-  conditionType: 'contains' | 'greater_than' | 'less_than' | 'equal_to' | 'json_path';
-  conditionValue: string;
-}
-
-/**
- * Merger 노드 컨텐츠
- */
-export interface MergerNodeContent extends BaseNodeContent {
-  strategy: 'array' | 'object';
-  keys?: string[];
-  items: any[];
-}
-
-/**
- * JSON 추출 노드 컨텐츠
- */
-export interface JSONExtractorNodeContent extends BaseNodeContent {
-  path: string;
-  defaultValue?: string;
-}
-
-/**
- * 그룹 노드 컨텐츠
- */
-export interface GroupNodeContent extends BaseNodeContent {
-  childNodes: string[];
-}
-
-/**
- * 모든 노드 컨텐츠 타입의 유니온 타입
- */
-export type NodeContent = 
-  | InputNodeContent
-  | LLMNodeContent
-  | OutputNodeContent
-  | WebCrawlerNodeContent
-  | APINodeContent
-  | ConditionalNodeContent
-  | MergerNodeContent
-  | JSONExtractorNodeContent
-  | GroupNodeContent
-  | HTMLParserNodeContent
-  | BaseNodeContent;
+import { 
+  InputNodeContent,
+  LLMNodeContent, 
+  OutputNodeContent, 
+  WebCrawlerNodeContent, 
+  APINodeContent, 
+  ConditionalNodeContent, 
+  JSONExtractorNodeContent,
+  GroupNodeContent, 
+  NodeContent,
+  MergerNodeContent,
+  HTMLParserNodeContent,
+  NodeTypeMap,
+  HTTPMethod,
+  RequestBodyType,
+  NodeType
+} from '../types/nodes'; 
+import { shallow } from 'zustand/shallow';
 
 /**
  * Creates the default content for a given node type.
+ * These objects should ONLY contain properties defined in the specific *NodeContent types.
+ * Base properties like label/isDirty are set by the consumer of this function.
  */
 export function createDefaultNodeContent(type: string, id: string): NodeContent {
   switch (type) {
     case 'input':
       return {
         items: [],
+        commonItems: [],
+        chainingItems: [],
         textBuffer: '',
         iterateEachRow: false,
-        isDirty: false,
-        label: 'Input'
+        executionMode: 'batch',
+        chainingUpdateMode: 'element',
+        accumulationMode: 'always',
       } as InputNodeContent;
 
     case 'llm':
@@ -156,8 +48,6 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         provider: 'ollama',
         ollamaUrl: 'http://localhost:11434',
         mode: 'text',
-        isDirty: false,
-        label: 'LLM'
       } as LLMNodeContent;
 
     case 'output':
@@ -165,84 +55,67 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         format: 'text',
         content: '',
         mode: 'read',
-        isDirty: false,
-        label: 'Output'
       } as OutputNodeContent;
 
     case 'web-crawler':
       return {
-        type: 'web-crawler',
-        label: `Web Crawler ${id.substring(0, 4)}`,
         url: '',
-        waitForSelectorOnPage: '',
-        iframeSelector: '',
-        waitForSelectorInIframe: '',
+        waitForSelector: '',
+        extractSelectors: {},
         timeout: 30000,
         headers: {},
-      } satisfies WebCrawlerNodeContent;
+        outputFormat: 'html',
+      } as WebCrawlerNodeContent;
 
     case 'html-parser':
-      return {
-        extractionRules: [],
-        isDirty: false,
-        label: 'HTML Parser'
+      return { 
+        extractionRules: []
       } as HTMLParserNodeContent;
 
     case 'api':
       return {
         url: '',
-        method: 'GET',
-        headers: {},
-        queryParams: {},
-        bodyFormat: 'raw',
-        body: '',
-        useInputAsBody: false,
-        isDirty: false,
-        label: 'API'
+        method: 'GET' as HTTPMethod,
+        requestBodyType: 'none' as RequestBodyType,
+        requestHeaders: {},
+        requestBody: '',
       } as APINodeContent;
 
     case 'conditional':
       return {
         conditionType: 'contains',
         conditionValue: '',
-        isDirty: false,
-        label: 'Conditional'
       } as ConditionalNodeContent;
-
+    
     case 'merger':
       return {
+        mergeMode: 'concat',
         strategy: 'array',
-        keys: [],
         items: [],
-        isDirty: false,
-        label: 'Merger'
+        keys: [],
       } as MergerNodeContent;
 
     case 'json-extractor':
       return {
         path: '',
-        defaultValue: '',
-        isDirty: false,
-        label: 'JSON Extractor'
       } as JSONExtractorNodeContent;
 
     case 'group':
       return {
-        childNodes: [],
-        isDirty: false,
-        label: 'Group'
+        isCollapsed: false,
+        items: []
       } as GroupNodeContent;
 
     default:
-      console.warn(`Creating default content for unknown node type: ${type}`);
-      return { type: 'unknown', label: `Node ${id.substring(0, 4)}` } as any;
+      console.warn(`Creating default content for unknown node type: ${type}. Returning empty object.`);
+      return {} as NodeContent;
   }
 }
 
 /**
  * 노드 컨텐츠 스토어 인터페이스
  */
-interface NodeContentStore {
+interface NodeContentState {
   // 노드 ID를 키로 사용하는 컨텐츠 맵
   contents: Record<string, NodeContent>;
   
@@ -252,8 +125,11 @@ interface NodeContentStore {
   // 노드 컨텐츠 삭제 함수
   deleteNodeContent: (nodeId: string) => void;
   
-  // 노드 ID로 컨텐츠를 조회하는 함수
-  getNodeContent: <T extends NodeContent = NodeContent>(nodeId: string, nodeType?: string) => T;
+  // 노드 ID로 컨텐츠를 조회하는 함수 (타입 안전한 버전)
+  getNodeContent: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => 
+    K extends keyof NodeTypeMap ? NodeTypeMap[K] : 
+    K extends NodeType ? NodeContent : 
+    NodeContent;
   
   // 모든 컨텐츠를 가져오는 함수
   getAllNodeContents: () => Record<string, NodeContent>;
@@ -264,220 +140,229 @@ interface NodeContentStore {
   // 모든 컨텐츠를 초기화하는 함수
   resetAllContent: () => void;
 
-  // 노드의 dirty 상태를 설정하는 함수
-  markNodeDirty: (nodeId: string, isDirty: boolean) => void;
-  
-  // 노드의 dirty 상태를 확인하는 함수
-  isNodeDirty: (nodeId: string) => boolean;
-  
   // 존재하지 않는 노드의 컨텐츠를 정리하는 함수
   cleanupDeletedNodes: (existingNodeIds: string[]) => void;
+  
+  // 노드가 dirty 상태인지 확인하는 함수
+  isNodeDirty: (nodeId: string) => boolean;
+  
+  // 노드 컨텐츠 리셋 함수
+  resetNodeContent: (nodeId: string) => void;
 }
 
 /**
  * 노드 컨텐츠를 저장하는 Zustand 스토어
  * persist 미들웨어로 로컬 스토리지에 자동 저장
  */
-export const useNodeContentStore = create<NodeContentStore>()(
+export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
   persist(
     (set, get) => ({
-      // 초기 상태: 빈 객체
       contents: {},
-      
-      // 노드 컨텐츠 설정 (기존 컨텐츠와 병합)
-      setNodeContent: <T extends NodeContent>(nodeId: string, newContentUpdate: Partial<T>) => {
-        set((state) => {
-          // 현재 컨텐츠 가져오기 (없으면 빈 객체)
-          const currentContent = state.contents[nodeId] || {};
-          
-          // Determine the final isDirty state
-          // If newContentUpdate has an isDirty field, use it, otherwise default to true
-          const finalIsDirty = (newContentUpdate as any).isDirty !== undefined 
-                               ? (newContentUpdate as any).isDirty 
-                               : true;
 
-          // Directly merge the update with the current content
-          const newContent = {
-            ...currentContent,
-            ...newContentUpdate,
-            isDirty: finalIsDirty // Ensure isDirty is correctly set
-          };
-          
-          // Optimization: Check if the object reference is the same AND isDirty is same.
-          // This avoids unnecessary updates if the exact same update object is passed multiple times.
-          // However, usually a new object is created for updates, making this less effective.
-          // Let Zustand handle shallow equality checks on the top level.
-          // A simple reference check might be sufficient if performance becomes an issue.
-          // if (state.contents[nodeId] === newContent && currentContent.isDirty === finalIsDirty) {
-          //   return state; // Avoid update if object reference and isDirty are identical
-          // }
+      setNodeContent: <T extends NodeContent>(nodeId: string, contentUpdate: Partial<T>) => set(state => {
+        // 타입 체크 방식 변경 - as로 타입 단언 대신 안전한 방식 사용
+        const nodeType = (contentUpdate as any).type || 'unknown';
+        const currentContent = state.contents[nodeId] || createDefaultNodeContent(nodeType, nodeId);
+        
+        const newContent = { 
+          ...currentContent,
+          ...contentUpdate,
+          isDirty: true // 항상 dirty로 마킹
+        };
 
-          console.log(`[NodeContentStore] Updating content for ${nodeId}:`, newContent);
-          
-          return {
-            contents: {
-              ...state.contents,
-              [nodeId]: newContent
+        if (!isEqual(currentContent, newContent)) {
+          return { 
+            contents: { 
+              ...state.contents, 
+              [nodeId]: newContent 
             }
           };
-        });
-      },
-      
-      // 노드 컨텐츠 삭제
-      deleteNodeContent: (nodeId) => {
-        set((state) => {
-          const newContents = { ...state.contents };
-          delete newContents[nodeId];
-          return { contents: newContents };
-        });
-      },
-      
-      // 노드 컨텐츠 조회 (타입 파라미터로 타입 안전성 보장)
-      getNodeContent: <T extends NodeContent = NodeContent>(nodeId: string, nodeType?: string): T => {
-        const content = get().contents[nodeId];
+        } else {
+           return state; 
+        }
+      }),
+
+      deleteNodeContent: (nodeId) => set(state => {
+        const { [nodeId]: removedContent, ...rest } = state.contents;
+        return { contents: rest };
+      }),
+
+      getNodeContent: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => {
+        const state = get();
+        const content = state.contents[nodeId];
         
-        // 컨텐츠가 있으면 반환
         if (content) {
-          return content as T;
+          return content as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeContent : NodeContent);
         }
         
-        // 컨텐츠가 없고 노드 타입이 제공되었다면 기본값 생성
+        // 컨텐츠가 없으면 기본값 생성
         if (nodeType) {
-          return createDefaultNodeContent(nodeType, nodeId) as T;
+          return createDefaultNodeContent(nodeType as string, nodeId) as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeContent : NodeContent);
         }
         
-        // 둘 다 없으면 빈 객체 반환
-        return {} as T;
-      },
-      
-      // 모든 노드 컨텐츠 조회
-      getAllNodeContents: () => {
-        return get().contents;
-      },
-      
-      // 임포트된 컨텐츠로부터 로드
-      loadFromImportedContents: (contents) => {
-        console.log('[NodeContentStore] Loading imported contents', contents);
-        set({ contents });
-      },
-      
-      // 모든 컨텐츠 초기화
-      resetAllContent: () => {
-        set({ contents: {} });
+        return {} as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeContent : NodeContent);
       },
 
-      // 노드의 dirty 상태 설정
-      markNodeDirty: (nodeId, isDirty) => {
-        set((state) => {
-          const currentContent = state.contents[nodeId];
-          if (!currentContent) return state;
-          
-          return {
-            contents: {
-              ...state.contents,
-              [nodeId]: { ...currentContent, isDirty }
-            }
-          };
-        });
-      },
+      getAllNodeContents: () => get().contents,
 
-      // 노드의 dirty 상태 확인
-      isNodeDirty: (nodeId) => {
-        const nodeContent = get().contents[nodeId];
-        return nodeContent ? !!nodeContent.isDirty : false;
-      },
-      
-      // 존재하지 않는 노드의 컨텐츠 정리
-      cleanupDeletedNodes: (existingNodeIds) => {
-        set((state) => {
-          const existingNodeIdSet = new Set(existingNodeIds);
-          const newContents = { ...state.contents };
-          
-          Object.keys(newContents).forEach(nodeId => {
-            if (!existingNodeIdSet.has(nodeId)) {
-              delete newContents[nodeId];
-            }
-          });
-          
-          if (Object.keys(newContents).length !== Object.keys(state.contents).length) {
-            console.log(`[NodeContentStore] Cleaned up ${Object.keys(state.contents).length - Object.keys(newContents).length} deleted nodes`);
-            return { contents: newContents };
+      loadFromImportedContents: (contents) => set({ contents }),
+
+      resetAllContent: () => set({ contents: {} }),
+
+      cleanupDeletedNodes: (existingNodeIds) => set(state => {
+        const updatedContents: Record<string, NodeContent> = {};
+        
+        existingNodeIds.forEach(nodeId => {
+          if (state.contents[nodeId]) {
+            updatedContents[nodeId] = state.contents[nodeId];
           }
-          
-          return state;
         });
-      }
+        
+        return { contents: updatedContents };
+      }),
+      
+      isNodeDirty: (nodeId) => {
+        const content = get().contents[nodeId];
+        return content ? !!content.isDirty : false;
+      },
+      
+      resetNodeContent: (nodeId) => set(state => {
+        const content = state.contents[nodeId];
+        if (!content) return state;
+        
+        // Get the node type from the content or infer it
+        const nodeType = inferNodeType(content);
+        if (!nodeType) return state;
+        
+        // Create fresh default content
+        const freshContent = createDefaultNodeContent(nodeType, nodeId);
+        
+        return {
+          contents: {
+            ...state.contents,
+            [nodeId]: {
+              ...freshContent,
+              label: content.label // Preserve the label
+            }
+          }
+        };
+      })
     }),
     {
-      // 로컬 스토리지 이름
       name: 'node-content-storage',
-      
-      // 영구 저장에서 제외할 항목 없음 (모든 contents 저장)
-      partialize: (state) => ({ contents: state.contents })
+      partialize: (state) => {
+        // Filter out large content items before persisting to localStorage
+        const filteredContents: Record<string, any> = {};
+        
+        Object.entries(state.contents).forEach(([nodeId, content]) => {
+          // Deep clone to avoid modifying the original state
+          const persistedContent = JSON.parse(JSON.stringify(content));
+          
+          // Handle potential large string fields
+          if (typeof persistedContent?.content === 'string' && 
+              persistedContent.content.length > 1000) {
+            persistedContent.content = persistedContent.content.substring(0, 1000) + '... [truncated]';
+          }
+          
+          // Handle LLM node response content
+          if (typeof persistedContent?.responseContent === 'string' && 
+              persistedContent.responseContent.length > 1000) {
+            persistedContent.responseContent = persistedContent.responseContent.substring(0, 1000) + '... [truncated]';
+          }
+          
+          filteredContents[nodeId] = persistedContent;
+        });
+        
+        return { contents: filteredContents };
+      }
     }
-  )
+  ),
+  shallow // Use shallow equality for the store
 );
 
-// 직접 접근 가능한 함수들
-export const { 
-  getNodeContent, 
-  setNodeContent, 
-  deleteNodeContent,
-  getAllNodeContents,
-  loadFromImportedContents,
-  resetAllContent,
-  markNodeDirty,
-  isNodeDirty,
-  cleanupDeletedNodes
-} = useNodeContentStore.getState();
-
 /**
- * 특정 노드의 컨텐츠를 조회하고 업데이트하는 훅
- * @param nodeId 노드 ID
- * @param nodeType 노드 타입 (기본값 생성에 사용)
- * @returns 노드 컨텐츠와 업데이트 함수
+ * 노드 타입 추론 함수
  */
+function inferNodeType(content: NodeContent): string | null {
+  // LLM 노드
+  if ('prompt' in content && 'model' in content) {
+    return 'llm';
+  }
+  
+  // API 노드
+  if ('url' in content && 'method' in content && 'requestBodyType' in content) {
+    return 'api';
+  }
+  
+  // Output 노드
+  if ('format' in content && 'content' in content && 'mode' in content) {
+    return 'output';
+  }
+  
+  // JSON Extractor 노드
+  if ('path' in content && !('url' in content)) {
+    return 'json-extractor';
+  }
+  
+  // Group 노드
+  if ('isCollapsed' in content && Object.keys(content).length <= 3) {
+    return 'group';
+  }
+  
+  // Conditional 노드
+  if ('conditionType' in content && 'conditionValue' in content) {
+    return 'conditional';
+  }
+  
+  // Merger 노드
+  if ('strategy' in content && 'keys' in content) {
+    return 'merger';
+  }
+  
+  // Web Crawler 노드
+  if ('url' in content && 'extractSelectors' in content) {
+    return 'web-crawler';
+  }
+  
+  // HTML Parser 노드
+  if ('extractionRules' in content) {
+    return 'html-parser';
+  }
+  
+  return null;
+}
+
+// 직접 스토어 상태와 액션에 접근하기 위한 헬퍼 함수들
+export const getAllNodeContents = () => useNodeContentStore.getState().getAllNodeContents();
+export const getNodeContent = <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K): 
+  K extends keyof NodeTypeMap ? NodeTypeMap[K] : 
+  K extends NodeType ? NodeContent :
+  NodeContent => 
+  useNodeContentStore.getState().getNodeContent(nodeId, nodeType as any);
+export const setNodeContent = <T extends NodeContent>(nodeId: string, content: Partial<T>) => useNodeContentStore.getState().setNodeContent(nodeId, content);
+export const loadFromImportedContents = (contents: Record<string, NodeContent>) => useNodeContentStore.getState().loadFromImportedContents(contents);
+export const resetAllContent = () => useNodeContentStore.getState().resetAllContent();
+
+// 컴포넌트에서 사용하기 위한 커스텀 훅
 export function useNodeContent<T extends NodeContent = NodeContent>(
   nodeId: string,
   nodeType?: string
 ) {
-  const content = useNodeContentStore(
-    (state) => state.getNodeContent<T>(nodeId, nodeType)
+  return useNodeContentStore(
+    useCallback(
+      (state) => ({
+        content: state.getNodeContent(nodeId, nodeType as any) as T,
+        isContentDirty: state.isNodeDirty(nodeId),
+        setContent: (updates: Partial<T>) => state.setNodeContent(nodeId, updates),
+        resetContent: () => state.resetNodeContent(nodeId)
+      }),
+      [nodeId, nodeType]
+    ),
+    shallow
   );
-  
-  const updateStoreContent = useNodeContentStore(state => state.setNodeContent);
-  
-  const updateContent = useCallback((newContentUpdate: Partial<T>) => {
-    console.log(`[useNodeContent hook] updateContent called for ${nodeId}. Passing to store:`, newContentUpdate);
-    updateStoreContent(nodeId, newContentUpdate);
-  }, [nodeId, updateStoreContent]);
-
-  return {
-    content,
-    updateContent
-  };
 }
 
-// 하위 호환성을 위한 레거시 함수들
-export {
-  useNodeContent as useInputNodeContent,
-  getNodeContent as getInputNodeContent,
-  setNodeContent as setInputNodeContent
-};
-
-// Update NodeContentRecord to include HTMLParserNodeContent
+// 타입 정의
 export type NodeContentRecord = {
-  [nodeId: string]: LLMNodeContent | HTMLParserNodeContent | InputNodeContent | WebCrawlerNodeContent | OutputNodeContent | APINodeContent | any;
-}; 
-
-// --- Export ExtractionRule interface --- 
-export interface ExtractionRule {
-  id?: string;
-  name: string;
-  target: 'text' | 'html' | 'attribute';
-  selector: string;
-  attribute_name?: string;
-  multiple: boolean;
-  pathSteps?: { level: number; tag: string; details: string }[]; 
-}
-// --- End Export --- 
+  [nodeId: string]: NodeContent;
+};

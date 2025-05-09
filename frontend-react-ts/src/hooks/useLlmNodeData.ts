@@ -1,141 +1,131 @@
-import { useCallback, useMemo } from 'react';
-import { shallow } from 'zustand/shallow';
-import { useNodeContent, LLMNodeContent, useNodeContentStore, isNodeDirty } from '../store/useNodeContentStore';
-import { LLMMode } from '../types/nodes';
+import { useCallback } from 'react';
+import { createNodeDataHook } from './useNodeDataFactory';
+import { LLMNodeContent, LLMMode } from '../types/nodes';
 
 /**
- * Simplified hook for LLM node data - minimal implementation that just connects to the store
+ * Default values for LLM node content
  */
-export const useLlmNodeData = ({ 
-  nodeId
-}: { 
-  nodeId: string
-}) => {
-  // Use shallow comparison for content retrieval
-  const content = useNodeContentStore(
-    state => state.contents[nodeId] || {},
-    shallow
-  ) as LLMNodeContent;
-  
-  // Get the update function
-  const updateContent = useNodeContentStore(
-    state => state.setNodeContent,
-    shallow
-  );
-  
-  // useNodeContentStore의 isNodeDirty 함수를 사용하여 dirty 상태 확인
-  const isContentDirty = useNodeContentStore(
-    state => state.isNodeDirty(nodeId),
-    shallow
-  );
+const LLM_DEFAULTS: Partial<LLMNodeContent> = {
+  prompt: '',
+  model: '',
+  temperature: 0.7,
+  provider: 'ollama',
+  ollamaUrl: 'http://localhost:11434',
+  openaiApiKey: '',
+  mode: 'text',
+  label: 'LLM Node',
+  responseContent: ''
+};
 
-  // Memoize extracted values to prevent recreation
-  const values = useMemo(() => ({
-    prompt: content.prompt || '',
-    model: content.model || '',
-    temperature: content.temperature ?? 0.7,
-    provider: content.provider || 'ollama',
-    ollamaUrl: content.ollamaUrl || 'http://localhost:11434',
-    openaiApiKey: content.openaiApiKey || '',
-    mode: content.mode || 'text',
-    label: content.label || 'LLM Node',
-    responseContent: content.content || '',
-    isDirty: isContentDirty
-  }), [content, isContentDirty]);
+/**
+ * Return type for useLlmNodeData hook
+ */
+interface LlmNodeDataHook {
+  content: LLMNodeContent | undefined;
+  prompt: string;
+  model: string;
+  temperature: number | undefined;
+  provider: 'ollama' | 'openai' | undefined;
+  ollamaUrl: string;
+  openaiApiKey: string;
+  isStreaming: boolean;
+  streamingResult: string;
+  selectedFiles: File[];
+  mode: LLMMode | undefined;
+  label: string;
+  responseContent: string | object;
+  isDirty: boolean;
+  updateContent: (updates: Partial<LLMNodeContent>) => void;
+  handlePromptChange: (value: string) => void;
+  handleModelChange: (value: string) => void;
+  handleTemperatureChange: (value: number) => void;
+  handleProviderChange: (value: 'ollama' | 'openai') => void;
+  handleOllamaUrlChange: (value: string) => void;
+  handleOpenAIApiKeyChange: (value: string) => void;
+  setIsStreaming: (value: boolean) => void;
+  updateStreamingResult: (value: string) => void;
+  handleFileSelect: (files: File[]) => void;
+  hasImageInputs: boolean;
+  setMode: (value: LLMMode | undefined) => void;
+}
 
-  /**
-   * Handle prompt change
-   */
-  const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateContent(nodeId, { prompt: event.target.value });
-  }, [updateContent, nodeId]);
+/**
+ * Custom hook for managing LLM node data
+ */
+export const useLlmNodeData = createNodeDataHook<LLMNodeContent, LlmNodeDataHook>(
+  'llm',
+  (params) => {
+    const { nodeId, content, updateContent, createChangeHandler } = params;
 
-  /**
-   * Handle model change
-   */
-  const handleModelChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { model: event.target.value });
-  }, [updateContent, nodeId]);
+    // 기본값과 함께 속성 추출
+    const prompt = content?.prompt || LLM_DEFAULTS.prompt || '';
+    const model = content?.model || LLM_DEFAULTS.model || '';
+    const temperature = content?.temperature ?? LLM_DEFAULTS.temperature;
+    const provider = content?.provider || LLM_DEFAULTS.provider;
+    const ollamaUrl = content?.ollamaUrl || LLM_DEFAULTS.ollamaUrl || '';
+    const openaiApiKey = content?.openaiApiKey || LLM_DEFAULTS.openaiApiKey || '';
+    const mode = content?.mode || LLM_DEFAULTS.mode;
+    const label = content?.label || LLM_DEFAULTS.label || '';
+    const responseContent = content?.responseContent || '';
+    const isDirty = content?.isDirty || false;
 
-  /**
-   * Handle temperature change
-   */
-  const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { temperature: parseFloat(event.target.value) });
-  }, [updateContent, nodeId]);
+    // 직접적인 값 설정자
+    const setTemperature = createChangeHandler('temperature');
+    const setMode = createChangeHandler('mode');
 
-  /**
-   * Set temperature directly
-   */
-  const setTemperature = useCallback((newTemperature: number) => {
-    updateContent(nodeId, { temperature: newTemperature });
-  }, [updateContent, nodeId]);
+    // 폼 이벤트 핸들러
+    const handlePromptChange = useCallback((value: string) => {
+      updateContent({ prompt: value });
+    }, [updateContent]);
 
-  /**
-   * Handle provider change
-   */
-  const handleProviderChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    updateContent(nodeId, { provider: event.target.value as 'ollama' | 'openai' });
-  }, [updateContent, nodeId]);
+    const handleModelChange = useCallback((value: string) => {
+      updateContent({ model: value });
+    }, [updateContent]);
 
-  /**
-   * Set provider directly
-   */
-  const setProvider = useCallback((newProvider: 'ollama' | 'openai') => {
-    updateContent(nodeId, { provider: newProvider });
-  }, [updateContent, nodeId]);
+    const handleTemperatureChange = useCallback((value: number) => {
+      updateContent({ temperature: value });
+    }, [updateContent]);
 
-  /**
-   * Handle Ollama URL change
-   */
-  const handleOllamaUrlChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { ollamaUrl: event.target.value });
-  }, [updateContent, nodeId]);
+    const handleProviderChange = useCallback((value: 'ollama' | 'openai') => {
+      updateContent({ provider: value });
+    }, [updateContent]);
 
-  /**
-   * Handle OpenAI API key change
-   */
-  const handleOpenaiApiKeyChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    updateContent(nodeId, { openaiApiKey: event.target.value });
-  }, [updateContent, nodeId]);
+    const handleOllamaUrlChange = useCallback((value: string) => {
+      updateContent({ ollamaUrl: value });
+    }, [updateContent]);
 
-  /**
-   * Handle mode change
-   */
-  const handleModeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    updateContent(nodeId, { mode: event.target.value as LLMMode });
-  }, [updateContent, nodeId]);
+    const handleOpenAIApiKeyChange = useCallback((value: string) => {
+      updateContent({ openaiApiKey: value });
+    }, [updateContent]);
 
-  /**
-   * Set mode directly
-   */
-  const setMode = useCallback((newMode: LLMMode) => {
-    updateContent(nodeId, { mode: newMode });
-  }, [updateContent, nodeId]);
-
-  // Memoize the handlers
-  const handlers = useMemo(() => ({
-    handlePromptChange,
-    handleModelChange,
-    handleTemperatureChange,
-    setTemperature,
-    handleProviderChange,
-    setProvider,
-    handleOllamaUrlChange,
-    handleOpenaiApiKeyChange,
-    handleModeChange,
-    setMode,
-    setContent: (newContent: Partial<LLMNodeContent>) => updateContent(nodeId, newContent)
-  }), [
-    handlePromptChange, handleModelChange, handleTemperatureChange, 
-    setTemperature, handleProviderChange, setProvider, 
-    handleOllamaUrlChange, handleOpenaiApiKeyChange, 
-    handleModeChange, setMode, updateContent, nodeId
-  ]);
-
-  // Return combined values and handlers with proper memoization
-  return {
-    ...values,
-    ...handlers
-  };
-}; 
+    return {
+      content,
+      prompt,
+      model,
+      temperature,
+      provider,
+      ollamaUrl,
+      openaiApiKey: content?.openaiApiKey || '',
+      isStreaming: content?.isStreaming || false,
+      streamingResult: content?.streamingResult || '',
+      selectedFiles: content?.selectedFiles || [],
+      mode,
+      label,
+      responseContent: content?.responseContent || '',
+      isDirty: false,
+      updateContent,
+      handlePromptChange,
+      handleModelChange,
+      handleTemperatureChange,
+      handleProviderChange,
+      handleOllamaUrlChange,
+      handleOpenAIApiKeyChange,
+      setMode,
+      setIsStreaming: (value: boolean) => updateContent({ isStreaming: value }),
+      updateStreamingResult: (value: string) => updateContent({ streamingResult: value }),
+      handleFileSelect: (files: File[]) => updateContent({ selectedFiles: files }),
+      hasImageInputs: content?.hasImageInputs || false
+    };
+  },
+  LLM_DEFAULTS
+); 

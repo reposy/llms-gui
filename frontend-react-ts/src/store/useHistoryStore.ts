@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
-import { NodeData } from '../types/nodes';
-import { NodeContent, setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
+import { NodeContent, NodeData } from '../types/nodes';
+import { setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
 import { isEqual, cloneDeep } from 'lodash';
 import { setNodes, setEdges } from './useFlowStructureStore';
 import { resetNodeStates } from './useNodeStateStore';

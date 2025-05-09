@@ -8,7 +8,7 @@ export const createDefaultOutputNodeContent = (label?: string): OutputNodeConten
     label: label || 'Output Node',
     format: 'text',
     content: '',
-    mode: 'batch',
+    mode: 'read',
     isDirty: false
   };
 };

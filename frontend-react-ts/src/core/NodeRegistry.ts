@@ -42,7 +42,10 @@ export function registerAllNodeTypes() {
       iterateEachRow: Boolean(property.iterateEachRow),
       ...property
     };
-    return new InputNode(id, inputProperty, context);
+    if (context) {
+      return new InputNode(id, inputProperty, context);
+    }
+    return new InputNode(id, inputProperty);
   });
 
   registerNodeType('llm', (id, property, context) => {
@@ -59,7 +62,10 @@ export function registerAllNodeTypes() {
       // Preserve any other properties
       ...property
     };
-    return new LlmNode(id, llmProperty, context);
+    if (context) {
+      return new LlmNode(id, llmProperty, context);
+    }
+    return new LlmNode(id, llmProperty);
   });
   
   registerNodeType('api', (id, property, context) => {
@@ -70,7 +76,10 @@ export function registerAllNodeTypes() {
       headers: property.headers || {},
       ...property
     };
-    return new ApiNode(id, apiProperty, context);
+    if (context) {
+      return new ApiNode(id, apiProperty, context);
+    }
+    return new ApiNode(id, apiProperty);
   });
   
   registerNodeType('output', (id, property, context) => {
@@ -80,7 +89,10 @@ export function registerAllNodeTypes() {
       data: property.data || null,
       ...property
     };
-    return new OutputNode(id, outputProperty, context);
+    if (context) {
+      return new OutputNode(id, outputProperty, context);
+    }
+    return new OutputNode(id, outputProperty);
   });
 
   // Register merger node type
@@ -91,7 +103,10 @@ export function registerAllNodeTypes() {
       keys: property.keys || [],
       ...property
     };
-    return new MergerNode(id, mergerProperty, context);
+    if (context) {
+      return new MergerNode(id, mergerProperty, context);
+    }
+    return new MergerNode(id, mergerProperty);
   });
 
   // Register HTML Parser node type
@@ -101,25 +116,40 @@ export function registerAllNodeTypes() {
       extractionRules: property.extractionRules || [],
       ...property
     };
-    return new HTMLParserNode(id, htmlParserProperty, context);
+    if (context) {
+      return new HTMLParserNode(id, htmlParserProperty, context);
+    }
+    return new HTMLParserNode(id, htmlParserProperty);
   });
 
   // ConditionalNode, GroupNode, JsonExtractorNode, WebCrawlerNode
   // don't need special property handling so we pass property directly
   registerNodeType('conditional', (id, property, context) => {
-    return new ConditionalNode(id, property, context);
+    if (context) {
+      return new ConditionalNode(id, property, context);
+    }
+    return new ConditionalNode(id, property);
   });
 
   registerNodeType('group', (id, property, context) => {
-    return new GroupNode(id, property, context);
+    if (context) {
+      return new GroupNode(id, property, context);
+    }
+    return new GroupNode(id, property);
   });
 
   registerNodeType('json-extractor', (id, property, context) => {
-    return new JsonExtractorNode(id, property, context);
+    if (context) {
+      return new JsonExtractorNode(id, property, context);
+    }
+    return new JsonExtractorNode(id, property);
   });
 
   registerNodeType('web-crawler', (id, property, context) => {
-    return new WebCrawlerNode(id, property, context);
+    if (context) {
+      return new WebCrawlerNode(id, property, context);
+    }
+    return new WebCrawlerNode(id, property);
   });
 }
 

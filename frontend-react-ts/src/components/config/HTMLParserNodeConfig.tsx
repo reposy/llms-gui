@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Button } from "../ui/button";
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, ChevronUpIcon } from "../Icons";
 import { ExtractionRule } from "../../types/nodes";
-import { useNodeContent, useNodeContentStore } from "../../store/useNodeContentStore";
+import { useHtmlParserNodeData } from "../../hooks/useHtmlParserNodeData";
 import { NodeHeader } from "../nodes/shared/NodeHeader";
 import { useFlowStructureStore, setNodes } from "../../store/useFlowStructureStore";
 import { useNodeState } from "../../store/useNodeStateStore";
@@ -46,35 +46,45 @@ const getAncestorPaths = (path: string): string[] => {
 // Restore the generatePathForElement function
 function generatePathForElement(element: Element, root: Element | null):
 string {
-    if (!root || !element || !root.contains(element)) {
+    // Ensure root is always documentElement if parsedDOM exists
+    const effectiveRoot = root; 
+    if (!effectiveRoot || !element || !effectiveRoot.contains(element)) {
         return '';
     }
 
-    let path = '';
+    let pathParts: string[] = []; // Store parts in reverse order initially
     let current: Element | null = element;
 
-    while (current && current !== root.parentElement) { // Stop before documentElement's parent
-        const parent = current.parentElement;
-        if (!parent) break;
-
+    while (current && current !== effectiveRoot.parentElement) { 
+        const parent: Element | null = current.parentElement;
+        // Determine the index among ELEMENT siblings
+        const index = parent 
+            ? Array.from(parent.children).filter((node: Node) => node.nodeType === Node.ELEMENT_NODE).indexOf(current)
+            : 0; // Root element index is 0 relative to document
+            
         const tagName = safeGetTagName(current) || 'unknown';
-        // Get only element siblings to calculate index correctly
-        const siblings = Array.from(parent.children).filter(node => node.nodeType === Node.ELEMENT_NODE);
-        const index = siblings.indexOf(current);
-        
         const pathPart = `${index}-${tagName}`;
-        path = path ? `${pathPart}/${path}` : pathPart;
-        
-        if (current === root) break; // Stop once root is processed
+        pathParts.push(pathPart);
+
+        if (current === effectiveRoot) break; // Stop after processing the root
 
         current = parent;
     }
-    return path;
+    // Reverse the parts and join
+    return pathParts.reverse().join('/');
 }
 
 export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ nodeId }) => {
-  const { content } = useNodeContent(nodeId);
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  // 커스텀 훅 사용
+  const { 
+    content, 
+    extractionRules, 
+    updateContent, 
+    addExtractionRule, 
+    updateExtractionRule, 
+    deleteExtractionRule 
+  } = useHtmlParserNodeData({ nodeId });
+  
   const { nodes, edges } = useFlowStructureStore();
   
   // 파싱된 HTML 및 DOM 관련 상태
@@ -168,44 +178,80 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       if (!rootElement || !targetPath) return null;
   
       const pathParts = targetPath.split('/');
-      let currentElement: Element | null = rootElement;
+      let currentElement: Element | null = rootElement; // Start from the provided root
   
-      // Check root matches the first part of the path
-      const rootTag = safeGetTagName(rootElement);
-      const rootPathPart = `0-${rootTag}`;
-      if (pathParts.length === 0 || pathParts[0] !== rootPathPart) {
-          console.warn("Root path mismatch", pathParts[0], rootPathPart);
-          return null; // Path doesn't start from the provided root
+      // Validate that the rootElement itself matches the first part of the path
+      const firstPart = pathParts[0];
+      const firstMatch = firstPart.match(/^(\d+)-(.+)$/);
+      if (!firstMatch) {
+        console.warn("Invalid first path part format:", firstPart);
+        return null;
+      }
+      const firstIndex = parseInt(firstMatch[1], 10);
+      const firstTag = firstMatch[2];
+  
+      // Basic check: Does the root element's tag match the first part's tag?
+      if (safeGetTagName(currentElement)?.toLowerCase() !== firstTag?.toLowerCase()) {
+         console.warn(`Root element tag mismatch. Path starts with ${firstTag}, root is ${safeGetTagName(currentElement)}`);
+         // If root doesn't match the very first tag, the path is invalid for this root.
+         return null;
+      }
+      // More robust check: Does the root element's index among its siblings match?
+      if (currentElement.parentElement) {
+          const siblings: Element[] = Array.from(currentElement.parentElement.children).filter((node: Node) => node.nodeType === Node.ELEMENT_NODE) as Element[];
+          if (siblings.indexOf(currentElement) !== firstIndex) {
+              console.warn(`Root element index mismatch. Path expects index ${firstIndex}, root is at index ${siblings.indexOf(currentElement)}`);
+              return null;
+          }
+      } else if (firstIndex !== 0) {
+          // Root element without a parent must have index 0
+           console.warn(`Root element has no parent, but path expects index ${firstIndex}`);
+           return null;
       }
   
+      // Iterate through the *rest* of the path parts (starting from index 1)
+      // since the 0th part corresponds to the rootElement itself.
       for (let i = 1; i < pathParts.length; i++) {
-          if (!currentElement) return null;
+          if (!currentElement) return null; // Should not happen if logic is correct
+  
           const part = pathParts[i];
           const match = part.match(/^(\d+)-(.+)$/);
-          if (!match) return null; // Invalid path part format
+          if (!match) {
+              console.warn("Invalid path part format:", part);
+              return null; // Invalid path part format
+          }
   
           const childIndex = parseInt(match[1], 10);
-          // const childTagName = match[2]; // Tag name check might be redundant if index is reliable
+          const childTagName = match[2]; // Expected tag name
   
-          // Get only element children
-          const children = Array.from(safeGetChildren(currentElement)).filter(node => node.nodeType === Node.ELEMENT_NODE);
-    
+          // Get only element children of the current element
+          const children: Element[] = Array.from(safeGetChildren(currentElement)).filter((node: Node) => node.nodeType === Node.ELEMENT_NODE) as Element[];
+  
           if (childIndex >= children.length) {
-              console.warn("Child index out of bounds", childIndex, children.length, currentElement);
+              console.warn(`Child index out of bounds for part ${part}. Index: ${childIndex}, Children count: ${children.length}, Parent:`, currentElement);
               return null; // Index out of bounds
           }
   
-          const nextElement = children[childIndex] as Element;
-          currentElement = nextElement;
+          const nextElement: Element = children[childIndex];
+  
+          // Optional but recommended: Verify the tag name matches
+          if (safeGetTagName(nextElement)?.toLowerCase() !== childTagName?.toLowerCase()) {
+             console.warn(`Tag mismatch at step ${i}. Expected ${childTagName}, found ${safeGetTagName(nextElement)}`);
+             // Decide if this should be a fatal error or just a warning
+             // return null; // Make it fatal for now
+          }
+  
+          currentElement = nextElement; // Move to the next element in the path
       }
   
+      // If the loop completes, currentElement is the target
       return currentElement;
   };
 
   // Callback function for element selection (Updated Level Calculation)
   const handleElementSelect = useCallback((path: string, selector: string, preview: string) => {
     setSelectedElementPath(path);
-            setGeneratedSelector(selector);
+    setGeneratedSelector(selector);
     setSelectedElementPreview(preview);
 
     // Calculate path steps with correct level based on path depth
@@ -226,12 +272,30 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setSelectedElementPathSteps(steps);
     
     // Expand ancestors (existing logic)
-    if (path) { // Only expand if a valid path is selected
+    if (path) {
         const ancestors = getAncestorPaths(path);
         setExpandedPaths(prev => new Set([...prev, ...ancestors, path]));
+        
+        // --- Add Scrolling Logic ---
+        if (parsedDOM?.documentElement) {
+            const targetElement = findElementByPath(parsedDOM.documentElement, path);
+            if (targetElement) {
+                // Find the corresponding element in the rendered DOM tree (might need a ref or data attribute)
+                const renderedElement = domTreeContainerRef.current?.querySelector(`[data-path="${path}"]`);
+                if (renderedElement) {
+                    renderedElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    // Highlighting is handled by passing selectedElementPath to DOMTreeNode
+                } else {
+                    console.warn("Could not find rendered element for path:", path);
+                }
+            } else {
+                 console.warn("Could not find target DOM element for path:", path);
+            }
+        }
+        // --- End Scrolling Logic ---
     }
 
-  }, [setExpandedPaths]); 
+  }, [setExpandedPaths, parsedDOM, findElementByPath]); // Add dependencies parsedDOM, findElementByPath
   
   // 선택기로 요소 사용하기
   const useSelectedElement = () => {
@@ -253,30 +317,28 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
   // 업데이트 핸들러
   const handleAddRule = () => {
-    setTemporaryRule({
-      name: "",
-      selector: "",
-      target: "text",
-      attribute_name: "",
-      multiple: false
-    });
-    setEditingRuleIndex(null);
+    if (temporaryRule) {
+      if (editingRuleIndex !== null) {
+        // 기존 규칙 수정
+        updateExtractionRule(editingRuleIndex, temporaryRule);
+      } else {
+        // 새 규칙 추가
+        addExtractionRule(temporaryRule);
+      }
+      setTemporaryRule(null);
+      setEditingRuleIndex(null);
+    }
   };
 
   const handleEditRule = (index: number) => {
-    const rules = content?.extractionRules || [];
-    if (rules && rules[index]) {
-      setTemporaryRule({ ...rules[index] });
+    if (content?.extractionRules && index < content.extractionRules.length) {
+      setTemporaryRule({ ...content.extractionRules[index] });
       setEditingRuleIndex(index);
     }
   };
 
   const handleDeleteRule = (index: number) => {
-    const rules = [...(content?.extractionRules || [])];
-    if (!rules.length) return;
-    
-    rules.splice(index, 1);
-    setNodeContent(nodeId, { extractionRules: rules });
+    deleteExtractionRule(index);
   };
 
   const handleRuleChange = (rule: ExtractionRule) => {
@@ -286,14 +348,16 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   const handleSaveRule = () => {
     if (!temporaryRule) return;
     
-    const rules = [...(content?.extractionRules || [])];
-    if (editingRuleIndex !== null && editingRuleIndex >= 0 && editingRuleIndex < rules.length) {
-      rules[editingRuleIndex] = temporaryRule;
+    // 임시 룰 저장
+    if (editingRuleIndex !== null) {
+      // 기존 룰 업데이트
+      updateExtractionRule(editingRuleIndex, temporaryRule);
     } else {
-      rules.push(temporaryRule);
+      // 새 룰 추가
+      addExtractionRule(temporaryRule);
     }
     
-    setNodeContent(nodeId, { extractionRules: rules });
+    // 임시 상태 정리
     setTemporaryRule(null);
     setEditingRuleIndex(null);
   };
@@ -334,8 +398,8 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       setDomError(""); // Clear previous errors if selector is valid
     } else {
       // Existing logic for TEXT, CLASS, ID search (iterating through all elements)
-      const allElements = parsedDOM.querySelectorAll('*'); 
-      foundElements = Array.from(allElements).filter(element => {
+      const allElements: NodeListOf<Element> = parsedDOM.querySelectorAll('*'); 
+      foundElements = Array.from(allElements).filter((element: Element) => {
         let isMatch = false;
         switch (searchTarget) {
           case "TEXT":
@@ -364,12 +428,12 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     }
 
     // Generate paths for found elements
-    const rootElement = parsedDOM.documentElement;
-    const results = foundElements
-                      .map(el => generatePathForElement(el, rootElement))
+    const rootElement: Element | null = parsedDOM.documentElement;
+    const results: string[] = foundElements
+                      .map((el: Element) => generatePathForElement(el, rootElement))
                       .filter((path): path is string => !!path && path !== ''); // Filter out empty/null paths
     
-    const uniqueResults = Array.from(new Set(results)); // Ensure unique paths
+    const uniqueResults: string[] = Array.from(new Set(results)); // Ensure unique paths
 
     setSearchResults(uniqueResults);
     const newIndex = uniqueResults.length > 0 ? 0 : -1;
@@ -403,14 +467,71 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
 
   // ADD BACK: Handle search execution (on button click or Enter)
   const handleSearch = () => {
-    performSearch(); 
+    if (!parsedDOM || !searchQuery) return;
+    
+    let foundElements: Element[] = [];
+    const rootElement: Element | null = parsedDOM.documentElement;
+    if (!rootElement) return;
+    
+    try {
+      switch (searchTarget) {
+        case "TEXT":
+          // Find elements containing the text (case-insensitive)
+          foundElements = Array.from(rootElement.querySelectorAll('*')).filter((el: Element) => 
+            el.textContent?.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          break;
+        case "CLASS":
+          // Find elements with the exact class name
+          foundElements = Array.from(rootElement.getElementsByClassName(searchQuery));
+          break;
+        case "ID":
+          const elementById: Element | null = parsedDOM.getElementById(searchQuery);
+          foundElements = elementById ? [elementById] : [];
+          break;
+        case "CSS":
+           // Use querySelectorAll for CSS selectors
+           foundElements = Array.from(rootElement.querySelectorAll(searchQuery));
+           break;
+      }
+    } catch (error) {
+        console.error("Error during element search:", error);
+        setSearchResults([]);
+        setCurrentSearchResultIndex(-1);
+        return;
+    }
+    
+    const results: string[] = foundElements
+        // Ensure generatePathForElement uses documentElement as root
+        .map((el: Element) => generatePathForElement(el, rootElement)) 
+        .filter((path): path is string => !!path); // Filter out empty paths
+        
+    setSearchResults(results);
+    
+    if (results.length > 0) {
+      setCurrentSearchResultIndex(0);
+      // Auto-select the first result
+      const firstResultPath: string = results[0];
+      const element: Element | null = findElementByPath(rootElement, firstResultPath);
+      if (element) {
+        const selector: string = generateSelector(element);
+        const preview: string = element.outerHTML.substring(0, 100); // Simple preview
+        handleElementSelect(firstResultPath, selector, preview);
+      } else {
+          console.warn("Could not find element for first search result path:", firstResultPath);
+      }
+    } else {
+      setCurrentSearchResultIndex(-1);
+      // Optionally clear selection if no results
+      // handleElementSelect("", "", ""); 
+    }
   };
 
   // Function to navigate search results (Optimized scrolling/highlighting)
   const navigateResults = (direction: 'prev' | 'next') => {
     if (searchResults.length === 0) return;
 
-    let nextIndex = currentSearchResultIndex;
+    let nextIndex: number = currentSearchResultIndex;
     if (direction === 'next') {
       nextIndex = (currentSearchResultIndex + 1) % searchResults.length;
     } else {
@@ -419,12 +540,12 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setCurrentSearchResultIndex(nextIndex); // Update index, DOMTreeView useEffect will handle scroll/highlight
     
     // Auto-select the element at the new index
-    const nextPath = searchResults[nextIndex];
+    const nextPath: string = searchResults[nextIndex];
     if (nextPath && parsedDOM?.documentElement) {
-        const targetElement = findElementByPath(parsedDOM.documentElement, nextPath);
+        const targetElement: Element | null = findElementByPath(parsedDOM.documentElement, nextPath);
         if (targetElement) {
-            const selector = generateSelector(targetElement);
-            const preview = targetElement.outerHTML || '';
+            const selector: string = generateSelector(targetElement);
+            const preview: string = targetElement.outerHTML || '';
             // Call handleElementSelect to update selection and trigger expansion
             handleElementSelect(nextPath, selector, preview); 
         } else {
@@ -490,20 +611,20 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       if (!selectedElementPath || !parsedDOM?.documentElement) return;
 
       // Check if it's already the root
-      const rootPath = `0-${safeGetTagName(parsedDOM.documentElement ?? null)}`;
+      const rootPath: string = `0-${safeGetTagName(parsedDOM.documentElement ?? null)}`;
       if (selectedElementPath === rootPath) return; // Cannot go above root
 
-      const lastSlashIndex = selectedElementPath.lastIndexOf('/');
+      const lastSlashIndex: number = selectedElementPath.lastIndexOf('/');
       if (lastSlashIndex === -1) return; // Should not happen if not root
 
-      const parentPath = selectedElementPath.substring(0, lastSlashIndex);
+      const parentPath: string = selectedElementPath.substring(0, lastSlashIndex);
       if (!parentPath) return; // Safety check
 
-      const parentElement = findElementByPath(parsedDOM.documentElement, parentPath);
+      const parentElement: Element | null = findElementByPath(parsedDOM.documentElement, parentPath);
 
       if (parentElement) {
-          const selector = generateSelector(parentElement);
-          const preview = parentElement.outerHTML || '';
+          const selector: string = generateSelector(parentElement);
+          const preview: string = parentElement.outerHTML || '';
           handleElementSelect(parentPath, selector, preview);
       } else {
           console.warn("Could not find parent element for path:", parentPath);
@@ -775,11 +896,13 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                 {parsedDOM && parsedDOM.documentElement && (
                   <DOMTreeNode 
                     element={parsedDOM.documentElement} 
+                    parentPath="" 
+                    indexInParent={0}
                     selectedElementPath={selectedElementPath} 
                     onElementSelect={handleElementSelect} 
                     highlightedPath={searchResults[currentSearchResultIndex]}
-                    expandedPaths={expandedPaths} // Pass expanded state
-                    toggleExpand={toggleExpand} // Pass toggle function
+                    expandedPaths={expandedPaths}
+                    toggleExpand={toggleExpand}
                   />
                 )}
               </div>

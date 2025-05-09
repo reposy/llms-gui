@@ -1,4 +1,5 @@
 import { FlowExecutionContext } from './FlowExecutionContext';
+import { Node as FlowNode, Edge } from '@xyflow/react';
 
 /**
  * Base Node class that all nodes extend
@@ -20,11 +21,6 @@ export abstract class Node {
   public property: Record<string, any> = {};
 
   /**
-   * IDs of child nodes
-   */
-  private childIds: string[] = [];
-
-  /**
    * Execution context for the node
    */
   protected context?: FlowExecutionContext;
@@ -34,101 +30,103 @@ export abstract class Node {
    * @param id Node ID
    * @param type Node type
    * @param property Node properties
-   * @param context Optional execution context
    */
   constructor(
     id: string, 
     type: string, 
-    property: Record<string, any> = {},
-    context?: FlowExecutionContext
+    property: Record<string, any> = {}
   ) {
     this.id = id;
     this.type = type;
     this.property = property;
-    this.context = context;
   }
 
   /**
-   * Set child node IDs
-   * @param childIds Array of child node IDs
+   * Simple logging helper that uses context logger when available
+   * @param message The message to log
    */
-  setChildIds(childIds: string[]): void {
-    this.childIds = childIds;
-    this.context?.log(`${this.type}(${this.id}): Set ${childIds.length} child IDs: [${childIds.join(', ')}]`);
+  protected _log(message: string): void {
+    // 개발 모드인 경우에만 로그 출력
+    if (process.env.NODE_ENV !== 'development') return;
+
+    if (this.context?.log) {
+      this.context.log(`${this.type}(${this.id}): ${message}`);
+    } else {
+      console.log(`[${this.type}:${this.id}] (no context log) ${message}`);
+    }
   }
 
   /**
-   * Get child node IDs
-   * @returns Array of child node IDs
-   */
-  getChildIds(): string[] {
-    return this.childIds;
-  }
-
-  /**
-   * Get array of child nodes using the node factory from property
-   * @returns Array of child Node instances
+   * Get array of child nodes using the node factory and the current execution context.
+   * This method ensures that the latest graph structure from the context is used
+   * and attempts to reuse existing node instances from the factory's cache.
+   * 
+   * @returns Array of child Node instances.
    */
   getChildNodes(): Node[] {
-    // Skip if no factory or context
-    const nodeFactory = this.property.nodeFactory;
-    if (!this.context || !nodeFactory) {
-      this.context?.log(`${this.type}(${this.id}): No node factory or context found. Cannot get child nodes.`);
+    if (!this.context) {
+      console.error(`[Node:${this.id}] getChildNodes: CRITICAL - this.context is UNDEFINED when called.`);
       return [];
     }
-    
-    // If we have nodes and edges in property, use those to determine childIds dynamically
-    if (this.property.nodes && this.property.edges) {
-      // this.context?.log(`${this.type}(${this.id}): Using dynamic relationship resolution from edges`); // Verbose log
-      
-      // Get outgoing connections based on the edges
-      const childNodeIds = this.property.edges
-        .filter((edge: any) => edge.source === this.id)
-        .map((edge: any) => edge.target);
-      
-      // this.context?.log(`${this.type}(${this.id}): Found ${childNodeIds.length} child nodes from edges: [${childNodeIds.join(', ')}]`); // Verbose log
-      
-      // Create child node instances
-      return childNodeIds
-        .map((childId: string) => {
-          const nodeData = this.property.nodes.find((n: any) => n.id === childId);
-          if (!nodeData) {
-            this.context?.log(`${this.type}(${this.id}): Child node data not found for ${childId}`);
-            return null;
-          }
-          
-          // Create the node instance with the same factory, nodes, edges
-          const node = nodeFactory.create(
-            nodeData.id,
-            nodeData.type,
-            nodeData.data,
-            this.context // Pass the current context
-          );
-          
-          // Pass along graph structure to the child node
-          node.property = {
-            ...node.property,
-            nodes: this.property.nodes,
-            edges: this.property.edges,
-            nodeFactory: this.property.nodeFactory
-          };
-          
-          return node;
-        })
-        .filter(Boolean) as Node[];
+    if (!this.context.nodeFactory) {
+      console.error(`[Node:${this.id}] getChildNodes: CRITICAL - this.context.nodeFactory is UNDEFINED. Context executionId: ${this.context.executionId}`);
+      return []; 
     }
     
-    // Fallback to potentially outdated stored childIds (should ideally not happen if graph is passed)
-    this.context?.log(`${this.type}(${this.id}): Warning - Falling back to stored childIds: [${this.childIds.join(', ')}]`);
-    return this.childIds
-      .map(childId => {
-        const node = nodeFactory.getNode(childId); // getNode might not be the right method, create is safer
-        if (!node) {
-          this.context?.log(`${this.type}(${this.id}): Child node ${childId} not found via fallback`);
+    const { nodeFactory, nodes: contextNodes, edges: contextEdges } = this.context;
+
+    // 컨텍스트의 엣지 정보에서 직접 자식 노드 ID 계산 (childIds 필드 대신)
+    const childNodeIds = contextEdges
+      .filter((edge: Edge) => edge.source === this.id)
+      .map((edge: Edge) => edge.target);
+
+    if (childNodeIds.length === 0) {
+      return [];
+    }
+
+    // 불필요한 로그 제거
+    if (childNodeIds.length > 3) {
+      this._log(`Found ${childNodeIds.length} child nodes`);
+    } else {
+      this._log(`Found child nodes: ${childNodeIds.join(', ')}`);
+    }
+
+    return childNodeIds
+      .map((childId: string) => {
+        let nodeInstance = nodeFactory.getNode(childId);
+
+        if (nodeInstance) {
+          // 불필요한 로그 제거
+          if (nodeFactory && (!nodeInstance.property.nodeFactory)) {
+            nodeInstance.property.nodeFactory = nodeFactory;
+          }
+        } else {
+          const nodeData = contextNodes.find((n: FlowNode) => n.id === childId);
+          if (!nodeData) {
+            this._log(`Node data for child ${childId} not found in context nodes.`);
+            return null;
+          }
+          if (typeof nodeData.type !== 'string') {
+            this._log(`Node data for child ${childId} has invalid or missing type: ${nodeData.type}. Skipping creation.`);
+            return null;
+          }
+          try {
+            nodeInstance = nodeFactory.create(
+              nodeData.id,
+              nodeData.type,
+              nodeData.data,
+              this.context // 컨텍스트 전달
+            );
+          } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              this._log(`Error creating child node instance ${childId}: ${errorMessage}`);
+              return null;
+          }
         }
-        return node;
+        
+        return nodeInstance;
       })
-      .filter(Boolean) as Node[];
+      .filter((node): node is Node => node !== null);
   }
 
   /**
@@ -136,79 +134,77 @@ export abstract class Node {
    * This provides common lifecycle management for all nodes
    * 
    * @param input The input to process
+   * @param context The execution context for this specific execution run
    * @returns Promise that resolves when this node and its descendants have finished processing
    */
-  async process(input: any): Promise<void> { // process 자체는 반환값이 없을 수 있음
-    // 1. 실행 시작 마크 (Node 인스턴스가 context를 가지고 있는지 확인)
+  async process(input: any, context: FlowExecutionContext): Promise<void> {
+    // Set the context for this specific execution run
+    this.context = context;
+    
     if (!this.context) {
-      console.error(`[Node:${this.id}] Execution context is missing. Cannot process.`);
-      // 컨텍스트가 없으면 더 이상 진행 불가, 오류 처리가 필요할 수 있음
-      // 여기서 오류를 던지거나 특정 상태를 설정하는 것을 고려
+      console.error(`[Node:${this.id}] Execution context provided to process() is invalid.`);
       return;
     }
-    this.context.markNodeRunning(this.id);
-    this.context.log(`[Node:${this.id}] Process started.`);
+    
+    // From this point onwards, this.context is guaranteed to be FlowExecutionContext
+    const currentContext = this.context; // Use a const for clarity within the scope if preferred
+    
+    currentContext.markNodeRunning(this.id);
+    // 핵심 로그만 남김
+    this._log('Process started.');
 
     try {
-      // 2. 실제 로직 실행
-      this.context.log(`[Node:${this.id}] Calling execute...`);
+      // execute uses this.context, which is now set
       const output = await this.execute(input);
-      this.context.log(`[Node:${this.id}] Execute returned.`);
-
-      // 3. 성공 처리 및 결과 저장
+      
       if (output !== null && output !== undefined) {
-        // output이 배열이면, 각 요소를 개별적으로 storeOutput
         if (Array.isArray(output)) {
           if (output.length > 0) {
-            this.context.log(`[Node:${this.id}] Execute returned an array with ${output.length} items. Storing each item.`);
+            this._log(`Execute returned array (${output.length} items)`);
             for (const item of output) {
-              // 각 아이템 저장
-              this.context.storeOutput(this.id, item); 
+              currentContext.storeOutput(this.id, item); 
             }
-            // 성공 상태는 배열 전체로 마크 (UI 표시용)
-            this.context.markNodeSuccess(this.id, output); 
-            this.context.log(`[Node:${this.id}] Marked success with array result.`);
+            currentContext.markNodeSuccess(this.id, output); 
           } else {
-             this.context.log(`[Node:${this.id}] Execute returned empty array.`);
-             this.context.markNodeSuccess(this.id, []); // 빈 배열로 성공 마크
+             currentContext.markNodeSuccess(this.id, []); 
           }
         } else {
-          // 배열이 아니면 output을 그대로 storeOutput
-          this.context.log(`[Node:${this.id}] Execute returned a single item. Storing it.`);
-          this.context.storeOutput(this.id, output); 
-          this.context.markNodeSuccess(this.id, output);
+          this._log('Execute returned single item');
+          currentContext.storeOutput(this.id, output); 
+          currentContext.markNodeSuccess(this.id, output);
         }
-
-        // 4. 후속 노드 병렬 실행 (결과가 있어야 실행)
-        const children = this.getChildNodes(); // getChildNodes는 Node 인스턴스 배열 반환 가정
+        
+        // getChildNodes uses this.context, which is set
+        const children = this.getChildNodes(); 
         if (children.length > 0) {
-           this.context.log(`[Node:${this.id}] Executing ${children.length} child node(s) in parallel.`);
            const childPromises = children.map(child => {
-             this.context?.log(`[Node:${this.id}] Triggering process for child ${child.id}`);
-             // execute가 반환한 원본 output (배열 또는 단일값)을 그대로 전달
-             return child.process(output);
+             if (!child) {
+                 console.error(`[Node:${this.id}] Null child found in children array.`);
+                 return Promise.resolve(); // Skip null child
+             }
+             // 변경: 컨텍스트를 명시적으로 전달하여 컨텍스트 손실 방지
+             // Always use currentContext here, not this.context which could potentially be modified
+             return child.process(output, currentContext); 
            });
-           await Promise.all(childPromises); // 모든 자식 노드의 process 완료 대기
-           this.context.log(`[Node:${this.id}] Finished executing child node(s).`);
-        } else {
-             this.context.log(`[Node:${this.id}] No child nodes to execute.`);
+           await Promise.all(childPromises); 
+           this._log(`Processed ${children.length} child node(s)`);
         }
       } else {
-           // execute 결과가 null 또는 undefined인 경우
-           this.context.log(`[Node:${this.id}] Execute returned null or undefined. Stopping branch.`);
-           // 결과가 없어도 노드 자체는 성공적으로 실행된 것으로 간주하고 Success 마크
-           // (오류가 발생했다면 catch 블록으로 갔을 것)
-           this.context.markNodeSuccess(this.id, output); // null 또는 undefined로 성공 상태 업데이트
+           this._log('Execute returned null/undefined. Stopping branch.');
+           currentContext.markNodeSuccess(this.id, output); 
       }
 
     } catch (error) {
-      // 5. 오류 처리
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.context.log(`[Node:${this.id}] Error during execution: ${errorMessage}`);
-      this.context.markNodeError(this.id, errorMessage);
-      // 오류 발생 시 후속 노드 실행은 try 블록을 벗어나므로 자연스럽게 중단됨
+      // Use currentContext which should still be valid unless the error corrupted it somehow
+      // But the original this.context reference is what matters for logging/marking
+      if (currentContext) { // 변경: this.context 대신 currentContext 사용
+        this._log(`Error during execution: ${errorMessage}`);
+        currentContext.markNodeError(this.id, errorMessage);
+      } else {
+        console.error(`[Node:${this.id}] Error during execution (CONTEXT LOST IN CATCH): ${errorMessage}`, error);
+      }
     }
-    this.context.log(`[Node:${this.id}] Process finished.`);
   }
 
   /**

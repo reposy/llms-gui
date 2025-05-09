@@ -71,7 +71,7 @@ export const useStore = create<ViewModeState>()(
       }),
       {
         name: 'view-mode-storage',
-        storage: createJSONStorage(() => createIDBStorage<ViewModeState>()),
+        storage: createJSONStorage(() => createIDBStorage()),
       }
     )
   )
