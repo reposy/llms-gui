@@ -1,16 +1,13 @@
-import { ReactFlowProvider } from '@xyflow/react';
-import { FlowEditor } from './components/FlowEditor';
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { registerAllNodeTypes } from './core/NodeRegistry';
 import { NodeFactory } from './core/NodeFactory';
-import { useNodes, useEdges, useFlowStructureStore } from './store/useFlowStructureStore';
-import { Node, Edge } from '@xyflow/react';
+import { useFlowStructureStore } from './store/useFlowStructureStore';
+import FlowEditorPage from './pages/FlowEditorPage';
+import ExecutorPage from './pages/ExecutorPage';
 
 export default function App() {
-  // Zustand persist hydration 상태 확인 (기존 정적 방식 제거)
-  // const hydrated = useFlowStructureStore.persist?.hasHydrated?.() ?? false;
-
-  // Dynamic hydration state tracking
+  // Zustand persist hydration 상태 확인
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -30,7 +27,7 @@ export default function App() {
         unsub();
       };
     }
-  }, []); // Empty dependency array ensures this runs only once on mount
+  }, []);
 
   // Initialize node types on application startup
   useEffect(() => {
@@ -44,13 +41,14 @@ export default function App() {
     return <div className="flex items-center justify-center h-screen w-screen text-lg text-gray-500">Loading Flow...</div>;
   }
 
-  // Render the main editor once hydrated
-  console.log('[App] Hydration complete, rendering FlowEditor.');
+  // Render the routes once hydrated
+  console.log('[App] Hydration complete, rendering routes.');
   return (
-    <div className="h-screen w-screen overflow-hidden">
-      <ReactFlowProvider>
-        <FlowEditor />
-      </ReactFlowProvider>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<FlowEditorPage />} />
+        <Route path="/executor" element={<ExecutorPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 } 

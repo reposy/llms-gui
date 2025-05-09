@@ -180,9 +180,10 @@ export const runGroupNodeExecution = async (groupNodeId: string): Promise<void> 
  * Determines starting nodes (root nodes or a specific one) and initiates the process.
  * 
  * @param startNodeId Optional ID of a specific node to start execution from. If not provided, execution starts from all root nodes.
+ * @param inputData Optional input data to pass to the start nodes' process method.
  * @throws Error if execution preparation or process fails.
  */
-export const runFullFlowExecution = async (startNodeId?: string): Promise<void> => {
+export const runFullFlowExecution = async (startNodeId?: string, inputData?: any): Promise<void> => {
   console.log(`[ExecutionUtils] Received request to run full flow ${startNodeId ? `from node ${startNodeId}`: 'from root nodes'}`);
   try {
     const context = prepareExecutionContext();
@@ -224,7 +225,18 @@ export const runFullFlowExecution = async (startNodeId?: string): Promise<void> 
     }
     
     context.log(`Determined starting nodes: ${nodesToExecuteIds.join(', ')}`);
-    await _startExecutionProcess(nodesToExecuteIds, triggerId, context);
+    
+    // 입력 데이터가 제공되었으면 custom _startExecutionProcess 로직 사용
+    if (inputData !== undefined) {
+      context.log(`Received input data for execution: ${JSON.stringify(inputData)}`);
+      
+      // 입력 데이터로 루트 노드 실행
+      await _executeWithInput(nodesToExecuteIds, triggerId, context, inputData);
+    } else {
+      // 기존 실행 로직 사용
+      await _startExecutionProcess(nodesToExecuteIds, triggerId, context);
+    }
+    
     console.log(`[ExecutionUtils] Completed full flow execution process.`);
 
   } catch (error) {
@@ -232,4 +244,83 @@ export const runFullFlowExecution = async (startNodeId?: string): Promise<void> 
     // Re-throw the error so the caller (e.g., UI) can handle it
     throw error; 
   }
+};
+
+/**
+ * 입력 데이터를 사용하여 노드 실행을 시작하는 함수
+ * Flow Executor의 입력 데이터를 루트 노드에 전달하기 위해 사용
+ */
+const _executeWithInput = async (
+  startNodeIds: string[],
+  triggerNodeId: string,
+  context: FlowExecutionContext,
+  inputData: any
+): Promise<void> => {
+  context.log(`Starting execution with input data for nodes: ${startNodeIds.join(', ')} (Trigger: ${triggerNodeId})`);
+  context.setTriggerNode(triggerNodeId);
+
+  // Build execution graph
+  buildExecutionGraphFromFlow(context.nodes, context.edges);
+  const executionGraph = getExecutionGraph();
+  
+  for (const nodeId of startNodeIds) {
+    if (context.hasExecutedNode(nodeId)) {
+      context.log(`Skipping already executed node: ${nodeId}`);
+      continue;
+    }
+
+    const nodeStructure = context.nodes.find(n => n.id === nodeId);
+    if (!nodeStructure || !nodeStructure.type) {
+      context.log(`Node structure or type for ${nodeId} not found. Skipping.`);
+      continue;
+    }
+
+    context.log(`Processing node: ${nodeId} (type: ${nodeStructure.type}) with input data`);
+
+    try {
+      // Special Data Preparation (similar to _startExecutionProcess)
+      let combinedNodeData = { ...nodeStructure.data };
+      if (nodeStructure.type === 'llm') {
+         const nodeContent = context.getNodeContentFunc(nodeId, 'llm') as any;
+         if (nodeContent) {
+            combinedNodeData = { ...combinedNodeData, ...nodeContent };
+            context.log(`Combined data for LLM node ${nodeId}`);
+         } else {
+             context.log(`LLM node content for ${nodeId} not found, using structure data only.`);
+         }
+      }
+
+      const nodeInstance = context.nodeFactory.create(
+        nodeId,
+        nodeStructure.type,
+        combinedNodeData,
+        context
+      );
+
+      // Attach properties
+      nodeInstance.property = {
+        ...nodeInstance.property,
+        nodes: context.nodes,
+        edges: context.edges,
+        nodeFactory: context.nodeFactory,
+        executionGraph 
+      };
+
+      // Mark running BEFORE process call
+      context.markNodeRunning(nodeId);
+
+      // 중요한 차이점: 입력 데이터를 process 메소드에 전달
+      await nodeInstance.process(inputData, context);
+
+      // Mark executed AFTER successful process call
+      context.markNodeExecuted(nodeId);
+      context.log(`Completed execution for node: ${nodeId}`);
+
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        context.log(`Error executing node ${nodeId}: ${errorMessage}`);
+        context.markNodeError(nodeId, errorMessage);
+    }
+  }
+  context.log(`Finished execution process with input data for trigger: ${triggerNodeId}`);
 }; 

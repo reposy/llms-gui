@@ -594,3 +594,139 @@ setContent({ field3: value3 });
 4. 테스트를 통해 변경사항이 올바르게 작동하는지 확인
 
 이 가이드를 따라 일관성 있는 코드 작성을 통해 더 견고하고 유지보수하기 쉬운 애플리케이션을 만들 수 있습니다.
+
+## Flow Executor 아키텍처
+
+Flow Executor는 사용자가 구성한 노드 워크플로우를 실행하고 결과를 확인하기 위한 독립적인 인터페이스를 제공합니다. Flow Editor와 달리 워크플로우 편집 기능 없이 실행과 결과 확인에 집중합니다.
+
+### 1. 주요 컴포넌트
+
+- **ExecutorPage** (`src/pages/ExecutorPage.tsx`): Flow Executor의 메인 페이지 컴포넌트로, 전체 UI 레이아웃과 워크플로우 상태 관리를 담당합니다.
+- **FileUploader** (`src/components/executor/FileUploader.tsx`): 플로우 JSON 파일 업로드 및 Flow Editor에서 현재 상태 가져오기 기능을 제공합니다.
+- **InputDataForm** (`src/components/executor/InputDataForm.tsx`): 사용자 입력 데이터 수집 및 관리를 담당합니다.
+- **ResultDisplay** (`src/components/executor/ResultDisplay.tsx`): 실행 결과를 표시하고 결과 복사, 마크다운 렌더링 등의 기능을 제공합니다.
+
+### 2. 상태 관리
+
+- **useExecutorStateStore** (`src/store/useExecutorStateStore.ts`): Flow Executor의 상태를 관리하는 Zustand 스토어입니다.
+  - 플로우 JSON 데이터, 입력 데이터, 결과 데이터, 현재 실행 단계 등을 저장합니다.
+  - `persist` 미들웨어를 사용하여 페이지 새로고침이나 탐색 후에도 상태를 유지합니다.
+  - Flow Editor와의 데이터 동기화를 위한 `importFromEditor` 함수를 제공합니다.
+
+### 3. 실행 흐름
+
+Flow Executor의 실행 흐름은 다음 단계로 구성됩니다:
+
+1. **Upload Flow**: 사용자가 플로우 JSON 파일을 업로드하거나 Flow Editor에서 가져옵니다.
+2. **Provide Input**: 사용자가 입력 데이터를 제공하고 제출합니다.
+3. **Execute Flow**: 제출된 입력 데이터로 워크플로우를 실행합니다.
+4. **View Results**: 실행 결과를 확인하고 필요한 경우 다시 실행합니다.
+
+### 4. 클라이언트 사이드 실행
+
+Flow Executor는 자체적인 실행 엔진을 사용하여 클라이언트 측에서 워크플로우를 실행합니다:
+
+```typescript
+// src/services/flowExecutionService.ts
+export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  try {
+    // 플로우 JSON을 Flow Editor 상태에 적용 (이미 FileUploader에서 수행됨)
+    
+    // 루트 노드 실행 (입력 데이터와 함께)
+    await runFullFlowExecution(undefined, params.inputs);
+    
+    // 리프 노드의 결과 수집
+    const outputs = getAllOutputs();
+    
+    return {
+      executionId: `local-exec-${Date.now()}`,
+      outputs,
+      status: 'success'
+    };
+  } catch (error) {
+    // 오류 처리
+  }
+};
+```
+
+이 클라이언트 사이드 실행 방식은 백엔드 의존성을 줄이고, Flow Editor와 동일한 실행 엔진을 재사용하여 일관성을 유지합니다. (백엔드 의존성이 있는 노드는 여전히 백엔드 API를 호출합니다.)
+
+### 5. 결과 수집
+
+`outputCollector.ts` 모듈은 실행 완료된 워크플로우에서 모든 리프 노드(출력이 없는 노드)의 결과를 수집합니다:
+
+```typescript
+// src/core/outputCollector.ts
+export const getAllOutputs = (): NodeResult[] => {
+  const { nodes, edges } = useFlowStructureStore.getState();
+  
+  // 타겟이 있는 노드 ID 목록 (다른 노드로 출력하는 노드)
+  const sourceNodeIds = new Set(edges.map(edge => edge.source));
+  
+  // 리프 노드 찾기 (다른 노드로 출력하지 않는 노드)
+  const leafNodeIds = nodes
+    .filter(node => !sourceNodeIds.has(node.id))
+    .map(node => node.id);
+  
+  // 각 리프 노드의 실행 결과 수집 및 반환
+  // ...
+};
+```
+
+### 6. 최근 개선 사항
+
+#### 6.1. 입력 데이터 폼 개선
+- 데이터 제출 상태 표시 (제출됨, 변경됨, 저장 안됨)
+- 제출된 데이터에 대한 수정/삭제 기능 추가
+- 데이터 변경 감지 및 상태 반영
+- 버튼 텍스트 동적 변경 (제출, 변경사항 저장, 이미 제출됨)
+
+#### 6.2. 좌우 분할 레이아웃
+- 결과 화면에서 왼쪽에 입력 설정, 오른쪽에 실행 결과를 표시
+- 화면 공간을 효율적으로 활용하여 동시에 입력과 결과 확인 가능
+- 사용자가 입력을 변경하고 다시 실행할 때 컨텍스트 전환 최소화
+
+#### 6.3. 마크다운 렌더링
+- 문자열 결과가 마크다운 형식인지 자동 감지
+- 마크다운 텍스트를 HTML로 변환하여 가독성 높게 표시
+- 텍스트 모드와 마크다운 모드 간 전환 기능
+- 코드 블록, 테이블, 리스트 등 다양한 마크다운 요소 스타일링
+
+#### 6.4. UI/UX 개선
+- 불필요한 버튼 제거 (Edit Input, Start Over 등)
+- 화면 여백 최적화로 더 많은 콘텐츠 표시
+- 컴포넌트 내부 패딩 조정으로 공간 효율성 향상
+- 결과 화면에서 노드 ID 대신 노드 이름 표시
+
+### 7. 데이터 흐름
+
+Flow Executor의 데이터 흐름은 다음과 같습니다:
+
+1. **JSON 파일 업로드**: 
+   - 업로드된 JSON은 `useFlowStructureStore`에 반영되어 Flow Editor와 동기화됩니다.
+   - 동시에 `useExecutorStateStore`에도 저장됩니다.
+
+2. **입력 데이터 제공**:
+   - 사용자 입력은 `InputDataForm`에서 처리되어 `useExecutorStateStore`에 저장됩니다.
+   - 제출 상태는 로컬 상태와 `useExecutorStateStore`에 반영됩니다.
+
+3. **워크플로우 실행**:
+   - `executeFlow` 서비스 함수는 Flow JSON과 입력 데이터를 사용하여 워크플로우를 실행합니다.
+   - 실행 결과는 `useNodeStateStore`에 저장되고, `getAllOutputs` 함수를 통해 수집됩니다.
+   - 최종 결과는 `useExecutorStateStore`에 저장됩니다.
+
+4. **결과 표시**:
+   - `ResultDisplay` 컴포넌트는 `useExecutorStateStore`에서 결과를 가져와 표시합니다.
+   - 마크다운 텍스트는 `ReactMarkdown` 컴포넌트를 통해 렌더링됩니다.
+
+### 8. 확장 및 유지보수 고려사항
+
+Flow Executor 컴포넌트를 확장하거나 유지보수할 때 다음 사항을 고려해야 합니다:
+
+1. **단일 진입점 원칙**: Flow Editor와 마찬가지로 모든 상태 변경은 명확한 진입점을 통해 이루어져야 합니다.
+2. **일관성 유지**: Flow Editor와 Flow Executor 간의 데이터 구조 및 실행 로직 일관성을 유지합니다.
+3. **분리된 관심사**: 입력 데이터 관리, 워크플로우 실행, 결과 표시를 별도 컴포넌트로 유지합니다.
+4. **추상화 계층**: `flowExecutionService.ts`는 실행 로직의 추상화 계층으로, 내부 구현이 변경되어도 인터페이스는 유지되어야 합니다.
+5. **로컬 상태 vs Zustand 상태**: 컴포넌트 지역적 UI 상태는 로컬 state로, 페이지 간 유지되어야 하는 상태는 Zustand 스토어에 저장합니다.
+
+Flow Executor는 사용자가 Flow Editor에서 구성한 워크플로우를 단순화된 인터페이스로 실행하고 결과를 확인할 수 있게 함으로써, 복잡한 워크플로우 구성과 실행을 분리하여 사용자 경험을 개선합니다.
