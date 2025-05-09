@@ -129,9 +129,10 @@ const ExecutorPage: React.FC = () => {
                 <InputDataForm onInputDataSubmit={handleInputDataSubmit} />
               )}
 
-              {(stage === 'input' || stage === 'executing' || stage === 'result') && (
+              {/* 플로우 트리 시각화 주석 처리 */}
+              {/* {(stage === 'input' || stage === 'executing' || stage === 'result') && (
                 <FlowTreeVisualization flowJson={flowJson} />
-              )}
+              )} */}
 
               {stage === 'input' && (
                 <div className="flex justify-center mt-6">

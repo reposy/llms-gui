@@ -10,9 +10,9 @@ const FlowTreeVisualization: React.FC<FlowTreeVisualizationProps> = ({ flowJson 
   // Sample flow data for testing when no flow is provided
   const sampleFlowData = {
     nodes: [
-      { id: "node1", name: "Root Node 1", type: "input" },
+      { id: "node1", name: "입력 정보 추출", type: "group" },
       { id: "node2", name: "Root Node 2", type: "llm" },
-      { id: "node3", name: "Child Node 1", type: "group" },
+      { id: "node3", name: "Child Node 1", type: "input" },
       { id: "node4", name: "Child Node 2", type: "output" }
     ],
     edges: [
@@ -30,22 +30,52 @@ const FlowTreeVisualization: React.FC<FlowTreeVisualizationProps> = ({ flowJson 
     setRootNodes(roots);
   }, [flowJson]);
   
-  // Find root nodes (nodes with no incoming edges)
+  // Find root nodes based on the proper criteria:
+  // 1. Not in a group
+  // 2. Has no input handles (or no incoming edges if handle info not available)
   const findRootNodes = (flow: any) => {
     if (!flow || !flow.nodes || !flow.edges) {
       return [];
     }
     
-    // Create a set of all target nodes
-    const targetNodeIds = new Set();
-    flow.edges.forEach((edge: any) => {
-      targetNodeIds.add(edge.target);
+    // 그룹 노드에 속한 노드 ID들의 집합
+    const nodesInGroups = new Set<string>();
+    
+    // 노드가 그룹 속에 있는지 확인 (parentNode 속성이 있는 노드는 그룹에 속함)
+    flow.nodes.forEach((node: any) => {
+      if (node.parentNode || (node.data && node.data.parentNode)) {
+        nodesInGroups.add(node.id);
+      }
     });
     
-    // Find nodes that are not targets (i.e., root nodes)
-    const rootNodes = flow.nodes.filter((node: any) => !targetNodeIds.has(node.id));
+    // 입력 엣지(들어오는 엣지)가 있는 노드 ID들의 집합
+    const nodesWithInputs = new Set<string>();
+    flow.edges.forEach((edge: any) => {
+      nodesWithInputs.add(edge.target);
+    });
     
-    return rootNodes;
+    // 루트 노드 찾기: 그룹에 속하지 않고, 입력 엣지가 없는 노드
+    const rootNodes = flow.nodes.filter((node: any) => {
+      // 노드가 그룹에 속하지 않아야 함
+      const notInGroup = !nodesInGroups.has(node.id);
+      
+      // 노드에 입력 엣지가 없어야 함
+      const hasNoInputs = !nodesWithInputs.has(node.id);
+      
+      // 노드가 '그룹' 타입인지 확인 - 그룹 노드일 경우 우선적으로 고려
+      const isGroupNode = node.type === 'group';
+      
+      return (isGroupNode && notInGroup) || (notInGroup && hasNoInputs);
+    });
+    
+    // '입력 정보 추출' 유형의 그룹 노드가 있는지 확인
+    const inputExtractionGroup = rootNodes.find((node: any) => 
+      node.type === 'group' && 
+      (node.name?.includes('입력 정보') || node.name?.includes('정보 추출'))
+    );
+    
+    // 있다면 해당 노드만 반환, 없으면 모든 루트 노드 반환
+    return inputExtractionGroup ? [inputExtractionGroup] : rootNodes;
   };
   
   // Get a human-readable description for a node type
@@ -73,6 +103,10 @@ const FlowTreeVisualization: React.FC<FlowTreeVisualizationProps> = ({ flowJson 
       
       if (lowerName.includes('프롬프트') || lowerName.includes('prompt')) {
         if (nodeType === 'llm') return '공통 프롬프트 생성';
+      }
+      
+      if (lowerName.includes('입력 정보') || lowerName.includes('정보 추출')) {
+        if (nodeType === 'group') return '입력 정보 추출';
       }
     }
     

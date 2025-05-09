@@ -13,9 +13,6 @@ import {
   ReactFlowInstance,
   OnInit,
   OnSelectionChangeParams,
-  OnNodesDelete,
-  OnNodeDrag,
-  SelectionDragHandler
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -29,13 +26,8 @@ import { useNodeHandlers } from '../hooks/useNodeHandlers';
 import { useConsoleErrorOverride } from '../hooks/useConsoleErrorOverride';
 import { createNewNode } from '../utils/flow/flowUtils';
 import { 
-  updateNodeParentRelationships, 
-  prepareNodesForReactFlow, 
-  relativeToAbsolutePosition,
   getIntersectingGroupId,
   absoluteToRelativePosition,
-  addNodeToGroup,
-  isNodeInGroup,
   sortNodesForRendering
 } from '../utils/flow/nodeUtils';
 // Import Zustand store & actions
