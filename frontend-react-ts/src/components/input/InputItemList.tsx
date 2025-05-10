@@ -1,17 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import clsx from 'clsx';
 import { TrashIcon, PencilIcon, ArrowRightIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid'; // 아이콘 임포트
-
-// 표시될 아이템의 구조 (타입 안전성 및 ID 부여)
-interface ItemDisplay {
-  id: string;         // 고유 ID (렌더링 키 및 편집 식별용)
-  originalIndex: number; // 원본 배열에서의 인덱스
-  display: string;    // 표시될 텍스트 (파일 이름 또는 텍스트 내용)
-  fullContent: string; // 전체 텍스트 내용 (편집/펼치기용)
-  type: string;       // 데이터 타입 ('text', 'image/jpeg', 등)
-  isFile: boolean;    // 파일 여부
-  isEditing?: boolean; // 현재 편집 중인지 여부 (텍스트 항목 전용)
-}
+import { ItemDisplay, adaptDisplayableItem } from '../../utils/ui/adaptDisplayableItem';
 
 // 리스트 섹션 렌더링을 위한 props
 interface ItemListSectionProps {
@@ -183,9 +173,24 @@ const ListItem: React.FC<{
                 </div>
              </div>
            ) : (
-              <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words">
-                {item.fullContent}
-              </pre>
+              <div>
+                {item.isFile && item.objectUrl && item.type?.startsWith('image/') ? (
+                  <div className="text-center">
+                    <img 
+                      src={item.objectUrl} 
+                      alt={item.display} 
+                      className="max-w-full h-auto max-h-40 mx-auto rounded"
+                    />
+                    <p className="text-xs text-gray-600 mt-1">
+                      {item.fullContent}
+                    </p>
+                  </div>
+                ) : (
+                  <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words">
+                    {item.fullContent}
+                  </pre>
+                )}
+              </div>
            )}
          </div>
        )}
@@ -277,9 +282,9 @@ const ItemListSection: React.FC<ItemListSectionProps> = ({
       </div>
       {items.length > 0 ? (
         <ul className="space-y-1">
-          {items.map((item) => (
+          {items.map((item, index) => (
             <ListItem 
-              key={item.id} 
+              key={`${itemType}-${index}-${item.isFile ? 'file' : 'text'}`} 
               item={item} 
               itemType={itemType} 
               colorClass={colorClass} 

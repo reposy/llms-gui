@@ -1,4 +1,3 @@
-// src/components/nodes/InputNode.tsx
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeContent } from '../../types/nodes';
@@ -39,7 +38,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     label,
     fileProcessing,
     resetError,
-    serverConnected
   } = useInputNodeData({ nodeId: id });
   
   // Format items for display
@@ -237,12 +235,12 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                 </div>
               </div>
               
-              {/* 백엔드 연결 상태 및 로컬 저장 관련 안내 */}
+              {/* 새로고침 경고 메시지 */}
               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
                 <div className="flex items-start">
                   <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 mr-1" />
                   <p className="text-xs text-yellow-700 flex-grow">
-                    파일은 브라우저 메모리에 임시 저장되며, 페이지 새로고침 시 손실됩니다.
+                    페이지 새로 고침 시 추가된 파일이 손실됩니다. 실행 전 작업을 완료하세요.
                   </p>
                 </div>
               </div>
@@ -321,4 +319,4 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   );
 };
 
-export default InputNode;
+export default InputNode; 

@@ -1,6 +1,14 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { InputNodeContent, BaseNodeData } from '../types/nodes';
 import { useNodeContentStore } from '../store/useNodeContentStore';
+import { formatFileSize, FileMetadata, LocalFileMetadata, createLocalFileMetadata, isFileSizeValid, revokeObjectUrl } from '../types/files';
+
+// 파일 처리 상태 인터페이스
+interface FileProcessingState {
+  uploading: boolean;
+  error: string | null;
+  progress: number;
+}
 
 /**
  * InputNode 데이터 관리 훅 (세 가지 아이템 목록 지원)
@@ -21,9 +29,9 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   );
 
   // 컨텐츠 필드 접근 (기본값 처리 포함)
-  const chainingItems: (string | File)[] = (content?.chainingItems as (string | File)[]) || [];
-  const commonItems: (string | File)[] = (content?.commonItems as (string | File)[]) || [];
-  const items: (string | File)[] = (content?.items as (string | File)[]) || [];
+  const chainingItems: (string | File | FileMetadata | LocalFileMetadata)[] = (content?.chainingItems as (string | File | FileMetadata | LocalFileMetadata)[]) || [];
+  const commonItems: (string | File | FileMetadata | LocalFileMetadata)[] = (content?.commonItems as (string | File | FileMetadata | LocalFileMetadata)[]) || [];
+  const items: (string | File | FileMetadata | LocalFileMetadata)[] = (content?.items as (string | File | FileMetadata | LocalFileMetadata)[]) || [];
   const textBuffer: string = content?.textBuffer || '';
   const iterateEachRow: boolean = content?.iterateEachRow || false;
   const chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none' = content?.chainingUpdateMode || 'element';
@@ -31,6 +39,35 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   // 텍스트 아이템 편집 상태 관리 (로컬 UI 상태)
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
+
+  // 파일 처리 상태 (업로드 중, 에러, 진행률)
+  const [fileProcessing, setFileProcessing] = useState<FileProcessingState>({
+    uploading: false,
+    error: null,
+    progress: 0
+  });
+
+  // ObjectURL 정리를 위한 효과
+  useEffect(() => {
+    return () => {
+      // 컴포넌트 언마운트 시 남아있는 objectURL 정리
+      [...chainingItems, ...commonItems, ...items].forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
+    };
+  }, []);
+
+  /**
+   * 파일 처리 오류 초기화 함수
+   */
+  const resetError = useCallback(() => {
+    setFileProcessing(prev => ({
+      ...prev,
+      error: null
+    }));
+  }, []);
 
   /**
    * 부분적인 컨텐츠 업데이트 유틸리티 함수
@@ -89,52 +126,109 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     updateInputContent({ chainingUpdateMode: newMode });
   }, [updateInputContent]);
 
-
   /**
-   * 공통 또는 개별 항목으로 파일 추가
+   * 공통 또는 개별 항목으로 파일 추가 (로컬 메모리에 저장)
    */
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>, itemType: 'common' | 'element') => {
     if (!event.target.files?.length) return;
     const files = Array.from(event.target.files);
     
+    // 파일 처리 상태 초기화
+    setFileProcessing({
+      uploading: true,
+      error: null,
+      progress: 0
+    });
+    
     try {
-      const newFiles: File[] = files; // File 객체 그대로 사용
-
-      if (newFiles.length > 0) {
+      // 파일 크기 검증
+      const invalidFiles = files.filter(file => !isFileSizeValid(file, 10 * 1024 * 1024));
+      if (invalidFiles.length > 0) {
+        throw new Error(`파일 크기는 10MB 이하여야 합니다: ${invalidFiles.map(f => f.name).join(', ')}`);
+      }
+      
+      // 각 파일에 대해 LocalFileMetadata 생성
+      const fileMetadataList = files.map(file => createLocalFileMetadata(file));
+      
+      // 생성된 메타데이터 추가
+      if (fileMetadataList.length > 0) {
         if (itemType === 'common') {
-          const updatedCommonItems = [...commonItems, ...newFiles];
+          const updatedCommonItems = [...commonItems, ...fileMetadataList];
           updateInputContent({ commonItems: updatedCommonItems });
         } else {
-          const updatedItems = [...items, ...newFiles];
+          const updatedItems = [...items, ...fileMetadataList];
           updateInputContent({ items: updatedItems });
         }
       }
+      
+      // 업로드 완료 상태 설정
+      setFileProcessing({
+        uploading: false,
+        error: null,
+        progress: 100
+      });
+      
+      // 진행률 표시기 잠시 후 리셋
+      setTimeout(() => {
+        setFileProcessing(prev => ({
+          ...prev,
+          progress: 0
+        }));
+      }, 1500);
+      
     } catch (error) {
-       console.error("Error processing files:", error);
+      // 에러 처리
+      const errorMessage = error instanceof Error ? error.message : '파일 처리 중 오류가 발생했습니다.';
+      console.error("Error processing files:", error);
+      setFileProcessing({
+        uploading: false,
+        error: errorMessage,
+        progress: 0
+      });
     } finally {
-       event.target.value = ''; 
+      // input 필드 초기화 (같은 파일 재선택 허용)
+      event.target.value = ''; 
     }
   }, [commonItems, items, updateInputContent]);
+
+  // 항상 서버가 연결되어 있지 않은 것으로 처리 (로컬 파일 저장 모드)
+  const serverConnected = false;
 
   /**
    * 특정 인덱스의 아이템 삭제 (chaining, common, element 구분)
    */
   const handleDeleteItem = useCallback((index: number, itemType: 'chaining' | 'common' | 'element') => {
+    let targetArray;
+    let updatedArray;
+    
     if (itemType === 'chaining') {
       if (index < 0 || index >= chainingItems.length) return;
-      const updatedChainingItems = [...chainingItems];
-      updatedChainingItems.splice(index, 1);
-      updateInputContent({ chainingItems: updatedChainingItems });
+      targetArray = chainingItems;
+      updatedArray = [...chainingItems];
     } else if (itemType === 'common') {
       if (index < 0 || index >= commonItems.length) return;
-      const updatedCommonItems = [...commonItems];
-      updatedCommonItems.splice(index, 1);
-      updateInputContent({ commonItems: updatedCommonItems });
+      targetArray = commonItems;
+      updatedArray = [...commonItems];
     } else {
       if (index < 0 || index >= items.length) return;
-      const updatedItems = [...items];
-      updatedItems.splice(index, 1);
-      updateInputContent({ items: updatedItems });
+      targetArray = items;
+      updatedArray = [...items];
+    }
+    
+    // objectURL 정리 (LocalFileMetadata 객체인 경우)
+    const itemToDelete = targetArray[index];
+    if (typeof itemToDelete === 'object' && 'objectUrl' in itemToDelete) {
+      revokeObjectUrl(itemToDelete.objectUrl);
+    }
+    
+    updatedArray.splice(index, 1);
+    
+    if (itemType === 'chaining') {
+      updateInputContent({ chainingItems: updatedArray });
+    } else if (itemType === 'common') {
+      updateInputContent({ commonItems: updatedArray });
+    } else {
+      updateInputContent({ items: updatedArray });
     }
   }, [chainingItems, commonItems, items, updateInputContent]);
 
@@ -143,19 +237,39 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
    */
   const handleClearItems = useCallback((itemType: 'chaining' | 'common' | 'element' | 'all' = 'all') => {
     const updates: Partial<InputNodeContent> = {};
+    
+    // ObjectURL 정리
     if (itemType === 'chaining' || itemType === 'all') {
+      chainingItems.forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
       updates.chainingItems = [];
     }
+    
     if (itemType === 'common' || itemType === 'all') {
+      commonItems.forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
       updates.commonItems = [];
     }
+    
     if (itemType === 'element' || itemType === 'all') {
+      items.forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
       updates.items = [];
     }
+    
     if (Object.keys(updates).length > 0) {
       updateInputContent(updates);
     }
-  }, [updateInputContent]);
+  }, [chainingItems, commonItems, items, updateInputContent]);
 
   /**
    * Chaining 아이템을 Common 또는 Element 아이템으로 이동
@@ -252,6 +366,9 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     editingItemId, // UI 편집 상태 노출
     editingText,   // UI 편집 상태 노출
     label: content?.label || '',
+    fileProcessing,
+    resetError,    // 에러 초기화 함수 노출
+    serverConnected, // 항상 false 반환
     
     // 핸들러 함수
     handleTextChange,

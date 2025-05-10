@@ -1,10 +1,12 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, Dict, Any, List
 from services.web_crawler import crawl_webpage
 from services.html_parser import ExtractionRule, parse_html_content
+from services.file_service import save_uploaded_file, get_file_path, file_exists, list_files
 
 # Configure logging (call once at the start)
 logging.basicConfig(
@@ -126,4 +128,45 @@ async def parse_html(request: HtmlParseRequest):
         return HtmlParseResponse(
             status="error",
             error=f"Failed to process request: {str(e)}"
-        ) 
+        )
+
+# 파일 업로드 API 엔드포인트
+@app.post("/api/files/upload", response_model=Dict[str, Any])
+async def upload_file(file: UploadFile = File(...)):
+    """
+    파일을 서버에 업로드합니다. 현재는 이미지 파일만 지원합니다.
+    최대 파일 크기는 10MB입니다.
+    """
+    try:
+        logger.info(f"File upload request received: {file.filename}")
+        result = await save_uploaded_file(file)
+        logger.info(f"File uploaded successfully: {result['filename']}")
+        return result
+    except HTTPException as e:
+        # HTTPException은 이미 적절한 형식이므로 그대로 발생시킴
+        logger.warning(f"File upload validation error: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during file upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+@app.get("/api/files/{filename}")
+async def get_file(filename: str):
+    """
+    업로드된 파일을 가져옵니다.
+    """
+    if not file_exists(filename):
+        logger.warning(f"File not found: {filename}")
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = get_file_path(filename)
+    logger.info(f"Serving file: {file_path}")
+    return FileResponse(file_path)
+
+@app.get("/api/files", response_model=List[Dict[str, Any]])
+async def get_files(limit: Optional[int] = 100):
+    """
+    업로드된 파일 목록을 반환합니다.
+    """
+    logger.info(f"Listing files with limit: {limit}")
+    return list_files(limit) 
