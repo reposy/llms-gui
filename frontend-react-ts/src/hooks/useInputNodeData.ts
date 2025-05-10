@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect } from 'react';
 import { InputNodeContent, BaseNodeData } from '../types/nodes';
 import { useNodeContentStore } from '../store/useNodeContentStore';
 import { uploadFile } from '../services/fileService';
-import { formatFileSize, FileMetadata } from '../types/files';
+import { formatFileSize, FileMetadata, LocalFileMetadata, createLocalFileMetadata, isFileSizeValid, revokeObjectUrl } from '../types/files';
 
 // 파일 처리 상태 인터페이스
 interface FileProcessingState {
@@ -30,9 +30,9 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   );
 
   // 컨텐츠 필드 접근 (기본값 처리 포함)
-  const chainingItems: (string | File | FileMetadata)[] = (content?.chainingItems as (string | File | FileMetadata)[]) || [];
-  const commonItems: (string | File | FileMetadata)[] = (content?.commonItems as (string | File | FileMetadata)[]) || [];
-  const items: (string | File | FileMetadata)[] = (content?.items as (string | File | FileMetadata)[]) || [];
+  const chainingItems: (string | File | FileMetadata | LocalFileMetadata)[] = (content?.chainingItems as (string | File | FileMetadata | LocalFileMetadata)[]) || [];
+  const commonItems: (string | File | FileMetadata | LocalFileMetadata)[] = (content?.commonItems as (string | File | FileMetadata | LocalFileMetadata)[]) || [];
+  const items: (string | File | FileMetadata | LocalFileMetadata)[] = (content?.items as (string | File | FileMetadata | LocalFileMetadata)[]) || [];
   const textBuffer: string = content?.textBuffer || '';
   const iterateEachRow: boolean = content?.iterateEachRow || false;
   const chainingUpdateMode: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none' = content?.chainingUpdateMode || 'element';
@@ -48,31 +48,16 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     progress: 0
   });
 
-  // 백엔드 서버 연결 여부 상태 관리
-  const [serverConnected, setServerConnected] = useState<boolean | null>(null);
-
-  // 컴포넌트 마운트 시 백엔드 서버 연결 체크
+  // ObjectURL 정리를 위한 효과
   useEffect(() => {
-    async function checkServerConnection() {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3초 타임아웃
-        
-        const response = await fetch(`${process.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/files`, {
-          method: 'HEAD',
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        setServerConnected(response.ok);
-        console.log('Backend server connection status:', response.ok ? 'Connected' : 'Not connected');
-      } catch (error) {
-        console.warn('Failed to connect to backend server:', error);
-        setServerConnected(false);
-      }
-    }
-    
-    checkServerConnection();
+    return () => {
+      // 컴포넌트 언마운트 시 남아있는 objectURL 정리
+      [...chainingItems, ...commonItems, ...items].forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
+    };
   }, []);
 
   /**
@@ -156,79 +141,23 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
       progress: 0
     });
     
-    // 백엔드 서버 연결이 없으면 로컬 폴백 모드 사용
-    if (serverConnected === false) {
-      console.log('Using local fallback mode for file handling');
-      
-      try {
-        // 파일을 그대로 저장 (서버에 업로드하지 않음)
-        if (itemType === 'common') {
-          const updatedCommonItems = [...commonItems, ...files];
-          updateInputContent({ commonItems: updatedCommonItems });
-        } else {
-          const updatedItems = [...items, ...files];
-          updateInputContent({ items: updatedItems });
-        }
-        
-        // 상태 업데이트
-        setFileProcessing({
-          uploading: false,
-          error: null,
-          progress: 100
-        });
-        
-        // 진행률 표시기 잠시 후 리셋
-        setTimeout(() => {
-          setFileProcessing(prev => ({
-            ...prev,
-            progress: 0
-          }));
-        }, 1500);
-        
-      } catch (error) {
-        console.error("Error in local file handling:", error);
-        const errorMessage = error instanceof Error ? error.message : '파일 처리 중 오류가 발생했습니다.';
-        setFileProcessing({
-          uploading: false,
-          error: errorMessage,
-          progress: 0
-        });
-      } finally {
-        event.target.value = '';
+    try {
+      // 파일 크기 검증
+      const invalidFiles = files.filter(file => !isFileSizeValid(file, 10 * 1024 * 1024));
+      if (invalidFiles.length > 0) {
+        throw new Error(`파일 크기는 10MB 이하여야 합니다: ${invalidFiles.map(f => f.name).join(', ')}`);
       }
       
-      return;
-    }
-    
-    // 서버 연결이 있는 경우 정상적인 업로드 프로세스 진행
-    try {
-      // 각 파일을 서버에 업로드하고 메타데이터 수집
-      const uploadedMetadataPromises = files.map(async (file) => {
-        try {
-          const metadata = await uploadFile(file);
-          return metadata;
-        } catch (error) {
-          console.error(`Error uploading file ${file.name}:`, error);
-          
-          // 서버 업로드 실패 시 로컬 폴백으로 전환
-          if (error instanceof Error && (error.message.includes('404') || error.message.includes('Failed to fetch'))) {
-            console.log('Server upload failed, using file object directly');
-            return file; // File 객체 그대로 반환
-          }
-          throw error;
-        }
-      });
+      // 각 파일에 대해 LocalFileMetadata 생성
+      const fileMetadataList = files.map(file => createLocalFileMetadata(file));
       
-      // 모든 업로드 완료 대기
-      const uploadedItems = await Promise.all(uploadedMetadataPromises);
-      
-      // 아이템 목록에 메타데이터 추가
-      if (uploadedItems.length > 0) {
+      // 생성된 메타데이터 추가
+      if (fileMetadataList.length > 0) {
         if (itemType === 'common') {
-          const updatedCommonItems = [...commonItems, ...uploadedItems];
+          const updatedCommonItems = [...commonItems, ...fileMetadataList];
           updateInputContent({ commonItems: updatedCommonItems });
         } else {
-          const updatedItems = [...items, ...uploadedItems];
+          const updatedItems = [...items, ...fileMetadataList];
           updateInputContent({ items: updatedItems });
         }
       }
@@ -250,7 +179,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
       
     } catch (error) {
       // 에러 처리
-      const errorMessage = error instanceof Error ? error.message : '파일 업로드 중 오류가 발생했습니다.';
+      const errorMessage = error instanceof Error ? error.message : '파일 처리 중 오류가 발생했습니다.';
       console.error("Error processing files:", error);
       setFileProcessing({
         uploading: false,
@@ -261,27 +190,43 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
       // input 필드 초기화 (같은 파일 재선택 허용)
       event.target.value = ''; 
     }
-  }, [commonItems, items, updateInputContent, serverConnected]);
+  }, [commonItems, items, updateInputContent]);
 
   /**
    * 특정 인덱스의 아이템 삭제 (chaining, common, element 구분)
    */
   const handleDeleteItem = useCallback((index: number, itemType: 'chaining' | 'common' | 'element') => {
+    let targetArray;
+    let updatedArray;
+    
     if (itemType === 'chaining') {
       if (index < 0 || index >= chainingItems.length) return;
-      const updatedChainingItems = [...chainingItems];
-      updatedChainingItems.splice(index, 1);
-      updateInputContent({ chainingItems: updatedChainingItems });
+      targetArray = chainingItems;
+      updatedArray = [...chainingItems];
     } else if (itemType === 'common') {
       if (index < 0 || index >= commonItems.length) return;
-      const updatedCommonItems = [...commonItems];
-      updatedCommonItems.splice(index, 1);
-      updateInputContent({ commonItems: updatedCommonItems });
+      targetArray = commonItems;
+      updatedArray = [...commonItems];
     } else {
       if (index < 0 || index >= items.length) return;
-      const updatedItems = [...items];
-      updatedItems.splice(index, 1);
-      updateInputContent({ items: updatedItems });
+      targetArray = items;
+      updatedArray = [...items];
+    }
+    
+    // objectURL 정리 (LocalFileMetadata 객체인 경우)
+    const itemToDelete = targetArray[index];
+    if (typeof itemToDelete === 'object' && 'objectUrl' in itemToDelete) {
+      revokeObjectUrl(itemToDelete.objectUrl);
+    }
+    
+    updatedArray.splice(index, 1);
+    
+    if (itemType === 'chaining') {
+      updateInputContent({ chainingItems: updatedArray });
+    } else if (itemType === 'common') {
+      updateInputContent({ commonItems: updatedArray });
+    } else {
+      updateInputContent({ items: updatedArray });
     }
   }, [chainingItems, commonItems, items, updateInputContent]);
 
@@ -290,19 +235,39 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
    */
   const handleClearItems = useCallback((itemType: 'chaining' | 'common' | 'element' | 'all' = 'all') => {
     const updates: Partial<InputNodeContent> = {};
+    
+    // ObjectURL 정리
     if (itemType === 'chaining' || itemType === 'all') {
+      chainingItems.forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
       updates.chainingItems = [];
     }
+    
     if (itemType === 'common' || itemType === 'all') {
+      commonItems.forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
       updates.commonItems = [];
     }
+    
     if (itemType === 'element' || itemType === 'all') {
+      items.forEach(item => {
+        if (typeof item === 'object' && 'objectUrl' in item) {
+          revokeObjectUrl(item.objectUrl);
+        }
+      });
       updates.items = [];
     }
+    
     if (Object.keys(updates).length > 0) {
       updateInputContent(updates);
     }
-  }, [updateInputContent]);
+  }, [chainingItems, commonItems, items, updateInputContent]);
 
   /**
    * Chaining 아이템을 Common 또는 Element 아이템으로 이동
@@ -401,7 +366,6 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     label: content?.label || '',
     fileProcessing,
     resetError,    // 에러 초기화 함수 노출
-    serverConnected, // 백엔드 서버 연결 상태
     
     // 핸들러 함수
     handleTextChange,

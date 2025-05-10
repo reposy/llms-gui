@@ -11,7 +11,7 @@ import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Impo
 import clsx from 'clsx';
 import { InputNodeContent } from '../../types/nodes';
 import { useNodeContent } from '../../store/useNodeContentStore';
-import { adaptDisplayableItem } from '../../utils/ui/adaptDisplayableItem';
+import { ExclamationTriangleIcon, XCircleIcon } from '@heroicons/react/20/solid';
 
 interface InputNodeConfigProps {
   nodeId: string;
@@ -68,9 +68,14 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
     handleClearChainingItems,
     handleClearCommonItems,
     handleClearElementItems,
+    fileProcessing,
+    resetError,
   } = useInputNodeData({ nodeId });
   
   const { content, setContent } = useNodeContent<InputNodeContent>(nodeId, 'input');
+
+  // 명시적으로 타입 캐스팅하여 계산
+  const countableItems = items as (string | File)[];
 
   // Explicitly type the mode for clarity within this component scope
   const currentMode = chainingUpdateMode as 'common' | 'replaceCommon' | 'element' | 'none' | 'replaceElement';
@@ -82,15 +87,42 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
   
   // Convert DisplayableItem to ItemDisplay format for InputItemList component
   const formattedChainingItems = useMemo(() => 
-    displayableChainingItems.map((item, index) => adaptDisplayableItem(item, index)), 
+    displayableChainingItems.map((item, index) => ({
+      id: `item-${index}`,
+      originalIndex: index,
+      display: item.display,
+      fullContent: item.display,
+      type: item.type || (item.isFile ? 'application/octet-stream' : 'text'),
+      isFile: item.isFile,
+      isEditing: false,
+      objectUrl: item.objectUrl
+    })), 
   [displayableChainingItems]);
   
   const formattedCommonItems = useMemo(() => 
-    displayableCommonItems.map((item, index) => adaptDisplayableItem(item, index)), 
+    displayableCommonItems.map((item, index) => ({
+      id: `item-${index}`,
+      originalIndex: index,
+      display: item.display,
+      fullContent: item.display,
+      type: item.type || (item.isFile ? 'application/octet-stream' : 'text'),
+      isFile: item.isFile,
+      isEditing: false,
+      objectUrl: item.objectUrl
+    })), 
   [displayableCommonItems]);
   
   const formattedItems = useMemo(() => 
-    displayableItems.map((item, index) => adaptDisplayableItem(item, index)), 
+    displayableItems.map((item, index) => ({
+      id: `item-${index}`,
+      originalIndex: index,
+      display: item.display,
+      fullContent: item.display,
+      type: item.type || (item.isFile ? 'application/octet-stream' : 'text'),
+      isFile: item.isFile,
+      isEditing: false,
+      objectUrl: item.objectUrl
+    })), 
   [displayableItems]);
 
   // Calculate total count across relevant lists for summary
@@ -273,7 +305,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
 
       {/* Item Count Summary - Uses calculated counts */}
       <InputSummaryBar
-        itemCounts={calculateItemCounts(items)}
+        itemCounts={calculateItemCounts(countableItems)}
         iterateEachRow={iterateEachRow}
       />
 
@@ -320,6 +352,31 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
             buttonLabel="Element"
           />
         </div>
+        
+        {/* 새로고침 경고 메시지 */}
+        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+          <div className="flex items-start">
+            <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 mr-1" />
+            <p className="text-xs text-yellow-700 flex-grow">
+              페이지 새로 고침 시 추가된 파일이 손실됩니다. 실행 전 작업을 완료하세요.
+            </p>
+          </div>
+        </div>
+        
+        {/* File Processing Error */}
+        {fileProcessing.error && (
+          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+            <div className="flex items-start">
+              <p className="text-xs text-red-600 flex-grow">{fileProcessing.error}</p>
+              <button 
+                onClick={resetError}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XCircleIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <hr className="my-4"/>

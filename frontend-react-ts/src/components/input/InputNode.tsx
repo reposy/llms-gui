@@ -38,7 +38,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     label,
     fileProcessing,
     resetError,
-    serverConnected
   } = useInputNodeData({ nodeId: id });
   
   // Format items for display
@@ -236,17 +235,15 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                 </div>
               </div>
               
-              {/* Backend Connection Status */}
-              {serverConnected === false && (
-                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <div className="flex items-start">
-                    <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 mr-1" />
-                    <p className="text-xs text-yellow-700 flex-grow">
-                      백엔드 서버 연결 실패. 이미지가 로컬에 저장되고 페이지 새로 고침시 손실됩니다.
-                    </p>
-                  </div>
+              {/* 새로고침 경고 메시지 */}
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                <div className="flex items-start">
+                  <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 mr-1" />
+                  <p className="text-xs text-yellow-700 flex-grow">
+                    페이지 새로 고침 시 추가된 파일이 손실됩니다. 실행 전 작업을 완료하세요.
+                  </p>
                 </div>
-              )}
+              </div>
               
               {/* File Processing Status */}
               {fileProcessing.uploading && (
