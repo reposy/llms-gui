@@ -194,4 +194,82 @@ export function getImageFilePath(file: File, uploadDir: string = 'uploads/'): { 
     path: filePath,
     name: fileName
   };
+}
+
+/**
+ * 다양한 타입의 이미지 소스를 Base64 문자열로 변환
+ * - File 객체, URL 문자열, LocalFileMetadata 객체 지원
+ * - 최대한 많은 에러 상황 처리 및 로깅
+ * 
+ * @param source 이미지 소스 (File | URL 문자열 | LocalFileMetadata)
+ * @param sourceInfo 로깅 목적의 소스 정보 (파일명 등)
+ * @returns Promise<string> Base64 데이터 URL 형식, 실패 시 Promise reject
+ */
+export async function imageToBase64(
+  source: File | string | { file?: File, objectUrl?: string, originalName?: string },
+  sourceInfo: string = 'unknown source'
+): Promise<string> {
+  // File 객체인 경우
+  if (source instanceof File) {
+    if (!source.type.startsWith('image/')) {
+      throw new Error(`${sourceInfo}: 이미지 파일이 아닙니다 (${source.type})`);
+    }
+    
+    try {
+      return await readFileAsBase64(source);
+    } catch (error) {
+      throw new Error(`${sourceInfo}: File 객체 Base64 변환 실패 - ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  // URL 문자열인 경우
+  if (typeof source === 'string') {
+    try {
+      const response = await fetch(source);
+      if (!response.ok) {
+        throw new Error(`Fetch 실패: ${response.status} - ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) {
+        throw new Error(`이미지 Blob이 아닙니다 (${blob.type})`);
+      }
+      
+      return await readFileAsBase64(new File([blob], sourceInfo, { type: blob.type }));
+    } catch (error) {
+      throw new Error(`${sourceInfo}: URL Base64 변환 실패 - ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  // 객체이면서 File 또는 objectUrl 속성이 있는 경우 (LocalFileMetadata 등)
+  if (typeof source === 'object' && source !== null) {
+    const name = source.originalName || sourceInfo;
+    
+    // File 객체 우선 시도
+    if (source.file instanceof Blob) {
+      try {
+        return await readFileAsBase64(source.file);
+      } catch (fileError) {
+        console.warn(`${name}: File 객체 Base64 변환 실패, objectUrl 시도 중 - ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+        // File 처리 실패 시 objectURL을 통해 재시도 (아래로 계속)
+      }
+    }
+    
+    // objectUrl을 통한 시도
+    if (typeof source.objectUrl === 'string') {
+      try {
+        const response = await fetch(source.objectUrl);
+        if (!response.ok) {
+          throw new Error(`Fetch 실패: ${response.status} - ${response.statusText}`);
+        }
+        
+        const blob = await response.blob();
+        return await readFileAsBase64(new File([blob], name, { type: blob.type }));
+      } catch (error) {
+        throw new Error(`${name}: objectUrl Base64 변환 실패 - ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+  
+  throw new Error(`${sourceInfo}: 지원되지 않는 이미지 소스 타입`);
 } 
