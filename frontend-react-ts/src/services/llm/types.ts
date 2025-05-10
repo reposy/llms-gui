@@ -17,16 +17,17 @@ export interface LLMRequestParams {
   maxTokens?: number;            // 최대 토큰 수
   mode?: 'text' | 'vision';      // 텍스트 또는 비전 모드
   
-  // 파일 관련 파라미터
-  inputFiles?: File[];           // 기존 방식 (File 객체)
-  imageMetadata?: FileMetadata[]; // 서버에 저장된 파일 메타데이터
-  localImages?: LocalFileMetadata[]; // 로컬 메모리 저장 파일 메타데이터
+  // 이미지 데이터 소스 (중요: 항상 하나의 소스만 사용해야 함)
+  imageMetadata?: FileMetadata[]; // 서버에 저장된 파일 메타데이터 (우선순위 1)
+  localImages?: LocalFileMetadata[]; // 로컬 메모리 저장 파일 메타데이터 (우선순위 2) 
+  inputFiles?: File[];           // 기존 방식 File 객체 (우선순위 3, 하위 호환성용)
   
   // 서비스별 설정
   ollamaUrl?: string;            // Ollama 서버 URL
   openaiApiKey?: string;         // OpenAI API 키
-  // Add other common parameters as needed (e.g., max_tokens, stop_sequences)
-  [key: string]: any; // Allow provider-specific parameters
+  
+  // 기타 서비스별 파라미터
+  [key: string]: any;
 }
 
 /**

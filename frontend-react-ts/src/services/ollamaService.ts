@@ -59,15 +59,14 @@ class OllamaService implements LLMProviderService {
       temperature = 0.7,
       maxTokens,
       mode,
-      inputFiles, // 기존 File[] | undefined
-      imageMetadata, // FileMetadata[] | undefined
-      localImages, // 추가: LocalFileMetadata[] | undefined
+      inputFiles,
+      imageMetadata,
+      localImages,
       ollamaUrl = 'http://localhost:11434'
     } = params;
 
     console.log(`Ollama Service: Generating response for model ${model}`);
-    console.log(`File objects: ${inputFiles?.length ?? 0}, Image metadata: ${imageMetadata?.length ?? 0}, Local images: ${localImages?.length ?? 0}`);
-
+    
     try {
       // API 엔드포인트 결정
       const endpoint = `${ollamaUrl}/api/generate`;
@@ -77,91 +76,28 @@ class OllamaService implements LLMProviderService {
         model,
         prompt,
         temperature,
-        stream: false, // 스트리밍 비활성화
+        stream: false,
       };
       
-      // 토큰 제한 설정 (선택 사항)
+      // 토큰 제한 설정
       if (maxTokens) {
         requestBody.num_predict = maxTokens;
       }
       
       // 비전 모드 처리 (이미지 포함)
       if (mode === 'vision') {
-        let images: string[] = [];
+        // 이미지 소스 정보 로깅
+        console.log(`이미지 소스 정보: 서버 이미지=${imageMetadata?.length ?? 0}, 로컬 이미지=${localImages?.length ?? 0}, 파일 객체=${inputFiles?.length ?? 0}`);
         
-        // 1. 이미지 메타데이터 처리 (서버 이미지)
-        if (imageMetadata && imageMetadata.length > 0) {
-          console.log(`Ollama Service: Processing ${imageMetadata.length} image metadata objects`);
-          
-          try {
-            // 각 이미지 메타데이터 처리
-            for (const metadata of imageMetadata) {
-              const fullUrl = getFullFileUrl(metadata.url);
-              const base64Image = await this._loadImageAsBase64(fullUrl);
-              images.push(base64Image);
-              console.log(`Loaded image from URL: ${metadata.originalName}`);
-            }
-          } catch (error) {
-            console.error('Error processing image metadata:', error);
-          }
-        }
+        // 이미지 데이터 변환 - 우선순위에 따라 단일 소스만 처리
+        const base64Images = await this._getImageSourceByPriority(imageMetadata, localImages, inputFiles);
         
-        // 2. 로컬 파일 메타데이터 처리 (LocalFileMetadata)
-        if (localImages && localImages.length > 0) {
-          console.log(`Ollama Service: Processing ${localImages.length} local image metadata objects`);
-          
-          try {
-            for (const localImage of localImages) {
-              const base64Image = await readFileAsBase64(localImage.file);
-              images.push(base64Image);
-              console.log(`Loaded image from local file: ${localImage.originalName}`);
-            }
-          } catch (error) {
-            console.error('Error processing local image metadata:', error);
-          }
-        }
-        
-        // 3. 기존 File 객체 처리 (호환성 유지) - 로컬 이미지가 없을 경우에만 처리
-        if (!localImages?.length && inputFiles && inputFiles.length > 0) {
-          console.log(`Ollama Service: Processing ${inputFiles.length} File objects`);
-          
-          // 이미지 파일만 필터링 및 처리
-          const imageFiles = inputFiles.filter(file => isImageFile(file));
-          
-          try {
-            for (const file of imageFiles) {
-              const base64Image = await readFileAsBase64(file);
-              images.push(base64Image);
-              console.log(`Loaded image from File: ${file.name}`);
-            }
-          } catch (error) {
-            console.error('Error processing image files:', error);
-          }
-        }
-        
-        // Base64 형식 검증
-        const validatedImages = images.filter(img => {
-          // 유효한 Base64 데이터 URL인지 확인 (data:image/...;base64, 형식)
-          return img.startsWith('data:image/') && img.includes(';base64,');
-        });
-        
-        if (validatedImages.length !== images.length) {
-          console.warn(`Filtered out ${images.length - validatedImages.length} invalid base64 images`);
-        }
-        
-        // 중복 이미지 제거 (같은 base64 문자열은 한 번만 포함)
-        const uniqueImages = [...new Set(validatedImages)];
-        
-        if (uniqueImages.length !== validatedImages.length) {
-          console.warn(`Removed ${validatedImages.length - uniqueImages.length} duplicate images`);
-        }
-        
-        // 이미지 추가
-        if (uniqueImages.length > 0) {
-          requestBody.images = uniqueImages;
-          console.log(`Ollama Service: Sending ${uniqueImages.length} unique valid images to Ollama API`);
+        // 처리된 이미지가 있으면 요청에 추가
+        if (base64Images.length > 0) {
+          requestBody.images = base64Images;
+          console.log(`Ollama Service: ${base64Images.length}개 이미지를 API 요청에 포함`);
         } else {
-          console.log('Ollama Service: No valid images to send, using text-only mode');
+          console.log('Ollama Service: 유효한 이미지 없음, 텍스트 모드로 처리');
         }
       }
       
@@ -187,7 +123,6 @@ class OllamaService implements LLMProviderService {
       console.log('Ollama API 호출 성공');
       return {
         response: result.response,
-        // Ollama는 usage 정보를 다른 방식으로 제공
         usage: {
           totalTokens: result.eval_count || result.total_duration || 0
         }
@@ -195,12 +130,104 @@ class OllamaService implements LLMProviderService {
     } catch (error) {
       console.error('Ollama Service Error:', error);
       
-      // 에러 처리 및 전파
       if (error instanceof Error) {
         throw error;
       }
       throw new Error(`Ollama service failed: ${String(error)}`);
     }
+  }
+  
+  /**
+   * 우선순위에 따라 이미지 소스를 처리하여 Base64 형식으로 변환
+   * 1. 서버 이미지 (imageMetadata)
+   * 2. 로컬 이미지 (localImages)
+   * 3. 파일 객체 (inputFiles)
+   */
+  private async _getImageSourceByPriority(
+    imageMetadata?: FileMetadata[],
+    localImages?: LocalFileMetadata[],
+    inputFiles?: File[]
+  ): Promise<string[]> {
+    const result: string[] = [];
+    
+    // 1. 서버 이미지 처리 (최우선)
+    if (imageMetadata && imageMetadata.length > 0) {
+      console.log(`서버 이미지 메타데이터 ${imageMetadata.length}개 처리 중`);
+      
+      try {
+        for (const metadata of imageMetadata) {
+          const fullUrl = getFullFileUrl(metadata.url);
+          const base64Image = await this._loadImageAsBase64(fullUrl);
+          if (this._isValidBase64DataUrl(base64Image)) {
+            result.push(base64Image);
+            console.log(`서버 이미지 로드 성공: ${metadata.originalName}`);
+          } else {
+            console.warn(`유효하지 않은 Base64 이미지 무시: ${metadata.originalName}`);
+          }
+        }
+        // 서버 이미지가 처리되었으면 다른 소스는 무시
+        if (result.length > 0) return result;
+      } catch (error) {
+        console.error('서버 이미지 처리 중 오류:', error);
+      }
+    }
+    
+    // 2. 로컬 이미지 처리 (두 번째 우선순위)
+    if (localImages && localImages.length > 0) {
+      console.log(`로컬 이미지 메타데이터 ${localImages.length}개 처리 중`);
+      
+      try {
+        for (const localImage of localImages) {
+          const base64Image = await readFileAsBase64(localImage.file);
+          if (this._isValidBase64DataUrl(base64Image)) {
+            result.push(base64Image);
+            console.log(`로컬 이미지 로드 성공: ${localImage.originalName}`);
+          } else {
+            console.warn(`유효하지 않은 Base64 이미지 무시: ${localImage.originalName}`);
+          }
+        }
+        // 로컬 이미지가 처리되었으면 다른 소스는 무시
+        if (result.length > 0) return result;
+      } catch (error) {
+        console.error('로컬 이미지 처리 중 오류:', error);
+      }
+    }
+    
+    // 3. 파일 객체 처리 (마지막 우선순위)
+    if (inputFiles && inputFiles.length > 0) {
+      console.log(`File 객체 ${inputFiles.length}개 처리 중`);
+      
+      // 이미지 파일만 필터링
+      const imageFiles = inputFiles.filter(file => isImageFile(file));
+      
+      try {
+        for (const file of imageFiles) {
+          const base64Image = await readFileAsBase64(file);
+          if (this._isValidBase64DataUrl(base64Image)) {
+            result.push(base64Image);
+            console.log(`파일 객체 이미지 로드 성공: ${file.name}`);
+          } else {
+            console.warn(`유효하지 않은 Base64 이미지 무시: ${file.name}`);
+          }
+        }
+      } catch (error) {
+        console.error('파일 객체 처리 중 오류:', error);
+      }
+    }
+    
+    return result;
+  }
+  
+  /**
+   * Base64 데이터 URL이 유효한지 검사
+   */
+  private _isValidBase64DataUrl(dataUrl: string): boolean {
+    return Boolean(
+      dataUrl &&
+      typeof dataUrl === 'string' &&
+      dataUrl.startsWith('data:image/') &&
+      dataUrl.includes(';base64,')
+    );
   }
 }
 

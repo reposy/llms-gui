@@ -85,40 +85,67 @@ export async function readTextFile(file: File): Promise<string> {
 }
 
 /**
- * Read a file and return its Base64 encoded content
- * @param file File to read
- * @returns Promise with the Base64 encoded string (including data: prefix)
+ * 파일을 Base64로 인코딩하여 데이터 URL 형식으로 반환
+ * @param file 인코딩할 파일
+ * @returns 데이터 URL 형식의 Base64 문자열 (data:mimetype;base64,...)
  */
 export function readFileAsBase64(file: File): Promise<string> {
   return new Promise<string>((resolve, reject) => {
+    // 파일 유효성 검사
+    if (!file) {
+      reject(new Error('Invalid file: File is null or undefined'));
+      return;
+    }
+    
+    // 적절한 MIME 타입 확인
+    const mimeType = file.type || 'application/octet-stream';
+    
+    // FileReader 설정
     const reader = new FileReader();
-
+    
     reader.onload = () => {
-      if (reader.result && typeof reader.result === 'string') {
-        // 결과가 유효한 데이터 URL 형식(data:image/jpeg;base64,...)인지 확인
-        if (reader.result.startsWith('data:') && reader.result.includes(';base64,')) {
-          resolve(reader.result);
-        } else {
-          // 형식이 올바르지 않으면 적절한 형식으로 변환 시도
-          try {
-            // MIME 타입 추출 또는 기본값 사용
-            const mimeType = file.type || 'application/octet-stream';
-            const base64Data = btoa(reader.result);
-            resolve(`data:${mimeType};base64,${base64Data}`);
-          } catch (e: any) {
-            reject(new Error(`Invalid base64 data format: ${e.message}`));
-          }
+      try {
+        if (!reader.result) {
+          reject(new Error('FileReader result is empty'));
+          return;
         }
-      } else {
-        reject(new Error('Failed to read file as Base64 string.'));
+        
+        // 결과가 이미 문자열인 경우 (dataURL)
+        if (typeof reader.result === 'string') {
+          // 유효한 데이터 URL 형식인지 확인
+          if (reader.result.startsWith('data:') && reader.result.includes(';base64,')) {
+            resolve(reader.result);
+          } else {
+            reject(new Error('FileReader did not return a valid data URL'));
+          }
+        } 
+        // ArrayBuffer인 경우 (readAsArrayBuffer를 사용했을 때)
+        else if (reader.result instanceof ArrayBuffer) {
+          // ArrayBuffer를 Base64로 변환
+          const binary = [];
+          const bytes = new Uint8Array(reader.result);
+          const len = bytes.byteLength;
+          
+          for (let i = 0; i < len; i++) {
+            binary.push(String.fromCharCode(bytes[i]));
+          }
+          
+          const base64 = btoa(binary.join(''));
+          resolve(`data:${mimeType};base64,${base64}`);
+        } else {
+          reject(new Error('Unsupported FileReader result type'));
+        }
+      } catch (error: any) {
+        reject(new Error(`Base64 encoding failed: ${error.message}`));
       }
     };
-
-    reader.onerror = (error) => {
-      reject(new Error(`Error reading file: ${error}`));
+    
+    reader.onerror = () => {
+      reject(new Error('FileReader error: Failed to read the file'));
     };
-
-    reader.readAsDataURL(file); // Read as data URL (which is Base64)
+    
+    // 데이터 URL로 읽기 (Base64 포함)
+    reader.readAsDataURL(file);
   });
 }
 

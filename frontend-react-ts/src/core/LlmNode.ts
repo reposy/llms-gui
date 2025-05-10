@@ -432,7 +432,7 @@ export class LlmNode extends Node {
     const serverImages = this.imageMetadata.filter(img => !('objectUrl' in img)) as FileMetadata[];
     const localImages = this.imageMetadata.filter(img => 'objectUrl' in img) as LocalFileMetadata[];
 
-    // API 호출 파라미터 구성
+    // API 호출 파라미터 구성 - 이미지 소스는 우선순위에 따라 하나만 선택
     const params: LLMRequestParams = {
       provider: this.property.provider!,
       model: this.property.model!,
@@ -440,12 +440,10 @@ export class LlmNode extends Node {
       temperature: this.property.temperature,
       maxTokens: this.property.maxTokens,
       mode: mode,
-      // 기존 File 객체 지원 (호환성) - 로컬 이미지가 없을 경우에만 사용
-      inputFiles: localImages.length > 0 ? undefined : preparedInputs.inputFileObjects,
-      // 이미지 메타데이터 추가
+      // 우선순위에 따라 이미지 소스 선택 (중요: 한 가지 소스만 사용)
       imageMetadata: serverImages.length > 0 ? serverImages : undefined,
-      // 로컬 이미지 메타데이터 추가
-      localImages: localImages.length > 0 ? localImages : undefined,
+      localImages: serverImages.length === 0 && localImages.length > 0 ? localImages : undefined,
+      inputFiles: serverImages.length === 0 && localImages.length === 0 ? preparedInputs.inputFileObjects : undefined,
       // 서비스별 설정
       ollamaUrl: this.property.ollamaUrl,
       openaiApiKey: this.property.openaiApiKey,
