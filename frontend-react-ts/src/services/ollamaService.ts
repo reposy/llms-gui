@@ -89,7 +89,7 @@ class OllamaService implements LLMProviderService {
       if (mode === 'vision') {
         let images: string[] = [];
         
-        // 1. 이미지 메타데이터 처리
+        // 1. 이미지 메타데이터 처리 (서버 이미지)
         if (imageMetadata && imageMetadata.length > 0) {
           console.log(`Ollama Service: Processing ${imageMetadata.length} image metadata objects`);
           
@@ -121,8 +121,8 @@ class OllamaService implements LLMProviderService {
           }
         }
         
-        // 3. 기존 File 객체 처리 (호환성 유지)
-        if (inputFiles && inputFiles.length > 0) {
+        // 3. 기존 File 객체 처리 (호환성 유지) - 로컬 이미지가 없을 경우에만 처리
+        if (!localImages?.length && inputFiles && inputFiles.length > 0) {
           console.log(`Ollama Service: Processing ${inputFiles.length} File objects`);
           
           // 이미지 파일만 필터링 및 처리
@@ -139,12 +139,29 @@ class OllamaService implements LLMProviderService {
           }
         }
         
+        // Base64 형식 검증
+        const validatedImages = images.filter(img => {
+          // 유효한 Base64 데이터 URL인지 확인 (data:image/...;base64, 형식)
+          return img.startsWith('data:image/') && img.includes(';base64,');
+        });
+        
+        if (validatedImages.length !== images.length) {
+          console.warn(`Filtered out ${images.length - validatedImages.length} invalid base64 images`);
+        }
+        
+        // 중복 이미지 제거 (같은 base64 문자열은 한 번만 포함)
+        const uniqueImages = [...new Set(validatedImages)];
+        
+        if (uniqueImages.length !== validatedImages.length) {
+          console.warn(`Removed ${validatedImages.length - uniqueImages.length} duplicate images`);
+        }
+        
         // 이미지 추가
-        if (images.length > 0) {
-          requestBody.images = images;
-          console.log(`Ollama Service: Sending ${images.length} images to Ollama API`);
+        if (uniqueImages.length > 0) {
+          requestBody.images = uniqueImages;
+          console.log(`Ollama Service: Sending ${uniqueImages.length} unique valid images to Ollama API`);
         } else {
-          console.log('Ollama Service: No images to send, using text-only mode');
+          console.log('Ollama Service: No valid images to send, using text-only mode');
         }
       }
       

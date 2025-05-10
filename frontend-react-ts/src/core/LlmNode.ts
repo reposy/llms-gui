@@ -440,8 +440,8 @@ export class LlmNode extends Node {
       temperature: this.property.temperature,
       maxTokens: this.property.maxTokens,
       mode: mode,
-      // 기존 File 객체 지원 (호환성)
-      inputFiles: preparedInputs.inputFileObjects,
+      // 기존 File 객체 지원 (호환성) - 로컬 이미지가 없을 경우에만 사용
+      inputFiles: localImages.length > 0 ? undefined : preparedInputs.inputFileObjects,
       // 이미지 메타데이터 추가
       imageMetadata: serverImages.length > 0 ? serverImages : undefined,
       // 로컬 이미지 메타데이터 추가

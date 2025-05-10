@@ -95,10 +95,20 @@ export function readFileAsBase64(file: File): Promise<string> {
 
     reader.onload = () => {
       if (reader.result && typeof reader.result === 'string') {
-        // result contains the Base64 string with the data URL prefix (e.g., "data:image/png;base64,...")
-        // Ollama library might just need the part after the comma
-        // Let's return the full string for now, and adjust if needed.
-        resolve(reader.result);
+        // 결과가 유효한 데이터 URL 형식(data:image/jpeg;base64,...)인지 확인
+        if (reader.result.startsWith('data:') && reader.result.includes(';base64,')) {
+          resolve(reader.result);
+        } else {
+          // 형식이 올바르지 않으면 적절한 형식으로 변환 시도
+          try {
+            // MIME 타입 추출 또는 기본값 사용
+            const mimeType = file.type || 'application/octet-stream';
+            const base64Data = btoa(reader.result);
+            resolve(`data:${mimeType};base64,${base64Data}`);
+          } catch (e: any) {
+            reject(new Error(`Invalid base64 data format: ${e.message}`));
+          }
+        }
       } else {
         reject(new Error('Failed to read file as Base64 string.'));
       }
