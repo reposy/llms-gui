@@ -1,6 +1,6 @@
 import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
 import { readFileAsBase64 } from '../utils/data/fileUtils';
-import { getFullFileUrl, isImageFile } from '../types/files';
+import { getFullFileUrl, isImageFile, LocalFileMetadata } from '../types/files';
 
 /**
  * Ollama API 호출 함수 (fetch 사용)
@@ -60,12 +60,13 @@ class OllamaService implements LLMProviderService {
       maxTokens,
       mode,
       inputFiles, // 기존 File[] | undefined
-      imageMetadata, // 새로운 FileMetadata[] | undefined
+      imageMetadata, // FileMetadata[] | undefined
+      localImages, // 추가: LocalFileMetadata[] | undefined
       ollamaUrl = 'http://localhost:11434'
     } = params;
 
     console.log(`Ollama Service: Generating response for model ${model}`);
-    console.log(`File objects: ${inputFiles?.length ?? 0}, Image metadata: ${imageMetadata?.length ?? 0}`);
+    console.log(`File objects: ${inputFiles?.length ?? 0}, Image metadata: ${imageMetadata?.length ?? 0}, Local images: ${localImages?.length ?? 0}`);
 
     try {
       // API 엔드포인트 결정
@@ -105,7 +106,22 @@ class OllamaService implements LLMProviderService {
           }
         }
         
-        // 2. 기존 File 객체 처리 (호환성 유지)
+        // 2. 로컬 파일 메타데이터 처리 (LocalFileMetadata)
+        if (localImages && localImages.length > 0) {
+          console.log(`Ollama Service: Processing ${localImages.length} local image metadata objects`);
+          
+          try {
+            for (const localImage of localImages) {
+              const base64Image = await readFileAsBase64(localImage.file);
+              images.push(base64Image);
+              console.log(`Loaded image from local file: ${localImage.originalName}`);
+            }
+          } catch (error) {
+            console.error('Error processing local image metadata:', error);
+          }
+        }
+        
+        // 3. 기존 File 객체 처리 (호환성 유지)
         if (inputFiles && inputFiles.length > 0) {
           console.log(`Ollama Service: Processing ${inputFiles.length} File objects`);
           

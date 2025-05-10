@@ -6,7 +6,7 @@ import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
 import { filterImageFiles, hasImageExtension } from '../utils/data/fileUtils.ts';
 import { ExecutionContext } from '../types/execution';
-import { FileMetadata, isImageFile, getFullFileUrl } from '../types/files';
+import { FileMetadata, isImageFile, getFullFileUrl, LocalFileMetadata } from '../types/files';
 
 /**
  * Represents the prepared inputs for the LLM service call.
@@ -22,7 +22,7 @@ interface PreparedLlmInputs {
  */
 export class LlmNode extends Node {
   declare property: LLMNodeContent;
-  private imageMetadata: FileMetadata[] = [];
+  private imageMetadata: (FileMetadata | LocalFileMetadata)[] = [];
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'llm', property);
@@ -56,14 +56,14 @@ export class LlmNode extends Node {
       return prompt.replace(/\{\{input\}\}/g, textInput);
     } else if (input && typeof input === 'object') {
        try {
-         // For objects that are not Files, stringify them
-         if (!(input instanceof File) && !('path' in input && 'name' in input)) {
+         // For objects that are not Files or file metadata, stringify them
+         if (!(input instanceof File) && !('file' in input) && !('path' in input && 'name' in input)) {
              return prompt.replace(/\{\{input\}\}/g, JSON.stringify(input, null, 2));
          } else {
-             // For File or FileLikeObject, maybe use a placeholder or filename?
-             const fileName = (input as any).name || '[File Input]';
+             // For File, LocalFileMetadata or FileLikeObject, use filename
+             const fileName = (input as any).name || (input as any).originalName || '[File Input]';
              this._log(`Replacing {{input}} with file name: ${fileName}`);
-             return prompt.replace(/\{\{input\}\}/g, fileName); // Or handle differently?
+             return prompt.replace(/\{\{input\}\}/g, fileName);
          }
        } catch (e) {
          this._log('Failed to stringify object input, using placeholder.');
@@ -80,14 +80,21 @@ export class LlmNode extends Node {
    * @param input 입력 데이터
    * @returns 이미지 메타데이터 배열
    */
-  private _extractImageMetadata(input: any): FileMetadata[] {
-    const metadata: FileMetadata[] = [];
+  private _extractImageMetadata(input: any): (FileMetadata | LocalFileMetadata)[] {
+    const metadata: (FileMetadata | LocalFileMetadata)[] = [];
     
     // 배열 입력 처리
     if (Array.isArray(input)) {
       input.forEach(item => {
+        // LocalFileMetadata 객체 감지 및 이미지 확인
+        if (item && typeof item === 'object' && 'objectUrl' in item && 'file' in item) {
+          if (isImageFile(item as LocalFileMetadata)) {
+            metadata.push(item as LocalFileMetadata);
+            this._log(`Found local image metadata: ${(item as LocalFileMetadata).originalName}`);
+          }
+        }
         // FileMetadata 객체 감지 및 이미지 확인
-        if (item && typeof item === 'object' && 'url' in item && 'contentType' in item) {
+        else if (item && typeof item === 'object' && 'url' in item && 'contentType' in item) {
           if (isImageFile(item as FileMetadata)) {
             metadata.push(item as FileMetadata);
             this._log(`Found image metadata: ${(item as FileMetadata).originalName}`);
@@ -95,7 +102,14 @@ export class LlmNode extends Node {
         }
       });
     } 
-    // 단일 객체 처리
+    // 단일 LocalFileMetadata 객체 처리
+    else if (input && typeof input === 'object' && 'objectUrl' in input && 'file' in input) {
+      if (isImageFile(input as LocalFileMetadata)) {
+        metadata.push(input as LocalFileMetadata);
+        this._log(`Found single local image metadata: ${(input as LocalFileMetadata).originalName}`);
+      }
+    }
+    // 단일 FileMetadata 객체 처리
     else if (input && typeof input === 'object' && 'url' in input && 'contentType' in input) {
       if (isImageFile(input as FileMetadata)) {
         metadata.push(input as FileMetadata);
@@ -114,36 +128,41 @@ export class LlmNode extends Node {
     if (!this.imageMetadata.length) return '';
     
     return this.imageMetadata
-      .map(img => `![${img.originalName}](${getFullFileUrl(img.url)})`)
+      .map(img => {
+        if ('objectUrl' in img) {
+          // LocalFileMetadata의 경우 objectUrl 사용
+          return `![${img.originalName}](${img.objectUrl})`;
+        } else {
+          // FileMetadata의 경우 기존 방식 유지
+          return `![${img.originalName}](${getFullFileUrl(img.url)})`;
+        }
+      })
       .join('\n') + '\n\n';
   }
 
   /**
    * Generates a prefix string based on the input files for vision mode.
-   * Returns '[filename.ext] ' for single file input.
-   * Returns '[file1.jpg, file2.png] ' for array input.
-   * Returns '' otherwise.
+   * Returns file information for the response prefix.
    */
   private _getResultPrefix(input: any): string {
     if (this.property.mode !== 'vision') {
       return '';
     }
     
-    // 이미지 메타데이터가 있는 경우 마크다운 생성
+    // 이미지 메타데이터가 있는 경우 해당 정보 포함
     if (this.imageMetadata.length > 0) {
-      const imageNames = this.imageMetadata.map(img => img.originalName).join(', ');
-      return `[Images: ${imageNames}] `;
+      return this.imageMetadata.map(img => `[${img.originalName}]`).join(' ') + '\n\n';
     }
     
     // 기존 File 객체 처리 유지 (호환성)
     if (input instanceof File) {
-      return `[${input.name}] `;
+      return `[${input.name}]\n\n`;
     } else if (Array.isArray(input)) {
       const filenames = input
         .filter((item): item is File => item instanceof File)
         .map(file => file.name);
       if (filenames.length > 0) {
-        return `[${filenames.join(', ')}] `;
+        return filenames.map(name => `[${name}]`).join(' ') + '\n\n';
       }
     }
     
@@ -189,6 +208,12 @@ export class LlmNode extends Node {
                       textInputs.push(item);
                   } else if (item instanceof File && item.type.startsWith('image/')) {
                       imageFiles.push(item);
+                  } else if (item && typeof item === 'object' && 'file' in item && 'objectUrl' in item) {
+                      // LocalFileMetadata 처리
+                      const fileMeta = item as LocalFileMetadata;
+                      if (isImageFile(fileMeta)) {
+                          imageFiles.push(fileMeta.file);
+                      }
                   } else if (item instanceof File) {
                       this._log(`Skipping non-image file in vision mode: ${item.name}`);
                   }
@@ -198,68 +223,76 @@ export class LlmNode extends Node {
               if (textInputs.length > 0) {
                   const combinedTextInput = textInputs.join('\n');
                   finalPrompt = this.resolvePrompt(combinedTextInput);
-              } else {
-                  finalPrompt = basePrompt; // Use original if no text found
               }
-              this._log(`Vision mode (Array) - Found ${inputFileObjects?.length ?? 0} images, ${textInputs.length} text pieces.`);
-          } else { // mode === 'text'
-              finalPrompt = this.resolvePrompt(input); // resolvePrompt handles array for text mode
-          }
-
-      // 2. Input is File
-      } else if (input instanceof File) {
-          this._log(`Input is File: ${input.name}`);
-          if (mode === 'vision') {
-              if (input.type.startsWith('image/')) {
-                  inputFileObjects = [input];
-                  finalPrompt = basePrompt; // Use original prompt for single image
-              } else {
-                  // Treat non-image file as text input (using filename)
-                  const filenameText = input.name;
-                  textInputs.push(filenameText);
-                  finalPrompt = this.resolvePrompt(filenameText);
-                  inputFileObjects = []; // No image file to pass
-                  this._log('Vision mode (File) - Input File is not an image, treating as text.');
+          } else { // text mode
+              input.forEach(item => {
+                  if (typeof item === 'string') {
+                      textInputs.push(item);
+                  } else if (item instanceof File) {
+                      this._log(`File in text mode: ${item.name} - ignored, only file content would be used.`);
+                  } else if (item && typeof item === 'object') {
+                      // Try to stringify object for text mode
+                      try {
+                          const objJson = JSON.stringify(item, null, 2);
+                          textInputs.push(objJson);
+                      } catch (e) {
+                          this._log(`Failed to stringify object for text input: ${e}`);
+                      }
+                  }
+              });
+              if (textInputs.length > 0) {
+                  finalPrompt = this.resolvePrompt(textInputs.join('\n'));
               }
-          } else { // mode === 'text'
-              finalPrompt = this.resolvePrompt(input); // resolvePrompt uses filename for text mode
-          }
-
-      // 3. Input is String
-      } else if (typeof input === 'string') {
-          this._log('Input is String.');
-          textInputs.push(input); // Treat string as text input regardless of mode
-          finalPrompt = this.resolvePrompt(input);
-          inputFileObjects = []; // Cannot use string as image input
-          if (mode === 'vision' && hasImageExtension(input)) {
-               this._log('Vision mode (String) - Warning: Image path string received, cannot process as image. Treated as text.');
-          }
-
-      // 4. Input is Object (and not File or Array)
-      } else if (input && typeof input === 'object') {
-          this._log('Input is Object.');
-          // Treat object as text input (resolvePrompt handles stringification)
-          const objectAsString = JSON.stringify(input, null, 2); // Example stringification
-          textInputs.push(objectAsString); // Store the stringified version
-          finalPrompt = this.resolvePrompt(input);
-          inputFileObjects = []; // Cannot use plain object as image input
-          if (mode === 'vision') {
-              this._log('Vision mode (Object) - Treating object as text.');
-          }
-
-      // 5. Other Input Types (null, undefined, number, boolean)
-      } else {
-          this._log(`Input is ${typeof input}.`);
-          const stringifiedInput = String(input ?? ''); // Convert to string
-          textInputs.push(stringifiedInput); // Store the stringified version
-          finalPrompt = this.resolvePrompt(input); // resolvePrompt handles stringification
-          inputFileObjects = []; // Cannot use this type as image input
-          if (mode === 'vision') {
-               this._log(`Vision mode (${typeof input}) - Treating as text.`);
           }
       }
+      // 2. Input is File
+      else if (input instanceof File) {
+          this._log(`Input is File: ${input.name}`);
+          if (mode === 'vision' && input.type.startsWith('image/')) {
+              inputFileObjects = [input];
+          }
+          finalPrompt = this.resolvePrompt(input);
+      }
+      // 3. Input is LocalFileMetadata
+      else if (input && typeof input === 'object' && 'file' in input && 'objectUrl' in input) {
+          const fileMeta = input as LocalFileMetadata;
+          this._log(`Input is LocalFileMetadata: ${fileMeta.originalName}`);
+          if (mode === 'vision' && isImageFile(fileMeta)) {
+              inputFileObjects = [fileMeta.file];
+          }
+          finalPrompt = this.resolvePrompt(fileMeta);
+      }
+      // 4. Input is String
+      else if (typeof input === 'string') {
+          this._log('Input is String.');
+          textInputs.push(input);
+          finalPrompt = this.resolvePrompt(input);
+      }
+      // 5. Other Object
+      else if (input && typeof input === 'object') {
+          this._log('Input is Object.');
+          try {
+              const objJson = JSON.stringify(input, null, 2);
+              textInputs.push(objJson);
+              finalPrompt = this.resolvePrompt(objJson);
+          } catch (e) {
+              this._log(`Error stringifying object: ${e}`);
+              finalPrompt = this.resolvePrompt('[Complex Object]');
+          }
+      }
+      // 6. Other primitive types
+      else {
+          this._log(`Input is primitive type: ${typeof input}`);
+          const stringValue = String(input ?? '');
+          textInputs.push(stringValue);
+          finalPrompt = this.resolvePrompt(stringValue);
+      }
 
-      return { finalPrompt, inputFileObjects, textInputs };
+      return {
+          finalPrompt,
+          inputFileObjects,
+          textInputs
+      };
   }
 
   /**
@@ -395,6 +428,10 @@ export class LlmNode extends Node {
       return null;
     }
 
+    // 로컬 이미지와 서버 이미지 분리
+    const serverImages = this.imageMetadata.filter(img => !('objectUrl' in img)) as FileMetadata[];
+    const localImages = this.imageMetadata.filter(img => 'objectUrl' in img) as LocalFileMetadata[];
+
     // API 호출 파라미터 구성
     const params: LLMRequestParams = {
       provider: this.property.provider!,
@@ -405,8 +442,11 @@ export class LlmNode extends Node {
       mode: mode,
       // 기존 File 객체 지원 (호환성)
       inputFiles: preparedInputs.inputFileObjects,
-      // 새로운 이미지 메타데이터 추가
-      imageMetadata: this.imageMetadata.length > 0 ? this.imageMetadata : undefined,
+      // 이미지 메타데이터 추가
+      imageMetadata: serverImages.length > 0 ? serverImages : undefined,
+      // 로컬 이미지 메타데이터 추가
+      localImages: localImages.length > 0 ? localImages : undefined,
+      // 서비스별 설정
       ollamaUrl: this.property.ollamaUrl,
       openaiApiKey: this.property.openaiApiKey,
     };
