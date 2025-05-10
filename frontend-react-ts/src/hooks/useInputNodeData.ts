@@ -1,7 +1,6 @@
 import { useCallback, useState, useEffect } from 'react';
 import { InputNodeContent, BaseNodeData } from '../types/nodes';
 import { useNodeContentStore } from '../store/useNodeContentStore';
-import { uploadFile } from '../services/fileService';
 import { formatFileSize, FileMetadata, LocalFileMetadata, createLocalFileMetadata, isFileSizeValid, revokeObjectUrl } from '../types/files';
 
 // 파일 처리 상태 인터페이스
@@ -128,7 +127,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   }, [updateInputContent]);
 
   /**
-   * 공통 또는 개별 항목으로 파일 추가
+   * 공통 또는 개별 항목으로 파일 추가 (로컬 메모리에 저장)
    */
   const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>, itemType: 'common' | 'element') => {
     if (!event.target.files?.length) return;
@@ -191,6 +190,9 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
       event.target.value = ''; 
     }
   }, [commonItems, items, updateInputContent]);
+
+  // 항상 서버가 연결되어 있지 않은 것으로 처리 (로컬 파일 저장 모드)
+  const serverConnected = false;
 
   /**
    * 특정 인덱스의 아이템 삭제 (chaining, common, element 구분)
@@ -366,6 +368,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     label: content?.label || '',
     fileProcessing,
     resetError,    // 에러 초기화 함수 노출
+    serverConnected, // 항상 false 반환
     
     // 핸들러 함수
     handleTextChange,
