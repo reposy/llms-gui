@@ -5,6 +5,8 @@ import { LLMNodeContent } from '../types/nodes.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
 import { filterImageFiles, hasImageExtension } from '../utils/data/fileUtils.ts';
+import { ExecutionContext } from '../types/execution';
+import { FileMetadata, isImageFile, getFullFileUrl } from '../types/files';
 
 /**
  * Represents the prepared inputs for the LLM service call.
@@ -20,6 +22,7 @@ interface PreparedLlmInputs {
  */
 export class LlmNode extends Node {
   declare property: LLMNodeContent;
+  private imageMetadata: FileMetadata[] = [];
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'llm', property);
@@ -73,6 +76,49 @@ export class LlmNode extends Node {
   }
 
   /**
+   * LLM에 전달할 이미지 메타데이터 준비
+   * @param input 입력 데이터
+   * @returns 이미지 메타데이터 배열
+   */
+  private _extractImageMetadata(input: any): FileMetadata[] {
+    const metadata: FileMetadata[] = [];
+    
+    // 배열 입력 처리
+    if (Array.isArray(input)) {
+      input.forEach(item => {
+        // FileMetadata 객체 감지 및 이미지 확인
+        if (item && typeof item === 'object' && 'url' in item && 'contentType' in item) {
+          if (isImageFile(item as FileMetadata)) {
+            metadata.push(item as FileMetadata);
+            this._log(`Found image metadata: ${(item as FileMetadata).originalName}`);
+          }
+        }
+      });
+    } 
+    // 단일 객체 처리
+    else if (input && typeof input === 'object' && 'url' in input && 'contentType' in input) {
+      if (isImageFile(input as FileMetadata)) {
+        metadata.push(input as FileMetadata);
+        this._log(`Found single image metadata: ${(input as FileMetadata).originalName}`);
+      }
+    }
+    
+    return metadata;
+  }
+
+  /**
+   * 이미지 메타데이터를 마크다운 형식으로 변환
+   * @returns 마크다운 이미지 참조 문자열
+   */
+  private _getImageMarkdown(): string {
+    if (!this.imageMetadata.length) return '';
+    
+    return this.imageMetadata
+      .map(img => `![${img.originalName}](${getFullFileUrl(img.url)})`)
+      .join('\n') + '\n\n';
+  }
+
+  /**
    * Generates a prefix string based on the input files for vision mode.
    * Returns '[filename.ext] ' for single file input.
    * Returns '[file1.jpg, file2.png] ' for array input.
@@ -80,9 +126,16 @@ export class LlmNode extends Node {
    */
   private _getResultPrefix(input: any): string {
     if (this.property.mode !== 'vision') {
-      return ''; // Only apply prefix in vision mode
+      return '';
     }
-
+    
+    // 이미지 메타데이터가 있는 경우 마크다운 생성
+    if (this.imageMetadata.length > 0) {
+      const imageNames = this.imageMetadata.map(img => img.originalName).join(', ');
+      return `[Images: ${imageNames}] `;
+    }
+    
+    // 기존 File 객체 처리 유지 (호환성)
     if (input instanceof File) {
       return `[${input.name}] `;
     } else if (Array.isArray(input)) {
@@ -93,8 +146,8 @@ export class LlmNode extends Node {
         return `[${filenames.join(', ')}] `;
       }
     }
-
-    return ''; // No applicable prefix found
+    
+    return '';
   }
 
   /**
@@ -316,9 +369,14 @@ export class LlmNode extends Node {
     const { mode, basePrompt } = config;
     this._log(`Mode: ${mode}, Base prompt: ${basePrompt.substring(0, 50)}...`);
 
+    // 이미지 메타데이터 추출
+    this.imageMetadata = this._extractImageMetadata(input);
+    
+    // 입력 준비
     const preparedInputs = this._prepareLlmInputs(input, mode, basePrompt);
     this._log(`Prepared LLM inputs. Final prompt: ${preparedInputs.finalPrompt.substring(0,50)}..., Images: ${preparedInputs.inputFileObjects?.length ?? 0}`);
 
+    // 입력 유효성 검사
     const preparedInputValidationError = this._validatePreparedInputs(mode, input, preparedInputs);
     if (preparedInputValidationError) {
       this.context?.markNodeError(this.id, preparedInputValidationError);
@@ -326,9 +384,10 @@ export class LlmNode extends Node {
       return null;
     }
 
-    // If vision mode, but no images and no text prompt, it's an issue.
+    // 비전 모드이지만 이미지 없이 프롬프트도 없는 경우 오류
     if (mode === 'vision' && 
         (!preparedInputs.inputFileObjects || preparedInputs.inputFileObjects.length === 0) && 
+        this.imageMetadata.length === 0 &&
         (!preparedInputs.finalPrompt || preparedInputs.finalPrompt.trim() === '' || preparedInputs.finalPrompt.trim() === basePrompt.trim())) {
       const errorMsg = "Vision mode requires at least one image or a non-empty prompt if no images are provided.";
       this.context?.markNodeError(this.id, errorMsg);
@@ -336,19 +395,24 @@ export class LlmNode extends Node {
       return null;
     }
 
+    // API 호출 파라미터 구성
     const params: LLMRequestParams = {
       provider: this.property.provider!,
       model: this.property.model!,
       prompt: preparedInputs.finalPrompt,
       temperature: this.property.temperature,
       maxTokens: this.property.maxTokens,
-      mode: mode, // Pass the determined mode
-      inputFiles: preparedInputs.inputFileObjects, // Pass the File objects for vision
+      mode: mode,
+      // 기존 File 객체 지원 (호환성)
+      inputFiles: preparedInputs.inputFileObjects,
+      // 새로운 이미지 메타데이터 추가
+      imageMetadata: this.imageMetadata.length > 0 ? this.imageMetadata : undefined,
       ollamaUrl: this.property.ollamaUrl,
       openaiApiKey: this.property.openaiApiKey,
     };
 
     try {
+      // LLM 서비스 호출
       const result = await this._callLlmServiceAndFormatResult(params, input);
       return result;
     } catch (error) {

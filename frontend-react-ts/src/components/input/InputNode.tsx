@@ -1,4 +1,3 @@
-// src/components/nodes/InputNode.tsx
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeContent } from '../../types/nodes';
@@ -323,4 +322,4 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
   );
 };
 
-export default InputNode;
+export default InputNode; 

@@ -1,5 +1,6 @@
 import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
-import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
+import { readFileAsBase64 } from '../utils/data/fileUtils';
+import { getFullFileUrl, isImageFile } from '../types/files';
 
 /**
  * Ollama API 호출 함수 (fetch 사용)
@@ -11,117 +12,161 @@ import { readFileAsBase64 } from '../utils/data/fileUtils.ts';
  * Implements the LLMProviderService interface for the Ollama provider.
  */
 class OllamaService implements LLMProviderService {
+  /**
+   * Base64 인코딩된 이미지 URL 로드
+   * @param url 이미지 URL
+   * @returns Base64 인코딩된 문자열
+   */
+  private async _loadImageAsBase64(url: string): Promise<string> {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      return await this._blobToBase64(blob);
+    } catch (error) {
+      console.error('Error loading image:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Blob을 Base64로 변환
+   * @param blob Blob 객체
+   * @returns Base64 인코딩된 문자열
+   */
+  private _blobToBase64(blob: Blob): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to convert blob to Base64'));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   async generate(params: LLMRequestParams): Promise<LLMServiceResponse> {
-    const { 
+    const {
       model,
       prompt,
-      temperature,
-      images, // Now expecting File[] | undefined
+      temperature = 0.7,
+      maxTokens,
+      mode,
+      inputFiles, // 기존 File[] | undefined
+      imageMetadata, // 새로운 FileMetadata[] | undefined
       ollamaUrl = 'http://localhost:11434'
     } = params;
 
-    const isVisionMode = Array.isArray(images) && images.length > 0;
-    const endpoint = isVisionMode ? `${ollamaUrl}/api/chat` : `${ollamaUrl}/api/generate`;
-    let body: string;
-
-    console.log(`Ollama Service: Generating response (${isVisionMode ? 'Vision' : 'Text'}) for model ${model}, Endpoint: ${endpoint}`);
-    const effectiveTemperature = temperature ?? 0.7;
+    console.log(`Ollama Service: Generating response for model ${model}`);
+    console.log(`File objects: ${inputFiles?.length ?? 0}, Image metadata: ${imageMetadata?.length ?? 0}`);
 
     try {
-      let base64ImageStrings: string[] | undefined = undefined;
-      if (isVisionMode) {
-        // --- Convert File objects to base64 strings --- 
-        console.log(`Ollama Service: Converting ${images.length} files to Base64...`);
-        try {
-            const base64Promises = images.map(file => readFileAsBase64(file));
-            const base64DataUrls = await Promise.all(base64Promises);
-            // Extract only the base64 part (after the comma)
-            base64ImageStrings = base64DataUrls.map(dataUrl => dataUrl.split(',')[1]);
-            console.log(`Ollama Service: Successfully converted images to Base64 strings.`);
-        } catch (conversionError) {
-            console.error('Ollama Service: Error converting files to Base64:', conversionError);
-            throw new Error(`Failed to convert images to Base64: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`);
-        }
-        // --- End conversion --- 
+      // API 엔드포인트 결정
+      const endpoint = `${ollamaUrl}/api/generate`;
+      
+      // 요청 본문 구성
+      const requestBody: any = {
+        model,
+        prompt,
+        temperature,
+        stream: false, // 스트리밍 비활성화
+      };
+      
+      // 토큰 제한 설정 (선택 사항)
+      if (maxTokens) {
+        requestBody.num_predict = maxTokens;
       }
-
-      // --- Construct request body --- 
-      if (isVisionMode) {
-        body = JSON.stringify({ 
-          model,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-              images: base64ImageStrings // Pass the array of base64 strings
+      
+      // 비전 모드 처리 (이미지 포함)
+      if (mode === 'vision') {
+        let images: string[] = [];
+        
+        // 1. 이미지 메타데이터 처리
+        if (imageMetadata && imageMetadata.length > 0) {
+          console.log(`Ollama Service: Processing ${imageMetadata.length} image metadata objects`);
+          
+          try {
+            // 각 이미지 메타데이터 처리
+            for (const metadata of imageMetadata) {
+              const fullUrl = getFullFileUrl(metadata.url);
+              const base64Image = await this._loadImageAsBase64(fullUrl);
+              images.push(base64Image);
+              console.log(`Loaded image from URL: ${metadata.originalName}`);
             }
-          ],
-          stream: false, 
-          options: {
-            temperature: effectiveTemperature
+          } catch (error) {
+            console.error('Error processing image metadata:', error);
           }
-        }); 
-      } else {
-        body = JSON.stringify({ 
-          model,
-          prompt,
-          stream: false, 
-          options: {
-            temperature: effectiveTemperature
+        }
+        
+        // 2. 기존 File 객체 처리 (호환성 유지)
+        if (inputFiles && inputFiles.length > 0) {
+          console.log(`Ollama Service: Processing ${inputFiles.length} File objects`);
+          
+          // 이미지 파일만 필터링 및 처리
+          const imageFiles = inputFiles.filter(file => isImageFile(file));
+          
+          try {
+            for (const file of imageFiles) {
+              const base64Image = await readFileAsBase64(file);
+              images.push(base64Image);
+              console.log(`Loaded image from File: ${file.name}`);
+            }
+          } catch (error) {
+            console.error('Error processing image files:', error);
           }
-        });
+        }
+        
+        // 이미지 추가
+        if (images.length > 0) {
+          requestBody.images = images;
+          console.log(`Ollama Service: Sending ${images.length} images to Ollama API`);
+        } else {
+          console.log('Ollama Service: No images to send, using text-only mode');
+        }
       }
-      // --- End body construction --- 
-    
-      // --- API Call --- 
+      
+      // API 요청
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: body
+        body: JSON.stringify(requestBody)
       });
-  
+      
+      // 응답 처리
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Ollama API Error (${response.status}): ${errorText}`);
         throw new Error(`Ollama API request failed with status ${response.status}: ${errorText}`);
       }
-  
-      const result = await response.json();
-  
-      let responseText = '';
-      if (isVisionMode) {
-        // Assuming chat endpoint response structure is { message: { content: "..." } }
-        if (result && result.message && typeof result.message.content === 'string') {
-          responseText = result.message.content;
-        } else {
-          console.error('Ollama Chat API 응답 형식이 올바르지 않습니다:', result);
-          throw new Error('Invalid response format from Ollama Chat API');
-        }
-      } else {
-        // Original handling for generate endpoint
-        if (result && typeof result.response === 'string') {
-          responseText = result.response;
-        } else {
-          console.error('Ollama Generate API 응답 형식이 올바르지 않습니다:', result);
-          throw new Error('Invalid response format from Ollama Generate API');
-        }
-      }
       
+      const result = await response.json();
+      
+      // 성공 응답 반환
       console.log('Ollama API 호출 성공');
       return {
-        response: responseText,
+        response: result.response,
+        // Ollama는 usage 정보를 다른 방식으로 제공
+        usage: {
+          totalTokens: result.eval_count || result.total_duration || 0
+        }
       };
-  
     } catch (error) {
-      // Log the error from conversion or API call
       console.error('Ollama Service Error:', error);
-      // Re-throw a consistent error format if possible
-      if (error instanceof Error && (error.message.startsWith('Ollama API request failed') || error.message.startsWith('Failed to convert images'))) {
-          throw error;
+      
+      // 에러 처리 및 전파
+      if (error instanceof Error) {
+        throw error;
       }
-      throw new Error(`Ollama Service failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Ollama service failed: ${String(error)}`);
     }
   }
 }

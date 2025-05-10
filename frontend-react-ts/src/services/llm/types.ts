@@ -2,16 +2,28 @@
  * Defines standard types and interfaces for LLM service interactions.
  */
 
+import { FileMetadata } from '../../types/files';
+
 /**
  * Common parameters for requesting LLM generation.
  */
 export interface LLMRequestParams {
-  model: string;
-  prompt: string;
-  temperature?: number;
-  images?: File[]; // Pass File objects directly to services
-  ollamaUrl?: string; // Specific configuration might be needed here or passed differently
-  openaiApiKey?: string; // Specific configuration might be needed here or passed differently
+  provider: 'ollama' | 'openai'; // LLM 서비스 제공자
+  model: string;                 // 모델 이름
+  prompt: string;                // 프롬프트 텍스트
+  
+  // 선택적 파라미터
+  temperature?: number;          // 온도 (창의성 설정)
+  maxTokens?: number;            // 최대 토큰 수
+  mode?: 'text' | 'vision';      // 텍스트 또는 비전 모드
+  
+  // 파일 관련 파라미터
+  inputFiles?: File[];           // 기존 방식 (File 객체)
+  imageMetadata?: FileMetadata[]; // 새 방식 (파일 메타데이터)
+  
+  // 서비스별 설정
+  ollamaUrl?: string;            // Ollama 서버 URL
+  openaiApiKey?: string;         // OpenAI API 키
   // Add other common parameters as needed (e.g., max_tokens, stop_sequences)
   [key: string]: any; // Allow provider-specific parameters
 }
@@ -20,9 +32,14 @@ export interface LLMRequestParams {
  * Standard response structure from an LLM service call.
  */
 export interface LLMServiceResponse {
-  response: string;
+  response: string;              // 텍스트 응답
+  usage?: {                      // 선택적 사용량 정보
+    promptTokens?: number;       // 프롬프트 토큰 수
+    completionTokens?: number;   // 응답 토큰 수
+    totalTokens?: number;        // 총 토큰 수
+  };
+  raw?: any;                     // 원시 응답 데이터 (디버깅용)
   // Optional: Include additional metadata if needed later
-  // e.g., tokenUsage: { promptTokens: number; completionTokens: number };
   // e.g., modelUsed: string;
 }
 

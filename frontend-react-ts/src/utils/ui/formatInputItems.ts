@@ -1,76 +1,76 @@
+import { FileMetadata, LocalFileMetadata } from '../../types/files';
+import { DisplayableItem } from './adaptDisplayableItem';
+
 /**
- * Represents the structure of an item formatted for display in the UI.
+ * 입력 아이템 표시 형식 정의
  */
-export interface FormattedItem {
-  id: string;
-  originalIndex: number;
+export interface DisplayableItem {
   display: string;
-  fullContent: string;
-  type: string;
   isFile: boolean;
-  isEditing: boolean;
+  isLarge?: boolean;
+  type?: string;
+  objectUrl?: string;  // 추가: objectURL 참조
 }
 
 /**
- * Formats raw input items (strings or Files) into a displayable structure.
- * This function is used by both InputNode and InputNodeConfig.
+ * 입력 아이템을 표시 형식으로 변환
  * 
- * @param rawItems - The array of raw input items (string or File).
- * @param itemType - A string identifier for the type of item list ('chaining', 'common', 'element', 'config', etc.) used for generating unique IDs.
- * @returns An array of FormattedItem objects.
+ * @param items 입력 아이템 배열 (문자열, File 객체, FileMetadata 객체, LocalFileMetadata 객체)
+ * @param type 아이템 유형 ('common', 'element', 'chaining')
+ * @returns 표시용 형식으로 변환된 아이템 배열
  */
-export const formatItemsForDisplay = (
-  rawItems: (string | File)[], 
-  itemType: string // Generic item type for ID generation
-): FormattedItem[] => {
-  if (!rawItems) return [];
+export function formatItemsForDisplay(
+  items: (string | File | FileMetadata | LocalFileMetadata)[], 
+  type: 'common' | 'element' | 'chaining'
+): DisplayableItem[] {
+  if (!items || !Array.isArray(items)) {
+    return [];
+  }
 
-  return rawItems.map((item, index) => {
-    const isFile = typeof item !== 'string';
-    // Generate ID: Use file name for files, 'text' for strings
-    const idSuffix = isFile ? (item as File).name : 'text'; 
-    const id = `${itemType}-${index}-${idSuffix}`;
-    
-    let display = '';
-    let fullContent = '';
-    let fileType = 'text'; // Default type for strings
-
-    if (isFile) {
-      const file = item as File;
-      display = file.name || 'Unnamed file';
-      // Provide a fallback for file.type if it's missing or empty
-      const typeString = file.type || ''; 
-      const sizeString = typeof file.size === 'number' ? `${Math.round(file.size / 1024)} KB` : 'Unknown size';
-      fullContent = `${display} (${typeString}, ${sizeString})`;
-      fileType = typeString; // Use the potentially empty string
-    } else {
-      // Ensure item is treated as string
-      fullContent = typeof item === 'string' ? item : String(item); 
-      
-      // Generate display text (truncate if necessary)
-      const lines = fullContent.split('\\n');
-      if (lines.length > 2) {
-        display = lines.slice(0, 2).join('\\n') + '...'; // Indicate truncation
-      } else if (fullContent.length > 50) {
-        display = fullContent.substring(0, 50) + '...'; // Indicate truncation
-      } else {
-        display = fullContent;
-      }
-      
-      // Ensure display is not empty if fullContent was empty
-      if (!display && !isFile) {
-         display = '(empty text)';
-      }
+  return items.map(item => {
+    // 문자열 처리
+    if (typeof item === 'string') {
+      return {
+        display: item.length > 30 ? `${item.substring(0, 30)}...` : item,
+        isFile: false,
+      };
+    } 
+    // File 객체 처리
+    else if (item instanceof File) {
+      return {
+        display: item.name,
+        isFile: true,
+        isLarge: item.size > 1024 * 1024, // 1MB 이상인 경우 대용량 표시
+        type: item.type || 'application/octet-stream'
+      };
     }
-    
-    return {
-      id,
-      originalIndex: index,
-      display,
-      fullContent,
-      type: fileType, // Pass the potentially empty string type
-      isFile,
-      isEditing: false // Default state, typically managed by component state/hooks
-    };
+    // LocalFileMetadata 객체 처리
+    else if (typeof item === 'object' && 'objectUrl' in item) {
+      const metadata = item as LocalFileMetadata;
+      return {
+        display: metadata.originalName,
+        isFile: true,
+        isLarge: metadata.size > 1024 * 1024, // 1MB 이상인 경우 대용량 표시
+        type: metadata.contentType,
+        objectUrl: metadata.objectUrl // objectURL 추가
+      };
+    }
+    // FileMetadata 객체 처리
+    else if (typeof item === 'object' && 'originalName' in item && 'contentType' in item) {
+      const metadata = item as FileMetadata;
+      return {
+        display: metadata.originalName,
+        isFile: true,
+        isLarge: metadata.size > 1024 * 1024, // 1MB 이상인 경우 대용량 표시
+        type: metadata.contentType
+      };
+    }
+    // 기타 타입 (예상치 못한 입력)
+    else {
+      return {
+        display: '[Unknown Item]',
+        isFile: false,
+      };
+    }
   });
-}; 
+} 

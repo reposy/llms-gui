@@ -11,6 +11,7 @@ import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Impo
 import clsx from 'clsx';
 import { InputNodeContent } from '../../types/nodes';
 import { useNodeContent } from '../../store/useNodeContentStore';
+import { adaptDisplayableItem } from '../../utils/ui/adaptDisplayableItem';
 
 interface InputNodeConfigProps {
   nodeId: string;
@@ -75,9 +76,22 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
   const currentMode = chainingUpdateMode as 'common' | 'replaceCommon' | 'element' | 'none' | 'replaceElement';
 
   // Format each list separately using the imported utility function
-  const formattedChainingItems = useMemo(() => formatItemsForDisplay(chainingItems || [], 'config-chaining'), [chainingItems]);
-  const formattedCommonItems = useMemo(() => formatItemsForDisplay(commonItems || [], 'config-common'), [commonItems]);
-  const formattedItems = useMemo(() => formatItemsForDisplay(items || [], 'config-element'), [items]);
+  const displayableChainingItems = useMemo(() => formatItemsForDisplay(chainingItems || [], 'chaining'), [chainingItems]);
+  const displayableCommonItems = useMemo(() => formatItemsForDisplay(commonItems || [], 'common'), [commonItems]);
+  const displayableItems = useMemo(() => formatItemsForDisplay(items || [], 'element'), [items]);
+  
+  // Convert DisplayableItem to ItemDisplay format for InputItemList component
+  const formattedChainingItems = useMemo(() => 
+    displayableChainingItems.map((item, index) => adaptDisplayableItem(item, index)), 
+  [displayableChainingItems]);
+  
+  const formattedCommonItems = useMemo(() => 
+    displayableCommonItems.map((item, index) => adaptDisplayableItem(item, index)), 
+  [displayableCommonItems]);
+  
+  const formattedItems = useMemo(() => 
+    displayableItems.map((item, index) => adaptDisplayableItem(item, index)), 
+  [displayableItems]);
 
   // Calculate total count across relevant lists for summary
   const totalItemCount = (commonItems?.length || 0) + (items?.length || 0);
