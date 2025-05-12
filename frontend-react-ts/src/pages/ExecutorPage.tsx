@@ -356,12 +356,25 @@ const ExecutorPage: React.FC = () => {
     <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex-none h-12 bg-gray-100 border-b border-gray-200 px-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Flow Executor</h1>
-        <Link 
-          to="/" 
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-        >
-          Go to Editor
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link 
+            to="/" 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+          >
+            Go to Editor
+          </Link>
+          <button
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 text-sm font-medium disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed"
+            onClick={handleExecuteChain}
+            disabled={isExecuting || flowChain.length === 0}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {isExecuting ? '실행 중...' : '플로우 실행'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden p-4 bg-gray-50">

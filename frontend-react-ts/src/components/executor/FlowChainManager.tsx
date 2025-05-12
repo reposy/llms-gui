@@ -9,35 +9,76 @@ interface FlowChainManagerProps {
 
 // Flow 노드 정보 분석 함수
 const analyzeFlowNodes = (nodes: Node[], edges: Edge[]) => {
-  // 각 노드의 인커밍/아웃고잉 엣지 수 계산
-  const incomingEdges: Record<string, number> = {};
-  const outgoingEdges: Record<string, number> = {};
+  // 1. 노드 연결 정보 초기화
+  // 각 노드의 입력(좌측) 및 출력(우측) 연결 상태 추적
+  const nodeConnections: Record<string, { hasInputs: boolean; hasOutputs: boolean }> = {};
   
-  // 초기화
+  // 초기화: 모든 노드는, 기본적으로 입력과 출력이 없음으로 설정
   nodes.forEach(node => {
-    incomingEdges[node.id] = 0;
-    outgoingEdges[node.id] = 0;
+    nodeConnections[node.id] = { hasInputs: false, hasOutputs: false };
   });
   
-  // 엣지 카운팅
-  edges.forEach(edge => {
-    if (edge.source && edge.target) {
-      outgoingEdges[edge.source] = (outgoingEdges[edge.source] || 0) + 1;
-      incomingEdges[edge.target] = (incomingEdges[edge.target] || 0) + 1;
+  // 2. 그룹 노드 및 그 내부 노드 식별
+  const groupNodes = nodes.filter(node => node.type === 'group');
+  const nodesInGroups = new Set<string>();
+  
+  // 그룹 내부 노드 식별
+  groupNodes.forEach(groupNode => {
+    const groupData = groupNode.data;
+    if (groupData && groupData.nodeIds) {
+      groupData.nodeIds.forEach((nodeId: string) => {
+        nodesInGroups.add(nodeId);
+      });
     }
   });
   
-  // 루트 노드: 인커밍 엣지가 없는 노드
-  const rootNodes = nodes.filter(node => incomingEdges[node.id] === 0);
+  // 3. 엣지 분석 - 방향성 고려
+  edges.forEach(edge => {
+    if (edge.source && edge.target) {
+      // 소스 노드는 출력(우측 핸들)이 있음
+      if (nodeConnections[edge.source]) {
+        nodeConnections[edge.source].hasOutputs = true;
+      }
+      
+      // 타겟 노드는 입력(좌측 핸들)이 있음
+      if (nodeConnections[edge.target]) {
+        nodeConnections[edge.target].hasInputs = true;
+      }
+    }
+  });
   
-  // 리프 노드: 아웃고잉 엣지가 없는 노드
-  const leafNodes = nodes.filter(node => outgoingEdges[node.id] === 0);
+  // 4. 루트 및 리프 노드 식별
+  // 루트 노드: 입력 연결이 없는 노드 (그룹에 속하지 않음)
+  const rootNodes = nodes.filter(node => 
+    !nodesInGroups.has(node.id) && // 그룹 내부 노드 제외
+    node.id in nodeConnections && // 존재하는 노드인지 확인
+    !nodeConnections[node.id].hasInputs // 입력 연결이 없음
+  );
+  
+  // 리프 노드: 출력 연결이 없는 노드 (그룹에 속하지 않음)
+  const leafNodes = nodes.filter(node => 
+    !nodesInGroups.has(node.id) && // 그룹 내부 노드 제외
+    node.id in nodeConnections && // 존재하는 노드인지 확인
+    !nodeConnections[node.id].hasOutputs // 출력 연결이 없음
+  );
+  
+  // 5. 타입이 'input'인 노드 수 계산 (입력 핸들 수 추정)
+  const inputTypeNodes = nodes.filter(node => 
+    node.type === 'input' && !nodesInGroups.has(node.id)
+  );
+  
+  // 전체 노드 수에서 그룹 내부 노드 수 제외
+  const visibleNodes = nodes.filter(node => !nodesInGroups.has(node.id));
   
   return {
-    totalNodes: nodes.length,
+    totalNodes: visibleNodes.length,
     totalEdges: edges.length,
     rootNodeCount: rootNodes.length,
-    leafNodeCount: leafNodes.length
+    leafNodeCount: leafNodes.length,
+    inputNodeCount: inputTypeNodes.length,
+    // 선택적으로 ID 목록도 반환 (디버깅 및 확장성 목적)
+    rootNodeIds: rootNodes.map(n => n.id),
+    leafNodeIds: leafNodes.map(n => n.id)
   };
 };
 

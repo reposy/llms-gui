@@ -1,6 +1,7 @@
 import { runFullFlowExecution } from '../core/executionUtils';
 import { FlowData } from '../utils/data/importExportUtils';
 import { getAllOutputs } from '../core/outputCollector';
+import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
 
 // 결과 갱신 콜백 관리를 위한 객체
 const resultCallbacks: Record<string, ((result: any) => void)[]> = {};
@@ -37,6 +38,7 @@ const notifyResultCallbacks = (flowId: string, result: any) => {
 interface ExecuteFlowParams {
   flowJson: FlowData;
   inputs: any[];
+  flowId: string; // Flow ID 추가 (루트/리프 노드 참조용)
   onComplete?: (result: any) => void;
 }
 
@@ -59,17 +61,37 @@ interface ExecuteChainParams {
 
 /**
  * 단일 Flow를 실행합니다.
- * 백엔드 호출 대신 클라이언트에서 처리하며, 내부적으로 executionUtils의 runFullFlowExecution을 사용합니다.
+ * 그래프 스토어를 사용하여 루트 노드를 식별하고, runFullFlowExecution을 통해 실행합니다.
  */
 export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   try {
-    console.log('[flowExecutionService] Starting local flow execution');
+    console.log('[flowExecutionService] Starting flow execution for flow:', params.flowId);
+    
+    // 그래프 스토어에서 Flow 정보 가져오기
+    const graphStore = useExecutorGraphStore.getState();
+    
+    // 해당 Flow의 그래프 정보가 없으면 먼저 설정
+    if (!graphStore.getFlowGraph(params.flowId)) {
+      console.log('[flowExecutionService] Setting flow graph for:', params.flowId);
+      graphStore.setFlowGraph(params.flowId, params.flowJson);
+    }
+    
+    // 루트 노드 ID 가져오기
+    const rootNodeIds = graphStore.getRootNodeIds(params.flowId);
+    
+    if (rootNodeIds.length === 0) {
+      console.warn('[flowExecutionService] No root nodes found for flow:', params.flowId);
+      throw new Error('실행할 루트 노드가 없습니다. 유효한 Flow 구조인지 확인하세요.');
+    }
+    
+    console.log(`[flowExecutionService] Found ${rootNodeIds.length} root nodes:`, rootNodeIds);
     
     // 루트 노드 실행 (입력 데이터와 함께)
     await runFullFlowExecution(undefined, params.inputs);
     
     // 리프 노드의 결과 수집
     const outputs = getAllOutputs();
+    console.log('[flowExecutionService] Collected outputs:', outputs);
     
     // 콜백 호출 (onComplete가 있는 경우)
     if (params.onComplete) {
@@ -77,7 +99,7 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     }
     
     return {
-      executionId: `local-exec-${Date.now()}`,
+      executionId: `exec-${Date.now()}`,
       outputs,
       status: 'success'
     };
@@ -95,10 +117,6 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
 /**
  * Flow 체인을 순차적으로 실행합니다.
  * 각 Flow의 결과는 onFlowComplete 콜백을 통해 반환됩니다.
- * 
- * @param params.flowItems - 실행할 Flow 항목 배열
- * @param params.onFlowComplete - 각 Flow 실행 완료 시 호출될 콜백 함수
- * @param params.onError - 오류 발생 시 호출될 콜백 함수
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
   const { flowItems, onFlowComplete, onError } = params;
@@ -113,10 +131,10 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
     try {
       console.log(`[flowExecutionService] Executing flow ${i + 1}/${flowItems.length}: ${id}`);
       
-      // 입력에 이전 Flow 결과 변수 처리
+      // 입력 데이터 처리 - 이전 Flow 결과 참조 변수 처리
       const processedInputs = inputData.map(input => {
         if (typeof input === 'string') {
-          // result-flow-X 형태의 참조 변수 처리
+          // ${result-flow-X} 형태의 참조 변수 처리
           const resultRefPattern = /\$\{result-flow-([^}]+)\}/g;
           
           return input.replace(resultRefPattern, (match, flowId) => {
@@ -125,16 +143,31 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
               console.warn(`[flowExecutionService] Reference to unknown flow result: ${match}`);
               return match; // 알 수 없는 참조는 그대로 유지
             }
-            return typeof result === 'string' ? result : JSON.stringify(result);
+            
+            // 결과 데이터 타입에 따른 처리
+            if (typeof result === 'string') {
+              return result;
+            } else if (Array.isArray(result)) {
+              // 배열인 경우 첫 번째 항목 사용 (또는 다른 정책 적용 가능)
+              if (result.length > 0) {
+                const firstResult = result[0];
+                return typeof firstResult === 'string' ? 
+                  firstResult : JSON.stringify(firstResult);
+              }
+              return '[]'; // 빈 배열
+            } else {
+              return JSON.stringify(result);
+            }
           });
         }
         return input;
       });
       
-      // 현재 Flow 실행
+      // Flow 실행
       const response = await executeFlow({
         flowJson,
         inputs: processedInputs,
+        flowId: id,
         onComplete: (result) => {
           // 결과 저장 후 콜백 호출
           previousResults[id] = result;
@@ -159,9 +192,8 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         return;
       }
       
-      // 결과 저장 (onComplete 콜백 대신 사용)
-      if (!response.outputs && !previousResults[id]) {
-        // 결과가 아직 설정되지 않은 경우에만 설정
+      // 결과가 아직 설정되지 않은 경우 설정
+      if (!previousResults[id] && response.outputs) {
         previousResults[id] = response.outputs;
         
         // 등록된 모든 콜백 호출

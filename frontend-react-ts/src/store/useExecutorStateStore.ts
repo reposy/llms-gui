@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { FlowData } from '../utils/data/importExportUtils';
+import { useExecutorGraphStore } from './useExecutorGraphStore';
 
 type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 
@@ -77,6 +78,10 @@ export const useExecutorStateStore = create<ExecutorState>()(
           result: null
         };
         
+        // 그래프 스토어에 Flow 그래프 정보 저장
+        const graphStore = useExecutorGraphStore.getState();
+        graphStore.setFlowGraph(newFlow.id, flowJson);
+        
         return {
           flowChain: [...state.flowChain, newFlow],
           stage: state.stage === 'upload' ? 'input' : state.stage
@@ -91,6 +96,9 @@ export const useExecutorStateStore = create<ExecutorState>()(
         if (newFlowChain.length <= newActiveFlowIndex) {
           newActiveFlowIndex = Math.max(0, newFlowChain.length - 1);
         }
+        
+        // 그래프 스토어에서도 Flow 정보 제거
+        // (getFlowGraph 함수를 사용하기 때문에 명시적 제거는 필요 없으나, 메모리 관리 차원에서 추가)
         
         return {
           flowChain: newFlowChain,
@@ -169,7 +177,13 @@ export const useExecutorStateStore = create<ExecutorState>()(
       setError: (error) => set({ error }),
       
       // 상태 초기화 함수
-      resetState: () => set(initialState),
+      resetState: () => {
+        // 그래프 스토어 초기화
+        useExecutorGraphStore.getState().resetFlowGraphs();
+        
+        // 실행기 상태 초기화
+        set(initialState);
+      },
       
       resetResults: () => set((state) => {
         const newFlowChain = state.flowChain.map(flow => ({
