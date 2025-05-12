@@ -153,7 +153,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, onInputDataSubmit
         <textarea
           value={input}
           onChange={(e) => handleInputChange(index, e.target.value)}
-          className="flex-1 p-2 border border-gray-300 rounded min-h-[80px] resize-y"
+          className="flex-1 p-2 border border-gray-200 rounded min-h-[80px] resize-y bg-white shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
           placeholder="입력 데이터를 여기에 입력하세요..."
         />
         
@@ -190,7 +190,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, onInputDataSubmit
     return (
       <div className="mt-1">
         <select
-          className="text-sm p-1 border border-gray-300 rounded"
+          className="text-sm p-1 border border-gray-200 rounded bg-white shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
           onChange={(e) => handleInsertReference(index, e.target.value)}
           value=""
         >
@@ -206,9 +206,11 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, onInputDataSubmit
   };
 
   return (
-    <div className="p-4 border border-gray-300 rounded-lg bg-white">
+    <div className="h-full p-4 border border-gray-300 rounded-lg bg-white overflow-y-auto">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-medium">Flow 입력 데이터</h2>
+        <h2 className="text-lg font-medium">
+          {currentFlow?.name || 'Flow'} 입력 데이터
+        </h2>
         {submitted && (
           <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
             입력 완료
@@ -228,7 +230,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, onInputDataSubmit
       <div className="flex justify-between">
         <button
           onClick={handleAddInput}
-          className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors flex items-center"
+          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center border border-gray-200"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />

@@ -154,6 +154,42 @@ const ExecutorPage: React.FC = () => {
     setStage('input');
   };
   
+  // 실행 모드 선택 UI 렌더링
+  const renderExecutionModeSelector = () => {
+    return (
+      <div className="p-4 border border-gray-300 rounded-lg bg-white mb-4">
+        <h2 className="text-lg font-medium mb-3">실행 모드</h2>
+        <div className="space-y-2">
+          <label className="flex items-center space-x-2">
+            <input
+              type="radio"
+              name="execution-mode"
+              checked={executionMode === 'single'}
+              onChange={() => handleExecutionModeChange('single')}
+              className="form-radio h-4 w-4 text-blue-600"
+            />
+            <span>단일 Flow 실행</span>
+          </label>
+          <label className="flex items-center space-x-2">
+            <input
+              type="radio"
+              name="execution-mode"
+              checked={executionMode === 'chain'}
+              onChange={() => handleExecutionModeChange('chain')}
+              className="form-radio h-4 w-4 text-blue-600"
+            />
+            <span>전체 Flow 체인 실행</span>
+          </label>
+          <p className="text-sm text-gray-500 mt-2">
+            {executionMode === 'single' 
+              ? '선택한 단일 Flow만 실행합니다.' 
+              : '모든 Flow를 순서대로 실행하며, 이전 Flow 결과를 다음 Flow의 입력으로 사용할 수 있습니다.'}
+          </p>
+        </div>
+      </div>
+    );
+  };
+  
   // 단일 Flow/체인 실행 버튼 렌더링
   const renderExecuteButton = () => {
     // 실행 가능 상태 확인
@@ -299,109 +335,82 @@ const ExecutorPage: React.FC = () => {
           </div>
         )}
 
-        {/* 좌우 분할 레이아웃 (input, executing, result 단계에서 적용) */}
-        {(stage === 'input' || stage === 'executing' || stage === 'result') && (
-          <div className={`${stage === 'result' ? 'flex flex-row h-[calc(100%-4rem)]' : 'flex flex-col'} gap-4 max-w-[95%] mx-auto`}>
-            {/* 왼쪽 패널: Flow Chain과 Input Data */}
-            <div className={`${stage === 'result' ? 'w-1/2 overflow-y-auto pr-4 h-full' : 'w-full'}`}>
-              {stage === 'result' && (
-                <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Flow 설정</h2>
-              )}
-
-              <div className="grid grid-cols-1 gap-6">
-                {/* Flow 체인 관리 */}
-                <FlowChainManager onSelectFlow={handleFlowSelect} />
-                
-                {/* 선택된 Flow가 있으면 입력 폼 표시 */}
-                {selectedFlowId && (
-                  <FlowInputForm flowId={selectedFlowId} />
-                )}
-                
-                {/* 실행 모드 선택 */}
-                {stage === 'input' && (
-                  <div className="p-4 border border-gray-300 rounded-lg bg-white">
-                    <h2 className="text-lg font-medium mb-3">실행 모드</h2>
-                    <div className="space-y-2">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="execution-mode"
-                          checked={executionMode === 'single'}
-                          onChange={() => handleExecutionModeChange('single')}
-                          className="form-radio h-4 w-4 text-blue-600"
-                        />
-                        <span>단일 Flow 실행</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="execution-mode"
-                          checked={executionMode === 'chain'}
-                          onChange={() => handleExecutionModeChange('chain')}
-                          className="form-radio h-4 w-4 text-blue-600"
-                        />
-                        <span>전체 Flow 체인 실행</span>
-                      </label>
-                      <p className="text-sm text-gray-500 mt-2">
-                        {executionMode === 'single' 
-                          ? '선택한 단일 Flow만 실행합니다.' 
-                          : '모든 Flow를 순서대로 실행하며, 이전 Flow 결과를 다음 Flow의 입력으로 사용할 수 있습니다.'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {stage === 'input' && (
-                  <div className="flex justify-center mt-2">
-                    {renderExecuteButton()}
-                  </div>
-                )}
+        {/* 각 단계별 레이아웃 */}
+        {stage === 'input' && (
+          <div className="flex flex-row h-[calc(100%-4rem)] gap-4 max-w-[95%] mx-auto">
+            {/* 왼쪽 패널: 실행 모드 + Flow 체인 */}
+            <div className="w-1/2 overflow-y-auto pr-2">
+              {renderExecutionModeSelector()}
+              <FlowChainManager onSelectFlow={handleFlowSelect} />
+              
+              <div className="mt-6 flex justify-center">
+                {renderExecuteButton()}
               </div>
             </div>
-
-            {/* 분할선 - 결과 단계에서만 표시 */}
-            {stage === 'result' && (
-              <div className="h-full w-px bg-gray-300"></div>
-            )}
-
-            {/* 오른쪽 패널: 실행 결과 (executing, result 단계에서만 표시) */}
-            {(stage === 'executing' || stage === 'result') && (
-              <div className={`${stage === 'result' ? 'w-1/2 overflow-y-auto pl-4 h-full' : 'w-full'}`}>
-                {stage === 'result' && (
-                  <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">실행 결과</h2>
-                )}
-                
-                {isExecuting ? (
-                  <div className="flex items-center justify-center p-8 border border-gray-300 rounded-lg bg-white">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                    <span className="ml-3">
-                      {executionMode === 'single' 
-                        ? 'Flow 실행 중...' 
-                        : 'Flow 체인 실행 중...'}
-                    </span>
+            
+            {/* 오른쪽 패널: 선택된 Flow의 입력 데이터 */}
+            <div className="w-1/2 overflow-y-auto pl-2">
+              {selectedFlowId ? (
+                <FlowInputForm flowId={selectedFlowId} />
+              ) : (
+                <div className="h-full flex items-center justify-center p-4 border border-gray-300 rounded-lg bg-white">
+                  <div className="text-center text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    <p className="text-lg font-medium mb-2">Flow를 선택해주세요</p>
+                    <p className="text-sm">
+                      왼쪽에서 Flow를 선택하면 입력 데이터를 설정할 수 있습니다.
+                    </p>
                   </div>
-                ) : (
-                  renderResults()
-                )}
-                
-                {stage === 'result' && !isExecuting && (
-                  <div className="flex justify-center mt-6 space-x-3">
-                    <button
-                      onClick={handleBackToInput}
-                      className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-                    >
-                      입력 수정
-                    </button>
-                    <button
-                      onClick={executionMode === 'single' ? handleExecuteSingleFlow : handleExecuteChain}
-                      className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
-                    >
-                      다시 실행
-                    </button>
-                  </div>
-                )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {stage === 'executing' && (
+          <div className="max-w-[95%] mx-auto">
+            <div className="flex items-center justify-center p-8 border border-gray-300 rounded-lg bg-white">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <span className="ml-3">
+                {executionMode === 'single' 
+                  ? 'Flow 실행 중...' 
+                  : 'Flow 체인 실행 중...'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {stage === 'result' && (
+          <div className="flex flex-row h-[calc(100%-4rem)] gap-4 max-w-[95%] mx-auto">
+            {/* 왼쪽 패널: Flow 설정 */}
+            <div className="w-1/2 overflow-y-auto pr-2">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Flow 설정</h2>
+              {renderExecutionModeSelector()}
+              <FlowChainManager onSelectFlow={handleFlowSelect} />
+              
+              <div className="mt-6 flex justify-center space-x-3">
+                <button
+                  onClick={handleBackToInput}
+                  className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  입력 수정
+                </button>
+                <button
+                  onClick={executionMode === 'single' ? handleExecuteSingleFlow : handleExecuteChain}
+                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  다시 실행
+                </button>
               </div>
-            )}
+            </div>
+            
+            {/* 오른쪽 패널: 실행 결과 */}
+            <div className="w-1/2 overflow-y-auto pl-2">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">실행 결과</h2>
+              {renderResults()}
+            </div>
           </div>
         )}
       </div>
