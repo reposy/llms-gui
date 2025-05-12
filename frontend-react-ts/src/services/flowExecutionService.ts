@@ -1,5 +1,5 @@
 import { runFullFlowExecution } from '../core/executionUtils';
-import { importFlowFromJson, FlowData } from '../utils/data/importExportUtils';
+import { FlowData } from '../utils/data/importExportUtils';
 import { getAllOutputs } from '../core/outputCollector';
 
 interface ExecuteFlowParams {
@@ -15,15 +15,14 @@ interface ExecutionResponse {
 }
 
 /**
- * Flow Editor와 동일한 방식으로 플로우를 실행합니다.
- * 백엔드 호출 대신 클라이언트에서 처리하며, Flow Editor의 runFullFlowExecution을 재사용합니다.
+ * Flow Executor에서 플로우를 실행합니다.
+ * 백엔드 호출 대신 클라이언트에서 처리하며, 내부적으로 executionUtils의 runFullFlowExecution을 사용합니다.
  */
 export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   try {
     console.log('[flowExecutionService] Starting local flow execution');
     
-    // 1. 플로우 JSON을 Flow Editor 상태에 적용
-    // (이미 FileUploader에서 수행됨)
+    // 1. 플로우 JSON은 이미 useExecutorStateStore에 저장되어 있음
     
     // 2. 루트 노드 실행 (입력 데이터와 함께)
     await runFullFlowExecution(undefined, params.inputs);

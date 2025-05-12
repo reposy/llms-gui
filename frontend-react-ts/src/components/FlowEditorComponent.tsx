@@ -202,6 +202,7 @@ export const FlowEditor = () => {
           <Link
             to="/executor"
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm font-medium"
+            title="Flow Executor는 Flow Editor와 독립적인 환경으로 동작합니다."
           >
             Go to Executor
           </Link>

@@ -29,9 +29,6 @@ interface ExecutorState {
   
   // 상태 초기화 함수
   resetState: () => void;
-  
-  // Flow Editor에서 현재 상태 가져오기
-  importFromEditor: () => void;
 }
 
 // 초기 상태
@@ -57,20 +54,6 @@ export const useExecutorStateStore = create<ExecutorState>()(
       
       // 상태 초기화 함수
       resetState: () => set(initialState),
-      
-      // Flow Editor에서 현재 상태 가져오기
-      importFromEditor: () => {
-        // Flow Editor의 현재 상태를 가져와서 Executor 상태 업데이트
-        // 실제 구현은 Flow Editor의 exportFlowAsJson 함수를 활용
-        const { exportFlowAsJson } = require('../utils/data/importExportUtils');
-        const flowData = exportFlowAsJson(true); // 실행 결과 포함하여 가져오기
-        
-        // 현재 상태 업데이트
-        set({ 
-          flowJson: flowData,
-          stage: 'input'
-        });
-      }
     }),
     {
       name: 'flow-executor-storage', // localStorage/IndexedDB 키 이름

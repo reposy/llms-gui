@@ -96,10 +96,8 @@ const ExecutorPage: React.FC = () => {
 
   // 처음부터 다시 시작 - Change Flow 버튼 클릭 시
   const handleReset = () => {
-    if (window.confirm('다른 플로우를 가져오면 Flow Editor에 반영됩니다. 계속하시겠습니까? Flow Editor에 저장되지 않은 내용이 있다면 덮어쓰게 됩니다.')) {
-      // 파일 선택 대화상자 직접 열기
-      fileInputRef.current?.click();
-    }
+    // 파일 선택 대화상자 직접 열기
+    fileInputRef.current?.click();
   };
   
   // Input 단계로 되돌아가기
