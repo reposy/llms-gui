@@ -5,6 +5,7 @@ import { useExecutorStateStore } from '../store/useExecutorStateStore';
 import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
 import { v4 as uuidv4 } from 'uuid';
+import { deepClone } from '../utils/helpers';
 
 // 결과 갱신 콜백 관리를 위한 객체
 const resultCallbacks: Record<string, ((result: any) => void)[]> = {};
@@ -142,10 +143,13 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     // 그래프 스토어에서 Flow 정보 가져오기
     const graphStore = useExecutorGraphStore.getState();
     
+    // 실행을 위한 데이터는 항상 깊은 복사를 통해 분리
+    const flowJsonClone = deepClone(params.flowJson);
+    
     // 해당 Flow의 그래프 정보가 없으면 먼저 설정
     if (!graphStore.getFlowGraph(params.flowId)) {
       console.log('[flowExecutionService] Setting flow graph for:', params.flowId);
-      graphStore.setFlowGraph(params.flowId, params.flowJson);
+      graphStore.setFlowGraph(params.flowId, flowJsonClone);
     }
     
     const graph = graphStore.getFlowGraph(params.flowId);
@@ -168,14 +172,13 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
       executionId,
       (nodeId, nodeType) => {
         // 노드 컨텐츠 가져오기 함수 (Flow Executor에서는 flowJson의 contents 사용)
-        const flowJson = params.flowJson;
-        if (flowJson.contents && flowJson.contents[nodeId]) {
-          return flowJson.contents[nodeId];
+        if (flowJsonClone.contents && flowJsonClone.contents[nodeId]) {
+          return flowJsonClone.contents[nodeId];
         }
         return {};
       },
-      params.flowJson.nodes || [],
-      params.flowJson.edges || [],
+      flowJsonClone.nodes || [],
+      flowJsonClone.edges || [],
       graphStore.nodeFactory
     );
     
@@ -253,80 +256,64 @@ const processInputReferences = (inputs: any[], previousResults: Record<string, a
 };
 
 /**
- * Flow 체인을 순차적으로 실행합니다.
- * 각 Flow의 결과는 onFlowComplete 콜백을 통해 반환됩니다.
+ * 여러 Flow를 연속해서 실행하는 체인 함수
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
-  const { flowItems, onFlowComplete, onError } = params;
+  // 이전 Flow 실행 결과를 저장하는 객체
+  const previousResults: Record<string, any> = {};
   
-  console.log(`[flowExecutionService] Starting chain execution with ${flowItems.length} flows`);
+  console.log(`[flowExecutionService] Starting chain execution with ${params.flowItems.length} flows`);
   
-  let previousResults: Record<string, any> = {};
-  
-  for (let i = 0; i < flowItems.length; i++) {
-    const { id, flowJson, inputData } = flowItems[i];
-    
+  // 각 Flow 순차 실행
+  for (const flowItem of params.flowItems) {
     try {
-      console.log(`[flowExecutionService] Executing flow ${i + 1}/${flowItems.length}: ${id}`);
+      console.log(`[flowExecutionService] Executing flow in chain: ${flowItem.id}`);
       
-      // 입력 데이터 처리 - 이전 Flow 결과 참조 변수 처리
-      const processedInputs = processInputReferences(inputData, previousResults);
+      // 입력 데이터에서 참조 처리
+      const processedInputs = processInputReferences(flowItem.inputData, previousResults);
       
-      // Flow 실행
-      const response = await executeFlow({
-        flowJson,
-        inputs: processedInputs,
-        flowId: id,
-        onComplete: (result) => {
-          // 결과 저장 후 콜백 호출
-          previousResults[id] = result;
-          
-          // 등록된 모든 콜백 호출
-          notifyResultCallbacks(id, result);
-          
-          // 특정 Flow 완료 콜백 호출
-          if (onFlowComplete) {
-            onFlowComplete(id, result);
-          }
-        }
+      // Flow 복제 후 실행
+      const flowJsonClone = deepClone(flowItem.flowJson);
+      
+      // 단일 Flow 실행
+      const result = await executeFlow({
+        flowId: flowItem.id,
+        flowJson: flowJsonClone,
+        inputs: processedInputs
       });
       
-      if (response.status === 'error') {
-        console.error(`[flowExecutionService] Flow ${id} execution failed:`, response.error);
-        if (onError) {
-          onError(id, response.error || '알 수 없는 오류가 발생했습니다.');
+      if (result.status === 'success') {
+        // 성공 결과 저장
+        previousResults[flowItem.id] = result.outputs;
+        
+        // 성공 콜백 호출
+        if (params.onFlowComplete) {
+          params.onFlowComplete(flowItem.id, result.outputs);
+        }
+      } else {
+        // 오류 콜백 호출
+        if (params.onError) {
+          params.onError(flowItem.id, result.error || '알 수 없는 오류');
         }
         
-        // 체인 실행 중단
-        return;
+        // 체인 중단 여부 결정 (현재는 오류 발생 시 중단)
+        console.error(`[flowExecutionService] Chain execution stopped due to error in flow: ${flowItem.id}`);
+        break;
       }
-      
-      // 결과가 아직 설정되지 않은 경우 설정
-      if (!previousResults[id] && response.outputs) {
-        previousResults[id] = response.outputs;
-        
-        // 등록된 모든 콜백 호출
-        notifyResultCallbacks(id, response.outputs);
-        
-        if (onFlowComplete) {
-          onFlowComplete(id, response.outputs);
-        }
-      }
-      
-      // 상태 저장소에 Flow 결과 저장
-      useExecutorStateStore.getState().setFlowResult(id, previousResults[id]);
     } catch (error) {
-      console.error(`[flowExecutionService] Error in chain execution at flow ${id}:`, error);
-      if (onError) {
-        onError(id, error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
+      console.error(`[flowExecutionService] Unexpected error in chain execution for flow ${flowItem.id}:`, error);
+      
+      // 오류 콜백 호출
+      if (params.onError) {
+        params.onError(flowItem.id, error instanceof Error ? error.message : '알 수 없는 오류');
       }
       
-      // 체인 실행 중단
-      return;
+      // 체인 중단
+      break;
     }
   }
   
-  console.log('[flowExecutionService] Chain execution completed successfully');
+  console.log('[flowExecutionService] Chain execution completed');
 };
 
 /**
