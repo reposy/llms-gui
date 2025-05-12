@@ -70,9 +70,14 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
     const { nodeId, nodeName, nodeType, result: nodeOutput } = nodeResult;
     
     // 결과 데이터를 문자열로 변환
-    const resultText = typeof nodeOutput === 'object' 
-      ? JSON.stringify(nodeOutput, null, 2)
-      : String(nodeOutput);
+    let resultText;
+    if (nodeOutput === undefined) {
+      resultText = ''; // undefined인 경우 빈 문자열로 처리
+    } else if (typeof nodeOutput === 'object') {
+      resultText = JSON.stringify(nodeOutput, null, 2);
+    } else {
+      resultText = String(nodeOutput);
+    }
     
     // 초기 표시 모드 설정 (이미 설정된 모드가 없으면)
     if (typeof nodeOutput === 'string' && !displayModes[nodeId]) {
@@ -137,13 +142,17 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
           <pre className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto whitespace-pre-wrap text-sm">
             {JSON.stringify(nodeOutput, null, 2)}
           </pre>
+        ) : nodeOutput === undefined ? (
+          <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto">
+            <p className="text-gray-500 italic">결과 없음</p>
+          </div>
         ) : currentDisplayMode === 'markdown' ? (
           <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto markdown-content">
             <ReactMarkdown>{nodeOutput}</ReactMarkdown>
           </div>
         ) : (
           <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto">
-            <p className="whitespace-pre-wrap">{String(nodeOutput)}</p>
+            <p className="whitespace-pre-wrap">{resultText}</p>
           </div>
         )}
       </div>

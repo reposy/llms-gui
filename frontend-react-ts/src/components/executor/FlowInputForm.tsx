@@ -7,8 +7,9 @@ interface FlowInputFormProps {
 }
 
 type InputItem = {
-  type: 'text' | 'file';
+  type: 'text' | 'file' | 'flow-result';
   value: string | File;
+  sourceFlowId?: string; // Flow 결과 참조 시 원본 Flow ID
 };
 
 const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
@@ -40,7 +41,18 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
       if (flow.inputData && flow.inputData.length > 0) {
         // 기존 입력 데이터가 있으면 변환해서 사용
         const initialInputs: InputItem[] = flow.inputData.map(input => {
-          // 현재는 모든 입력을 텍스트로 간주
+          // Flow 결과 참조 여부 확인 (${result-flow-ID} 형식)
+          if (typeof input === 'string' && input.match(/\$\{result-flow-([^}]+)\}/)) {
+            const match = input.match(/\$\{result-flow-([^}]+)\}/);
+            const refFlowId = match ? match[1] : '';
+            return { 
+              type: 'flow-result', 
+              value: input,
+              sourceFlowId: refFlowId
+            };
+          }
+          
+          // 그 외에는 텍스트로 간주
           return { type: 'text', value: input };
         });
         
@@ -67,16 +79,20 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
   };
   
   // 입력 타입 변경 처리
-  const handleInputTypeChange = (index: number, type: 'text' | 'file') => {
+  const handleInputTypeChange = (index: number, type: 'text' | 'file' | 'flow-result') => {
     const newInputItems = [...inputItems];
     
-    // 파일 -> 텍스트 변경 시 빈 문자열로 초기화
+    // 타입에 따라 초기화
     if (type === 'text') {
       newInputItems[index] = { type, value: '' };
     } 
-    // 텍스트 -> 파일 변경 시 파일 선택기 표시
     else if (type === 'file') {
+      // 파일 선택기 표시
       fileInputRef.current?.click();
+    }
+    else if (type === 'flow-result') {
+      // Flow 결과 선택 시, 비어있는 값으로 초기화
+      newInputItems[index] = { type, value: '', sourceFlowId: '' };
     }
     
     setInputItems(newInputItems);
@@ -104,11 +120,15 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
   };
   
   // 입력 필드 추가
-  const handleAddInput = (type: 'text' | 'file' = 'text') => {
+  const handleAddInput = (type: 'text' | 'file' | 'flow-result' = 'text') => {
     if (type === 'text') {
       setInputItems([...inputItems, { type: 'text', value: '' }]);
-    } else {
+    } 
+    else if (type === 'file') {
       fileInputRef.current?.click();
+    }
+    else if (type === 'flow-result') {
+      setInputItems([...inputItems, { type: 'flow-result', value: '', sourceFlowId: '' }]);
     }
     setConfirmed(false);
   };
@@ -120,14 +140,20 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
     setConfirmed(false);
   };
   
-  // 다른 Flow 결과 참조 추가
-  const handleAddFlowReference = (index: number, refFlowId: string) => {
+  // Flow 결과 참조 추가
+  const handleFlowResultSelect = (index: number, refFlowId: string) => {
+    if (!refFlowId) return;
+
     const refFlow = getFlowById(refFlowId);
     if (!refFlow) return;
     
     const refVariable = `\${result-flow-${refFlowId}}`;
     const newInputItems = [...inputItems];
-    newInputItems[index] = { type: 'text', value: refVariable };
+    newInputItems[index] = { 
+      type: 'flow-result', 
+      value: refVariable,
+      sourceFlowId: refFlowId
+    };
     
     setInputItems(newInputItems);
     setConfirmed(false);
@@ -137,7 +163,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
   const handleConfirmInputs = () => {
     // 입력 데이터를 Flow 상태에 저장
     const inputData = inputItems.map(item => {
-      if (item.type === 'text') {
+      if (item.type === 'text' || item.type === 'flow-result') {
         return item.value as string;
       } else {
         // 파일은 아직 처리하지 않음 (서버 API 필요)
@@ -147,6 +173,15 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
     
     setFlowInputData(flowId, inputData);
     setConfirmed(true);
+  };
+  
+  // Flow 결과 참조 상태 텍스트 생성
+  const getFlowReferenceText = (sourceFlowId: string) => {
+    const refFlow = getFlowById(sourceFlowId);
+    if (!refFlow) return '알 수 없는 Flow';
+    
+    const hasResult = getFlowResultById(sourceFlowId) !== null;
+    return `${refFlow.name} ${hasResult ? '(결과 있음)' : '(결과 없음)'}`;
   };
   
   return (
@@ -206,6 +241,14 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                   >
                     파일
                   </button>
+                  <button
+                    className={`px-2 py-1 text-xs rounded ${item.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+                    onClick={() => handleInputTypeChange(index, 'flow-result')}
+                    disabled={previousFlows.length === 0}
+                    title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
+                  >
+                    Flow 결과
+                  </button>
                 </div>
               </div>
               
@@ -219,9 +262,36 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                     className="flex-1 border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     disabled={confirmed}
                   />
-                ) : (
+                ) : item.type === 'file' ? (
                   <div className="flex-1 flex items-center border border-gray-300 rounded-md px-3 py-2 bg-white">
                     <span className="truncate">{(item.value as File).name}</span>
+                  </div>
+                ) : (
+                  // Flow 결과 선택 UI
+                  <div className="flex-1 flex flex-col">
+                    <select 
+                      className="border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(e) => handleFlowResultSelect(index, e.target.value)}
+                      value={item.sourceFlowId || ''}
+                      disabled={confirmed || previousFlows.length === 0}
+                    >
+                      <option value="" disabled>Flow 결과 선택</option>
+                      {previousFlows.map(prevFlow => (
+                        <option 
+                          key={prevFlow.id} 
+                          value={prevFlow.id}
+                          disabled={!prevFlow.hasResult}
+                        >
+                          {prevFlow.name} {prevFlow.hasResult ? '✓' : '(결과 없음)'}
+                        </option>
+                      ))}
+                    </select>
+                    
+                    {item.sourceFlowId && (
+                      <div className="mt-1 text-xs text-blue-600">
+                        {getFlowReferenceText(item.sourceFlowId)}의 결과를 사용합니다
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -238,38 +308,6 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                   </button>
                 )}
               </div>
-              
-              {/* 다른 Flow 결과 참조 선택기 */}
-              {item.type === 'text' && !confirmed && previousFlows.length > 0 && (
-                <div className="mt-1 mb-2">
-                  <div className="flex items-center">
-                    <select
-                      className="text-sm p-2 border border-gray-300 rounded-md bg-white shadow-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
-                      onChange={(e) => e.target.value && handleAddFlowReference(index, e.target.value)}
-                      value=""
-                    >
-                      <option value="" disabled>이전 Flow 결과 참조하기</option>
-                      {previousFlows.map(flow => (
-                        <option 
-                          key={flow.id} 
-                          value={flow.id}
-                          disabled={!flow.hasResult}
-                        >
-                          {flow.name} {flow.hasResult ? '✓' : '(결과 없음)'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {/* 미리보기 섹션 (텍스트 참조 변수가 있는 경우) */}
-              {item.type === 'text' && typeof item.value === 'string' && item.value.includes('${result-flow-') && (
-                <div className="mt-1 bg-blue-50 p-2 rounded text-sm text-blue-700 border border-blue-200">
-                  <p className="font-medium">다른 Flow 결과를 참조합니다</p>
-                  <p>실행 시 이 참조는 해당 Flow의 실제 결과로 대체됩니다.</p>
-                </div>
-              )}
             </div>
           ))}
           
@@ -298,7 +336,18 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              파일 추가 (다중선택 가능)
+              파일 추가
+            </button>
+            <button
+              onClick={() => handleAddInput('flow-result')}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center text-sm"
+              disabled={confirmed || previousFlows.length === 0}
+              title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Flow 결과 추가
             </button>
           </div>
           
@@ -321,11 +370,12 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
           />
         </div>
         
-        <div className="text-sm text-gray-500">
-          <p>참고:</p>
-          <ul className="list-disc list-inside ml-2">
-            <li>다른 Flow의 결과를 참조하려면 <code className="bg-gray-100 px-1 rounded">{'${result-flow-ID}'}</code> 형식을 사용하세요.</li>
-            <li>예: <code className="bg-gray-100 px-1 rounded">{'${result-flow-abc123}'}</code></li>
+        <div className="text-sm text-gray-500 mt-4 border-t pt-4">
+          <p className="font-medium">입력 데이터 사용 안내:</p>
+          <ul className="list-disc list-inside ml-2 mt-1">
+            <li>텍스트: 직접 입력한 텍스트를 사용합니다.</li>
+            <li>파일: 첨부한 파일의 내용을 사용합니다.</li>
+            <li>Flow 결과: 이전에 실행한 Flow의 결과를 사용합니다.</li>
           </ul>
         </div>
       </div>

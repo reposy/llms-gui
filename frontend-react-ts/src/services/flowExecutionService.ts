@@ -1,11 +1,12 @@
 import { FlowData } from '../utils/data/importExportUtils';
-import { getAllOutputs } from '../core/outputCollector';
+import { getAllOutputs, NodeResult } from '../core/outputCollector';
 import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
 import { useExecutorStateStore } from '../store/useExecutorStateStore';
 import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
 import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
+import { getNodeState } from '../store/useNodeStateStore';
 
 // 결과 갱신 콜백 관리를 위한 객체
 const resultCallbacks: Record<string, ((result: any) => void)[]> = {};
@@ -280,7 +281,7 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
       }
     }
     
-    // 결과 수집
+    // 결과 수집 - 이제 outputCollector에서 올바르게 수집함
     const outputs = getAllOutputs();
     console.log('[FlowExecutor] Collected outputs:', outputs);
     

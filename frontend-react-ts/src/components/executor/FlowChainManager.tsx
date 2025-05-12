@@ -1,94 +1,50 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
 import FileUploader from './FileUploader';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { Node, Edge } from '@xyflow/react';
 import { deepClone } from '../../utils/helpers';
+import { findLeafNodes, findRootNodes } from '../../core/outputCollector';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
 }
 
+// Flow 구조 분석 정보
+interface FlowAnalysis {
+  totalNodes: number;
+  totalEdges: number;
+  rootNodeCount: number;
+  leafNodeCount: number;
+}
+
 // Flow 노드 정보 분석 함수
-const analyzeFlowNodes = (nodes: Node[], edges: Edge[]) => {
-  // 1. 노드 연결 정보 초기화
-  // 각 노드의 입력(좌측) 및 출력(우측) 연결 상태 추적
-  const nodeConnections: Record<string, { hasInputs: boolean; hasOutputs: boolean }> = {};
+const analyzeFlowNodes = (flowId: string): FlowAnalysis => {
+  // executorGraphStore에서 노드와 엣지 정보 가져오기
+  const graphStore = useExecutorGraphStore.getState();
+  const graph = graphStore.getFlowGraph(flowId);
   
-  // 초기화: 모든 노드는, 기본적으로 입력과 출력이 없음으로 설정
-  nodes.forEach(node => {
-    nodeConnections[node.id] = { hasInputs: false, hasOutputs: false };
-  });
+  if (!graph) {
+    return {
+      totalNodes: 0,
+      totalEdges: 0,
+      rootNodeCount: 0,
+      leafNodeCount: 0
+    };
+  }
   
-  // 2. 그룹 노드 및 그 내부 노드 식별
-  const groupNodes = nodes.filter(node => node.type === 'group');
-  const nodesInGroups = new Set<string>();
-  
-  // 그룹 내부 노드 식별
-  groupNodes.forEach(groupNode => {
-    const groupData = groupNode.data;
-    if (groupData && groupData.nodeIds) {
-      groupData.nodeIds.forEach((nodeId: string) => {
-        nodesInGroups.add(nodeId);
-      });
-    }
-  });
-  
-  // 3. 엣지 분석 - 방향성 고려
-  edges.forEach(edge => {
-    if (edge.source && edge.target) {
-      // 소스 노드는 출력(우측 핸들)이 있음
-      if (nodeConnections[edge.source]) {
-        nodeConnections[edge.source].hasOutputs = true;
-      }
-      
-      // 타겟 노드는 입력(좌측 핸들)이 있음
-      if (nodeConnections[edge.target]) {
-        nodeConnections[edge.target].hasInputs = true;
-      }
-    }
-  });
-  
-  // 4. 루트 및 리프 노드 식별
-  // 루트 노드: 입력 연결이 없는 노드 (그룹에 속하지 않음)
-  const rootNodes = nodes.filter(node => 
-    !nodesInGroups.has(node.id) && // 그룹 내부 노드 제외
-    node.id in nodeConnections && // 존재하는 노드인지 확인
-    !nodeConnections[node.id].hasInputs // 입력 연결이 없음
-  );
-  
-  // 리프 노드: 출력 연결이 없는 노드 (그룹에 속하지 않음)
-  const leafNodes = nodes.filter(node => 
-    !nodesInGroups.has(node.id) && // 그룹 내부 노드 제외
-    node.id in nodeConnections && // 존재하는 노드인지 확인
-    !nodeConnections[node.id].hasOutputs // 출력 연결이 없음
-  );
-  
-  // 5. 타입이 'input'인 노드 수 계산 (입력 핸들 수 추정)
-  const inputTypeNodes = nodes.filter(node => 
-    node.type === 'input' && !nodesInGroups.has(node.id)
-  );
-  
-  // 전체 노드 수에서 그룹 내부 노드 수 제외
-  const visibleNodes = nodes.filter(node => !nodesInGroups.has(node.id));
+  // 루트 노드와 리프 노드 찾기
+  const rootNodeIds = findRootNodes();
+  const leafNodeIds = findLeafNodes();
   
   return {
-    totalNodes: visibleNodes.length,
-    totalEdges: edges.length,
-    rootNodeCount: rootNodes.length,
-    leafNodeCount: leafNodes.length,
-    inputNodeCount: inputTypeNodes.length,
-    // 선택적으로 ID 목록도 반환 (디버깅 및 확장성 목적)
-    rootNodeIds: rootNodes.map(n => n.id),
-    leafNodeIds: leafNodes.map(n => n.id)
+    totalNodes: Object.keys(graph.nodes || {}).length,
+    totalEdges: Object.keys(graph.edges || {}).length,
+    rootNodeCount: rootNodeIds.length,
+    leafNodeCount: leafNodeIds.length
   };
 };
-
-// Flow 체인 관리 속성 인터페이스
-interface FlowChainManagerProps {
-  onSelectFlow: (flowId: string) => void;
-}
 
 // Flow 체인 저장/내보내기 포맷 인터페이스
 interface FlowChainExport {
@@ -102,6 +58,9 @@ interface FlowChainExport {
 }
 
 const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => {
+  // Flow 분석 결과 캐시
+  const [flowAnalysisCache, setFlowAnalysisCache] = useState<Record<string, FlowAnalysis>>({});
+  
   const {
     flowChain,
     activeFlowIndex,
@@ -123,6 +82,18 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
       onSelectFlow(flow.id);
     }
   };
+  
+  // Flow 분석 수행 및 캐시 갱신
+  useEffect(() => {
+    const newCache: Record<string, FlowAnalysis> = {};
+    
+    // 각 Flow에 대해 분석 실행
+    flowChain.forEach(flow => {
+      newCache[flow.id] = analyzeFlowNodes(flow.id);
+    });
+    
+    setFlowAnalysisCache(newCache);
+  }, [flowChain]);
   
   // Flow 체인 실행 처리
   const handleExecuteChain = async () => {
@@ -268,36 +239,76 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
         reader.onload = (event) => {
           try {
             const json = event.target?.result as string;
-            const importData = JSON.parse(json) as FlowChainExport;
+            let importData;
             
-            // 버전 확인
-            if (!importData.version) {
+            try {
+              importData = JSON.parse(json);
+            } catch (parseError) {
+              console.error(`[FlowChainManager] JSON 파싱 오류:`, parseError);
+              alert('JSON 파일 형식이 올바르지 않습니다.');
+              return;
+            }
+            
+            // 기본 유효성 검사
+            if (!importData || typeof importData !== 'object') {
               throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
             }
             
-            // 스토어 초기화 및 가져오기
-            const { resetState } = useExecutorStateStore.getState();
-            resetState();
+            // 버전 확인
+            if (!importData.version) {
+              console.warn('[FlowChainManager] 버전 정보가 없는 파일입니다.');
+              // 버전 없이 계속 진행
+            }
             
+            // flowChain 배열 존재 확인
+            if (!Array.isArray(importData.flowChain)) {
+              // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
+              console.log('[FlowChainManager] flowChain 배열이 없습니다. 단일 Flow JSON으로 처리합니다.');
+              
+              // 단일 Flow 객체 생성
+              importData = {
+                version: '1.0',
+                flowChain: [{
+                  id: `flow-${Date.now()}`,
+                  name: file.name.replace(/\.json$/, '') || '가져온 Flow',
+                  flowJson: importData,
+                  inputData: []
+                }]
+              };
+            }
+            
+            // 스토어 초기화는 하지 않음 (기존 Flow 유지)
             // 각 Flow 추가
             const { addFlow, setFlowInputData } = useExecutorStateStore.getState();
             importData.flowChain.forEach(flow => {
-              addFlow(flow.flowJson);
-              
-              // 방금 추가된 Flow의 ID 가져오기 (새로 생성된 ID)
-              const { flowChain } = useExecutorStateStore.getState();
-              const newFlowId = flowChain[flowChain.length - 1].id;
-              
-              // 입력 데이터 설정
-              if (flow.inputData && flow.inputData.length > 0) {
-                setFlowInputData(newFlowId, flow.inputData);
+              try {
+                // flowJson 유효성 검사
+                if (!flow.flowJson || typeof flow.flowJson !== 'object') {
+                  console.warn(`[FlowChainManager] 유효하지 않은 flowJson 형식, flow:`, flow);
+                  return; // 이 Flow는 건너뛰고 계속 진행
+                }
+                
+                // Flow 추가
+                addFlow(flow.flowJson);
+                
+                // 방금 추가된 Flow의 ID 가져오기 (새로 생성된 ID)
+                const { flowChain } = useExecutorStateStore.getState();
+                const newFlowId = flowChain[flowChain.length - 1].id;
+                
+                // 입력 데이터 설정
+                if (flow.inputData && flow.inputData.length > 0) {
+                  setFlowInputData(newFlowId, flow.inputData);
+                }
+              } catch (flowError) {
+                console.error(`[FlowChainManager] Flow 추가 중 오류:`, flowError);
+                // 이 Flow는 건너뛰고 계속 진행
               }
             });
             
             console.log(`[FlowChainManager] Flow chain imported successfully`);
           } catch (error) {
             console.error(`[FlowChainManager] Error parsing imported flow chain:`, error);
-            alert('Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다.');
+            alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
           }
         };
         
@@ -358,6 +369,14 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
               const isActive = index === activeFlowIndex;
               const hasResult = getFlowResultById(flow.id) !== null;
               
+              // Flow 분석 정보 가져오기
+              const analysis = flowAnalysisCache[flow.id] || {
+                totalNodes: 0,
+                totalEdges: 0,
+                rootNodeCount: 0,
+                leafNodeCount: 0
+              };
+              
               return (
                 <li 
                   key={flow.id}
@@ -376,10 +395,18 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                       </span>
                       <div>
                         <h3 className="font-medium text-gray-900">{flow.name}</h3>
-                        <p className="text-xs text-gray-500">
-                          {flow.inputData && flow.inputData.length ? `${flow.inputData.length} 개의 입력` : '입력 없음'} 
-                          {hasResult && ' · 결과 있음'}
-                        </p>
+                        <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-1">
+                          <span>{flow.inputData && flow.inputData.length ? `${flow.inputData.length}개의 입력` : '입력 없음'}</span>
+                          {hasResult && <span className="text-green-600">• 결과 있음</span>}
+                          
+                          {/* 노드/엣지 정보 */}
+                          <div className="flex gap-2 text-gray-400 ml-1">
+                            <span title="노드 수">{analysis.totalNodes} 노드</span>
+                            <span title="엣지 수">{analysis.totalEdges} 엣지</span>
+                            <span title="루트 노드 수" className="text-blue-500">{analysis.rootNodeCount} 루트</span>
+                            <span title="리프 노드 수" className="text-green-500">{analysis.leafNodeCount} 리프</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     
