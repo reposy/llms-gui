@@ -5,8 +5,8 @@ import './markdown-style.css';
 
 interface ResultDisplayProps {
   result: NodeResult[] | null;
-  isLoading: boolean;
-  error: string | null;
+  flowId: string;
+  flowName: string;
 }
 
 // 문자열이 마크다운 형식인지 대략 확인하는 함수
@@ -26,7 +26,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error }) => {
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -149,12 +149,20 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error 
   // 전체 결과 렌더링
   const renderAllResults = () => {
     if (!result || result.length === 0) {
-      return <p className="text-gray-500">실행된 리프 노드의 결과가 없습니다.</p>;
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <h3 className="text-lg font-medium mb-1">{flowName} 결과</h3>
+          <p>아직 실행된 결과가 없습니다. Flow를 실행하세요.</p>
+        </div>
+      );
     }
 
     return (
       <div className="space-y-3">
-        <h3 className="font-medium">리프 노드 결과 ({result.length} 항목)</h3>
+        <h3 className="font-medium">{flowName} 결과 ({result.length} 항목)</h3>
         <div>
           {result.map((nodeResult, index) => renderNodeResult(nodeResult, index))}
         </div>
@@ -164,20 +172,16 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error 
 
   return (
     <div className="p-3 border border-gray-300 rounded-lg bg-white">
-      {isLoading ? (
-        <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <span className="ml-3">워크플로우 실행 중...</span>
-        </div>
-      ) : error ? (
-        <div className="p-4 bg-red-50 border border-red-200 rounded text-red-600">
-          <h3 className="font-medium mb-2">오류</h3>
-          <p>{error}</p>
-        </div>
-      ) : result ? (
+      {result ? (
         renderAllResults()
       ) : (
-        <p className="text-gray-500">표시할 결과가 없습니다. 워크플로우를 실행하세요.</p>
+        <div className="text-center py-8 text-gray-500">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <h3 className="text-lg font-medium mb-1">{flowName} 결과</h3>
+          <p>표시할 결과가 없습니다. 워크플로우를 실행하세요.</p>
+        </div>
       )}
     </div>
   );

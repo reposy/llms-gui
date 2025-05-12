@@ -87,9 +87,17 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
   const handleFileSelect = (index: number, files: FileList | null) => {
     if (!files || files.length === 0) return;
     
+    // 선택한 첫 번째 파일을 현재 입력 항목에 설정
     const file = files[0];
-    const newInputItems = [...inputItems];
+    let newInputItems = [...inputItems];
     newInputItems[index] = { type: 'file', value: file };
+    
+    // 추가 파일이 있다면 새 입력 항목으로 추가
+    if (files.length > 1) {
+      for (let i = 1; i < files.length; i++) {
+        newInputItems.push({ type: 'file', value: files[i] });
+      }
+    }
     
     setInputItems(newInputItems);
     setConfirmed(false);
@@ -234,22 +242,32 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
               {/* 다른 Flow 결과 참조 선택기 */}
               {item.type === 'text' && !confirmed && previousFlows.length > 0 && (
                 <div className="mt-1 mb-2">
-                  <select
-                    className="text-sm p-2 border border-gray-300 rounded-md bg-white shadow-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    onChange={(e) => e.target.value && handleAddFlowReference(index, e.target.value)}
-                    value=""
-                  >
-                    <option value="" disabled>이전 Flow 결과 참조하기</option>
-                    {previousFlows.map(flow => (
-                      <option 
-                        key={flow.id} 
-                        value={flow.id}
-                        disabled={!flow.hasResult}
-                      >
-                        {flow.name} {flow.hasResult ? '✓' : '(결과 없음)'}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center">
+                    <select
+                      className="text-sm p-2 border border-gray-300 rounded-md bg-white shadow-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                      onChange={(e) => e.target.value && handleAddFlowReference(index, e.target.value)}
+                      value=""
+                    >
+                      <option value="" disabled>이전 Flow 결과 참조하기</option>
+                      {previousFlows.map(flow => (
+                        <option 
+                          key={flow.id} 
+                          value={flow.id}
+                          disabled={!flow.hasResult}
+                        >
+                          {flow.name} {flow.hasResult ? '✓' : '(결과 없음)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* 미리보기 섹션 (텍스트 참조 변수가 있는 경우) */}
+              {item.type === 'text' && typeof item.value === 'string' && item.value.includes('${result-flow-') && (
+                <div className="mt-1 bg-blue-50 p-2 rounded text-sm text-blue-700 border border-blue-200">
+                  <p className="font-medium">다른 Flow 결과를 참조합니다</p>
+                  <p>실행 시 이 참조는 해당 Flow의 실제 결과로 대체됩니다.</p>
                 </div>
               )}
             </div>
@@ -257,49 +275,48 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
           
           {/* 입력 추가 버튼 */}
           {!confirmed && (
-            <div className="flex space-x-2">
-              <button
-                onClick={() => handleAddInput('text')}
-                className="flex items-center text-blue-500 hover:text-blue-700 px-3 py-1 rounded border border-blue-200 bg-blue-50"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                텍스트 추가
-              </button>
-              <button
-                onClick={() => handleAddInput('file')}
-                className="flex items-center text-blue-500 hover:text-blue-700 px-3 py-1 rounded border border-blue-200 bg-blue-50"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                파일 추가
-              </button>
+            <div className="text-sm text-gray-600 mt-4 mb-2">
+              입력 추가:
             </div>
           )}
+          <div className="flex space-x-2">
+            <button
+              onClick={() => handleAddInput('text')}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center text-sm"
+              disabled={confirmed}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              텍스트 입력
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center text-sm"
+              disabled={confirmed}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              파일 추가 (다중선택 가능)
+            </button>
+          </div>
           
           {/* 숨겨진 파일 입력 */}
           <input
             type="file"
             ref={fileInputRef}
-            style={{ display: 'none' }}
+            className="hidden"
+            multiple
             onChange={(e) => {
-              // 새 입력 추가 시
-              if (inputItems.every(item => item.type !== 'file' || (item.type === 'file' && item.value))) {
-                const newIndex = inputItems.length;
-                handleFileSelect(newIndex, e.target.files);
-                setInputItems([...inputItems, { type: 'file', value: e.target.files?.[0] || '' }]);
-              } 
-              // 기존 입력 수정 시
-              else {
-                const fileInputIndex = inputItems.findIndex(item => item.type === 'file' && !item.value);
-                if (fileInputIndex >= 0) {
-                  handleFileSelect(fileInputIndex, e.target.files);
-                }
+              // 파일 입력 참조 위치 구하기
+              const index = inputItems.findIndex(item => item.type === 'text' && item.value === '');
+              if (index !== -1) {
+                handleFileSelect(index, e.target.files);
+              } else {
+                // 빈 입력 필드가 없으면 마지막에 추가
+                handleFileSelect(inputItems.length, e.target.files);
               }
-              // 파일 선택 후 input 초기화 (같은 파일 다시 선택 가능하도록)
-              e.target.value = '';
             }}
           />
         </div>

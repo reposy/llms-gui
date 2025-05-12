@@ -39,6 +39,7 @@ const notifyResultCallbacks = (flowId: string, result: any) => {
   }
 };
 
+// 공통 인터페이스 정의
 interface ExecuteFlowParams {
   flowJson: FlowData;
   inputs: any[];
@@ -131,14 +132,14 @@ const executeNode = async (
 };
 
 /**
- * 단일 Flow를 실행합니다.
+ * [Flow Editor용] 단일 Flow를 실행합니다.
  * 그래프 스토어에서 루트 노드를 가져와 executeNode를 통해 실행합니다.
  */
-export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+export const executeFlowEditor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   const executionId = `exec-${uuidv4()}`;
   
   try {
-    console.log('[flowExecutionService] Starting flow execution for flow:', params.flowId);
+    console.log('[FlowEditor] Starting flow execution for flow:', params.flowId);
     
     // 그래프 스토어에서 Flow 정보 가져오기
     const graphStore = useExecutorGraphStore.getState();
@@ -148,7 +149,7 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     
     // 해당 Flow의 그래프 정보가 없으면 먼저 설정
     if (!graphStore.getFlowGraph(params.flowId)) {
-      console.log('[flowExecutionService] Setting flow graph for:', params.flowId);
+      console.log('[FlowEditor] Setting flow graph for:', params.flowId);
       graphStore.setFlowGraph(params.flowId, flowJsonClone);
     }
     
@@ -161,11 +162,100 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     const rootNodeIds = graph.rootNodeIds;
     
     if (rootNodeIds.length === 0) {
-      console.warn('[flowExecutionService] No root nodes found for flow:', params.flowId);
+      console.warn('[FlowEditor] No root nodes found for flow:', params.flowId);
       throw new Error('실행할 루트 노드가 없습니다. 유효한 Flow 구조인지 확인하세요.');
     }
     
-    console.log(`[flowExecutionService] Found ${rootNodeIds.length} root nodes:`, rootNodeIds);
+    console.log(`[FlowEditor] Found ${rootNodeIds.length} root nodes:`, rootNodeIds);
+    
+    // 실행 컨텍스트 생성
+    const context = new FlowExecutionContext(
+      executionId,
+      (nodeId, nodeType) => {
+        // 노드 컨텐츠 가져오기 함수 (Flow Editor에서는 flowJson의 contents 사용)
+        if (flowJsonClone.contents && flowJsonClone.contents[nodeId]) {
+          return flowJsonClone.contents[nodeId];
+        }
+        return {};
+      },
+      flowJsonClone.nodes || [],
+      flowJsonClone.edges || [],
+      graphStore.nodeFactory
+    );
+    
+    // 루트 노드들 순차 실행
+    for (const rootNodeId of rootNodeIds) {
+      const rootNodeInstance = graph.nodeInstances[rootNodeId];
+      if (rootNodeInstance) {
+        await executeNode(rootNodeInstance, params.inputs, context, params.flowId, graphStore);
+      }
+    }
+    
+    // 결과 수집
+    const outputs = getAllOutputs();
+    console.log('[FlowEditor] Collected outputs:', outputs);
+    
+    // Flow Editor에서만 사용하는 결과 저장: graphStore만 업데이트
+    graphStore.setFlowResult(params.flowId, outputs);
+    
+    // 콜백 호출 (onComplete가 있는 경우)
+    if (params.onComplete) {
+      params.onComplete(outputs);
+    }
+    
+    return {
+      executionId,
+      outputs,
+      status: 'success'
+    };
+  } catch (error) {
+    console.error('[FlowEditor] Error executing flow:', error);
+    return {
+      executionId,
+      outputs: null,
+      status: 'error',
+      error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+    };
+  }
+};
+
+/**
+ * [Flow Executor용] 단일 Flow를 실행합니다.
+ * 그래프 스토어에서 루트 노드를 가져와 executeNode를 통해 실행하고, Executor 스토어에도 결과를 저장합니다.
+ */
+export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  const executionId = `exec-${uuidv4()}`;
+  
+  try {
+    console.log('[FlowExecutor] Starting flow execution for flow:', params.flowId);
+    
+    // 그래프 스토어와 실행기 스토어 가져오기
+    const graphStore = useExecutorGraphStore.getState();
+    const executorStore = useExecutorStateStore.getState();
+    
+    // 실행을 위한 데이터는 항상 깊은 복사를 통해 분리
+    const flowJsonClone = deepClone(params.flowJson);
+    
+    // 해당 Flow의 그래프 정보가 없으면 먼저 설정
+    if (!graphStore.getFlowGraph(params.flowId)) {
+      console.log('[FlowExecutor] Setting flow graph for:', params.flowId);
+      graphStore.setFlowGraph(params.flowId, flowJsonClone);
+    }
+    
+    const graph = graphStore.getFlowGraph(params.flowId);
+    if (!graph) {
+      throw new Error(`Graph not found for flow: ${params.flowId}`);
+    }
+    
+    // 루트 노드 ID 가져오기
+    const rootNodeIds = graph.rootNodeIds;
+    
+    if (rootNodeIds.length === 0) {
+      console.warn('[FlowExecutor] No root nodes found for flow:', params.flowId);
+      throw new Error('실행할 루트 노드가 없습니다. 유효한 Flow 구조인지 확인하세요.');
+    }
+    
+    console.log(`[FlowExecutor] Found ${rootNodeIds.length} root nodes:`, rootNodeIds);
     
     // 실행 컨텍스트 생성
     const context = new FlowExecutionContext(
@@ -192,15 +282,19 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     
     // 결과 수집
     const outputs = getAllOutputs();
-    console.log('[flowExecutionService] Collected outputs:', outputs);
+    console.log('[FlowExecutor] Collected outputs:', outputs);
     
-    // 결과 저장
+    // 결과 저장 (Flow Executor는 둘 다 업데이트)
     graphStore.setFlowResult(params.flowId, outputs);
+    executorStore.setFlowResult(params.flowId, outputs);  // Executor 스토어에도 결과 저장
     
     // 콜백 호출 (onComplete가 있는 경우)
     if (params.onComplete) {
       params.onComplete(outputs);
     }
+    
+    // 등록된 모든 콜백에 결과 전달
+    notifyResultCallbacks(params.flowId, outputs);
     
     return {
       executionId,
@@ -208,7 +302,7 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
       status: 'success'
     };
   } catch (error) {
-    console.error('Error executing flow:', error);
+    console.error('[FlowExecutor] Error executing flow:', error);
     return {
       executionId,
       outputs: null,
@@ -217,6 +311,12 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     };
   }
 };
+
+/**
+ * 원래 executeFlow 함수는 이제 더 이상 사용하지 않으므로, 호환성을 위해 Executor 함수로 리다이렉트합니다.
+ * @deprecated Flow Editor와 Flow Executor용 함수를 구분하여 사용하세요.
+ */
+export const executeFlow = executeFlowExecutor;
 
 /**
  * 참조 변수를 처리하는 함수
@@ -256,18 +356,21 @@ const processInputReferences = (inputs: any[], previousResults: Record<string, a
 };
 
 /**
- * 여러 Flow를 연속해서 실행하는 체인 함수
+ * [Flow Executor용] 여러 Flow를 연속해서 실행하는 체인 함수
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
   // 이전 Flow 실행 결과를 저장하는 객체
   const previousResults: Record<string, any> = {};
   
-  console.log(`[flowExecutionService] Starting chain execution with ${params.flowItems.length} flows`);
+  console.log(`[FlowExecutor] Starting chain execution with ${params.flowItems.length} flows`);
+  
+  // Executor 스토어
+  const executorStore = useExecutorStateStore.getState();
   
   // 각 Flow 순차 실행
   for (const flowItem of params.flowItems) {
     try {
-      console.log(`[flowExecutionService] Executing flow in chain: ${flowItem.id}`);
+      console.log(`[FlowExecutor] Executing flow in chain: ${flowItem.id}`);
       
       // 입력 데이터에서 참조 처리
       const processedInputs = processInputReferences(flowItem.inputData, previousResults);
@@ -275,8 +378,8 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
       // Flow 복제 후 실행
       const flowJsonClone = deepClone(flowItem.flowJson);
       
-      // 단일 Flow 실행
-      const result = await executeFlow({
+      // 단일 Flow 실행 (Executor 전용 함수 사용)
+      const result = await executeFlowExecutor({
         flowId: flowItem.id,
         flowJson: flowJsonClone,
         inputs: processedInputs
@@ -297,11 +400,11 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         }
         
         // 체인 중단 여부 결정 (현재는 오류 발생 시 중단)
-        console.error(`[flowExecutionService] Chain execution stopped due to error in flow: ${flowItem.id}`);
+        console.error(`[FlowExecutor] Chain execution stopped due to error in flow: ${flowItem.id}`);
         break;
       }
     } catch (error) {
-      console.error(`[flowExecutionService] Unexpected error in chain execution for flow ${flowItem.id}:`, error);
+      console.error(`[FlowExecutor] Unexpected error in chain execution for flow ${flowItem.id}:`, error);
       
       // 오류 콜백 호출
       if (params.onError) {
@@ -313,7 +416,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
     }
   }
   
-  console.log('[flowExecutionService] Chain execution completed');
+  console.log('[FlowExecutor] Chain execution completed');
 };
 
 /**
