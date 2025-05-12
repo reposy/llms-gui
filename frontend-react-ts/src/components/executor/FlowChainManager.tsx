@@ -1,10 +1,45 @@
 import React from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import FileUploader from './FileUploader';
+import { Node, Edge } from '@xyflow/react';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
 }
+
+// Flow 노드 정보 분석 함수
+const analyzeFlowNodes = (nodes: Node[], edges: Edge[]) => {
+  // 각 노드의 인커밍/아웃고잉 엣지 수 계산
+  const incomingEdges: Record<string, number> = {};
+  const outgoingEdges: Record<string, number> = {};
+  
+  // 초기화
+  nodes.forEach(node => {
+    incomingEdges[node.id] = 0;
+    outgoingEdges[node.id] = 0;
+  });
+  
+  // 엣지 카운팅
+  edges.forEach(edge => {
+    if (edge.source && edge.target) {
+      outgoingEdges[edge.source] = (outgoingEdges[edge.source] || 0) + 1;
+      incomingEdges[edge.target] = (incomingEdges[edge.target] || 0) + 1;
+    }
+  });
+  
+  // 루트 노드: 인커밍 엣지가 없는 노드
+  const rootNodes = nodes.filter(node => incomingEdges[node.id] === 0);
+  
+  // 리프 노드: 아웃고잉 엣지가 없는 노드
+  const leafNodes = nodes.filter(node => outgoingEdges[node.id] === 0);
+  
+  return {
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+    rootNodeCount: rootNodes.length,
+    leafNodeCount: leafNodes.length
+  };
+};
 
 const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => {
   const {
@@ -46,6 +81,11 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
           {flowChain.map((flow, index) => {
             const hasResult = getFlowResultById(flow.id) !== null;
             
+            // Flow 노드 분석
+            const nodes = flow.flowJson.nodes || [];
+            const edges = flow.flowJson.edges || [];
+            const nodeInfo = analyzeFlowNodes(nodes, edges);
+            
             return (
               <li 
                 key={flow.id} 
@@ -65,9 +105,12 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                       onClick={() => handleSelectFlow(index)}
                     >
                       <p className="font-medium truncate">{flow.name}</p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {flow.flowJson.nodes?.length || 0} nodes, {flow.flowJson.edges?.length || 0} connections
-                      </p>
+                      <div className="flex flex-wrap gap-x-3 text-xs text-gray-500">
+                        <span>{nodeInfo.totalNodes} 노드</span>
+                        <span>{nodeInfo.totalEdges} 연결</span>
+                        <span className="text-blue-500">{nodeInfo.rootNodeCount} 루트</span>
+                        <span className="text-green-500">{nodeInfo.leafNodeCount} 리프</span>
+                      </div>
                     </button>
                   </div>
                   

@@ -2,9 +2,42 @@ import { runFullFlowExecution } from '../core/executionUtils';
 import { FlowData } from '../utils/data/importExportUtils';
 import { getAllOutputs } from '../core/outputCollector';
 
+// 결과 갱신 콜백 관리를 위한 객체
+const resultCallbacks: Record<string, ((result: any) => void)[]> = {};
+
+// 콜백 등록 함수
+export const registerResultCallback = (flowId: string, callback: (result: any) => void): () => void => {
+  if (!resultCallbacks[flowId]) {
+    resultCallbacks[flowId] = [];
+  }
+  
+  resultCallbacks[flowId].push(callback);
+  
+  // 클린업 함수 반환 (콜백 제거용)
+  return () => {
+    if (resultCallbacks[flowId]) {
+      resultCallbacks[flowId] = resultCallbacks[flowId].filter(cb => cb !== callback);
+    }
+  };
+};
+
+// 콜백 호출 함수
+const notifyResultCallbacks = (flowId: string, result: any) => {
+  if (resultCallbacks[flowId]) {
+    resultCallbacks[flowId].forEach(callback => {
+      try {
+        callback(result);
+      } catch (error) {
+        console.error(`Error executing result callback for flow ${flowId}:`, error);
+      }
+    });
+  }
+};
+
 interface ExecuteFlowParams {
   flowJson: FlowData;
   inputs: any[];
+  onComplete?: (result: any) => void;
 }
 
 interface ExecutionResponse {
@@ -37,6 +70,11 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
     
     // 리프 노드의 결과 수집
     const outputs = getAllOutputs();
+    
+    // 콜백 호출 (onComplete가 있는 경우)
+    if (params.onComplete) {
+      params.onComplete(outputs);
+    }
     
     return {
       executionId: `local-exec-${Date.now()}`,
@@ -96,7 +134,19 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
       // 현재 Flow 실행
       const response = await executeFlow({
         flowJson,
-        inputs: processedInputs
+        inputs: processedInputs,
+        onComplete: (result) => {
+          // 결과 저장 후 콜백 호출
+          previousResults[id] = result;
+          
+          // 등록된 모든 콜백 호출
+          notifyResultCallbacks(id, result);
+          
+          // 특정 Flow 완료 콜백 호출
+          if (onFlowComplete) {
+            onFlowComplete(id, result);
+          }
+        }
       });
       
       if (response.status === 'error') {
@@ -109,11 +159,17 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         return;
       }
       
-      // 결과 저장 및 콜백 호출
-      previousResults[id] = response.outputs;
-      
-      if (onFlowComplete) {
-        onFlowComplete(id, response.outputs);
+      // 결과 저장 (onComplete 콜백 대신 사용)
+      if (!response.outputs && !previousResults[id]) {
+        // 결과가 아직 설정되지 않은 경우에만 설정
+        previousResults[id] = response.outputs;
+        
+        // 등록된 모든 콜백 호출
+        notifyResultCallbacks(id, response.outputs);
+        
+        if (onFlowComplete) {
+          onFlowComplete(id, response.outputs);
+        }
       }
     } catch (error) {
       console.error(`[flowExecutionService] Error in chain execution at flow ${id}:`, error);
