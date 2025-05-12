@@ -3,24 +3,18 @@ import { FlowData } from '../../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 
 interface FileUploaderProps {
-  onFileUpload: (jsonData: any) => void;
+  onFileUpload?: (jsonData: FlowData) => void;
   externalFileInputRef?: React.RefObject<HTMLInputElement>;
+  className?: string;
 }
 
-const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileInputRef }) => {
+const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileInputRef, className = '' }) => {
   const [fileName, setFileName] = useState<string>('');
   const [error, setError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const executorFlowJson = useExecutorStateStore(state => state.flowJson);
-  
-  // 컴포넌트 마운트 시 기존 상태 확인
-  useEffect(() => {
-    if (executorFlowJson) {
-      setFileName('이전에 불러온 플로우');
-      onFileUpload(executorFlowJson);
-    }
-  }, [executorFlowJson, onFileUpload]);
+  const addFlow = useExecutorStateStore(state => state.addFlow);
+  const flowChain = useExecutorStateStore(state => state.flowChain);
   
   // 외부 파일 입력 참조가 변경 이벤트를 수신하도록 설정
   useEffect(() => {
@@ -62,8 +56,13 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
       try {
         const flowData: FlowData = JSON.parse(e.target?.result as string);
         
-        // Executor 상태 업데이트
-        onFileUpload(flowData);
+        // Flow 추가
+        addFlow(flowData);
+        
+        // 외부 콜백이 있으면 호출
+        if (onFileUpload) {
+          onFileUpload(flowData);
+        }
       } catch (err) {
         console.error('JSON 파일 파싱 오류:', err);
         setError('유효하지 않은 JSON 파일입니다. 올바른 Flow JSON 파일을 업로드해주세요.');
@@ -80,8 +79,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
   };
 
   return (
-    <div className="mb-6 p-4 border border-gray-300 rounded-lg bg-white">
-      <h2 className="text-lg font-medium mb-3">Upload Flow JSON</h2>
+    <div className={`p-4 border border-gray-300 rounded-lg bg-white ${className}`}>
+      <h2 className="text-lg font-medium mb-3">
+        {flowChain.length === 0 ? 'Flow 업로드하기' : 'Flow 추가하기'}
+      </h2>
       <div className="flex flex-col space-y-4">
         <input
           type="file"
@@ -113,7 +114,9 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
         
         {error && <p className="text-red-500 text-sm">{error}</p>}
         <p className="text-sm text-gray-500">
-          Flow Executor는 Flow Editor와 독립적으로 동작합니다. 여기서 가져온 플로우는 Flow Editor에 영향을 주지 않습니다.
+          {flowChain.length === 0 
+            ? 'Flow 파일(.json)을 선택하여 실행할 Flow를 추가하세요.'
+            : '추가 Flow 파일(.json)을 선택하여 체인에 추가하세요. Flow의 실행 순서는 나중에 조정할 수 있습니다.'}
         </p>
       </div>
     </div>

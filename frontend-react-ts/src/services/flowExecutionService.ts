@@ -14,20 +14,28 @@ interface ExecutionResponse {
   error?: string;
 }
 
+interface ExecuteChainParams {
+  flowItems: Array<{
+    id: string;
+    flowJson: FlowData;
+    inputData: any[];
+  }>;
+  onFlowComplete?: (flowId: string, result: any) => void;
+  onError?: (flowId: string, error: string) => void;
+}
+
 /**
- * Flow Executor에서 플로우를 실행합니다.
+ * 단일 Flow를 실행합니다.
  * 백엔드 호출 대신 클라이언트에서 처리하며, 내부적으로 executionUtils의 runFullFlowExecution을 사용합니다.
  */
 export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   try {
     console.log('[flowExecutionService] Starting local flow execution');
     
-    // 1. 플로우 JSON은 이미 useExecutorStateStore에 저장되어 있음
-    
-    // 2. 루트 노드 실행 (입력 데이터와 함께)
+    // 루트 노드 실행 (입력 데이터와 함께)
     await runFullFlowExecution(undefined, params.inputs);
     
-    // 3. 리프 노드의 결과 수집
+    // 리프 노드의 결과 수집
     const outputs = getAllOutputs();
     
     return {
@@ -44,6 +52,81 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
       error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
     };
   }
+};
+
+/**
+ * Flow 체인을 순차적으로 실행합니다.
+ * 각 Flow의 결과는 onFlowComplete 콜백을 통해 반환됩니다.
+ * 
+ * @param params.flowItems - 실행할 Flow 항목 배열
+ * @param params.onFlowComplete - 각 Flow 실행 완료 시 호출될 콜백 함수
+ * @param params.onError - 오류 발생 시 호출될 콜백 함수
+ */
+export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
+  const { flowItems, onFlowComplete, onError } = params;
+  
+  console.log(`[flowExecutionService] Starting chain execution with ${flowItems.length} flows`);
+  
+  let previousResults: Record<string, any> = {};
+  
+  for (let i = 0; i < flowItems.length; i++) {
+    const { id, flowJson, inputData } = flowItems[i];
+    
+    try {
+      console.log(`[flowExecutionService] Executing flow ${i + 1}/${flowItems.length}: ${id}`);
+      
+      // 입력에 이전 Flow 결과 변수 처리
+      const processedInputs = inputData.map(input => {
+        if (typeof input === 'string') {
+          // result-flow-X 형태의 참조 변수 처리
+          const resultRefPattern = /\$\{result-flow-([^}]+)\}/g;
+          
+          return input.replace(resultRefPattern, (match, flowId) => {
+            const result = previousResults[flowId];
+            if (result === undefined) {
+              console.warn(`[flowExecutionService] Reference to unknown flow result: ${match}`);
+              return match; // 알 수 없는 참조는 그대로 유지
+            }
+            return typeof result === 'string' ? result : JSON.stringify(result);
+          });
+        }
+        return input;
+      });
+      
+      // 현재 Flow 실행
+      const response = await executeFlow({
+        flowJson,
+        inputs: processedInputs
+      });
+      
+      if (response.status === 'error') {
+        console.error(`[flowExecutionService] Flow ${id} execution failed:`, response.error);
+        if (onError) {
+          onError(id, response.error || '알 수 없는 오류가 발생했습니다.');
+        }
+        
+        // 체인 실행 중단
+        return;
+      }
+      
+      // 결과 저장 및 콜백 호출
+      previousResults[id] = response.outputs;
+      
+      if (onFlowComplete) {
+        onFlowComplete(id, response.outputs);
+      }
+    } catch (error) {
+      console.error(`[flowExecutionService] Error in chain execution at flow ${id}:`, error);
+      if (onError) {
+        onError(id, error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.');
+      }
+      
+      // 체인 실행 중단
+      return;
+    }
+  }
+  
+  console.log('[flowExecutionService] Chain execution completed successfully');
 };
 
 /**
