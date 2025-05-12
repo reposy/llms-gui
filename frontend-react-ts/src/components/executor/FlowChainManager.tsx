@@ -1,7 +1,10 @@
 import React from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
 import FileUploader from './FileUploader';
+import { executeChain } from '../../services/flowExecutionService';
 import { Node, Edge } from '@xyflow/react';
+import { deepClone } from '../../utils/helpers';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
@@ -90,8 +93,11 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
     moveFlowUp,
     moveFlowDown,
     setActiveFlowIndex,
-    getFlowResultById
+    getFlowResultById,
+    setFlowResult
   } = useExecutorStateStore();
+  
+  const graphStore = useExecutorGraphStore();
 
   // Flow 선택 처리
   const handleSelectFlow = (index: number) => {
@@ -101,12 +107,65 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
       onSelectFlow(flow.id);
     }
   };
+  
+  // Flow 체인 실행 처리
+  const handleExecuteChain = async () => {
+    if (flowChain.length === 0) {
+      console.warn('No flows to execute');
+      return;
+    }
+    
+    // 실행을 위한 Flow 아이템 구성
+    const flowItems = flowChain.map(flow => ({
+      id: flow.id,
+      flowJson: flow.flowJson, // Already cloned during addition to executorStateStore
+      inputData: flow.inputData
+    }));
+    
+    try {
+      // Flow 그래프 초기화 (필요한 경우) - 항상 깊은 복사본 사용
+      flowChain.forEach(flow => {
+        if (!graphStore.getFlowGraph(flow.id)) {
+          // 깊은 복사를 통해 원본 Flow 데이터와 실행 데이터 완전히 분리
+          graphStore.setFlowGraph(flow.id, flow.flowJson);
+        }
+      });
+      
+      // 체인 실행
+      await executeChain({
+        flowItems,
+        onFlowComplete: (flowId, result) => {
+          console.log(`[FlowChainManager] Flow ${flowId} completed with result:`, result);
+          setFlowResult(flowId, result);
+        },
+        onError: (flowId, error) => {
+          console.error(`[FlowChainManager] Error executing flow ${flowId}:`, error);
+        }
+      });
+      
+      console.log('[FlowChainManager] All flows in chain executed successfully');
+    } catch (error) {
+      console.error('[FlowChainManager] Error executing flow chain:', error);
+    }
+  };
 
   return (
     <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
-      <div className="p-4 bg-gray-50 border-b border-gray-300">
-        <h2 className="font-medium text-lg">Flow 체인 ({flowChain.length})</h2>
-        <p className="text-sm text-gray-600">Flow들은 위에서 아래 순서로 실행됩니다.</p>
+      <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
+        <div>
+          <h2 className="font-medium text-lg">Flow 체인 ({flowChain.length})</h2>
+          <p className="text-sm text-gray-600">Flow들은 위에서 아래 순서로 실행됩니다.</p>
+        </div>
+        
+        {/* 실행 버튼 추가 */}
+        {flowChain.length > 0 && (
+          <button
+            className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2 rounded-md shadow-md hover:shadow-lg transition-all"
+            onClick={handleExecuteChain}
+          >
+            전체 체인 실행
+          </button>
+        )}
       </div>
       
       {flowChain.length === 0 ? (
@@ -156,6 +215,39 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                   </div>
                   
                   <div className="flex items-center gap-1">
+                    {/* 개별 Flow 실행 버튼 추가 */}
+                    <button
+                      className="p-1 text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          // 깊은 복사를 통해 원본 Flow 데이터와 실행 데이터 완전히 분리
+                          if (!graphStore.getFlowGraph(flow.id)) {
+                            graphStore.setFlowGraph(flow.id, flow.flowJson);
+                          }
+                          
+                          await executeChain({
+                            flowItems: [{
+                              id: flow.id,
+                              flowJson: flow.flowJson,
+                              inputData: flow.inputData
+                            }],
+                            onFlowComplete: (flowId, result) => {
+                              setFlowResult(flowId, result);
+                            }
+                          });
+                        } catch (error) {
+                          console.error(`Error executing flow ${flow.id}:`, error);
+                        }
+                      }}
+                      title="실행"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                    
                     <button
                       className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-30"
                       onClick={() => moveFlowUp(flow.id)}

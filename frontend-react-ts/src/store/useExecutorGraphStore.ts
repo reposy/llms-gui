@@ -1,94 +1,147 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
 import { FlowData } from '../utils/data/importExportUtils';
+import { NodeFactory } from '../core/NodeFactory';
+import { Node as BaseNode } from '../core/Node';
+import { GroupNode } from '../core/GroupNode';
 
-// Flow 노드 정보 분석 함수 (FlowChainManager의 함수와 동일)
-const analyzeFlowNodes = (nodes: Node[], edges: Edge[]) => {
-  // 노드 연결 정보 초기화
-  const nodeConnections: Record<string, { hasInputs: boolean; hasOutputs: boolean }> = {};
-  
-  // 초기화
-  nodes.forEach(node => {
-    nodeConnections[node.id] = { hasInputs: false, hasOutputs: false };
-  });
-  
-  // 그룹 노드 및 그 내부 노드 식별
-  const groupNodes = nodes.filter(node => node.type === 'group');
-  const nodesInGroups = new Set<string>();
-  
-  // 그룹 내부 노드 식별
-  groupNodes.forEach(groupNode => {
-    const groupData = groupNode.data;
-    if (groupData && groupData.nodeIds) {
-      groupData.nodeIds.forEach((nodeId: string) => {
-        nodesInGroups.add(nodeId);
-      });
-    }
-  });
-  
-  // 엣지 분석 - 방향성 고려
-  edges.forEach(edge => {
-    if (edge.source && edge.target) {
-      // 소스 노드는 출력(우측 핸들)이 있음
-      if (nodeConnections[edge.source]) {
-        nodeConnections[edge.source].hasOutputs = true;
-      }
-      
-      // 타겟 노드는 입력(좌측 핸들)이 있음
-      if (nodeConnections[edge.target]) {
-        nodeConnections[edge.target].hasInputs = true;
-      }
-    }
-  });
-  
-  // 루트 및 리프 노드 식별
-  // 루트 노드: 입력 연결이 없는 노드 (그룹에 속하지 않음)
-  const rootNodes = nodes.filter(node => 
-    !nodesInGroups.has(node.id) &&
-    node.id in nodeConnections &&
-    !nodeConnections[node.id].hasInputs
-  );
-  
-  // 리프 노드: 출력 연결이 없는 노드 (그룹에 속하지 않음)
-  const leafNodes = nodes.filter(node => 
-    !nodesInGroups.has(node.id) &&
-    node.id in nodeConnections &&
-    !nodeConnections[node.id].hasOutputs
-  );
-  
-  return {
-    rootNodeIds: rootNodes.map(n => n.id),
-    leafNodeIds: leafNodes.map(n => n.id)
-  };
-};
+// 그래프 노드 정보 인터페이스
+interface GraphNode {
+  id: string;
+  type: string;
+  parentNodeId: string | null;
+  children: string[];
+  nodeInstance?: BaseNode;
+  isGroupNode: boolean;
+}
 
-// Flow 그래프 정보 인터페이스
-interface FlowGraphInfo {
-  nodes: Node[];
-  edges: Edge[];
+// 플로우 그래프 인터페이스
+interface FlowGraph {
+  nodes: Record<string, GraphNode>;
+  nodeInstances: Record<string, BaseNode>;
   rootNodeIds: string[];
   leafNodeIds: string[];
+  lastResult?: any;
 }
 
 // 스토어 상태 인터페이스
 interface ExecutorGraphState {
   // Flow ID별 그래프 정보 저장
-  flowGraphs: Record<string, FlowGraphInfo>;
+  flowGraphs: Record<string, FlowGraph>;
+  nodeFactory: NodeFactory;
   
   // 그래프 설정 함수
   setFlowGraph: (flowId: string, flowData: FlowData) => void;
   
   // 그래프 데이터 접근 함수
-  getFlowGraph: (flowId: string) => FlowGraphInfo | null;
+  getFlowGraph: (flowId: string) => FlowGraph | null;
   getRootNodeIds: (flowId: string) => string[];
   getLeafNodeIds: (flowId: string) => string[];
+  getNodeInstance: (flowId: string, nodeId: string) => BaseNode | null;
+  
+  // 결과 관리
+  setFlowResult: (flowId: string, result: any) => void;
+  getFlowResult: (flowId: string) => any;
   
   // 그래프 초기화
   resetFlowGraphs: () => void;
 }
 
+// 개선된 노드 분석 함수 - 객체 체이닝 방식 고려
+const buildGraph = (flowId: string, nodes: Node[], edges: Edge[], nodeFactory: NodeFactory): FlowGraph => {
+  // 1. 그래프 구조 초기화
+  const graph: FlowGraph = {
+    nodes: {},
+    nodeInstances: {},
+    rootNodeIds: [],
+    leafNodeIds: []
+  };
+  
+  // 2. 모든 노드 등록 (기본 정보)
+  nodes.forEach(node => {
+    graph.nodes[node.id] = {
+      id: node.id,
+      type: node.type || '',
+      parentNodeId: node.parentNode || null,
+      children: [],
+      isGroupNode: node.type === 'group'
+    };
+  });
+  
+  // 3. 그룹 노드 및 내부 노드 관계 설정
+  const nodesInGroups = new Set<string>();
+  nodes.forEach(node => {
+    if (node.type === 'group' && node.data?.nodeIds) {
+      const groupNode = graph.nodes[node.id];
+      node.data.nodeIds.forEach((childId: string) => {
+        if (graph.nodes[childId]) {
+          groupNode.children.push(childId);
+          nodesInGroups.add(childId);
+        }
+      });
+    }
+  });
+  
+  // 4. 엣지 기반 부모-자식 관계 설정
+  edges.forEach(edge => {
+    if (edge.source && edge.target && graph.nodes[edge.source]) {
+      graph.nodes[edge.source].children.push(edge.target);
+    }
+  });
+  
+  // 5. 루트 노드 식별 (진입 엣지가 없는 최상위 노드)
+  const hasIncomingEdge = new Set<string>();
+  edges.forEach(edge => {
+    if (edge.target) {
+      hasIncomingEdge.add(edge.target);
+    }
+  });
+  
+  // 6. 노드 인스턴스 생성 및 루트/리프 노드 식별
+  Object.keys(graph.nodes).forEach(nodeId => {
+    const nodeData = graph.nodes[nodeId];
+    
+    // 그룹에 속하지 않은 노드만 루트/리프 노드 후보로 고려
+    if (!nodesInGroups.has(nodeId)) {
+      // 루트 노드: 들어오는 엣지가 없고 부모 노드가 없는 노드
+      if (!hasIncomingEdge.has(nodeId) && !nodeData.parentNodeId) {
+        graph.rootNodeIds.push(nodeId);
+      }
+      
+      // 리프 노드: 자식이 없는 노드
+      if (nodeData.children.length === 0) {
+        graph.leafNodeIds.push(nodeId);
+      }
+    }
+    
+    // 노드 인스턴스 생성 (실제 실행 시 사용)
+    try {
+      const nodeInstance = nodeFactory.create(
+        nodeId,
+        nodeData.type,
+        nodes.find(n => n.id === nodeId)?.data || {},
+        null // 컨텍스트는 실행 시점에 주입
+      );
+      
+      graph.nodeInstances[nodeId] = nodeInstance;
+      nodeData.nodeInstance = nodeInstance;
+    } catch (error) {
+      console.error(`[useExecutorGraphStore] Failed to create node instance for ${nodeId}:`, error);
+    }
+  });
+  
+  console.log(`[useExecutorGraphStore] Built graph for flow ${flowId}:`, {
+    nodeCount: Object.keys(graph.nodes).length,
+    rootNodes: graph.rootNodeIds,
+    leafNodes: graph.leafNodeIds
+  });
+  
+  return graph;
+};
+
 export const useExecutorGraphStore = create<ExecutorGraphState>((set, get) => ({
   flowGraphs: {},
+  nodeFactory: new NodeFactory(),
   
   // Flow 그래프 설정
   setFlowGraph: (flowId, flowData) => {
@@ -97,22 +150,14 @@ export const useExecutorGraphStore = create<ExecutorGraphState>((set, get) => ({
       const nodes = flowData.nodes || [];
       const edges = flowData.edges || [];
       
-      // 루트/리프 노드 분석
-      const { rootNodeIds, leafNodeIds } = analyzeFlowNodes(nodes, edges);
-      
-      // 새 그래프 정보 객체 생성
-      const newFlowGraphInfo: FlowGraphInfo = {
-        nodes,
-        edges,
-        rootNodeIds,
-        leafNodeIds
-      };
+      // 그래프 구축
+      const graph = buildGraph(flowId, nodes, edges, state.nodeFactory);
       
       // 상태 업데이트
       return {
         flowGraphs: {
           ...state.flowGraphs,
-          [flowId]: newFlowGraphInfo
+          [flowId]: graph
         }
       };
     });
@@ -129,6 +174,32 @@ export const useExecutorGraphStore = create<ExecutorGraphState>((set, get) => ({
   
   getLeafNodeIds: (flowId) => {
     return get().flowGraphs[flowId]?.leafNodeIds || [];
+  },
+  
+  getNodeInstance: (flowId, nodeId) => {
+    return get().flowGraphs[flowId]?.nodeInstances[nodeId] || null;
+  },
+  
+  // 결과 관리
+  setFlowResult: (flowId, result) => {
+    set(state => {
+      const flowGraph = state.flowGraphs[flowId];
+      if (!flowGraph) return state;
+      
+      return {
+        flowGraphs: {
+          ...state.flowGraphs,
+          [flowId]: {
+            ...flowGraph,
+            lastResult: result
+          }
+        }
+      };
+    });
+  },
+  
+  getFlowResult: (flowId) => {
+    return get().flowGraphs[flowId]?.lastResult;
   },
   
   // 그래프 초기화

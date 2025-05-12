@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { FlowData } from '../utils/data/importExportUtils';
 import { useExecutorGraphStore } from './useExecutorGraphStore';
+import { deepClone } from '../utils/helpers';
 
 type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 
@@ -63,6 +64,11 @@ const initialState = {
 // 고유 ID 생성 함수
 const generateId = () => `flow-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+// Flow 데이터 깊은 복사 함수
+const cloneFlowData = (flowData: FlowData): FlowData => {
+  return deepClone(flowData);
+};
+
 export const useExecutorStateStore = create<ExecutorState>()(
   persist(
     (set, get) => ({
@@ -70,17 +76,20 @@ export const useExecutorStateStore = create<ExecutorState>()(
       
       // Flow 체인 관리 함수
       addFlow: (flowJson) => set((state) => {
+        // 깊은 복사를 통해 Flow 편집기 데이터와 실행기 데이터 완전히 분리
+        const clonedFlowJson = cloneFlowData(flowJson);
+        
         const newFlow: FlowItem = {
           id: generateId(),
-          name: flowJson.name || `Flow ${state.flowChain.length + 1}`,
-          flowJson,
+          name: clonedFlowJson.name || `Flow ${state.flowChain.length + 1}`,
+          flowJson: clonedFlowJson,
           inputData: [],
           result: null
         };
         
         // 그래프 스토어에 Flow 그래프 정보 저장
         const graphStore = useExecutorGraphStore.getState();
-        graphStore.setFlowGraph(newFlow.id, flowJson);
+        graphStore.setFlowGraph(newFlow.id, clonedFlowJson);
         
         return {
           flowChain: [...state.flowChain, newFlow],
