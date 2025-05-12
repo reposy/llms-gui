@@ -47,6 +47,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<FlowEditorPage />} />
+        <Route path="/editor" element={<FlowEditorPage />} />
         <Route path="/executor" element={<ExecutorPage />} />
       </Routes>
     </BrowserRouter>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NodeResult } from '../../core/outputCollector';
 import ReactMarkdown from 'react-markdown';
 import './markdown-style.css';
@@ -32,6 +32,10 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
   const [displayModes, setDisplayModes] = useState<{[nodeId: string]: 'text' | 'markdown'}>({});
   
+  useEffect(() => {
+    console.log(`[ResultDisplay] Component received flowId: ${flowId}, result:`, result);
+  }, [flowId, result]);
+
   // 결과 복사 함수
   const copyToClipboard = (text: string, nodeId: string) => {
     navigator.clipboard.writeText(text).then(
@@ -149,6 +153,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
   // 전체 결과 렌더링
   const renderAllResults = () => {
     if (!result || result.length === 0) {
+      console.log(`[ResultDisplay] No results to render for flow ${flowId}`);
       return (
         <div className="text-center py-8 text-gray-500">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -160,6 +165,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
       );
     }
 
+    console.log(`[ResultDisplay] Rendering ${result.length} results for flow ${flowId}`);
     return (
       <div className="space-y-3">
         <h3 className="font-medium">{flowName} 결과 ({result.length} 항목)</h3>

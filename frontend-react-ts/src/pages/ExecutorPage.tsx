@@ -55,11 +55,25 @@ const ExecutorPage: React.FC = () => {
   // Flow 선택 처리
   const handleFlowSelect = (flowId: string) => {
     setSelectedFlowId(flowId);
+    
+    // 결과가 있는 경우 result 단계로 전환
+    const result = getFlowResultById(flowId);
+    if (result && stage !== 'result') {
+      setStage('result');
+    }
   };
 
   // 선택된 Flow 또는 activeFlow가 변경될 때 콜백 등록
   useEffect(() => {
     if (!selectedFlowId) return;
+    
+    // 선택된 Flow가 변경될 때 결과 단계에서는 결과를 확인
+    const result = getFlowResultById(selectedFlowId);
+    if (result && stage === 'result') {
+      // 결과가 이미 있으면, 화면을 갱신하기 위한 상태 업데이트 트리거
+      // 이렇게 하면 같은 값이라도 상태 변경으로 인식되어 컴포넌트가 갱신됨
+      setFlowResult(selectedFlowId, result);
+    }
     
     // 콜백 등록: 결과가 업데이트되면 자동으로 화면 갱신
     const unregister = registerResultCallback(selectedFlowId, (result) => {
@@ -81,7 +95,7 @@ const ExecutorPage: React.FC = () => {
     return () => {
       unregister();
     };
-  }, [selectedFlowId, setFlowResult]);
+  }, [selectedFlowId, setFlowResult, getFlowResultById, stage]);
 
   // 단일 Flow 실행 처리
   const handleExecuteSingleFlow = async () => {
@@ -236,6 +250,7 @@ const ExecutorPage: React.FC = () => {
       if (!flow) return null;
       
       const result = getFlowResultById(selectedFlowId);
+      console.log(`[ExecutorPage] Rendering results for flow ${selectedFlowId}:`, result);
       
       return (
         <ResultDisplay

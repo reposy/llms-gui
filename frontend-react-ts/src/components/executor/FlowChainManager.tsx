@@ -2,7 +2,7 @@ import React from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
 import FileUploader from './FileUploader';
-import { executeChain } from '../../services/flowExecutionService';
+import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { Node, Edge } from '@xyflow/react';
 import { deepClone } from '../../utils/helpers';
 
@@ -197,6 +197,11 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
       if (result.status === 'error') {
         console.error(`[FlowChainManager] Error executing flow:`, result.error);
         alert(`Flow 실행 중 오류가 발생했습니다: ${result.error}`);
+      } else {
+        // 성공적인 실행 후 선택된 Flow 갱신 (실행 결과 표시를 위해)
+        if (onSelectFlow) {
+          onSelectFlow(flowId);
+        }
       }
     } catch (error) {
       console.error(`[FlowChainManager] Error executing flow:`, error);
@@ -361,8 +366,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                     isActive ? 'bg-blue-50' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => {
-                    setActiveFlowIndex(index);
-                    onSelectFlow(flow.id);
+                    handleSelectFlow(index);
                   }}
                 >
                   <div className="flex justify-between items-center">
