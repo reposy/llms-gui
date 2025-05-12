@@ -150,11 +150,48 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
         flowElement.classList.add('animate-pulse');
       }
       
+      // 현재 Flow의 인덱스 찾기
+      const flowIndex = flowChain.findIndex(f => f.id === flowId);
+      
+      // 실행할 입력 데이터 준비
+      let inputs = [...(flow.inputData || [])];
+      
+      // 이전 Flow의 결과 참조하는 문자열 확인
+      if (inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
+        console.log(`[FlowChainManager] 이전 Flow 결과 참조 발견:`, inputs[0]);
+        
+        // 이전 Flow의 결과를 직접 가져와서 치환
+        if (flowIndex > 0) {
+          const prevFlowId = flowChain[flowIndex - 1].id;
+          
+          // flowMap[flow.id].lastResults 사용
+          const prevFlow = useExecutorStateStore.getState().getFlowById(prevFlowId);
+          const prevResult = prevFlow?.result;
+          
+          console.log(`[FlowChainManager] 이전 Flow(${prevFlowId})의 결과:`, prevResult);
+          
+          if (prevResult && Array.isArray(prevResult) && prevResult.length > 0) {
+            // NodeResult[] 형식인지 확인 (nodeId, nodeName, nodeType, result 필드가 있는지)
+            if (typeof prevResult[0] === 'object' && prevResult[0] !== null && 'result' in prevResult[0]) {
+              // 첫 번째 노드 결과의 result 필드 직접 사용
+              inputs = [prevResult[0].result];
+              console.log(`[FlowChainManager] 사용할 입력 데이터 (노드 결과):`, inputs[0]);
+            } else {
+              // 일반 배열인 경우 첫 번째 요소 사용
+              inputs = [prevResult[0]];
+              console.log(`[FlowChainManager] 사용할 입력 데이터 (배열 요소):`, inputs[0]);
+            }
+          }
+        }
+      }
+      
+      console.log(`[FlowChainManager] 최종 입력 데이터:`, inputs);
+      
       // Flow 실행
       const result = await executeFlowExecutor({
         flowId: flow.id,
         flowJson: flow.flowJson,
-        inputs: flow.inputData || [],
+        inputs: inputs,
       });
       
       console.log(`[FlowChainManager] Flow execution completed:`, result);
@@ -277,7 +314,6 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
               };
             }
             
-            // 스토어 초기화는 하지 않음 (기존 Flow 유지)
             // 각 Flow 추가
             const { addFlow, setFlowInputData } = useExecutorStateStore.getState();
             importData.flowChain.forEach(flow => {
@@ -288,16 +324,26 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                   return; // 이 Flow는 건너뛰고 계속 진행
                 }
                 
-                // Flow 추가
-                addFlow(flow.flowJson);
+                // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
+                const flowName = flow.name || flow.flowJson.name || '가져온-flow';
+                const timestamp = Date.now();
+                const random = Math.floor(Math.random() * 1000);
                 
-                // 방금 추가된 Flow의 ID 가져오기 (새로 생성된 ID)
-                const { flowChain } = useExecutorStateStore.getState();
-                const newFlowId = flowChain[flowChain.length - 1].id;
+                // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
+                const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
+                const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
+                
+                const flowToAdd = {
+                  ...flow.flowJson,
+                  id: flowId
+                };
+                
+                // Flow 추가 (원본 ID 보존)
+                addFlow(flowToAdd);
                 
                 // 입력 데이터 설정
                 if (flow.inputData && flow.inputData.length > 0) {
-                  setFlowInputData(newFlowId, flow.inputData);
+                  setFlowInputData(flowId, flow.inputData);
                 }
               } catch (flowError) {
                 console.error(`[FlowChainManager] Flow 추가 중 오류:`, flowError);

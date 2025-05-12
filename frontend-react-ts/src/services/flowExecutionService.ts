@@ -321,34 +321,63 @@ export const executeFlow = executeFlowExecutor;
 
 /**
  * 참조 변수를 처리하는 함수
- * ${result-flow-X} 형태의 참조를 실제 값으로 대체합니다.
+ * ${result-flow-X}나 ${result-flow-flow-ID-NUM} 형태의 참조를 실제 값으로 대체합니다.
  */
-const processInputReferences = (inputs: any[], previousResults: Record<string, any>): any[] => {
+export const processInputReferences = (inputs: any[], previousResults: Record<string, any>): any[] => {
   return inputs.map(input => {
     if (typeof input === 'string') {
-      // ${result-flow-X} 형태의 참조 변수 처리
+      // Flow 결과 참조 패턴:
+      // 1. 기본 패턴: ${result-flow-FLOWID}
+      // 2. 확장 패턴: ${result-flow-flow-TIMESTAMP-NUMBER}
       const resultRefPattern = /\$\{result-flow-([^}]+)\}/g;
       
-      return input.replace(resultRefPattern, (match, flowId) => {
+      return input.replace(resultRefPattern, (match, refParam) => {
+        console.log(`[flowExecutionService] Processing reference: ${match}, refParam: ${refParam}`);
+        
+        // 참조 파라미터 처리
+        let flowId = refParam;
+        
+        // "flow-TIMESTAMP-NUMBER" 형식인 경우, TIMESTAMP-NUMBER 부분이 ID가 됨
+        if (refParam.startsWith('flow-')) {
+          flowId = refParam; // 전체 refParam을 flowId로 사용
+        }
+        
         const result = previousResults[flowId];
         if (result === undefined) {
+          // 모든 previousResults 키 출력 (디버깅용)
           console.warn(`[flowExecutionService] Reference to unknown flow result: ${match}`);
+          console.log(`[flowExecutionService] Available results:`, Object.keys(previousResults));
           return match; // 알 수 없는 참조는 그대로 유지
         }
+        
+        console.log(`[flowExecutionService] Found result for ${flowId}:`, result);
         
         // 결과 데이터 타입에 따른 처리
         if (typeof result === 'string') {
           return result;
         } else if (Array.isArray(result)) {
-          // 배열인 경우 첫 번째 항목 사용 (또는 다른 정책 적용 가능)
+          // 배열인 경우, 노드 결과 배열일 가능성이 높음
           if (result.length > 0) {
-            const firstResult = result[0];
-            return typeof firstResult === 'string' ? 
-              firstResult : JSON.stringify(firstResult);
+            // NodeResult[] 형식인지 확인 (nodeId, nodeName, nodeType, result 필드가 있는지)
+            if (typeof result[0] === 'object' && result[0] !== null && 'result' in result[0]) {
+              // 첫 번째 노드 결과의 result 필드 사용
+              const nodeResult = result[0].result;
+              return typeof nodeResult === 'string' ? 
+                nodeResult : JSON.stringify(nodeResult);
+            } else {
+              // 일반 배열인 경우 첫 번째 요소 사용
+              const firstResult = result[0];
+              return typeof firstResult === 'string' ? 
+                firstResult : JSON.stringify(firstResult);
+            }
           }
-          return '[]'; // 빈 배열
-        } else {
+          return ''; // 빈 배열
+        } else if (typeof result === 'object' && result !== null) {
+          // 객체인 경우 직렬화 (문자열로 변환)
           return JSON.stringify(result);
+        } else {
+          // 기타 타입 (number, boolean 등)
+          return String(result);
         }
       });
     }
@@ -360,21 +389,46 @@ const processInputReferences = (inputs: any[], previousResults: Record<string, a
  * [Flow Executor용] 여러 Flow를 연속해서 실행하는 체인 함수
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
-  // 이전 Flow 실행 결과를 저장하는 객체
-  const previousResults: Record<string, any> = {};
-  
-  console.log(`[FlowExecutor] Starting chain execution with ${params.flowItems.length} flows`);
-  
   // Executor 스토어
   const executorStore = useExecutorStateStore.getState();
   
+  console.log(`[FlowExecutor] Starting chain execution with ${params.flowItems.length} flows`);
+  
   // 각 Flow 순차 실행
-  for (const flowItem of params.flowItems) {
+  for (let i = 0; i < params.flowItems.length; i++) {
+    const flowItem = params.flowItems[i];
     try {
-      console.log(`[FlowExecutor] Executing flow in chain: ${flowItem.id}`);
+      console.log(`[FlowExecutor] Executing flow in chain: ${flowItem.id} (index: ${i})`);
       
-      // 입력 데이터에서 참조 처리
-      const processedInputs = processInputReferences(flowItem.inputData, previousResults);
+      // 실행할 입력 데이터 준비
+      let inputs = [...(flowItem.inputData || [])];
+      
+      // 첫 번째 Flow가 아니라면, 이전 Flow의 결과를 참조할 수 있는지 확인
+      if (i > 0 && inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
+        // 이전 Flow의 결과 가져오기
+        const prevFlowId = params.flowItems[i-1].id;
+        
+        // flowMap[flow.id].lastResults 사용
+        const prevFlow = executorStore.getFlowById(prevFlowId);
+        const prevResult = prevFlow?.result;
+        
+        console.log(`[FlowExecutor] 이전 Flow(${prevFlowId})의 결과:`, prevResult);
+        
+        if (prevResult && Array.isArray(prevResult) && prevResult.length > 0) {
+          // NodeResult[] 형식인지 확인 (nodeId, nodeName, nodeType, result 필드가 있는지)
+          if (typeof prevResult[0] === 'object' && prevResult[0] !== null && 'result' in prevResult[0]) {
+            // 첫 번째 노드 결과의 result 필드 직접 사용
+            inputs = [prevResult[0].result];
+            console.log(`[FlowExecutor] 사용할 입력 데이터 (노드 결과):`, inputs[0]);
+          } else {
+            // 일반 배열인 경우 첫 번째 요소 사용
+            inputs = [prevResult[0]];
+            console.log(`[FlowExecutor] 사용할 입력 데이터 (배열 요소):`, inputs[0]);
+          }
+        }
+      }
+      
+      console.log(`[FlowExecutor] 최종 입력 데이터:`, inputs);
       
       // Flow 복제 후 실행
       const flowJsonClone = deepClone(flowItem.flowJson);
@@ -383,13 +437,10 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
       const result = await executeFlowExecutor({
         flowId: flowItem.id,
         flowJson: flowJsonClone,
-        inputs: processedInputs
+        inputs: inputs
       });
       
       if (result.status === 'success') {
-        // 성공 결과 저장
-        previousResults[flowItem.id] = result.outputs;
-        
         // 성공 콜백 호출
         if (params.onFlowComplete) {
           params.onFlowComplete(flowItem.id, result.outputs);

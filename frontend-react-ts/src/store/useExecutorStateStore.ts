@@ -62,7 +62,15 @@ const initialState = {
 };
 
 // 고유 ID 생성 함수
-const generateId = () => `flow-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+const generateId = (flowName?: string) => {
+  const namePart = flowName 
+    ? flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20)
+    : 'flow';
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
+  
+  return `${namePart}-${timestamp}-${random}`;
+};
 
 // Flow 데이터 깊은 복사 함수
 const cloneFlowData = (flowData: FlowData): FlowData => {
@@ -80,7 +88,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
         const clonedFlowJson = cloneFlowData(flowJson);
         
         const newFlow: FlowItem = {
-          id: generateId(),
+          id: generateId(clonedFlowJson.name),
           name: clonedFlowJson.name || `Flow ${state.flowChain.length + 1}`,
           flowJson: clonedFlowJson,
           inputData: [],
