@@ -527,7 +527,11 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                         <h3 className="font-medium text-gray-900">{flow.name}</h3>
                         <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-1">
                           <span>{flow.inputData && flow.inputData.length ? `${flow.inputData.length}개의 입력` : '입력 없음'}</span>
-                          {flowExecutionResult && <span className={`${statusColor} font-medium`}>• {flowExecutionResult.status.charAt(0).toUpperCase() + flowExecutionResult.status.slice(1)}</span>}
+                          {flowExecutionResult && flowExecutionResult.status && (
+                            <span className={`${statusColor} font-medium`}>
+                              • {flowExecutionResult.status.charAt(0).toUpperCase() + flowExecutionResult.status.slice(1)}
+                            </span>
+                          )}
                           
                           <div className="flex gap-2 text-gray-400 ml-1">
                             <span title="노드 수">{analysis.totalNodes} 노드</span>
