@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
 
@@ -130,6 +130,36 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
     }
     setConfirmed(false);
   };
+
+  // 특정 위치 다음에 새 텍스트 입력 추가
+  const handleAddTextInputAfter = (index: number) => {
+    const newInputItems = [...inputItems];
+    // index 다음에 새 텍스트 입력 삽입
+    newInputItems.splice(index + 1, 0, { type: 'text', value: '' });
+    setInputItems(newInputItems);
+    setConfirmed(false);
+    
+    // 새로 추가된 입력 필드로 포커스 이동 (약간의 지연 추가)
+    setTimeout(() => {
+      const textareas = document.querySelectorAll('textarea');
+      if (textareas.length > index + 1) {
+        textareas[index + 1].focus();
+      }
+    }, 0);
+  };
+
+  // 키보드 이벤트 처리 (텍스트 입력)
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, index: number) => {
+    // 확정 상태일 때는 키 이벤트를 처리하지 않음
+    if (confirmed) return;
+    
+    // Shift+Enter: 새 텍스트 입력 추가
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault(); // 기본 동작 방지 (개행 방지)
+      handleAddTextInputAfter(index);
+    }
+    // 일반 Enter는 기본 동작(개행) 허용
+  };
   
   // 입력 필드 제거
   const handleRemoveInput = (index: number) => {
@@ -189,37 +219,45 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
           <p className="text-sm text-gray-500">입력 데이터를 입력하고 확정하세요</p>
         </div>
         
-        {/* 확정 버튼 */}
+        {/* 확정/수정 버튼 */}
         <div>
           {!confirmed ? (
             <button
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex items-center"
               onClick={handleConfirmInputs}
             >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
               입력 확정
             </button>
           ) : (
-            <div className="flex items-center">
-              <span className="text-green-600 bg-green-50 px-3 py-1 rounded-full text-sm font-medium flex items-center mr-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                확정됨
-              </span>
-              <button
-                className="text-blue-500 hover:text-blue-700 text-sm"
-                onClick={() => setConfirmed(false)}
-              >
-                수정
-              </button>
-            </div>
+            <button
+              className="px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors flex items-center"
+              onClick={() => setConfirmed(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              수정하기
+            </button>
           )}
         </div>
       </div>
       
       <div className="p-4">
         <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">입력 데이터</h3>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-sm font-medium text-gray-700">입력 데이터</h3>
+            {confirmed && (
+              <span className="text-green-600 bg-green-50 px-3 py-1 rounded-full text-xs font-medium flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                확정됨
+              </span>
+            )}
+          </div>
           
           {inputItems.map((item, index) => (
             <div key={index} className="mb-4 bg-white">
@@ -229,25 +267,27 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                   <button
                     className={`px-2 py-1 text-xs rounded ${item.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
                     onClick={() => handleInputTypeChange(index, 'text')}
+                    disabled={confirmed}
                   >
                     텍스트
                   </button>
                   <button
                     className={`px-2 py-1 text-xs rounded ${item.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
                     onClick={() => handleInputTypeChange(index, 'file')}
+                    disabled={confirmed}
                   >
                     파일
                   </button>
                   <button
                     className={`px-2 py-1 text-xs rounded ${item.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
                     onClick={() => handleInputTypeChange(index, 'flow-result')}
-                    disabled={previousFlows.length === 0}
+                    disabled={confirmed || previousFlows.length === 0}
                     title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
                   >
                     Flow 결과
                   </button>
                 </div>
-                {inputItems.length > 1 && (
+                {inputItems.length > 1 && !confirmed && (
                   <button 
                     onClick={() => handleRemoveInput(index)}
                     className="ml-auto p-1 text-red-500 hover:text-red-700"
@@ -261,18 +301,37 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
               </div>
 
               {item.type === 'text' && (
-                <textarea
-                  rows={3}
-                  className={`w-full p-2 border rounded bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}
-                  value={item.value as string}
-                  onChange={(e) => handleInputChange(index, e.target.value)}
-                  placeholder={`예: "오늘 날씨 어때?"`}
-                  readOnly={confirmed}
-                />
+                <div className="flex">
+                  <textarea
+                    rows={3}
+                    className={`flex-1 p-2 border rounded-l bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}
+                    value={item.value as string}
+                    onChange={(e) => handleInputChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, index)}
+                    placeholder={`예: "오늘 날씨 어때?"`}
+                    readOnly={confirmed}
+                  />
+                  {!confirmed && (
+                    <button
+                      onClick={() => handleAddTextInputAfter(index)}
+                      className="px-3 border border-l-0 rounded-r border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700"
+                      title="이 입력 아래에 새 행 추가"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               )}
               {item.type === 'file' && (
                 <div className={`w-full p-2 border rounded flex items-center justify-between bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}>
-                  <span>{item.value instanceof File ? item.value.name : '파일 선택됨'}</span>
+                  <div className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>{item.value instanceof File ? item.value.name : '파일 선택됨'}</span>
+                  </div>
                   {!confirmed && (
                     <button 
                       className="text-xs text-blue-500 hover:underline"
@@ -298,6 +357,14 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                   ))}
                 </select>
               )}
+              
+              {!confirmed && item.type === 'text' && (
+                <div className="mt-1 text-xs text-gray-500 flex justify-end">
+                  <span>
+                    Shift+Enter를 눌러 새 행 추가
+                  </span>
+                </div>
+              )}
             </div>
           ))}
           
@@ -311,7 +378,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                입력 추가 (텍스트)
+                Add Row
               </button>
               <button 
                 onClick={() => handleAddInput('file')}
@@ -320,7 +387,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
-                입력 추가 (파일)
+                Add Files
               </button>
               <button 
                 onClick={() => handleAddInput('flow-result')}
@@ -332,7 +399,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
                   />
                 </svg>
-                입력 추가 (Flow 결과)
+                Add Flow Result
               </button>
             </div>
           )}

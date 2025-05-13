@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FlowData } from '../../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import FileSelector from './FileSelector';
 
 interface FileUploaderProps {
   onFileUpload?: (jsonData: FlowData) => void;
@@ -11,10 +12,11 @@ interface FileUploaderProps {
 const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileInputRef, className = '' }) => {
   const [fileName, setFileName] = useState<string>('');
   const [error, setError] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
   
   const addFlow = useExecutorStateStore(state => state.addFlow);
   const flowChain = useExecutorStateStore(state => state.flowChain);
+  const setStage = useExecutorStateStore(state => state.setStage);
   
   // 외부 파일 입력 참조가 변경 이벤트를 수신하도록 설정
   useEffect(() => {
@@ -39,14 +41,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
     }
   }, [externalFileInputRef]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    handleFileSelected(file);
-  };
-  
-  // 파일 처리 로직을 별도 함수로 분리 (이벤트 소스와 무관하게 처리 가능)
+  // 파일 처리 로직
   const handleFileSelected = (file: File) => {
     setFileName(file.name);
     setError('');
@@ -54,18 +49,53 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const flowData: FlowData = JSON.parse(e.target?.result as string);
+        const json = e.target?.result as string;
+        let flowData;
+        
+        try {
+          flowData = JSON.parse(json);
+        } catch (parseError) {
+          console.error(`[FileUploader] JSON 파싱 오류:`, parseError);
+          setError('JSON 파일 형식이 올바르지 않습니다.');
+          return;
+        }
+        
+        // 기본 유효성 검사
+        if (!flowData || typeof flowData !== 'object') {
+          throw new Error('유효하지 않은 Flow 파일 형식입니다.');
+          return;
+        }
+        
+        // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
+        const flowName = file.name.replace(/\.json$/, '') || '가져온 Flow';
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 1000);
+        const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
+        const flowId = `${namePart}-${timestamp}-${random}`;
+        
+        const flowToAdd = {
+          ...flowData,
+          id: flowId,
+          name: flowName
+        };
         
         // Flow 추가
-        addFlow(flowData);
+        addFlow(flowToAdd);
+        
+        // 다음 단계로 이동
+        if (flowChain.length === 0) {
+          setStage('input');
+        }
         
         // 외부 콜백이 있으면 호출
         if (onFileUpload) {
-          onFileUpload(flowData);
+          onFileUpload(flowToAdd);
         }
+        
+        console.log(`[FileUploader] Flow imported successfully: ${flowId}`);
       } catch (err) {
-        console.error('JSON 파일 파싱 오류:', err);
-        setError('유효하지 않은 JSON 파일입니다. 올바른 Flow JSON 파일을 업로드해주세요.');
+        console.error('Flow 파일 처리 오류:', err);
+        setError('유효하지 않은 Flow 파일입니다. 올바른 Flow JSON 파일을 업로드해주세요.');
       }
     };
     reader.onerror = () => {
@@ -74,34 +104,19 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
     reader.readAsText(file);
   };
 
-  const handleButtonClick = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
     <div className={`p-4 border border-gray-300 rounded-lg bg-white ${className}`}>
       <h2 className="text-lg font-medium mb-3">
         {flowChain.length === 0 ? 'Flow 업로드하기' : 'Flow 추가하기'}
       </h2>
       <div className="flex flex-col space-y-4">
-        <input
-          type="file"
-          accept=".json"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        
         <div className="flex flex-wrap gap-3">
-          <button
-            onClick={handleButtonClick}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex items-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-            </svg>
-            파일에서 가져오기
-          </button>
+          <FileSelector 
+            onFileSelected={handleFileSelected}
+            accept=".json"
+            buttonText="파일에서 가져오기"
+            fileSelectorRef={fileSelectorRef}
+          />
           
           {fileName && (
             <div className="px-3 py-2 bg-gray-100 rounded flex-1 flex items-center">

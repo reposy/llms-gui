@@ -6,9 +6,11 @@ import { executeChain, executeFlowExecutor } from '../../services/flowExecutionS
 import { Node, Edge } from '@xyflow/react';
 import { deepClone } from '../../utils/helpers';
 import { findLeafNodes, findRootNodes } from '../../core/outputCollector';
+import ExportModal from './ExportModal';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
+  handleImportFlowChain?: () => void; // 전체 Flow Chain을 가져오는 기능
 }
 
 // Flow 구조 분석 정보
@@ -57,9 +59,12 @@ interface FlowChainExport {
   }[];
 }
 
-const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => {
+const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handleImportFlowChain }) => {
   // Flow 분석 결과 캐시
   const [flowAnalysisCache, setFlowAnalysisCache] = useState<Record<string, FlowAnalysis>>({});
+  // 내보내기 모달 상태
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportWithData, setExportWithData] = useState(false);
   
   const {
     flowChain,
@@ -69,7 +74,9 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
     moveFlowDown,
     setActiveFlowIndex,
     getFlowResultById,
-    setFlowResult
+    setFlowResult,
+    addFlow,
+    setFlowInputData
   } = useExecutorStateStore();
   
   const graphStore = useExecutorGraphStore();
@@ -80,6 +87,203 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
     const flow = flowChain[index];
     if (flow && onSelectFlow) {
       onSelectFlow(flow.id);
+    }
+  };
+  
+  // 단일 Flow 가져오기 (Flow Editor에서 내보낸 Flow)
+  const handleImportFlow = (file?: File): Promise<string | null> => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!file) {
+          // 파일이 제공되지 않은 경우 파일 선택기를 통해 파일 선택
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'application/json';
+          
+          // 파일 선택 처리
+          input.onchange = (e) => {
+            const selectedFile = (e.target as HTMLInputElement).files?.[0];
+            if (!selectedFile) {
+              resolve(null);
+              return;
+            }
+            
+            processFlowFile(selectedFile)
+              .then(flowId => resolve(flowId))
+              .catch(error => {
+                console.error(`[FlowChainManager] Flow 파일 처리 중 오류:`, error);
+                alert(`Flow 파일을 처리하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+                reject(error);
+              });
+          };
+          
+          // 파일 선택기 클릭
+          input.click();
+        } else {
+          // 파일이 제공된 경우 직접 처리
+          processFlowFile(file)
+            .then(flowId => resolve(flowId))
+            .catch(error => {
+              console.error(`[FlowChainManager] Flow 파일 처리 중 오류:`, error);
+              alert(`Flow 파일을 처리하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+              reject(error);
+            });
+        }
+      } catch (error) {
+        console.error(`[FlowChainManager] Flow 가져오기 중 오류:`, error);
+        alert('Flow 가져오기 중 오류가 발생했습니다.');
+        reject(error);
+      }
+    });
+  };
+  
+  // 여러 Flow 가져오기
+  const handleImportFlows = () => {
+    try {
+      // 파일 선택기 생성
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json';
+      input.multiple = true; // 여러 파일 선택 가능
+      
+      // 파일 선택 처리
+      input.onchange = async (e) => {
+        const files = (e.target as HTMLInputElement).files;
+        if (!files || files.length === 0) return;
+        
+        let successCount = 0;
+        let failCount = 0;
+        
+        // 각 파일마다 순차적으로 처리
+        for (let i = 0; i < files.length; i++) {
+          try {
+            const flowId = await handleImportFlow(files[i]);
+            if (flowId) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          } catch (error) {
+            console.error(`[FlowChainManager] ${files[i].name} 파일 처리 중 오류:`, error);
+            failCount++;
+          }
+        }
+        
+        // 결과 메시지 출력
+        if (successCount > 0) {
+          alert(`${successCount}개의 Flow를 성공적으로 가져왔습니다.${failCount > 0 ? ` ${failCount}개의 Flow 가져오기 실패.` : ''}`);
+        } else if (failCount > 0) {
+          alert(`모든 Flow 가져오기에 실패했습니다. (${failCount}개)`);
+        }
+      };
+      
+      // 파일 선택기 클릭
+      input.click();
+    } catch (error) {
+      console.error(`[FlowChainManager] 여러 Flow 가져오기 중 오류:`, error);
+      alert('Flow 가져오기 중 오류가 발생했습니다.');
+    }
+  };
+  
+  // Flow 파일 처리 함수 (재사용 가능)
+  const processFlowFile = (file: File): Promise<string | null> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const json = event.target?.result as string;
+          let flowData;
+          
+          try {
+            flowData = JSON.parse(json);
+          } catch (parseError) {
+            console.error(`[FlowChainManager] JSON 파싱 오류:`, parseError);
+            alert('JSON 파일 형식이 올바르지 않습니다.');
+            reject(parseError);
+            return;
+          }
+          
+          // 기본 유효성 검사
+          if (!flowData || typeof flowData !== 'object') {
+            throw new Error('유효하지 않은 Flow 파일 형식입니다.');
+          }
+          
+          // Flow 추가 (ID 고유성 보장)
+          const flowName = flowData.name || file.name.replace(/\.json$/, '') || '가져온-flow';
+          const timestamp = Date.now();
+          const random = Math.floor(Math.random() * 1000);
+          
+          // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
+          const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
+          const flowId = `${namePart}-${timestamp}-${random}`;
+          
+          const flowToAdd = {
+            ...flowData,
+            id: flowId
+          };
+          
+          // Flow 추가
+          addFlow(flowToAdd);
+          console.log(`[FlowChainManager] Flow 추가 완료:`, flowToAdd);
+          
+          // 그래프 초기화
+          graphStore.setFlowGraph(flowId, flowToAdd);
+          
+          // 선택 처리
+          const newIndex = flowChain.length; // 방금 추가된 Flow의 인덱스
+          handleSelectFlow(newIndex);
+          
+          resolve(flowId);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = (error) => {
+        reject(error);
+      };
+      
+      reader.readAsText(file);
+    });
+  };
+  
+  // 내보내기 처리
+  const handleExportWithFilename = (filename: string, includeData: boolean) => {
+    try {
+      // 현재 체인 데이터 추출
+      const exportData: FlowChainExport = {
+        version: '1.0',
+        flowChain: flowChain.map(flow => {
+          const result = includeData ? getFlowResultById(flow.id) : null;
+          return {
+            id: flow.id,
+            name: flow.name,
+            flowJson: flow.flowJson,
+            inputData: flow.inputData || [],
+            result: result // 옵션에 따라 결과 데이터 포함
+          };
+        })
+      };
+      
+      // JSON 변환 및 파일 다운로드
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      
+      // 정리
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      console.log(`[FlowChainManager] Flow chain exported successfully with ${includeData ? '' : 'no '}data`);
+    } catch (error) {
+      console.error(`[FlowChainManager] Error exporting flow chain:`, error);
+      alert('Flow 체인 내보내기 중 오류가 발생했습니다.');
     }
   };
   
@@ -222,152 +426,6 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
       }
     }
   };
-  
-  // Flow 체인 내보내기
-  const handleExportFlowChain = () => {
-    try {
-      // 현재 체인 데이터 추출
-      const exportData: FlowChainExport = {
-        version: '1.0',
-        flowChain: flowChain.map(flow => ({
-          id: flow.id,
-          name: flow.name,
-          flowJson: flow.flowJson,
-          inputData: flow.inputData || [],
-        }))
-      };
-      
-      // JSON 변환 및 파일 다운로드
-      const json = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `flow-chain-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      
-      // 정리
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      console.log(`[FlowChainManager] Flow chain exported successfully`);
-    } catch (error) {
-      console.error(`[FlowChainManager] Error exporting flow chain:`, error);
-      alert('Flow 체인 내보내기 중 오류가 발생했습니다.');
-    }
-  };
-  
-  // Flow 체인 가져오기
-  const handleImportFlowChain = () => {
-    try {
-      // 파일 선택기 생성
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'application/json';
-      
-      // 파일 선택 처리
-      input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const json = event.target?.result as string;
-            let importData;
-            
-            try {
-              importData = JSON.parse(json);
-            } catch (parseError) {
-              console.error(`[FlowChainManager] JSON 파싱 오류:`, parseError);
-              alert('JSON 파일 형식이 올바르지 않습니다.');
-              return;
-            }
-            
-            // 기본 유효성 검사
-            if (!importData || typeof importData !== 'object') {
-              throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
-            }
-            
-            // 버전 확인
-            if (!importData.version) {
-              console.warn('[FlowChainManager] 버전 정보가 없는 파일입니다.');
-              // 버전 없이 계속 진행
-            }
-            
-            // flowChain 배열 존재 확인
-            if (!Array.isArray(importData.flowChain)) {
-              // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
-              console.log('[FlowChainManager] flowChain 배열이 없습니다. 단일 Flow JSON으로 처리합니다.');
-              
-              // 단일 Flow 객체 생성
-              importData = {
-                version: '1.0',
-                flowChain: [{
-                  id: `flow-${Date.now()}`,
-                  name: file.name.replace(/\.json$/, '') || '가져온 Flow',
-                  flowJson: importData,
-                  inputData: []
-                }]
-              };
-            }
-            
-            // 각 Flow 추가
-            const { addFlow, setFlowInputData } = useExecutorStateStore.getState();
-            importData.flowChain.forEach(flow => {
-              try {
-                // flowJson 유효성 검사
-                if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-                  console.warn(`[FlowChainManager] 유효하지 않은 flowJson 형식, flow:`, flow);
-                  return; // 이 Flow는 건너뛰고 계속 진행
-                }
-                
-                // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
-                const flowName = flow.name || flow.flowJson.name || '가져온-flow';
-                const timestamp = Date.now();
-                const random = Math.floor(Math.random() * 1000);
-                
-                // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
-                const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
-                const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
-                
-                const flowToAdd = {
-                  ...flow.flowJson,
-                  id: flowId
-                };
-                
-                // Flow 추가 (원본 ID 보존)
-                addFlow(flowToAdd);
-                
-                // 입력 데이터 설정
-                if (flow.inputData && flow.inputData.length > 0) {
-                  setFlowInputData(flowId, flow.inputData);
-                }
-              } catch (flowError) {
-                console.error(`[FlowChainManager] Flow 추가 중 오류:`, flowError);
-                // 이 Flow는 건너뛰고 계속 진행
-              }
-            });
-            
-            console.log(`[FlowChainManager] Flow chain imported successfully`);
-          } catch (error) {
-            console.error(`[FlowChainManager] Error parsing imported flow chain:`, error);
-            alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-          }
-        };
-        
-        reader.readAsText(file);
-      };
-      
-      // 파일 선택기 클릭
-      input.click();
-    } catch (error) {
-      console.error(`[FlowChainManager] Error importing flow chain:`, error);
-      alert('Flow 체인 가져오기 중 오류가 발생했습니다.');
-    }
-  };
 
   return (
     <div className="border border-gray-300 rounded-lg overflow-hidden">
@@ -376,26 +434,25 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
         
         <div className="flex space-x-2">
           <button
-            onClick={handleImportFlowChain}
+            onClick={() => handleImportFlow()}
             className="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center text-sm"
-            title="Flow 체인 가져오기"
+            title="단일 Flow를 가져와 체인에 추가합니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            가져오기
+            Flow 가져오기
           </button>
           
           <button
-            onClick={handleExportFlowChain}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center text-sm ${flowChain.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={flowChain.length === 0}
-            title="Flow 체인 내보내기"
+            onClick={handleImportFlows}
+            className="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center text-sm"
+            title="여러 Flow 파일을 선택하여 체인에 추가합니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            내보내기
+            Flow 여러개 가져오기
           </button>
         </div>
       </div>
@@ -564,16 +621,6 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
           </ul>
         )}
       </div>
-      {flowChain.length > 0 && (
-        <div className="p-4 border-t border-gray-300 bg-gray-50">
-          <button
-            onClick={handleExecuteChain}
-            className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors font-medium"
-          >
-            Flow 체인 실행
-          </button>
-        </div>
-      )}
     </div>
   );
 };

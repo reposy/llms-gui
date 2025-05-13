@@ -1,37 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import FileUploader from '../components/executor/FileUploader';
 import FlowChainManager from '../components/executor/FlowChainManager';
 import FlowInputForm from '../components/executor/FlowInputForm';
 import ResultDisplay from '../components/executor/ResultDisplay';
-import { executeFlowExecutor, executeChain, registerResultCallback } from '../services/flowExecutionService';
-import { useExecutorStateStore } from '../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
-import ExportModal from '../components/executor/ExportModal';
-import ExecutorPanel from '../components/executor/ExecutorPanel';
+import { registerResultCallback } from '../services/flowExecutionService';
+import ExecutorPanel from '../components/executor/ExecutorPanelRefactored';
+import useFlowExecutor from '../hooks/useFlowExecutor';
 
 const ExecutorPage: React.FC = () => {
-  // 로컬 상태
-  const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
-  const [exportModalOpen, setExportModalOpen] = useState(false);
+  // 파일 입력 참조
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Zustand 스토어에서 상태와 액션 가져오기
-  const {
-    flowChain,
-    activeFlowIndex,
-    stage,
+  // 커스텀 훅을 통한 상태 및 기능 가져오기
+  const { 
+    isExecuting,
     error,
+    handleImportFlowChain,
+    handleExportFlowChain,
+    handleExecuteSingleFlow,
+    handleExecuteChain,
+    handleClearAll,
+    flowChain,
+    stage,
     setStage,
-    setError,
     getActiveFlow,
     getFlowById,
-    setFlowResult,
-    resetResults,
-    getFlowResultById,
-    addFlow,
-    setFlowInputData
-  } = useExecutorStateStore();
+    getFlowResultById
+  } = useFlowExecutor();
+  
+  // 로컬 상태
+  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   
   // 활성 Flow 가져오기
   const activeFlow = getActiveFlow();
@@ -45,15 +43,6 @@ const ExecutorPage: React.FC = () => {
     }
   }, [activeFlow]);
   
-  // Flow 체인 상태가 변경되면 UI 단계 업데이트
-  useEffect(() => {
-    if (flowChain.length === 0 && stage !== 'upload') {
-      setStage('upload');
-    } else if (flowChain.length > 0 && stage === 'upload') {
-      setStage('input');
-    }
-  }, [flowChain, stage, setStage]);
-
   // Flow 선택 처리
   const handleFlowSelect = (flowId: string) => {
     setSelectedFlowId(flowId);
@@ -65,31 +54,23 @@ const ExecutorPage: React.FC = () => {
     }
   };
 
+  // 선택된 Flow의 실행 처리
+  const handleExecuteSelectedFlow = () => {
+    if (selectedFlowId) {
+      handleExecuteSingleFlow(selectedFlowId);
+    }
+  };
+
   // 선택된 Flow 또는 activeFlow가 변경될 때 콜백 등록
   useEffect(() => {
     if (!selectedFlowId) return;
     
-    // 선택된 Flow가 변경될 때 결과 단계에서는 결과를 확인
-    const result = getFlowResultById(selectedFlowId);
-    if (result && stage === 'result') {
-      // 결과가 이미 있으면, 화면을 갱신하기 위한 상태 업데이트 트리거
-      // 이렇게 하면 같은 값이라도 상태 변경으로 인식되어 컴포넌트가 갱신됨
-      setFlowResult(selectedFlowId, result);
-    }
-    
     // 콜백 등록: 결과가 업데이트되면 자동으로 화면 갱신
-    const unregister = registerResultCallback(selectedFlowId, (result) => {
-      // Flow 결과 업데이트
-      setFlowResult(selectedFlowId, result);
-      
-      // 실행 중 상태가 지속되면 해제
-      if (isExecuting) {
-        setIsExecuting(false);
-        
-        // 결과 화면으로 전환 (현재 input 단계인 경우)
-        if (stage === 'executing') {
-          setStage('result');
-        }
+    const unregister = registerResultCallback(selectedFlowId, () => {
+      // 실행 중 상태가 계속되면 해제
+      if (isExecuting && stage === 'executing') {
+        // 결과 화면으로 전환 
+        setStage('result');
       }
     });
     
@@ -97,154 +78,7 @@ const ExecutorPage: React.FC = () => {
     return () => {
       unregister();
     };
-  }, [selectedFlowId, setFlowResult, getFlowResultById, stage]);
-
-  // Flow 체인 가져오기
-  const handleImportFlowChain = () => {
-    // 파일 선택기 열기 (ExecutorPanel 내부 FileSelector에서 처리됨)
-    // 이 함수는 ExecutorPanel로 전달되어 해당 컴포넌트에서 사용됨
-  };
-  
-  // 내보내기 처리
-  const handleExportWithFilename = (filename: string, includeData: boolean) => {
-    try {
-      // 현재 체인 데이터 추출
-      const exportData = {
-        version: '1.0',
-        flowChain: flowChain.map(flow => {
-          const result = includeData ? getFlowResultById(flow.id) : null;
-          return {
-            id: flow.id,
-            name: flow.name,
-            flowJson: flow.flowJson,
-            inputData: flow.inputData || [],
-            result: result // 옵션에 따라 결과 데이터 포함
-          };
-        })
-      };
-      
-      // JSON 변환 및 파일 다운로드
-      const json = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      
-      // 정리
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      console.log(`[ExecutorPage] Flow chain exported successfully with ${includeData ? '' : 'no '}data`);
-    } catch (error) {
-      console.error(`[ExecutorPage] Error exporting flow chain:`, error);
-      alert('Flow 체인 내보내기 중 오류가 발생했습니다.');
-    }
-  };
-
-  // 단일 Flow 실행 처리
-  const handleExecuteSingleFlow = async () => {
-    if (!selectedFlowId) {
-      setError('실행할 Flow를 선택해주세요.');
-      return;
-    }
-    
-    const flow = getFlowById(selectedFlowId);
-    if (!flow) {
-      setError('선택한 Flow를 찾을 수 없습니다.');
-      return;
-    }
-    
-    setIsExecuting(true);
-    setStage('executing');
-    setError(null);
-
-    try {
-      const response = await executeFlowExecutor({
-        flowId: flow.id,
-        flowJson: flow.flowJson,
-        inputs: flow.inputData || [],
-        onComplete: (result) => {
-          // 결과 저장 및 상태 업데이트
-          setFlowResult(flow.id, result);
-          setIsExecuting(false);
-          setStage('result');
-        }
-      });
-
-      if (response.status === 'error') {
-        setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
-        setIsExecuting(false);
-      }
-    } catch (err) {
-      setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('실행 오류:', err);
-      setIsExecuting(false);
-      setStage('result');
-    }
-  };
-  
-  // Flow 체인 실행 처리
-  const handleExecuteChain = async () => {
-    if (flowChain.length === 0) {
-      setError('실행할 Flow가 없습니다. 먼저 Flow를 추가해주세요.');
-      return;
-    }
-    
-    setIsExecuting(true);
-    setStage('executing');
-    setError(null);
-    
-    // 이전 결과 초기화
-    resetResults();
-    
-    try {
-      // 체인 실행을 위한 Flow 항목 준비
-      const flowItems = flowChain.map(flow => ({
-        id: flow.id,
-        flowJson: flow.flowJson,
-        inputData: flow.inputData || []
-      }));
-      
-      // 체인 실행
-      await executeChain({
-        flowItems,
-        onFlowComplete: (flowId, result) => {
-          console.log(`Flow ${flowId} completed with result:`, result);
-          setFlowResult(flowId, result);
-          
-          // 마지막 Flow인 경우 실행 완료 처리
-          const isLastFlow = flowId === flowItems[flowItems.length - 1].id;
-          if (isLastFlow) {
-            setIsExecuting(false);
-            setStage('result');
-          }
-        },
-        onError: (flowId, errorMsg) => {
-          console.error(`Error executing flow ${flowId}:`, errorMsg);
-          setError(`Flow "${getFlowById(flowId)?.name || flowId}" 실행 중 오류: ${errorMsg}`);
-          setIsExecuting(false);
-          setStage('result');
-        }
-      });
-    } catch (err) {
-      setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('체인 실행 오류:', err);
-      setIsExecuting(false);
-      setStage('result');
-    }
-  };
-  
-  // 처음부터 다시 시작 - Change Flow 버튼 클릭 시
-  const handleReset = () => {
-    // Flow 체인 가져오기 함수 호출
-    if (handleImportFlowChain) {
-      handleImportFlowChain();
-    }
-  };
+  }, [selectedFlowId, isExecuting, stage, setStage]);
   
   // Input 단계로 되돌아가기
   const handleBackToInput = () => {
@@ -266,7 +100,7 @@ const ExecutorPage: React.FC = () => {
             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
             : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700'
         }`}
-        onClick={handleExecuteSingleFlow}
+        onClick={handleExecuteSelectedFlow}
         disabled={!canExecute || !hasInputs || isExecuting}
       >
         {isExecuting ? (
@@ -319,28 +153,13 @@ const ExecutorPage: React.FC = () => {
     );
   };
 
-  // 모든 내용 초기화 처리
-  const handleClearAll = () => {
-    if (window.confirm('모든 내용을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      // 스토어 초기화
-      useExecutorStateStore.getState().resetState();
-      useExecutorGraphStore.getState().resetFlowGraphs();
-      
-      // 상태 초기화
-      setStage('upload');
-      setSelectedFlowId(null);
-      setError(null);
-      setIsExecuting(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* 상단 네비게이션 바 - 컴포넌트로 분리 */}
-      <ExecutorPanel 
+      {/* 상단 네비게이션 바 */}
+      <ExecutorPanel
         onImportFlowChain={handleImportFlowChain}
-        onExportFlowChain={handleExportWithFilename}
-        onExecuteFlow={handleExecuteSingleFlow}
+        onExportFlowChain={handleExportFlowChain}
+        onExecuteFlow={handleExecuteChain} // 전체 체인 실행
         onClearAll={handleClearAll}
         isExecuting={isExecuting}
       />
@@ -475,8 +294,9 @@ const ExecutorPage: React.FC = () => {
                   입력 수정
                 </button>
                 <button
-                  onClick={handleExecuteSingleFlow}
+                  onClick={handleExecuteSelectedFlow}
                   className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center shadow-sm"
+                  disabled={isExecuting}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -496,6 +316,18 @@ const ExecutorPage: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* 파일 입력 (숨김) */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            // 파일 업로드 처리 (필요시 구현)
+          }
+        }}
+      />
     </div>
   );
 };

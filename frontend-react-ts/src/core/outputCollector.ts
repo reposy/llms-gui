@@ -1,6 +1,5 @@
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getNodeState, useNodeStateStore } from '../store/useNodeStateStore';
-import { Edge, Node } from '@xyflow/react';
 
 // 노드 결과 인터페이스
 export interface NodeResult {

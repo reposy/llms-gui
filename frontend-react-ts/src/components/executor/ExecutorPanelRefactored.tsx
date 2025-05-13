@@ -1,9 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
 import ExportModal from './ExportModal';
-import FileSelector from './FileSelector';
 
 interface ExecutorPanelProps {
   onImportFlowChain: () => void;
@@ -13,6 +11,10 @@ interface ExecutorPanelProps {
   isExecuting: boolean;
 }
 
+/**
+ * 상단 네비게이션 바 컴포넌트
+ * Flow Executor의 주요 컨트롤 버튼들을 포함합니다.
+ */
 const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   onImportFlowChain,
   onExportFlowChain,
@@ -22,106 +24,6 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
 }) => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const { flowChain } = useExecutorStateStore();
-  const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
-
-  // Flow Chain 파일 선택 처리
-  const handleFlowChainFileSelected = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = event.target?.result as string;
-        let importData;
-        
-        try {
-          importData = JSON.parse(json);
-        } catch (parseError) {
-          console.error(`[ExecutorPanel] JSON 파싱 오류:`, parseError);
-          alert('JSON 파일 형식이 올바르지 않습니다.');
-          return;
-        }
-        
-        // 기본 유효성 검사
-        if (!importData || typeof importData !== 'object') {
-          throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
-        }
-        
-        // 버전 확인
-        if (!importData.version) {
-          console.warn('[ExecutorPanel] 버전 정보가 없는 파일입니다.');
-          // 버전 없이 계속 진행
-        }
-        
-        // flowChain 배열 존재 확인
-        if (!Array.isArray(importData.flowChain)) {
-          // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
-          console.log('[ExecutorPanel] flowChain 배열이 없습니다. 단일 Flow JSON으로 처리합니다.');
-          
-          // 단일 Flow 객체 생성
-          importData = {
-            version: '1.0',
-            flowChain: [{
-              id: `flow-${Date.now()}`,
-              name: file.name.replace(/\.json$/, '') || '가져온 Flow',
-              flowJson: importData,
-              inputData: []
-            }]
-          };
-        }
-        
-        // 각 Flow 추가
-        const addFlow = useExecutorStateStore.getState().addFlow;
-        const setFlowInputData = useExecutorStateStore.getState().setFlowInputData;
-        const setStage = useExecutorStateStore.getState().setStage;
-        
-        importData.flowChain.forEach((flow: any) => {
-          try {
-            // flowJson 유효성 검사
-            if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-              console.warn(`[ExecutorPanel] 유효하지 않은 flowJson 형식, flow:`, flow);
-              return; // 이 Flow는 건너뛰고 계속 진행
-            }
-            
-            // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
-            const flowName = flow.name || flow.flowJson.name || '가져온-flow';
-            const timestamp = Date.now();
-            const random = Math.floor(Math.random() * 1000);
-            
-            // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
-            const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
-            const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
-            
-            const flowToAdd = {
-              ...flow.flowJson,
-              id: flowId
-            };
-            
-            // Flow 추가 (원본 ID 보존)
-            addFlow(flowToAdd);
-            
-            // 입력 데이터 설정
-            if (flow.inputData && flow.inputData.length > 0) {
-              setFlowInputData(flowId, flow.inputData);
-            }
-          } catch (flowError) {
-            console.error(`[ExecutorPanel] Flow 추가 중 오류:`, flowError);
-            // 이 Flow는 건너뛰고 계속 진행
-          }
-        });
-        
-        // 스테이지 업데이트
-        if (flowChain.length === 0) {
-          setStage('input');
-        }
-        
-        console.log(`[ExecutorPanel] Flow chain imported successfully`);
-      } catch (error) {
-        console.error(`[ExecutorPanel] Error parsing imported flow chain:`, error);
-        alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-      }
-    };
-    
-    reader.readAsText(file);
-  };
 
   return (
     <>
@@ -140,13 +42,16 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             모든 내용 초기화
           </button>
           
-          <FileSelector
-            onFileSelected={handleFlowChainFileSelected}
-            accept=".json"
-            buttonText="Flow Chain 가져오기"
-            fileSelectorRef={fileSelectorRef}
-            buttonClassName="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center"
-          />
+          <button
+            onClick={onImportFlowChain}
+            className="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center"
+            title="Flow Chain 파일을 가져와서 전체 Flow 환경을 복원합니다"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Flow Chain 가져오기
+          </button>
           
           <button
             onClick={() => {
@@ -161,7 +66,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             </svg>
             내보내기
           </button>
-
+          
           <button
             onClick={() => setExportModalOpen(true)}
             className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChain.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -215,7 +120,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         <ExportModal
           isOpen={exportModalOpen}
           onClose={() => setExportModalOpen(false)}
-          onExport={(filename, includeData) => {
+          onExport={(filename) => {
             onExportFlowChain(filename, true);
             setExportModalOpen(false);
           }}
