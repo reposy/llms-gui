@@ -413,9 +413,35 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
           <ul>
             {flowChain.map((flow, index) => {
               const isActive = index === activeFlowIndex;
-              const hasResult = getFlowResultById(flow.id) !== null;
+              const flowExecutionResult = getFlowResultById(flow.id);
+              let statusIcon = null;
+              let statusColor = '';
+
+              if (flowExecutionResult) {
+                if (flowExecutionResult.status === 'running') {
+                  statusIcon = (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v.01M12 8v.01M12 12v.01M12 16v.01M12 20v.01M4 12h.01M8 12h.01M16 12h.01M20 12h.01" />
+                    </svg>
+                  );
+                  statusColor = 'text-blue-500';
+                } else if (flowExecutionResult.status === 'success') {
+                  statusIcon = (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  );
+                  statusColor = 'text-green-500';
+                } else if (flowExecutionResult.status === 'error') {
+                  statusIcon = (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  );
+                  statusColor = 'text-red-500';
+                }
+              }
               
-              // Flow 분석 정보 가져오기
               const analysis = flowAnalysisCache[flow.id] || {
                 totalNodes: 0,
                 totalEdges: 0,
@@ -436,6 +462,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                 >
                   <div className="flex justify-between items-center">
                     <div className="flex items-center">
+                      {statusIcon && <span className={`mr-2 ${statusColor}`}>{statusIcon}</span>}
                       <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-sm font-medium mr-2">
                         {index + 1}
                       </span>
@@ -443,9 +470,8 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                         <h3 className="font-medium text-gray-900">{flow.name}</h3>
                         <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-1">
                           <span>{flow.inputData && flow.inputData.length ? `${flow.inputData.length}개의 입력` : '입력 없음'}</span>
-                          {hasResult && <span className="text-green-600">• 결과 있음</span>}
+                          {flowExecutionResult && <span className={`${statusColor} font-medium`}>• {flowExecutionResult.status.charAt(0).toUpperCase() + flowExecutionResult.status.slice(1)}</span>}
                           
-                          {/* 노드/엣지 정보 */}
                           <div className="flex gap-2 text-gray-400 ml-1">
                             <span title="노드 수">{analysis.totalNodes} 노드</span>
                             <span title="엣지 수">{analysis.totalEdges} 엣지</span>
@@ -517,6 +543,19 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log("Edit button clicked for", flow.id);
+                        }}
+                        className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                        title="입력 수정"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 </li>
@@ -525,6 +564,16 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow }) => 
           </ul>
         )}
       </div>
+      {flowChain.length > 0 && (
+        <div className="p-4 border-t border-gray-300 bg-gray-50">
+          <button
+            onClick={handleExecuteChain}
+            className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors font-medium"
+          >
+            Flow 체인 실행
+          </button>
+        </div>
+      )}
     </div>
   );
 };

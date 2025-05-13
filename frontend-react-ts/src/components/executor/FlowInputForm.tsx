@@ -87,11 +87,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
       newInputItems[index] = { type, value: '' };
     } 
     else if (type === 'file') {
-      // 파일 선택기 표시
       fileInputRef.current?.click();
     }
     else if (type === 'flow-result') {
-      // Flow 결과 선택 시, 비어있는 값으로 초기화
       newInputItems[index] = { type, value: '', sourceFlowId: '' };
     }
     
@@ -166,7 +164,6 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
       if (item.type === 'text' || item.type === 'flow-result') {
         return item.value as string;
       } else {
-        // 파일은 아직 처리하지 않음 (서버 API 필요)
         return `[File: ${(item.value as File).name}]`;
       }
     });
@@ -250,135 +247,106 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
                     Flow 결과
                   </button>
                 </div>
-              </div>
-              
-              <div className="flex mb-2 gap-2">
-                {item.type === 'text' ? (
-                  <input
-                    type="text"
-                    value={item.value as string}
-                    onChange={(e) => handleInputChange(index, e.target.value)}
-                    placeholder={`입력 ${index + 1}`}
-                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={confirmed}
-                  />
-                ) : item.type === 'file' ? (
-                  <div className="flex-1 flex items-center border border-gray-300 rounded-md px-3 py-2 bg-white">
-                    <span className="truncate">{(item.value as File).name}</span>
-                  </div>
-                ) : (
-                  // Flow 결과 선택 UI
-                  <div className="flex-1 flex flex-col">
-                    <select 
-                      className="border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      onChange={(e) => handleFlowResultSelect(index, e.target.value)}
-                      value={item.sourceFlowId || ''}
-                      disabled={confirmed || previousFlows.length === 0}
-                    >
-                      <option value="" disabled>Flow 결과 선택</option>
-                      {previousFlows.map(prevFlow => (
-                        <option 
-                          key={prevFlow.id} 
-                          value={prevFlow.id}
-                          disabled={!prevFlow.hasResult}
-                        >
-                          {prevFlow.name} {prevFlow.hasResult ? '✓' : '(결과 없음)'}
-                        </option>
-                      ))}
-                    </select>
-                    
-                    {item.sourceFlowId && (
-                      <div className="mt-1 text-xs text-blue-600">
-                        {getFlowReferenceText(item.sourceFlowId)}의 결과를 사용합니다
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {/* 삭제 버튼 */}
-                {!confirmed && (
-                  <button
+                {inputItems.length > 1 && (
+                  <button 
                     onClick={() => handleRemoveInput(index)}
-                    className="text-red-500 hover:text-red-700 px-2 py-1 rounded"
-                    title="제거"
+                    className="ml-auto p-1 text-red-500 hover:text-red-700"
+                    title="이 입력 제거"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 )}
               </div>
+
+              {item.type === 'text' && (
+                <textarea
+                  rows={3}
+                  className={`w-full p-2 border rounded bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}
+                  value={item.value as string}
+                  onChange={(e) => handleInputChange(index, e.target.value)}
+                  placeholder={`예: "오늘 날씨 어때?"`}
+                  readOnly={confirmed}
+                />
+              )}
+              {item.type === 'file' && (
+                <div className={`w-full p-2 border rounded flex items-center justify-between bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}>
+                  <span>{item.value instanceof File ? item.value.name : '파일 선택됨'}</span>
+                  {!confirmed && (
+                    <button 
+                      className="text-xs text-blue-500 hover:underline"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      변경
+                    </button>
+                  )}
+                </div>
+              )}
+              {item.type === 'flow-result' && (
+                <select
+                  className={`w-full p-2 border rounded bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}
+                  value={item.sourceFlowId || ''}
+                  onChange={(e) => handleFlowResultSelect(index, e.target.value)}
+                  disabled={confirmed}
+                >
+                  <option value="">-- Flow 결과 선택 --</option>
+                  {previousFlows.map(prevFlow => (
+                    <option key={prevFlow.id} value={prevFlow.id} disabled={!prevFlow.hasResult}>
+                      {getFlowReferenceText(prevFlow.id)}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           ))}
           
-          {/* 입력 추가 버튼 */}
+          {/* 입력 필드 추가 버튼들 */}
           {!confirmed && (
-            <div className="text-sm text-gray-600 mt-4 mb-2">
-              입력 추가:
+            <div className="mt-4 flex space-x-2">
+              <button 
+                onClick={() => handleAddInput('text')}
+                className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                입력 추가 (텍스트)
+              </button>
+              <button 
+                onClick={() => handleAddInput('file')}
+                className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                입력 추가 (파일)
+              </button>
+              <button 
+                onClick={() => handleAddInput('flow-result')}
+                className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center"
+                disabled={previousFlows.length === 0}
+                title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                  />
+                </svg>
+                입력 추가 (Flow 결과)
+              </button>
             </div>
           )}
-          <div className="flex space-x-2">
-            <button
-              onClick={() => handleAddInput('text')}
-              className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center text-sm"
-              disabled={confirmed}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              텍스트 입력
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center text-sm"
-              disabled={confirmed}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              파일 추가
-            </button>
-            <button
-              onClick={() => handleAddInput('flow-result')}
-              className="px-3 py-2 bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center text-sm"
-              disabled={confirmed || previousFlows.length === 0}
-              title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Flow 결과 추가
-            </button>
-          </div>
-          
-          {/* 숨겨진 파일 입력 */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            multiple
-            onChange={(e) => {
-              // 파일 입력 참조 위치 구하기
-              const index = inputItems.findIndex(item => item.type === 'text' && item.value === '');
-              if (index !== -1) {
-                handleFileSelect(index, e.target.files);
-              } else {
-                // 빈 입력 필드가 없으면 마지막에 추가
-                handleFileSelect(inputItems.length, e.target.files);
-              }
-            }}
-          />
-        </div>
-        
-        <div className="text-sm text-gray-500 mt-4 border-t pt-4">
-          <p className="font-medium">입력 데이터 사용 안내:</p>
-          <ul className="list-disc list-inside ml-2 mt-1">
-            <li>텍스트: 직접 입력한 텍스트를 사용합니다.</li>
-            <li>파일: 첨부한 파일의 내용을 사용합니다.</li>
-            <li>Flow 결과: 이전에 실행한 Flow의 결과를 사용합니다.</li>
-          </ul>
         </div>
       </div>
+      
+      {/* 파일 입력을 위한 숨겨진 input 요소 */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        onChange={(e) => handleFileSelect(inputItems.length - 1, e.target.files)}
+        multiple
+      />
     </div>
   );
 };
