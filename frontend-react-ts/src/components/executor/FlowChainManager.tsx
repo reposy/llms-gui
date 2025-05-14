@@ -23,11 +23,13 @@ interface FlowAnalysis {
 
 // Flow 노드 정보 분석 함수
 const analyzeFlowNodes = (flowId: string): FlowAnalysis => {
-  // executorGraphStore에서 노드와 엣지 정보 가져오기
+  const executorState = useExecutorStateStore.getState(); // 스토어 상태 가져오기
+  const flowItem = executorState.getFlowById(flowId);
+
   const graphStore = useExecutorGraphStore.getState();
-  const graph = graphStore.getFlowGraph(flowId);
-  
-  if (!graph) {
+  const graph = graphStore.getFlowGraph(flowId); // 이건 rootNodeIds, leafNodeIds 등을 위해 유지할 수 있음
+
+  if (!flowItem || !flowItem.flowJson) { // flowItem 및 flowJson 존재 여부 확인
     return {
       totalNodes: 0,
       totalEdges: 0,
@@ -35,14 +37,19 @@ const analyzeFlowNodes = (flowId: string): FlowAnalysis => {
       leafNodeCount: 0
     };
   }
-  
-  // 루트 노드와 리프 노드 찾기
-  const rootNodeIds = findRootNodes();
-  const leafNodeIds = findLeafNodes();
+
+  // flowJson.nodes와 flowJson.edges가 배열인지 확인 (타입 안정성)
+  const nodesArray = Array.isArray(flowItem.flowJson.nodes) ? flowItem.flowJson.nodes : [];
+  const edgesArray = Array.isArray(flowItem.flowJson.edges) ? flowItem.flowJson.edges : [];
+
+  // 루트 노드와 리프 노드 찾기 (현재 구현은 전역 상태를 참조할 수 있으므로 주의)
+  // 이상적으로는 findRootNodes(nodesArray, edgesArray) 와 같이 인자를 전달해야 함.
+  const rootNodeIds = graph ? graph.rootNodeIds : findRootNodes(); // graphStore의 계산된 값 활용 또는 기존 함수 호출
+  const leafNodeIds = graph ? graph.leafNodeIds : findLeafNodes();
   
   return {
-    totalNodes: Object.keys(graph.nodes || {}).length,
-    totalEdges: Object.keys(graph.edges || {}).length,
+    totalNodes: nodesArray.length, // flowItem.flowJson.nodes.length 사용
+    totalEdges: edgesArray.length, // flowItem.flowJson.edges.length 사용
     rootNodeCount: rootNodeIds.length,
     leafNodeCount: leafNodeIds.length
   };

@@ -5,10 +5,15 @@ import FlowChainManager from '../components/executor/FlowChainManager';
 import FlowInputForm from '../components/executor/FlowInputForm';
 import ResultDisplay from '../components/executor/ResultDisplay';
 import { executeFlowExecutor, executeChain, registerResultCallback } from '../services/flowExecutionService';
-import { useExecutorStateStore } from '../store/useExecutorStateStore';
+import { useExecutorStateStore, ExecutorStage } from '../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
+import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
+import UploadStageView from '../components/executor/stages/UploadStageView';
+import InputStageView from '../components/executor/stages/InputStageView';
+import ExecutingStageView from '../components/executor/stages/ExecutingStageView';
+import ResultStageView from '../components/executor/stages/ResultStageView';
 
 const ExecutorPage: React.FC = () => {
   // 로컬 상태
@@ -92,7 +97,7 @@ const ExecutorPage: React.FC = () => {
     return () => {
       unregister();
     };
-  }, [selectedFlowId, setFlowResult, getFlowResultById, stage]);
+  }, [selectedFlowId, setFlowResult, getFlowResultById, stage, isExecuting]);
 
   // Flow 체인 가져오기
   const handleImportFlowChain = () => {
@@ -193,18 +198,15 @@ const ExecutorPage: React.FC = () => {
     setStage('executing');
     setError(null);
     
-    // 이전 결과 초기화
     resetResults();
     
     try {
-      // 체인 실행을 위한 Flow 항목 준비
       const flowItems = flowChain.map(flow => ({
         id: flow.id,
         flowJson: flow.flowJson,
-        inputData: flow.inputData || []
+        inputData: flow.inputData
       }));
       
-      // 체인 실행
       await executeChain({
         flowItems,
         onFlowComplete: (flowId, result) => {
@@ -329,57 +331,28 @@ const ExecutorPage: React.FC = () => {
     }
   };
 
+  // Props for StageNavigationBar
+  const canSetInput = flowChain.length > 0;
+  const canViewResults = !!(selectedFlowId && getFlowResultById(selectedFlowId));
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* 상단 네비게이션 바 - 컴포넌트로 분리 */}
       <ExecutorPanel 
         onImportFlowChain={handleImportFlowChain}
         onExportFlowChain={handleExportWithFilename}
-        onExecuteFlow={handleExecuteSingleFlow}
+        onExecuteFlow={handleExecuteChain}
         onClearAll={handleClearAll}
         isExecuting={isExecuting}
       />
 
-      {/* 탭 네비게이션 */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-center">
-            <button
-              className={`${
-                stage === 'upload' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              } py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
-              onClick={() => setStage('upload')}
-            >
-              <span className="bg-gray-200 text-gray-600 w-6 h-6 rounded-full flex items-center justify-center mr-2">1</span>
-              Upload Flow
-            </button>
-            <button
-              className={`${
-                stage === 'input' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              } py-4 px-1 border-b-2 font-medium text-sm mx-8 flex items-center`}
-              onClick={() => stage !== 'upload' && setStage('input')}
-              disabled={stage === 'upload'}
-            >
-              <span className={`${
-                stage === 'upload' ? 'bg-gray-100 text-gray-400' : 'bg-gray-200 text-gray-600'
-              } w-6 h-6 rounded-full flex items-center justify-center mr-2`}>2</span>
-              Set Input
-            </button>
-            <button
-              className={`${
-                stage === 'result' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              } py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
-              onClick={() => stage === 'result' && setStage('result')}
-              disabled={stage !== 'result'}
-            >
-              <span className={`${
-                stage === 'result' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-              } w-6 h-6 rounded-full flex items-center justify-center mr-2`}>3</span>
-              View Results
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* 탭 네비게이션 -> StageNavigationBar 컴포넌트로 대체 */}
+      <StageNavigationBar 
+        currentStage={stage}
+        onStageChange={setStage}
+        canSetInput={canSetInput}
+        canViewResults={canViewResults}
+      />
       
       {/* 주요 컨텐츠 영역 */}
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -400,111 +373,33 @@ const ExecutorPage: React.FC = () => {
           </div>
         )}
         
-        {/* 업로드 단계 */}
-        {stage === 'upload' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-700">Flow 업로드</h2>
-            <p className="mb-4 text-gray-600">Flow JSON 파일을 업로드하거나, Flow Editor에서 생성한 Flow를 불러오세요.</p>
-            <FileUploader />
-          </div>
-        )}
+        {stage === 'upload' && <UploadStageView />}
         
-        {/* 입력 단계 */}
+        {/* 입력 단계 -> InputStageView 컴포넌트로 대체 */}
         {stage === 'input' && (
-          <div className="flex space-x-4">
-            {/* 왼쪽 패널: Flow 체인 */}
-            <div className="w-1/2 overflow-y-auto pr-2">
-              <FlowChainManager onSelectFlow={handleFlowSelect} handleImportFlowChain={handleImportFlowChain} />
-            </div>
-            
-            {/* 오른쪽 패널: Flow 입력 폼, 실행 버튼, 결과 */}
-            <div className="w-1/2 overflow-y-auto pl-2 space-y-4"> {/* 요소 간 간격을 위해 space-y-4 추가 */}
-              {selectedFlowId ? (
-                <>
-                  <FlowInputForm flowId={selectedFlowId} />
-                  
-                  {/* 실행 버튼 */}
-                  <div className="mt-0"> {/* mt-4 제거 또는 조정하여 space-y-4와 일관성 유지 */}
-                    {renderExecuteButton()}
-                  </div>
-
-                  {/* 실행 결과 표시 - 실행 버튼 아래 */}
-                  {getFlowResultById(selectedFlowId) && (
-                    <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
-                      <div className="p-4 bg-gray-50 border-b border-gray-300">
-                        <h2 className="font-medium text-lg">실행 결과</h2>
-                      </div>
-                      <div className="p-4">
-                        <ResultDisplay
-                          flowId={selectedFlowId}
-                          result={getFlowResultById(selectedFlowId)}
-                          flowName={getFlowById(selectedFlowId)?.name || ''}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="border border-gray-300 rounded-lg p-6 text-center bg-white">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">Flow를 선택해주세요</h3>
-                  <p className="mt-1 text-sm text-gray-500">왼쪽 패널에서 Flow를 선택하면 입력 폼이 표시됩니다.</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <InputStageView 
+            selectedFlowId={selectedFlowId}
+            onSelectFlow={handleFlowSelect}
+            onImportFlowChain={handleImportFlowChain}
+            renderExecuteButton={renderExecuteButton}
+            getFlowById={getFlowById}
+            getFlowResultById={getFlowResultById}
+          />
         )}
         
-        {/* 실행 중 단계 */}
-        {stage === 'executing' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex flex-col items-center justify-center py-10">
-              <div className="w-12 h-12 rounded-full border-t-2 border-b-2 border-indigo-500 animate-spin mb-4"></div>
-              <span className="text-xl font-medium text-gray-700">
-                Flow 실행 중...
-              </span>
-              <p className="text-sm text-gray-500 mt-2">잠시만 기다려주세요. 처리 중입니다.</p>
-            </div>
-          </div>
-        )}
+        {/* 실행 중 단계 -> ExecutingStageView 컴포넌트로 대체 */}
+        {stage === 'executing' && <ExecutingStageView />}
         
-        {/* 결과 단계 */}
+        {/* 결과 단계 -> ResultStageView 컴포넌트로 대체 */}
         {stage === 'result' && (
-          <div className="flex space-x-4">
-            {/* 왼쪽 패널: Flow 설정 */}
-            <div className="w-1/2 overflow-y-auto pr-2">
-              <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Flow 설정</h2>
-              <FlowChainManager onSelectFlow={handleFlowSelect} handleImportFlowChain={handleImportFlowChain} />
-              
-              <div className="mt-4 flex space-x-2">
-                <button
-                  onClick={handleBackToInput}
-                  className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors shadow-sm flex-1"
-                >
-                  입력 수정
-                </button>
-                <button
-                  onClick={handleExecuteSingleFlow}
-                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center shadow-sm"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  다시 실행
-                </button>
-              </div>
-            </div>
-            
-            {/* 오른쪽 패널: 실행 결과 */}
-            <div className="w-1/2 overflow-y-auto pl-2 bg-white rounded-lg shadow border border-gray-200 p-4 flex flex-col">
-              <div className="flex-1 min-h-[45%]">
-                <h2 className="text-lg font-semibold mb-2 text-gray-700 border-b pb-2">실행 결과</h2>
-                {renderResults()}
-              </div>
-            </div>
-          </div>
+          <ResultStageView 
+            selectedFlowId={selectedFlowId}
+            onSelectFlow={handleFlowSelect}
+            onImportFlowChain={handleImportFlowChain}
+            onBackToInput={handleBackToInput}
+            onExecuteSingleFlow={handleExecuteSingleFlow}
+            renderResults={renderResults} 
+          />
         )}
       </div>
     </div>

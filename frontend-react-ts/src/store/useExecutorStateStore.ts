@@ -4,20 +4,30 @@ import { FlowData } from '../utils/data/importExportUtils';
 import { useExecutorGraphStore } from './useExecutorGraphStore';
 import { deepClone } from '../utils/helpers';
 
-type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
+export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 
-// Flow 항목 인터페이스
-interface FlowItem {
+// Flow 항목 인터페이스 (기존에 있다면 export 추가, 없다면 새로 정의하고 export)
+export interface FlowExecutionItem {
   id: string;
   name: string;
-  flowJson: FlowData;
+  flowJson: any; // FlowData 타입 등 구체적인 타입 사용 권장
   inputData: any[];
-  result: any | null;
+  result?: FlowExecutionResult | any | null;
+}
+
+// Flow 실행 결과 인터페이스 (기존에 있다면 export 추가, 없다면 새로 정의하고 export)
+// NodeResult 타입을 core/outputCollector에서 가져오거나 여기서 직접 정의할 수 있습니다.
+// 우선 간단히 any로 정의하고, 실제 프로젝트의 NodeResult 타입으로 대체해야 합니다.
+export interface FlowExecutionResult {
+  status: 'running' | 'success' | 'error';
+  outputs: any[] | null; // 실제로는 NodeResult[] 타입이어야 함
+  error?: string;
+  // 기타 필요한 필드들...
 }
 
 interface ExecutorState {
   // Flow 체인 데이터
-  flowChain: FlowItem[];
+  flowChain: FlowExecutionItem[];
   
   // 현재 선택된/활성화된 Flow 인덱스
   activeFlowIndex: number;
@@ -48,9 +58,9 @@ interface ExecutorState {
   resetResults: () => void;
   
   // 편의 함수
-  getFlowById: (id: string) => FlowItem | undefined;
+  getFlowById: (id: string) => FlowExecutionItem | undefined;
   getFlowResultById: (id: string) => any | null;
-  getActiveFlow: () => FlowItem | null;
+  getActiveFlow: () => FlowExecutionItem | null;
 }
 
 // 초기 상태
@@ -87,12 +97,11 @@ export const useExecutorStateStore = create<ExecutorState>()(
         // 깊은 복사를 통해 Flow 편집기 데이터와 실행기 데이터 완전히 분리
         const clonedFlowJson = cloneFlowData(flowJson);
         
-        const newFlow: FlowItem = {
+        const newFlow: FlowExecutionItem = {
           id: generateId(clonedFlowJson.name),
           name: clonedFlowJson.name || `Flow ${state.flowChain.length + 1}`,
           flowJson: clonedFlowJson,
           inputData: [],
-          result: null
         };
         
         // 그래프 스토어에 Flow 그래프 정보 저장
