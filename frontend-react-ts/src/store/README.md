@@ -87,6 +87,14 @@ export const useData = (id) => {
    - 노드 간의 관계와 실행 흐름 그래프 관리
    - `GraphNode` 타입 사용
 
+5. **useExecutorStateStore**
+   - Flow 실행기에서 체인 및 실행 상태 관리
+   - Flow 편집기와 분리되어 있음 (중요)
+
+6. **useExecutorGraphStore**
+   - Flow 실행기에서 노드 그래프 및 인스턴스 관리
+   - Flow 편집기와 분리되어 있음 (중요)
+
 ## 모범 사례
 
 1. **타입 정의**
@@ -100,4 +108,28 @@ export const useData = (id) => {
 
 3. **타입 안전성**
    - 스토어 함수 사용 시 정확한 타입 지정
-   - 제네릭 타입을 활용하여 타입 안전성 확보 
+   - 제네릭 타입을 활용하여 타입 안전성 확보
+
+## Flow 편집기와 실행기의 분리
+
+Flow 편집기(Editor)와 실행기(Executor)는 별도의 상태 관리 시스템을 사용합니다:
+
+### 분리 원칙
+
+1. **데이터 격리**
+   - 실행기에 Flow를 추가할 때 항상 `deepClone`을 사용하여 깊은 복사본 생성
+   - 편집기에서 Flow를 수정해도 실행기의 Flow에 영향 없음 (반대의 경우도 마찬가지)
+
+2. **스토어 구분**
+   - 편집기: `useFlowStructureStore`, `useNodeContentStore` 등 사용
+   - 실행기: `useExecutorStateStore`, `useExecutorGraphStore` 사용
+
+3. **ID 관리**
+   - 실행기에 Flow 추가 시 새로운 ID 생성 (원본 ID와 다름)
+   - 참조 처리 시 실행기 ID를 사용 (`${result-flow-ID}` 형식)
+
+### 주의사항
+
+- 실행기에서는 Flow 데이터를 수정하지 말고, 항상 복제된 데이터로 처리
+- 실행기와 편집기 간에 상태를 공유하지 않도록 주의
+- 새로운 Flow 생성 또는 불러오기 시 항상 깊은 복사를 사용 

@@ -226,19 +226,49 @@ export const runFullFlowExecution = async (startNodeId?: string, inputData?: any
     
     context.log(`Determined starting nodes: ${nodesToExecuteIds.join(', ')}`);
     
-    // 입력 데이터가 제공되었으면 custom _startExecutionProcess 로직 사용
-    if (inputData !== undefined) {
-      context.log(`Received input data for execution: ${JSON.stringify(inputData)}`);
-      
-      // 입력 데이터로 루트 노드 실행
-      await _executeWithInput(nodesToExecuteIds, triggerId, context, inputData);
-    } else {
-      // 기존 실행 로직 사용
-      await _startExecutionProcess(nodesToExecuteIds, triggerId, context);
-    }
+    // Flow Editor 전용 실행 함수 사용
+    const flowStructureStore = useFlowStructureStore.getState();
+    const { nodes, edges } = flowStructureStore;
     
-    console.log(`[ExecutionUtils] Completed full flow execution process.`);
-
+    // Flow Editor 전용 실행
+    try {
+      // 임시 flowId 생성 (Flow Editor에서는 flowId가 없음)
+      const tempFlowId = `editor-flow-${uuidv4()}`;
+      
+      // Flow Data 구성
+      const flowData = {
+        id: tempFlowId,
+        name: "Editor Flow",
+        nodes: nodes,
+        edges: edges,
+        contents: {} as Record<string, any>
+      };
+      
+      // 모든 노드의 컨텐츠 정보 수집
+      nodes.forEach(node => {
+        const content = getNodeContent(node.id);
+        if (content) {
+          flowData.contents[node.id] = content;
+        }
+      });
+      
+      // Flow Editor 전용 실행 함수 호출
+      const { executeFlowEditor } = await import('../services/flowExecutionService');
+      
+      await executeFlowEditor({
+        flowId: tempFlowId,
+        flowJson: flowData,
+        inputs: inputData || [],
+        onComplete: (result) => {
+          console.log(`[ExecutionUtils] Flow Editor execution completed with result:`, result);
+        }
+      });
+      
+      console.log(`[ExecutionUtils] Completed Editor flow execution process.`);
+    } catch (error) {
+      console.error(`[ExecutionUtils] Error during Flow Editor execution:`, error);
+      throw error;
+    }
   } catch (error) {
     console.error(`[ExecutionUtils] Failed to run full flow execution:`, error);
     // Re-throw the error so the caller (e.g., UI) can handle it

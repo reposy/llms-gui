@@ -168,6 +168,13 @@ export class LlmNode extends Node {
       
       // 비전 모드 결과 형식화
       let resultText = result.response;
+      
+      // 응답이 undefined인 경우 빈 문자열로 대체
+      if (resultText === undefined || resultText === null) {
+        this._log('Warning: LLM response is undefined or null, using empty string instead');
+        resultText = '';
+      }
+      
       if (mode === 'vision') {
         let metadataInfo = '';
         
@@ -190,7 +197,11 @@ export class LlmNode extends Node {
         }
       }
       
-      this._log(`LLM call successful, result length: ${resultText.length}`);
+      this._log(`LLM call successful, result length: ${resultText?.length || 0}`);
+      
+      // 로그로 실제 결과 값 출력 (디버깅용)
+      this._log(`Result value: "${resultText}"`);
+      
       return resultText;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

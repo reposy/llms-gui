@@ -1,57 +1,55 @@
-import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { ExecutionContext } from '../types/execution';
+import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { NodeContent } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
 import { NodeFactory } from './NodeFactory';
 
 /**
- * Context for flow execution
- * Provides utilities and state management during flow execution
+ * Implementation of the ExecutionContext interface for flow execution
+ * This context tracks state for a single execution of a flow
  */
 export class FlowExecutionContext implements ExecutionContext {
   /**
-   * Unique execution ID
+   * Unique ID for this execution
    */
   executionId: string;
 
   /**
-   * Trigger node ID (the node that initiated the execution)
+   * ID of the node that triggered this execution (e.g., a button or flow executor)
    */
   triggerNodeId: string;
-  
+
   /**
-   * Parent node ID for sub-executions
+   * ID of the parent node (for child flows and groups)
    */
   parentNodeId?: string;
-  
+
   /**
-   * Execution mode
+   * Execution mode (single, foreach, batch)
    */
   executionMode: 'single' | 'foreach' | 'batch' = 'single';
-  
+
   /**
-   * Current iteration index for foreach mode
+   * Current iteration index (for foreach/batch modes)
    */
   iterationIndex?: number;
-  
+
   /**
-   * Total number of items in the iteration
+   * Total number of iterations (for foreach/batch modes)
    */
   iterationTotal?: number;
-  
+
   /**
-   * Original input length
+   * Original input array length (for batch processing)
    */
   originalInputLength?: number;
-  
+
   /**
-   * Current iteration item
+   * Current iteration item (for foreach mode)
    */
   iterationItem?: any;
 
-  /**
-   * Output store for nodes - now stores an array of outputs per node.
-   */
+  /** Map of node outputs (node ID -> array of outputs) */
   private outputs: Map<string, any[]> = new Map();
 
   private logs: string[] = [];
@@ -60,15 +58,17 @@ export class FlowExecutionContext implements ExecutionContext {
   private nodeErrors: Map<string, Error> = new Map();
 
   /**
-   * Set of executed node IDs to prevent re-execution within the same execution context
+   * Track nodes that have been executed in this context to prevent re-execution
    */
   private executedNodeIds = new Set<string>();
 
-  // Add a set to track nodes that have accumulated once per context for InputNode
+  /**
+   * Track nodes that have received their "once" input already
+   */
   public accumulatedOnceInputNodes: Set<string> = new Set<string>();
 
   /**
-   * Function to retrieve node content. Injected during context creation.
+   * Function to get a node's content
    */
   getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent;
 
@@ -83,36 +83,35 @@ export class FlowExecutionContext implements ExecutionContext {
   public readonly edges: Edge[];
 
   /**
-   * Node factory instance for creating node instances during execution.
+   * Node factory for creating node instances
    */
   public readonly nodeFactory: NodeFactory;
 
   /**
-   * Constructor
-   * @param executionId Unique identifier for this execution
-   * @param getNodeContentFunc Function to retrieve node content
+   * Create a new flow execution context
+   * @param executionId Unique ID for this execution
+   * @param getNodeContentFunc Function to get a node's content
    * @param nodes Full list of nodes in the flow
    * @param edges Full list of edges in the flow
-   * @param nodeFactory Node factory instance
+   * @param nodeFactory Node factory for creating node instances
    */
   constructor(
-      executionId: string,
-      getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
-      nodes: FlowNode[],
-      edges: Edge[],
-      nodeFactory: NodeFactory
-    ) {
+    executionId: string,
+    getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
+    nodes: FlowNode[],
+    edges: Edge[],
+    nodeFactory: NodeFactory
+  ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
     this.getNodeContentFunc = getNodeContentFunc;
     this.nodes = nodes;
     this.edges = edges;
     this.nodeFactory = nodeFactory;
-    this.logs = []; // Ensure logs is initialized in constructor too
   }
 
   /**
-   * Set the trigger node for this execution
+   * Set the ID of the node that triggered this execution
    * @param nodeId ID of the trigger node
    */
   setTriggerNode(nodeId: string) {
@@ -120,66 +119,47 @@ export class FlowExecutionContext implements ExecutionContext {
   }
 
   /**
-   * Log a message in the context
+   * Log a message to the execution context logs
    * @param message The message to log
    */
   log(message: string): void {
-    // 개발 모드에서만 로그를 저장하거나 출력
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    if (!isDevelopment) return;
-
-    const timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
-    if (!Array.isArray(this.logs)) {
-        console.error(`[ExecutionContext:${this.executionId}] CRITICAL: this.logs is not an array! Attempting recovery. Logs was:`, this.logs);
-        this.logs = []; // Attempt recovery
+    // 모든 로그 정보를 보존하되, 실행 컨텍스트 ID도 포함
+    const logMessage = `[ExecutionContext:${this.executionId}] ${message}`;
+    
+    // 개발 환경에서는 콘솔에도 로그 출력
+    if (process.env.NODE_ENV === 'development') {
+      console.log(logMessage);
     }
     
-    try {
-        // 로그 길이 제한 (최대 100개)
-        if (this.logs.length >= 100) {
-          this.logs.shift(); // 가장 오래된 로그 제거
-        }
-      
-        // Ensure message is a string before pushing
-        const finalMessage = typeof message === 'string' ? message : JSON.stringify(message);
-        this.logs.push(`[${timestamp}] ${finalMessage}`); 
-    } catch (e) {
-        console.error(`[ExecutionContext:${this.executionId}] FAILED to push log: ${e}`, message);
-    }
-    
-    // 개발 모드에서만 콘솔 로그 출력
-    if (isDevelopment) {
-      console.log(`[ExecutionContext:${this.executionId}] ${message}`);
-    }
+    this.logs.push(message);
   }
 
   /**
-   * Set execution mode as a foreach iteration
-   * @param context The iteration context details
+   * Set iteration context for foreach/batch execution modes
+   * @param context The iteration context (item, index, total)
    */
   setIterationContext(context: { item?: any; index?: number; total?: number }) {
-    this.iterationIndex = context.index;
-    this.iterationTotal = context.total;
-    this.iterationItem = context.item;
-    this.executionMode = 'foreach';
+    if (context.item !== undefined) this.iterationItem = context.item;
+    if (context.index !== undefined) this.iterationIndex = context.index;
+    if (context.total !== undefined) this.iterationTotal = context.total;
   }
 
   /**
-   * Get the array of output values for a node.
-   * @param nodeId ID of the node
-   * @returns The array of output values, or an empty array if none found.
+   * Get all outputs for a node
+   * @param nodeId The node ID
+   * @returns Array of stored outputs for this node
    */
   getOutput(nodeId: string): any[] {
     return this.outputs.get(nodeId) || [];
   }
 
   /**
-   * Get node execution state from the state store
-   * @param nodeId ID of the node
-   * @returns The node state or undefined if not found
+   * Get the current state of a node
+   * @param nodeId The node ID
+   * @returns Current node state or undefined if not set
    */
   getNodeState(nodeId: string): any {
-    return getNodeState(nodeId);
+    return this.nodeState.get(nodeId);
   }
 
   /**
@@ -187,11 +167,11 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param nodeId ID of the node
    */
   markNodeRunning(nodeId: string) {
-    const message = `Marking node ${nodeId} as running`;
-    this.log(message);
-    // Remove forced log for testing
-    setNodeState(nodeId, { 
-      status: 'running', 
+    this.log(`Marking node ${nodeId} as running`);
+    setNodeState(nodeId, {
+      status: 'running',
+      result: undefined,
+      error: undefined,
       executionId: this.executionId,
       lastTriggerNodeId: this.triggerNodeId || nodeId,
       activeOutputHandle: undefined,
@@ -208,9 +188,17 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeSuccess(nodeId: string, result: any) {
     this.log(`Marking node ${nodeId} as successful`);
+    
+    // 현재 노드 상태 확인
+    const currentState = getNodeState(nodeId) || {};
+    
+    // 새 결과가 undefined일 경우 현재 결과를 유지
+    const finalResult = result !== undefined ? result : currentState.result;
+    
     setNodeState(nodeId, {
+      ...currentState,
       status: 'success',
-      result,
+      result: finalResult,
       error: undefined,
       executionId: this.executionId,
       // Include iteration metadata in node state

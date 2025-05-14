@@ -157,12 +157,15 @@ export abstract class Node {
       // execute uses this.context, which is now set
       const output = await this.execute(input);
       
+      this._log(`Execute completed with result type: ${typeof output}, value: ${JSON.stringify(output).substring(0, 100)}`);
+      
       if (output !== null && output !== undefined) {
         if (Array.isArray(output)) {
           if (output.length > 0) {
             this._log(`Execute returned array (${output.length} items)`);
             for (const item of output) {
               currentContext.storeOutput(this.id, item); 
+              this._log(`Stored array item: ${JSON.stringify(item).substring(0, 100)}`);
             }
             currentContext.markNodeSuccess(this.id, output); 
           } else {
@@ -171,7 +174,14 @@ export abstract class Node {
         } else {
           this._log('Execute returned single item');
           currentContext.storeOutput(this.id, output); 
-          currentContext.markNodeSuccess(this.id, output);
+          this._log(`Stored output: ${JSON.stringify(output).substring(0, 100)}`);
+        }
+        
+        // Double-check that result was properly stored
+        const outputs = currentContext.getOutput(this.id);
+        this._log(`After storing output, node has ${outputs.length} stored outputs`);
+        if (outputs.length > 0) {
+          this._log(`Last stored output: ${JSON.stringify(outputs[outputs.length-1]).substring(0, 100)}`);
         }
         
         // getChildNodes uses this.context, which is set

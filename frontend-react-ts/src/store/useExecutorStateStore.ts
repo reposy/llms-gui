@@ -1,46 +1,90 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { FlowData } from '../utils/data/importExportUtils';
+import { useExecutorGraphStore } from './useExecutorGraphStore';
+import { deepClone } from '../utils/helpers';
 
-type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
+export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
+
+// Flow 항목 인터페이스 (기존에 있다면 export 추가, 없다면 새로 정의하고 export)
+export interface FlowExecutionItem {
+  id: string;
+  name: string;
+  flowJson: any; // FlowData 타입 등 구체적인 타입 사용 권장
+  inputData: any[];
+  result?: FlowExecutionResult | any | null;
+}
+
+// Flow 실행 결과 인터페이스 (기존에 있다면 export 추가, 없다면 새로 정의하고 export)
+// NodeResult 타입을 core/outputCollector에서 가져오거나 여기서 직접 정의할 수 있습니다.
+// 우선 간단히 any로 정의하고, 실제 프로젝트의 NodeResult 타입으로 대체해야 합니다.
+export interface FlowExecutionResult {
+  status: 'running' | 'success' | 'error';
+  outputs: any[] | null; // 실제로는 NodeResult[] 타입이어야 함
+  error?: string;
+  // 기타 필요한 필드들...
+}
 
 interface ExecutorState {
-  // 플로우 데이터
-  flowJson: FlowData | null;
+  // Flow 체인 데이터
+  flowChain: FlowExecutionItem[];
   
-  // 입력 데이터
-  inputData: any[];
+  // 현재 선택된/활성화된 Flow 인덱스
+  activeFlowIndex: number;
   
   // 현재 단계
   stage: ExecutorStage;
   
-  // 결과 데이터
-  result: any | null;
-  
   // 오류 메시지
   error: string | null;
   
-  // 상태 설정 함수
-  setFlowJson: (flowJson: FlowData | null) => void;
-  setInputData: (inputData: any[]) => void;
+  // 체인 상태 설정 함수
+  addFlow: (flowJson: FlowData) => void;
+  removeFlow: (id: string) => void;
+  moveFlowUp: (id: string) => void;
+  moveFlowDown: (id: string) => void;
+  setFlowInputData: (id: string, inputData: any[]) => void;
+  setFlowResult: (id: string, result: any | null) => void;
+  
+  // 현재 활성 Flow 설정
+  setActiveFlowIndex: (index: number) => void;
+  
+  // 기타 상태 설정 함수
   setStage: (stage: ExecutorStage) => void;
-  setResult: (result: any | null) => void;
   setError: (error: string | null) => void;
   
   // 상태 초기화 함수
   resetState: () => void;
+  resetResults: () => void;
   
-  // Flow Editor에서 현재 상태 가져오기
-  importFromEditor: () => void;
+  // 편의 함수
+  getFlowById: (id: string) => FlowExecutionItem | undefined;
+  getFlowResultById: (id: string) => any | null;
+  getActiveFlow: () => FlowExecutionItem | null;
 }
 
 // 초기 상태
 const initialState = {
-  flowJson: null,
-  inputData: [],
+  flowChain: [],
+  activeFlowIndex: 0,
   stage: 'upload' as ExecutorStage,
-  result: null,
   error: null
+};
+
+// 고유 ID 생성 함수
+const generateId = (flowName?: string) => {
+  const namePart = flowName 
+    ? flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20)
+    : 'flow';
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
+  
+  return `${namePart}-${timestamp}-${random}`;
+};
+
+// Flow 데이터 깊은 복사 함수
+const cloneFlowData = (flowData: FlowData): FlowData => {
+  return deepClone(flowData);
 };
 
 export const useExecutorStateStore = create<ExecutorState>()(
@@ -48,35 +92,160 @@ export const useExecutorStateStore = create<ExecutorState>()(
     (set, get) => ({
       ...initialState,
       
+      // Flow 체인 관리 함수
+      addFlow: (flowJson) => set((state) => {
+        // 깊은 복사를 통해 Flow 편집기 데이터와 실행기 데이터 완전히 분리
+        const clonedFlowJson = cloneFlowData(flowJson);
+        
+        const newFlow: FlowExecutionItem = {
+          id: generateId(clonedFlowJson.name),
+          name: clonedFlowJson.name || `Flow ${state.flowChain.length + 1}`,
+          flowJson: clonedFlowJson,
+          inputData: [],
+        };
+        
+        // 그래프 스토어에 Flow 그래프 정보 저장
+        const graphStore = useExecutorGraphStore.getState();
+        graphStore.setFlowGraph(newFlow.id, clonedFlowJson);
+        
+        return {
+          flowChain: [...state.flowChain, newFlow],
+          stage: state.stage === 'upload' ? 'input' : state.stage
+        };
+      }),
+      
+      removeFlow: (id) => set((state) => {
+        const newFlowChain = state.flowChain.filter(flow => flow.id !== id);
+        let newActiveFlowIndex = state.activeFlowIndex;
+        
+        // 현재 활성 Flow가 삭제된 경우 인덱스 조정
+        if (newFlowChain.length <= newActiveFlowIndex) {
+          newActiveFlowIndex = Math.max(0, newFlowChain.length - 1);
+        }
+        
+        // 그래프 스토어에서도 Flow 정보 제거
+        // (getFlowGraph 함수를 사용하기 때문에 명시적 제거는 필요 없으나, 메모리 관리 차원에서 추가)
+        
+        return {
+          flowChain: newFlowChain,
+          activeFlowIndex: newActiveFlowIndex,
+          stage: newFlowChain.length === 0 ? 'upload' : state.stage
+        };
+      }),
+      
+      moveFlowUp: (id) => set((state) => {
+        const index = state.flowChain.findIndex(flow => flow.id === id);
+        if (index <= 0) return state; // 이미 첫 번째이거나 존재하지 않음
+        
+        const newFlowChain = [...state.flowChain];
+        const temp = newFlowChain[index];
+        newFlowChain[index] = newFlowChain[index - 1];
+        newFlowChain[index - 1] = temp;
+        
+        // 활성 Flow가 이동된 경우 인덱스 조정
+        let newActiveFlowIndex = state.activeFlowIndex;
+        if (index === state.activeFlowIndex) {
+          newActiveFlowIndex = index - 1;
+        } else if (index - 1 === state.activeFlowIndex) {
+          newActiveFlowIndex = index;
+        }
+        
+        return {
+          flowChain: newFlowChain,
+          activeFlowIndex: newActiveFlowIndex
+        };
+      }),
+      
+      moveFlowDown: (id) => set((state) => {
+        const index = state.flowChain.findIndex(flow => flow.id === id);
+        if (index === -1 || index >= state.flowChain.length - 1) return state; // 이미 마지막이거나 존재하지 않음
+        
+        const newFlowChain = [...state.flowChain];
+        const temp = newFlowChain[index];
+        newFlowChain[index] = newFlowChain[index + 1];
+        newFlowChain[index + 1] = temp;
+        
+        // 활성 Flow가 이동된 경우 인덱스 조정
+        let newActiveFlowIndex = state.activeFlowIndex;
+        if (index === state.activeFlowIndex) {
+          newActiveFlowIndex = index + 1;
+        } else if (index + 1 === state.activeFlowIndex) {
+          newActiveFlowIndex = index;
+        }
+        
+        return {
+          flowChain: newFlowChain,
+          activeFlowIndex: newActiveFlowIndex
+        };
+      }),
+      
+      setFlowInputData: (id, inputData) => set((state) => {
+        const newFlowChain = state.flowChain.map(flow => 
+          flow.id === id ? { ...flow, inputData } : flow
+        );
+        
+        return { flowChain: newFlowChain };
+      }),
+      
+      setFlowResult: (id, result) => set((state) => {
+        const newFlowChain = state.flowChain.map(flow => 
+          flow.id === id ? { ...flow, result } : flow
+        );
+        
+        return { flowChain: newFlowChain };
+      }),
+      
+      // 활성 Flow 인덱스 설정
+      setActiveFlowIndex: (index) => set({ activeFlowIndex: index }),
+      
       // 상태 설정 함수
-      setFlowJson: (flowJson) => set({ flowJson }),
-      setInputData: (inputData) => set({ inputData }),
       setStage: (stage) => set({ stage }),
-      setResult: (result) => set({ result }),
       setError: (error) => set({ error }),
       
       // 상태 초기화 함수
-      resetState: () => set(initialState),
-      
-      // Flow Editor에서 현재 상태 가져오기
-      importFromEditor: () => {
-        // Flow Editor의 현재 상태를 가져와서 Executor 상태 업데이트
-        // 실제 구현은 Flow Editor의 exportFlowAsJson 함수를 활용
-        const { exportFlowAsJson } = require('../utils/data/importExportUtils');
-        const flowData = exportFlowAsJson(true); // 실행 결과 포함하여 가져오기
+      resetState: () => {
+        // 그래프 스토어 초기화
+        useExecutorGraphStore.getState().resetFlowGraphs();
         
-        // 현재 상태 업데이트
-        set({ 
-          flowJson: flowData,
-          stage: 'input'
-        });
+        // 실행기 상태 초기화
+        set(initialState);
+      },
+      
+      resetResults: () => set((state) => {
+        const newFlowChain = state.flowChain.map(flow => ({
+          ...flow,
+          result: null
+        }));
+        
+        return {
+          flowChain: newFlowChain,
+          stage: 'input',
+          error: null
+        };
+      }),
+      
+      // 편의 함수
+      getFlowById: (id) => {
+        return get().flowChain.find(flow => flow.id === id);
+      },
+      
+      getFlowResultById: (id) => {
+        const flow = get().flowChain.find(flow => flow.id === id);
+        return flow ? flow.result : null;
+      },
+      
+      getActiveFlow: () => {
+        const { flowChain, activeFlowIndex } = get();
+        return flowChain.length > 0 && activeFlowIndex < flowChain.length
+          ? flowChain[activeFlowIndex]
+          : null;
       }
     }),
     {
       name: 'flow-executor-storage', // localStorage/IndexedDB 키 이름
       partialize: (state) => ({
-        flowJson: state.flowJson,
-        inputData: state.inputData,
+        flowChain: state.flowChain,
+        activeFlowIndex: state.activeFlowIndex,
         stage: state.stage
       }),
     }
