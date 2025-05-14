@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { NodeResult } from '../../core/outputCollector';
+import ReactMarkdown from 'react-markdown';
 
 interface FlowInputFormProps {
   flowId: string;
@@ -59,9 +61,11 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
         setInputItems(initialInputs);
         setConfirmed(true); // 이미 있는 데이터는 확정된 것으로 간주
       } else {
-        // 없으면 빈 텍스트 입력 하나 생성
-        setInputItems([{ type: 'text', value: '' }]);
-        setConfirmed(false);
+        // 기본 입력 데이터 설정 및 자동 확정
+        const defaultInput = { type: 'text', value: '' };
+        setInputItems([defaultInput]);
+        setFlowInputData(flowId, [defaultInput.value]); // 기본 입력 데이터 저장
+        setConfirmed(true); // 자동으로 확정 상태로 설정
       }
     }
   }, [flow, flowId]);
@@ -210,6 +214,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
     const hasResult = getFlowResultById(sourceFlowId) !== null;
     return `${refFlow.name} ${hasResult ? '(결과 있음)' : '(결과 없음)'}`;
   };
+  
+  // 최근 실행 결과 가져오기
+  const lastResult = getFlowResultById(flowId);
   
   return (
     <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
@@ -414,6 +421,42 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
         onChange={(e) => handleFileSelect(inputItems.length - 1, e.target.files)}
         multiple
       />
+      
+      {/* 최근 실행 결과 표시 */}
+      {lastResult && (
+        <div className="mt-4 p-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-gray-700">최근 실행 결과</h3>
+            <span className={`px-2 py-1 text-xs rounded-full ${
+              lastResult.status === 'success' ? 'bg-green-100 text-green-800' :
+              lastResult.status === 'error' ? 'bg-red-100 text-red-800' :
+              'bg-blue-100 text-blue-800'
+            }`}>
+              {lastResult.status === 'success' ? '성공' :
+               lastResult.status === 'error' ? '오류' : '실행 중'}
+            </span>
+          </div>
+          
+          <div className="bg-gray-50 rounded p-3 text-sm text-gray-700 max-h-48 overflow-y-auto">
+            {lastResult.outputs?.map((output: NodeResult, index: number) => (
+              <div key={index} className="mb-2">
+                <div className="font-medium text-xs text-gray-500 mb-1">
+                  {output.nodeId} - {output.nodeType}
+                </div>
+                {typeof output.result === 'string' ? (
+                  <ReactMarkdown className="prose prose-sm max-w-none">
+                    {output.result}
+                  </ReactMarkdown>
+                ) : (
+                  <pre className="text-xs">
+                    {JSON.stringify(output.result, null, 2)}
+                  </pre>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

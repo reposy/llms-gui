@@ -366,3 +366,10 @@ export type NodeTypeMap = {
 };
 
 export type LLMProvider = 'ollama' | 'openai';
+
+// Flow 그래프 인터페이스
+export interface FlowGraph {
+  nodes: Node<NodeData>[];
+  edges: Edge[];
+  selectedNodeId: string | null;
+}

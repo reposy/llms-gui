@@ -57,12 +57,7 @@ const ExecutorPage: React.FC = () => {
   // Flow 선택 처리
   const handleFlowSelect = (flowId: string) => {
     setSelectedFlowId(flowId);
-    
-    // 결과가 있는 경우 result 단계로 전환
-    const result = getFlowResultById(flowId);
-    if (result && stage !== 'result') {
-      setStage('result');
-    }
+    setStage('input'); // Flow 선택 시 항상 'input' stage로 설정
   };
 
   // 선택된 Flow 또는 activeFlow가 변경될 때 콜백 등록
@@ -422,10 +417,33 @@ const ExecutorPage: React.FC = () => {
               <FlowChainManager onSelectFlow={handleFlowSelect} handleImportFlowChain={handleImportFlowChain} />
             </div>
             
-            {/* 오른쪽 패널: Flow 입력 폼 */}
-            <div className="w-1/2 overflow-y-auto pl-2">
+            {/* 오른쪽 패널: Flow 입력 폼, 실행 버튼, 결과 */}
+            <div className="w-1/2 overflow-y-auto pl-2 space-y-4"> {/* 요소 간 간격을 위해 space-y-4 추가 */}
               {selectedFlowId ? (
-                <FlowInputForm flowId={selectedFlowId} />
+                <>
+                  <FlowInputForm flowId={selectedFlowId} />
+                  
+                  {/* 실행 버튼 */}
+                  <div className="mt-0"> {/* mt-4 제거 또는 조정하여 space-y-4와 일관성 유지 */}
+                    {renderExecuteButton()}
+                  </div>
+
+                  {/* 실행 결과 표시 - 실행 버튼 아래 */}
+                  {getFlowResultById(selectedFlowId) && (
+                    <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
+                      <div className="p-4 bg-gray-50 border-b border-gray-300">
+                        <h2 className="font-medium text-lg">실행 결과</h2>
+                      </div>
+                      <div className="p-4">
+                        <ResultDisplay
+                          flowId={selectedFlowId}
+                          result={getFlowResultById(selectedFlowId)}
+                          flowName={getFlowById(selectedFlowId)?.name || ''}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="border border-gray-300 rounded-lg p-6 text-center bg-white">
                   <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -433,13 +451,6 @@ const ExecutorPage: React.FC = () => {
                   </svg>
                   <h3 className="mt-2 text-sm font-medium text-gray-900">Flow를 선택해주세요</h3>
                   <p className="mt-1 text-sm text-gray-500">왼쪽 패널에서 Flow를 선택하면 입력 폼이 표시됩니다.</p>
-                </div>
-              )}
-              
-              {/* 실행 버튼 */}
-              {selectedFlowId && (
-                <div className="mt-4">
-                  {renderExecuteButton()}
                 </div>
               )}
             </div>
