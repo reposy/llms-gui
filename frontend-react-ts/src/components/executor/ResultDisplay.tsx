@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { NodeResult } from '../../core/outputCollector';
+import { FlowExecutionResult } from '../../store/useExecutorStateStore';
 import ReactMarkdown from 'react-markdown';
 import './markdown-style.css';
 
 interface ResultDisplayProps {
-  result: NodeResult[] | null;
+  result: FlowExecutionResult | null;
   flowId: string;
   flowName: string;
 }
@@ -33,7 +34,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
   const [displayModes, setDisplayModes] = useState<{[nodeId: string]: 'text' | 'markdown'}>({});
   
   useEffect(() => {
-    console.log(`[ResultDisplay] Component received flowId: ${flowId}, result:`, result);
+    console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
   }, [flowId, result]);
 
   // 결과 복사 함수
@@ -161,25 +162,34 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
 
   // 전체 결과 렌더링
   const renderAllResults = () => {
-    if (!result || result.length === 0) {
-      console.log(`[ResultDisplay] No results to render for flow ${flowId}`);
+    if (!result || !result.outputs || result.outputs.length === 0) {
+      console.log(`[ResultDisplay] No results or empty outputs for flow ${flowId}`, result);
+      let message = '아직 실행된 결과가 없습니다. Flow를 실행하세요.';
+      if (result && result.status === 'error') {
+        message = `오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`;
+      } else if (result && result.outputs && result.outputs.length === 0) {
+        message = '실행되었지만 반환된 결과가 없습니다.';
+      }
+
       return (
         <div className="text-center py-8 text-gray-500">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
           <h3 className="text-lg font-medium mb-1">{flowName} 결과</h3>
-          <p>아직 실행된 결과가 없습니다. Flow를 실행하세요.</p>
+          <p>{message}</p>
         </div>
       );
     }
 
-    console.log(`[ResultDisplay] Rendering ${result.length} results for flow ${flowId}`);
+    const outputsToRender = result.outputs as NodeResult[];
+    console.log(`[ResultDisplay] Rendering ${outputsToRender.length} results for flow ${flowId}`);
+
     return (
       <div className="space-y-3">
-        <h3 className="font-medium">{flowName} 결과 ({result.length} 항목)</h3>
+        <h3 className="font-medium">{flowName} 결과 ({outputsToRender.length} 항목)</h3>
         <div>
-          {result.map((nodeResult, index) => renderNodeResult(nodeResult, index))}
+          {outputsToRender.map((nodeResult, index) => renderNodeResult(nodeResult, index))}
         </div>
       </div>
     );
@@ -187,15 +197,23 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
 
   return (
     <div className="p-3 border border-gray-300 rounded-lg bg-white">
-      {result ? (
+      {result && (result.status === 'success' || result.status === 'running') ? (
         renderAllResults()
+      ) : result && result.status === 'error' ? (
+        <div className="text-center py-8 text-red-500">
+           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-red-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <h3 className="text-lg font-medium mb-1">{flowName} 실행 오류</h3>
+          <p>{result.error || '알 수 없는 오류가 발생했습니다.'}</p>
+        </div>
       ) : (
         <div className="text-center py-8 text-gray-500">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
           <h3 className="text-lg font-medium mb-1">{flowName} 결과</h3>
-          <p>표시할 결과가 없습니다. 워크플로우를 실행하세요.</p>
+          <p>표시할 결과가 없습니다. Flow를 선택하고 실행하세요.</p>
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import { useExecutorStateStore, FlowExecutionResult } from '../../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
 import FileUploader from './FileUploader';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
@@ -312,38 +312,43 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
       console.warn('No flows to execute');
       return;
     }
-    
-    // 실행을 위한 Flow 아이템 구성
+
     const flowItems = flowChain.map(flow => ({
       id: flow.id,
-      flowJson: flow.flowJson, // Already cloned during addition to executorStateStore
+      flowJson: flow.flowJson,
       inputData: flow.inputData
     }));
-    
+
     try {
-      // Flow 그래프 초기화 (필요한 경우) - 항상 깊은 복사본 사용
       flowChain.forEach(flow => {
         if (!graphStore.getFlowGraph(flow.id)) {
-          // 깊은 복사를 통해 원본 Flow 데이터와 실행 데이터 완전히 분리
           graphStore.setFlowGraph(flow.id, flow.flowJson);
         }
       });
-      
-      // 체인 실행
+
       await executeChain({
         flowItems,
-        onFlowComplete: (flowId, result) => {
+        onFlowStart: (flowId: string) => { // executeChain 서비스가 이 콜백을 지원한다고 가정
+          setFlowResult(flowId, { status: 'running', outputs: null, error: undefined });
+        },
+        onFlowComplete: (flowId, result: FlowExecutionResult) => {
           console.log(`[FlowChainManager] Flow ${flowId} completed with result:`, result);
+          // result 객체가 이미 { status: 'success', outputs: ..., error: ... } 형태라고 가정
           setFlowResult(flowId, result);
         },
-        onError: (flowId, error) => {
+        onError: (flowId, error: Error | string) => {
           console.error(`[FlowChainManager] Error executing flow ${flowId}:`, error);
+          const errorMessage = typeof error === 'string' ? error : error.message;
+          setFlowResult(flowId, { status: 'error', error: errorMessage, outputs: null });
         }
       });
-      
+
       console.log('[FlowChainManager] All flows in chain executed successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('[FlowChainManager] Error executing flow chain:', error);
+      // 전체 체인 실행 실패 시, 각 Flow의 상태를 어떻게 처리할지 결정 필요
+      // 예를 들어, 마지막 실행 시도한 Flow만 에러로 표시하거나, 모든 running 상태를 error로 변경할 수 있음
+      // 여기서는 개별 Flow의 에러는 onError 콜백에서 처리되므로 추가적인 전역 에러 처리는 하지 않음
     }
   };
 
@@ -351,83 +356,73 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   const handleExecuteFlow = async (flowId: string) => {
     const flow = flowChain.find(f => f.id === flowId);
     if (!flow) return;
-    
+
+    // 실행 시작 시 'running' 상태로 설정
+    setFlowResult(flow.id, { status: 'running', outputs: null });
+
+    const flowElement = document.getElementById(`flow-item-${flow.id}`);
+    if (flowElement) {
+      // animate-pulse는 상태 아이콘으로 대체 가능하므로 제거하거나 유지할 수 있습니다.
+      // 여기서는 유지하되, 상태 아이콘이 명확하므로 제거를 고려할 수 있습니다.
+      flowElement.classList.add('animate-pulse');
+    }
+
     try {
       console.log(`[FlowChainManager] Executing flow: ${flowId}`);
       
-      // 실행 로딩 상태 표시
-      const flowElement = document.getElementById(`flow-item-${flowId}`);
-      if (flowElement) {
-        flowElement.classList.add('animate-pulse');
-      }
-      
-      // 현재 Flow의 인덱스 찾기
       const flowIndex = flowChain.findIndex(f => f.id === flowId);
-      
-      // 실행할 입력 데이터 준비
       let inputs = [...(flow.inputData || [])];
-      
-      // 이전 Flow의 결과 참조하는 문자열 확인
+
       if (inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
         console.log(`[FlowChainManager] 이전 Flow 결과 참조 발견:`, inputs[0]);
-        
-        // 이전 Flow의 결과를 직접 가져와서 치환
         if (flowIndex > 0) {
           const prevFlowId = flowChain[flowIndex - 1].id;
-          
-          // flowMap[flow.id].lastResults 사용
           const prevFlow = useExecutorStateStore.getState().getFlowById(prevFlowId);
           const prevResult = prevFlow?.result;
-          
           console.log(`[FlowChainManager] 이전 Flow(${prevFlowId})의 결과:`, prevResult);
-          
-          if (prevResult && Array.isArray(prevResult) && prevResult.length > 0) {
+          if (prevResult && Array.isArray(prevResult.outputs) && prevResult.outputs.length > 0) {
             // NodeResult[] 형식인지 확인 (nodeId, nodeName, nodeType, result 필드가 있는지)
-            if (typeof prevResult[0] === 'object' && prevResult[0] !== null && 'result' in prevResult[0]) {
-              // 첫 번째 노드 결과의 result 필드 직접 사용
-              inputs = [prevResult[0].result];
+            // prevResult.outputs가 NodeResult[]라고 가정하고, 첫 번째 노드의 result를 사용
+            if (typeof prevResult.outputs[0] === 'object' && prevResult.outputs[0] !== null && 'result' in prevResult.outputs[0]) {
+              inputs = [prevResult.outputs[0].result];
               console.log(`[FlowChainManager] 사용할 입력 데이터 (노드 결과):`, inputs[0]);
             } else {
-              // 일반 배열인 경우 첫 번째 요소 사용
-              inputs = [prevResult[0]];
+              // 일반 배열인 경우 첫 번째 요소 사용 (이 경우는 지양해야 함)
+              inputs = [prevResult.outputs[0]];
               console.log(`[FlowChainManager] 사용할 입력 데이터 (배열 요소):`, inputs[0]);
             }
+          } else if (prevResult && prevResult.outputs) { // 단일 값 결과일 경우
+            inputs = [prevResult.outputs];
+             console.log(`[FlowChainManager] 사용할 입력 데이터 (단일 값):`, inputs[0]);
           }
         }
       }
       
       console.log(`[FlowChainManager] 최종 입력 데이터:`, inputs);
       
-      // Flow 실행
-      const result = await executeFlowExecutor({
+      const result: FlowExecutionResult = await executeFlowExecutor({
         flowId: flow.id,
         flowJson: flow.flowJson,
         inputs: inputs,
       });
       
       console.log(`[FlowChainManager] Flow execution completed:`, result);
-      
-      // 로딩 상태 제거
-      if (flowElement) {
-        flowElement.classList.remove('animate-pulse');
-      }
-      
-      // 결과 확인
-      if (result.status === 'error') {
-        console.error(`[FlowChainManager] Error executing flow:`, result.error);
-        alert(`Flow 실행 중 오류가 발생했습니다: ${result.error}`);
-      } else {
-        // 성공적인 실행 후 선택된 Flow 갱신 (실행 결과 표시를 위해)
+      setFlowResult(flow.id, result); // 실행 결과를 상태에 업데이트
+
+      if (result.status === 'success') {
         if (onSelectFlow) {
-          onSelectFlow(flowId);
+          onSelectFlow(flowId); // 성공 시 결과 표시를 위해 선택된 Flow 갱신
         }
+      } else if (result.status === 'error') {
+        alert(`Flow 실행 중 오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`);
       }
-    } catch (error) {
+
+    } catch (error: any) {
       console.error(`[FlowChainManager] Error executing flow:`, error);
-      alert('Flow 실행 중 오류가 발생했습니다.');
-      
-      // 로딩 상태 제거
-      const flowElement = document.getElementById(`flow-item-${flowId}`);
+      const errorMessage = error.message || '알 수 없는 오류가 발생했습니다.';
+      setFlowResult(flow.id, { status: 'error', error: errorMessage, outputs: null });
+      alert(`Flow 실행 중 예외가 발생했습니다: ${errorMessage}`);
+    } finally {
       if (flowElement) {
         flowElement.classList.remove('animate-pulse');
       }

@@ -5,15 +5,11 @@ import FlowChainManager from '../components/executor/FlowChainManager';
 import FlowInputForm from '../components/executor/FlowInputForm';
 import ResultDisplay from '../components/executor/ResultDisplay';
 import { executeFlowExecutor, executeChain, registerResultCallback } from '../services/flowExecutionService';
-import { useExecutorStateStore, ExecutorStage } from '../store/useExecutorStateStore';
+import { useExecutorStateStore, ExecutorStage, FlowExecutionResult } from '../store/useExecutorStateStore';
 import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
-import UploadStageView from '../components/executor/stages/UploadStageView';
-import InputStageView from '../components/executor/stages/InputStageView';
-import ExecutingStageView from '../components/executor/stages/ExecutingStageView';
-import ResultStageView from '../components/executor/stages/ResultStageView';
 
 const ExecutorPage: React.FC = () => {
   // 로컬 상태
@@ -69,35 +65,36 @@ const ExecutorPage: React.FC = () => {
   useEffect(() => {
     if (!selectedFlowId) return;
     
-    // 선택된 Flow가 변경될 때 결과 단계에서는 결과를 확인
-    const result = getFlowResultById(selectedFlowId);
-    if (result && stage === 'result') {
-      // 결과가 이미 있으면, 화면을 갱신하기 위한 상태 업데이트 트리거
-      // 이렇게 하면 같은 값이라도 상태 변경으로 인식되어 컴포넌트가 갱신됨
-      setFlowResult(selectedFlowId, result);
+    const currentResult = getFlowResultById(selectedFlowId);
+    if (currentResult && stage === 'result') {
+      setFlowResult(selectedFlowId, currentResult);
     }
     
-    // 콜백 등록: 결과가 업데이트되면 자동으로 화면 갱신
-    const unregister = registerResultCallback(selectedFlowId, (result) => {
-      // Flow 결과 업데이트
-      setFlowResult(selectedFlowId, result);
+    const unregister = registerResultCallback(selectedFlowId, (outputsArray) => {
+      // outputsArray는 실제 결과 배열 (NodeResult[] 등)로 가정
+      // 이를 FlowExecutionResult 객체로 감싸서 저장
+      console.log(`[ExecutorPage] registerResultCallback received for ${selectedFlowId}:`, outputsArray);
+      // 현재 상태를 알 수 없으므로, 기본적으로 success로 가정하되, 실제 실행 서비스와 맞춰야 함.
+      // executeFlowExecutor는 성공 시 outputs를, 에러 시 error 객체를 반환함.
+      // registerResultCallback은 outputs만 전달하므로, 이 콜백이 호출되는 시점은 성공적으로 outputs가 생성된 경우로 볼 수 있음.
+      setFlowResult(selectedFlowId, { 
+        status: 'success', // 또는 이 콜백이 호출되는 시점의 정확한 상태를 반영해야 함
+        outputs: outputsArray, 
+        error: undefined 
+      });
       
-      // 실행 중 상태가 지속되면 해제
       if (isExecuting) {
         setIsExecuting(false);
-        
-        // 결과 화면으로 전환 (현재 input 단계인 경우)
         if (stage === 'executing') {
           setStage('result');
         }
       }
     });
     
-    // 컴포넌트 언마운트 또는 Flow 변경 시 콜백 제거
     return () => {
       unregister();
     };
-  }, [selectedFlowId, setFlowResult, getFlowResultById, stage, isExecuting]);
+  }, [selectedFlowId, setFlowResult, getFlowResultById, stage, isExecuting]); // isExecuting 제거 가능성 있음, 의존성 확인 필요
 
   // Flow 체인 가져오기
   const handleImportFlowChain = () => {
@@ -158,32 +155,39 @@ const ExecutorPage: React.FC = () => {
       return;
     }
     
+    // FlowChainManager의 handleExecuteFlow를 직접 호출하도록 변경 고려
+    // 또는 여기서 setFlowResult를 사용하여 상태를 'running'으로 설정
+    setFlowResult(selectedFlowId, { status: 'running', outputs: null, error: undefined });
     setIsExecuting(true);
     setStage('executing');
     setError(null);
 
     try {
-      const response = await executeFlowExecutor({
+      // executeFlowExecutor는 FlowExecutionResult를 반환하므로 onComplete 콜백 불필요
+      const response: FlowExecutionResult = await executeFlowExecutor({
         flowId: flow.id,
         flowJson: flow.flowJson,
         inputs: flow.inputData || [],
-        onComplete: (result) => {
-          // 결과 저장 및 상태 업데이트
-          setFlowResult(flow.id, result);
-          setIsExecuting(false);
-          setStage('result');
-        }
+        // onComplete 콜백 제거
       });
+
+      // 실행 결과로 상태 업데이트
+      setFlowResult(flow.id, response);
 
       if (response.status === 'error') {
         setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
-        setIsExecuting(false);
+        setStage('result'); // 오류 발생 시에도 결과 스테이지로 이동하여 ResultDisplay에 오류 표시
+      } else {
+        setStage('result');
       }
-    } catch (err) {
-      setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
+    } catch (err: any) {
+      const errorMessage = err.message || '플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.';
+      setError(errorMessage);
+      setFlowResult(selectedFlowId, { status: 'error', outputs: null, error: errorMessage });
+      setStage('result'); // 예외 발생 시에도 결과 스테이지로 이동
       console.error('실행 오류:', err);
-      setIsExecuting(false);
-      setStage('result');
+    } finally {
+      setIsExecuting(false); // 실행 상태는 항상 해제
     }
   };
   
@@ -197,8 +201,7 @@ const ExecutorPage: React.FC = () => {
     setIsExecuting(true);
     setStage('executing');
     setError(null);
-    
-    resetResults();
+    // resetResults(); // 체인 실행 시 이전 결과는 유지하고 각 Flow의 상태만 업데이트하므로 주석 처리
     
     try {
       const flowItems = flowChain.map(flow => ({
@@ -207,28 +210,47 @@ const ExecutorPage: React.FC = () => {
         inputData: flow.inputData
       }));
       
+      // executeChain은 FlowExecutionResultForService 타입을 콜백으로 전달
+      // useExecutorStateStore의 setFlowResult는 FlowExecutionResult 타입을 받음
+      // 두 타입 구조가 동일하므로 호환 가능 (as FlowExecutionResult 캐스팅은 불필요)
       await executeChain({
         flowItems,
-        onFlowComplete: (flowId, result) => {
-          console.log(`Flow ${flowId} completed with result:`, result);
-          setFlowResult(flowId, result);
+        onFlowStart: (flowId) => { // 체인 내 개별 Flow 시작 시
+          setFlowResult(flowId, { status: 'running', outputs: null, error: undefined });
+        },
+        onFlowComplete: (flowId, chainResult ) => { // chainResult는 FlowExecutionResultForService 타입
+          console.log(`Flow ${flowId} completed with result:`, chainResult);
+          setFlowResult(flowId, chainResult); // 타입 호환됨
           
-          // 마지막 Flow인 경우 실행 완료 처리
           const isLastFlow = flowId === flowItems[flowItems.length - 1].id;
           if (isLastFlow) {
             setIsExecuting(false);
             setStage('result');
           }
         },
-        onError: (flowId, errorMsg) => {
-          console.error(`Error executing flow ${flowId}:`, errorMsg);
-          setError(`Flow "${getFlowById(flowId)?.name || flowId}" 실행 중 오류: ${errorMsg}`);
+        onError: (flowId, errorData) => { // errorData는 Error | string 타입
+          console.error(`Error executing flow ${flowId}:`, errorData);
+          const errorMessage = typeof errorData === 'string' ? errorData : errorData.message;
+          setError(`Flow "${getFlowById(flowId)?.name || flowId}" 실행 중 오류: ${errorMessage}`);
+          setFlowResult(flowId, { status: 'error', outputs: null, error: errorMessage });
+          
+          // 체인 실행 중 하나의 Flow라도 에러나면 전체 실행 상태를 false로, stage를 result로 변경
           setIsExecuting(false);
           setStage('result');
         }
       });
-    } catch (err) {
-      setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
+
+      // 모든 Flow가 성공적으로 완료되었는지 확인 (에러 발생 시 onError에서 처리됨)
+      const allSucceeded = flowItems.every(item => getFlowResultById(item.id)?.status === 'success');
+      if (allSucceeded && !isExecuting) { // isExecuting이 false로 설정된 후 (마지막 flow 완료 또는 에러로 중단 시)
+         // 이 부분은 isLastFlow 조건 또는 onError에서 이미 처리되므로 중복될 수 있음.
+         // 만약 모든 Flow가 성공하고 isExecuting이 여전히 true라면 (매우 드문 케이스), 여기서 false로 설정.
+         // 하지만 onError나 isLastFlow에서 이미 처리되므로 사실상 불필요.
+      }
+
+    } catch (err: any) {
+      const errorMessage = err.message || 'Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.';
+      setError(errorMessage);
       console.error('체인 실행 오류:', err);
       setIsExecuting(false);
       setStage('result');
@@ -337,7 +359,6 @@ const ExecutorPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* 상단 네비게이션 바 - 컴포넌트로 분리 */}
       <ExecutorPanel 
         onImportFlowChain={handleImportFlowChain}
         onExportFlowChain={handleExportWithFilename}
@@ -346,7 +367,6 @@ const ExecutorPage: React.FC = () => {
         isExecuting={isExecuting}
       />
 
-      {/* 탭 네비게이션 -> StageNavigationBar 컴포넌트로 대체 */}
       <StageNavigationBar 
         currentStage={stage}
         onStageChange={setStage}
@@ -354,9 +374,7 @@ const ExecutorPage: React.FC = () => {
         canViewResults={canViewResults}
       />
       
-      {/* 주요 컨텐츠 영역 */}
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* 오류 메시지 표시 영역 */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
             <div className="flex">
@@ -373,33 +391,114 @@ const ExecutorPage: React.FC = () => {
           </div>
         )}
         
-        {stage === 'upload' && <UploadStageView />}
-        
-        {/* 입력 단계 -> InputStageView 컴포넌트로 대체 */}
-        {stage === 'input' && (
-          <InputStageView 
-            selectedFlowId={selectedFlowId}
-            onSelectFlow={handleFlowSelect}
-            onImportFlowChain={handleImportFlowChain}
-            renderExecuteButton={renderExecuteButton}
-            getFlowById={getFlowById}
-            getFlowResultById={getFlowResultById}
-          />
+        {stage === 'upload' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold mb-4 text-gray-700">Flow 업로드</h2>
+            <p className="mb-4 text-gray-600">Flow JSON 파일을 업로드하거나, Flow Editor에서 생성한 Flow를 불러오세요.</p>
+            <FileUploader />
+          </div>
         )}
         
-        {/* 실행 중 단계 -> ExecutingStageView 컴포넌트로 대체 */}
-        {stage === 'executing' && <ExecutingStageView />}
+        {(stage === 'input' || stage === 'executing') && (
+          <div className="flex space-x-4">
+            {/* 왼쪽 패널: Flow 체인 */}
+            <div className="w-1/2 overflow-y-auto pr-2">
+              <FlowChainManager 
+                onSelectFlow={handleFlowSelect} 
+                // handleImportFlowChain prop은 FlowChainManager 내부에서 직접 파일 업로더를 사용하거나 
+                // ExecutorPanel에서 처리되므로 여기서는 제거하거나, 필요시 ExecutorPanel로부터 내려받는 구조로 변경
+                // 현재 FlowChainManager는 자체적으로 파일 가져오기 버튼이 있으므로 별도 prop 불필요
+              />
+            </div>
+            
+            {/* 오른쪽 패널 */}
+            <div className="w-1/2 overflow-y-auto pl-2 space-y-4">
+              {stage === 'input' && (
+                selectedFlowId ? (
+                  <>
+                    <FlowInputForm flowId={selectedFlowId} />
+                    <div className="mt-0">
+                      {renderExecuteButton()} 
+                    </div>
+                    {getFlowResultById(selectedFlowId) && (
+                      <div className="border border-gray-300 rounded-lg bg-white overflow-hidden mt-4">
+                        <div className="p-4 bg-gray-50 border-b border-gray-300">
+                          <h2 className="font-medium text-lg">최근 실행 결과</h2>
+                        </div>
+                        <div className="p-4">
+                          <ResultDisplay
+                            flowId={selectedFlowId}
+                            result={getFlowResultById(selectedFlowId)}
+                            flowName={getFlowById(selectedFlowId)?.name || ''}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="border border-gray-300 rounded-lg p-6 text-center bg-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">Flow를 선택해주세요</h3>
+                    <p className="mt-1 text-sm text-gray-500">왼쪽 패널에서 Flow를 선택하면 입력 폼이 표시됩니다.</p>
+                  </div>
+                )
+              )}
+              
+              {stage === 'executing' && (
+                <div className="border border-gray-300 rounded-lg p-10 text-center bg-white">
+                  <div className="flex flex-col items-center justify-center">
+                    <svg className="animate-spin h-12 w-12 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <h3 className="text-lg font-medium text-gray-800 mb-2">Flow 실행 중...</h3>
+                    <p className="text-gray-500">실행이 완료되면 결과가 표시됩니다.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         
-        {/* 결과 단계 -> ResultStageView 컴포넌트로 대체 */}
         {stage === 'result' && (
-          <ResultStageView 
-            selectedFlowId={selectedFlowId}
-            onSelectFlow={handleFlowSelect}
-            onImportFlowChain={handleImportFlowChain}
-            onBackToInput={handleBackToInput}
-            onExecuteSingleFlow={handleExecuteSingleFlow}
-            renderResults={renderResults} 
-          />
+          <div className="flex space-x-4">
+            {/* 왼쪽 패널: Flow 설정 */}
+            <div className="w-1/2 overflow-y-auto pr-2">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Flow 설정</h2>
+              <FlowChainManager 
+                onSelectFlow={handleFlowSelect} 
+              />
+              
+              <div className="mt-4 flex space-x-2">
+                <button
+                  onClick={handleBackToInput}
+                  className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors shadow-sm flex-1"
+                >
+                  입력 수정
+                </button>
+                <button
+                  onClick={handleExecuteSingleFlow}
+                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center shadow-sm"
+                  disabled={!selectedFlowId} // 선택된 Flow가 있을 때만 활성화
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  다시 실행
+                </button>
+              </div>
+            </div>
+            
+            {/* 오른쪽 패널: 실행 결과 */}
+            <div className="w-1/2 overflow-y-auto pl-2 bg-white rounded-lg shadow border border-gray-200 p-4 flex flex-col">
+              <div className="flex-1 min-h-[45%]">
+                <h2 className="text-lg font-semibold mb-2 text-gray-700 border-b pb-2">실행 결과</h2>
+                {renderResults()}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
