@@ -45,6 +45,7 @@ interface ExecutorState {
   moveFlowDown: (id: string) => void;
   setFlowInputData: (id: string, inputData: any[]) => void;
   setFlowResult: (id: string, result: any | null) => void;
+  setFlowName: (id: string, name: string) => void;
   
   // 현재 활성 Flow 설정
   setActiveFlowIndex: (index: number) => void;
@@ -183,6 +184,19 @@ export const useExecutorStateStore = create<ExecutorState>()(
         const newFlowChain = state.flowChain.map(flow => 
           flow.id === id ? { ...flow, inputData } : flow
         );
+        
+        return { flowChain: newFlowChain };
+      }),
+      
+      setFlowName: (id, name) => set((state) => {
+        const newFlowChain = state.flowChain.map(flow => {
+          if (flow.id === id) {
+            // flow 객체와 내부 flowJson의 name도 함께 업데이트
+            const updatedFlowJson = { ...flow.flowJson, name };
+            return { ...flow, name, flowJson: updatedFlowJson };
+          }
+          return flow;
+        });
         
         return { flowChain: newFlowChain };
       }),

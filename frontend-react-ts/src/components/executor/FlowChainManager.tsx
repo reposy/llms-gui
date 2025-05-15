@@ -73,6 +73,10 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportWithData, setExportWithData] = useState(false);
   
+  // 이름 편집 상태 관련 변수 추가
+  const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>('');
+  
   const {
     flowChain,
     activeFlowIndex,
@@ -83,7 +87,8 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     getFlowResultById,
     setFlowResult,
     addFlow,
-    setFlowInputData
+    setFlowInputData,
+    setFlowName  // useExecutorStateStore에서 setFlowName 함수 가져오기
   } = useExecutorStateStore();
   
   const graphStore = useExecutorGraphStore();
@@ -429,6 +434,55 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     }
   };
 
+  // 편집 버튼 클릭 시 처리 함수 추가 (맨 아래쪽, 마지막 컴포넌트 렌더링 부분 위에 추가)
+  const handleEditNameClick = (e: React.MouseEvent, flowId: string, currentName: string) => {
+    e.stopPropagation();
+    setEditingFlowId(flowId);
+    setEditingName(currentName);
+  };
+
+  const handleNameInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditingName(e.target.value);
+  };
+
+  const handleNameInputBlur = () => {
+    if (editingFlowId) {
+      // 이름이 비어있으면 원래 이름을 유지
+      if (editingName.trim()) {
+        setFlowName(editingFlowId, editingName.trim());
+      } else {
+        // 현재 Flow의 원래 이름 찾기
+        const flow = flowChain.find(f => f.id === editingFlowId);
+        if (flow) {
+          // 알림 표시
+          alert('Flow 이름은 비워둘 수 없습니다. 원래 이름을 유지합니다.');
+        }
+      }
+    }
+    setEditingFlowId(null);
+  };
+
+  const handleNameInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (editingFlowId) {
+        // 이름이 비어있으면 원래 이름을 유지
+        if (editingName.trim()) {
+          setFlowName(editingFlowId, editingName.trim());
+        } else {
+          // 현재 Flow의 원래 이름 찾기
+          const flow = flowChain.find(f => f.id === editingFlowId);
+          if (flow) {
+            // 알림 표시
+            alert('Flow 이름은 비워둘 수 없습니다. 원래 이름을 유지합니다.');
+          }
+        }
+      }
+      setEditingFlowId(null);
+    } else if (e.key === 'Escape') {
+      setEditingFlowId(null);
+    }
+  };
+
   return (
     <div className="border border-gray-300 rounded-lg overflow-hidden">
       <div className="p-4 bg-white border-b border-gray-300 flex justify-between items-center">
@@ -508,15 +562,21 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                 leafNodeCount: 0
               };
               
+              const isEditing = editingFlowId === flow.id;
+              
               return (
                 <li 
                   key={flow.id}
                   id={`flow-item-${flow.id}`}
                   className={`border-b border-gray-200 last:border-b-0 p-3 cursor-pointer ${
+                    isEditing ? 'bg-blue-50 outline outline-2 outline-blue-400' : 
                     isActive ? 'bg-blue-50' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => {
-                    handleSelectFlow(index);
+                    // 편집 중인 경우 항목 클릭 시 선택하지 않도록 함
+                    if (!isEditing) {
+                      handleSelectFlow(index);
+                    }
                   }}
                 >
                   <div className="flex justify-between items-center">
@@ -526,7 +586,29 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                         {index + 1}
                       </span>
                       <div>
-                        <h3 className="font-medium text-gray-900">{flow.name}</h3>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={handleNameInputChange}
+                            onBlur={handleNameInputBlur}
+                            onKeyDown={handleNameInputKeyDown}
+                            className="border border-blue-500 rounded px-2 py-1 text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                          />
+                        ) : (
+                          <h3 
+                            className="font-medium text-gray-900 hover:bg-gray-100 px-2 py-1 rounded cursor-pointer" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditNameClick(e, flow.id, flow.name);
+                            }}
+                            title="클릭하여 Flow 이름 편집"
+                          >
+                            {flow.name}
+                          </h3>
+                        )}
                         <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-1">
                           <span>{flow.inputData && flow.inputData.length ? `${flow.inputData.length}개의 입력` : '입력 없음'}</span>
                           {flowExecutionResult && flowExecutionResult.status && (
@@ -604,19 +686,6 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                      
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log("Edit button clicked for", flow.id);
-                        }}
-                        className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-                        title="입력 수정"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
                       </button>
                     </div>
