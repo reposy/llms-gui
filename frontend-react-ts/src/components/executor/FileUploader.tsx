@@ -4,7 +4,7 @@ import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import FileSelector from './FileSelector';
 
 interface FileUploaderProps {
-  onFileUpload?: (jsonData: FlowData) => void;
+  onFileUpload?: (flowData: FlowData, chainId?: string, flowId?: string) => void;
   externalFileInputRef?: React.RefObject<HTMLInputElement>;
   className?: string;
 }
@@ -14,16 +14,22 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
   const [error, setError] = useState<string>('');
   const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
   
-  const addFlow = useExecutorStateStore(state => state.addFlow);
-  const flowChain = useExecutorStateStore(state => state.flowChain);
-  const setStage = useExecutorStateStore(state => state.setStage);
-  
-  // 외부 파일 입력 참조가 변경 이벤트를 수신하도록 설정
+  const { flows, activeChainId, addChain, addFlowToChain, setStage, getActiveChain } = useExecutorStateStore(
+    (state) => ({
+      flows: state.flows,
+      activeChainId: state.flows.activeChainId,
+      addChain: state.addChain,
+      addFlowToChain: state.addFlowToChain,
+      setStage: state.setStage,
+      getActiveChain: state.getActiveChain,
+    })
+  );
+  const chainIds = flows.chainIds;
+
   useEffect(() => {
     if (externalFileInputRef?.current) {
       const inputElement = externalFileInputRef.current;
       
-      // 파일 변경 이벤트 핸들러 등록
       const fileChangeHandler = (e: Event) => {
         const target = e.target as HTMLInputElement;
         if (target.files && target.files[0]) {
@@ -31,68 +37,77 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
         }
       };
       
-      // 이벤트 리스너 등록
       inputElement.addEventListener('change', fileChangeHandler);
       
-      // 컴포넌트 언마운트 시 이벤트 리스너 제거
       return () => {
         inputElement.removeEventListener('change', fileChangeHandler);
       };
     }
   }, [externalFileInputRef]);
 
-  // 파일 처리 로직
-  const handleFileSelected = (file: File) => {
+  const handleFileSelected = async (file: File) => {
     setFileName(file.name);
     setError('');
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const json = e.target?.result as string;
-        let flowData;
+        let flowJsonData;
         
         try {
-          flowData = JSON.parse(json);
+          flowJsonData = JSON.parse(json) as FlowData;
         } catch (parseError) {
           console.error(`[FileUploader] JSON 파싱 오류:`, parseError);
           setError('JSON 파일 형식이 올바르지 않습니다.');
           return;
         }
         
-        // 기본 유효성 검사
-        if (!flowData || typeof flowData !== 'object') {
-          throw new Error('유효하지 않은 Flow 파일 형식입니다.');
+        if (!flowJsonData || typeof flowJsonData !== 'object') {
+          setError('유효하지 않은 Flow 파일 형식입니다.');
           return;
         }
         
-        // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
-        const flowName = file.name.replace(/\.json$/, '') || '가져온 Flow';
-        const timestamp = Date.now();
-        const random = Math.floor(Math.random() * 1000);
-        const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
-        const flowId = `${namePart}-${timestamp}-${random}`;
-        
-        const flowToAdd = {
-          ...flowData,
-          id: flowId,
-          name: flowName
-        };
-        
-        // Flow 추가
-        addFlow(flowToAdd);
-        
-        // 다음 단계로 이동
-        if (flowChain.length === 0) {
+        const flowNameFromFile = flowJsonData.name || file.name.replace(/\.json$/, '') || '가져온 Flow';
+
+        let targetChainId = activeChainId;
+        let isNewChain = false;
+
+        if (!targetChainId || chainIds.length === 0) {
+          const newChainName = flowNameFromFile;
+          addChain(newChainName);
+          await new Promise(resolve => setTimeout(resolve, 0));
+          
+          const updatedActiveChainId = useExecutorStateStore.getState().flows.activeChainId;
+          if (!updatedActiveChainId) {
+            console.error('[FileUploader] 새 체인 생성 후 activeChainId를 가져올 수 없습니다.');
+            setError('새 체인을 만들고 활성화하는 데 실패했습니다.');
+            return;
+          }
+          targetChainId = updatedActiveChainId;
+          isNewChain = true;
+          console.log(`[FileUploader] New chain created and activated: ${targetChainId}`);
+        }
+
+        if (!targetChainId) {
+          console.error('[FileUploader] 대상 체인 ID를 결정할 수 없습니다.');
+          setError('Flow를 추가할 대상 체인을 찾을 수 없습니다.');
+          return;
+        }
+
+        addFlowToChain(targetChainId, flowJsonData);
+        const currentChain = useExecutorStateStore.getState().getChain(targetChainId);
+        const addedFlowId = currentChain?.flowIds[currentChain.flowIds.length -1];
+
+        if (chainIds.length === 0 || isNewChain) {
           setStage('input');
         }
         
-        // 외부 콜백이 있으면 호출
         if (onFileUpload) {
-          onFileUpload(flowToAdd);
+          onFileUpload(flowJsonData, targetChainId, addedFlowId);
         }
         
-        console.log(`[FileUploader] Flow imported successfully: ${flowId}`);
+        console.log(`[FileUploader] Flow imported successfully into chain ${targetChainId}${addedFlowId ? ' with flow ID ' + addedFlowId : ''}`);
       } catch (err) {
         console.error('Flow 파일 처리 오류:', err);
         setError('유효하지 않은 Flow 파일입니다. 올바른 Flow JSON 파일을 업로드해주세요.');
@@ -107,7 +122,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
   return (
     <div className={`p-4 border border-gray-300 rounded-lg bg-white ${className}`}>
       <h2 className="text-lg font-medium mb-3">
-        {flowChain.length === 0 ? 'Flow 업로드하기' : 'Flow 추가하기'}
+        {(chainIds || []).length === 0 ? 'Flow 업로드하기' : 'Flow 추가하기'}
       </h2>
       <div className="flex flex-col space-y-4">
         <div className="flex flex-wrap gap-3">
@@ -129,7 +144,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
         
         {error && <p className="text-red-500 text-sm">{error}</p>}
         <p className="text-sm text-gray-500">
-          {flowChain.length === 0 
+          {(chainIds || []).length === 0 
             ? 'Flow 파일(.json)을 선택하여 실행할 Flow를 추가하세요.'
             : '추가 Flow 파일(.json)을 선택하여 체인에 추가하세요. Flow의 실행 순서는 나중에 조정할 수 있습니다.'}
         </p>

@@ -63,15 +63,13 @@ interface FlowExecutionResultForService {
   error?: string;
 }
 
-interface ExecuteChainParams {
-  flowItems: Array<{
-    id: string;
-    flowJson: FlowData;
-    inputData: any[];
-  }>;
-  onFlowStart?: (flowId: string) => void; // Flow 실행 시작 콜백
-  onFlowComplete?: (flowId: string, result: FlowExecutionResultForService) => void; // Flow 성공 콜백
-  onError?: (flowId: string, error: Error | string) => void; // Flow 실패 콜백
+export interface ExecuteChainParams {
+  chainId: string;
+  onChainStart?: (chainId: string) => void;
+  onChainComplete?: (chainId: string, results: any[]) => void;
+  onFlowStart?: (chainId: string, flowId: string) => void;
+  onFlowComplete?: (chainId: string, flowId: string, results: any[]) => void;
+  onError?: (chainId: string, flowId: string, error: Error | string) => void;
 }
 
 /**
@@ -296,7 +294,10 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     
     // 결과 저장 (Flow Executor는 둘 다 업데이트)
     graphStore.setFlowResult(params.flowId, outputs);
-    executorStore.setFlowResult(params.flowId, outputs);  // Executor 스토어에도 결과 저장
+    const activeChain = executorStore.getActiveChain();
+    if (activeChain) {
+      executorStore.setFlowResults(activeChain.id, params.flowId, outputs);  // chainId 추가
+    }
     
     // 콜백 호출 (onComplete가 있는 경우)
     if (params.onComplete) {
@@ -395,83 +396,110 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
 };
 
 /**
- * [Flow Executor용] 여러 Flow를 연속해서 실행하는 체인 함수
+ * Flow Chain을 실행합니다.
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
   const executorStore = useExecutorStateStore.getState();
+  const chain = executorStore.getChain(params.chainId);
   
-  console.log(`[FlowExecutor] Starting chain execution with ${params.flowItems.length} flows`);
+  if (!chain) {
+    throw new Error(`Chain not found: ${params.chainId}`);
+  }
+
+  console.log(`[FlowExecutor] Starting chain execution: ${params.chainId}`);
   
-  for (let i = 0; i < params.flowItems.length; i++) {
-    const flowItem = params.flowItems[i];
-    
-    // Flow 실행 시작 콜백 호출
-    if (params.onFlowStart) {
-      params.onFlowStart(flowItem.id);
+  // Chain 실행 시작
+  if (params.onChainStart) {
+    params.onChainStart(params.chainId);
+  }
+  executorStore.setChainStatus(params.chainId, 'running');
+
+  try {
+    // Chain 내의 각 Flow 순차 실행
+    for (const flowId of chain.flowIds) {
+      const flow = chain.flows[flowId];
+      
+      // Flow 실행 시작
+      if (params.onFlowStart) {
+        params.onFlowStart(params.chainId, flowId);
+      }
+      executorStore.setFlowStatus(params.chainId, flowId, 'running');
+
+      try {
+        console.log(`[FlowExecutor] Executing flow in chain: ${flowId}`);
+        
+        let inputs = [...(flow.inputs || [])];
+        
+        // 이전 Flow의 결과를 입력으로 사용해야 하는 경우
+        if (inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
+          const prevFlowId = chain.flowIds[chain.flowIds.indexOf(flowId) - 1];
+          if (prevFlowId) {
+            const prevFlow = chain.flows[prevFlowId];
+            const prevResults = prevFlow?.lastResults;
+            
+            if (prevResults) {
+              if (Array.isArray(prevResults) && prevResults.length > 0) {
+                if (typeof prevResults[0] === 'object' && prevResults[0] !== null && 'result' in prevResults[0]) {
+                  inputs = [prevResults[0].result];
+                } else {
+                  inputs = [prevResults[0]];
+                }
+              } else if (!Array.isArray(prevResults)) {
+                inputs = [prevResults];
+              }
+            }
+          }
+        }
+
+        const result = await executeFlowExecutor({
+          flowId,
+          flowJson: flow.flowJson,
+          inputs
+        });
+
+        if (result.status === 'success') {
+          executorStore.setFlowStatus(params.chainId, flowId, 'success');
+          executorStore.setFlowResults(params.chainId, flowId, result.outputs);
+          
+          if (params.onFlowComplete) {
+            params.onFlowComplete(params.chainId, flowId, result.outputs);
+          }
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
+      } catch (error) {
+        console.error(`[FlowExecutor] Error executing flow ${flowId}:`, error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        executorStore.setFlowStatus(params.chainId, flowId, 'error', errorMessage);
+        if (params.onError) {
+          params.onError(params.chainId, flowId, errorMessage);
+        }
+        
+        // Chain 실행 중단
+        executorStore.setChainStatus(params.chainId, 'error');
+        return;
+      }
     }
 
-    try {
-      console.log(`[FlowExecutor] Executing flow in chain: ${flowItem.id} (index: ${i})`);
-      
-      let inputs = [...(flowItem.inputData || [])];
-      
-      if (i > 0 && inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
-        const prevFlowId = params.flowItems[i-1].id;
-        const prevFlow = executorStore.getFlowById(prevFlowId);
-        // prevFlow.result가 FlowExecutionResultForService | FlowExecutionResult 와 유사한 구조를 가져야 함
-        const prevResultOutputs = prevFlow?.result?.outputs;
-        
-        console.log(`[FlowExecutor] 이전 Flow(${prevFlowId})의 결과 (outputs):`, prevResultOutputs);
-        
-        if (prevResultOutputs) {
-          if (Array.isArray(prevResultOutputs) && prevResultOutputs.length > 0) {
-            if (typeof prevResultOutputs[0] === 'object' && prevResultOutputs[0] !== null && 'result' in prevResultOutputs[0]) {
-              inputs = [prevResultOutputs[0].result]; 
-            } else {
-              inputs = [prevResultOutputs[0]];
-            }
-          } else if (!Array.isArray(prevResultOutputs)) { // 배열이 아닌 단일 값일 경우
-            inputs = [prevResultOutputs];
-          }
-          console.log(`[FlowExecutor] 사용할 입력 데이터:`, inputs[0]);
-        }
+    // Chain 실행 완료
+    executorStore.setChainStatus(params.chainId, 'success');
+    
+    // 선택된 Flow의 결과를 Chain의 결과로 사용
+    if (chain.selectedFlowId && params.onChainComplete) {
+      const selectedFlow = chain.flows[chain.selectedFlowId];
+      if (selectedFlow) {
+        params.onChainComplete(params.chainId, selectedFlow.lastResults || []);
       }
-      
-      console.log(`[FlowExecutor] 최종 입력 데이터:`, inputs);
-      
-      const flowJsonClone = deepClone(flowItem.flowJson);
-      
-      const result = await executeFlowExecutor({
-        flowId: flowItem.id,
-        flowJson: flowJsonClone,
-        inputs: inputs
-      });
-      
-      if (result.status === 'success') {
-        if (params.onFlowComplete) {
-          params.onFlowComplete(flowItem.id, {
-            status: 'success',
-            outputs: result.outputs,
-            error: undefined // 명시적으로 undefined 설정
-          });
-        }
-      } else {
-        if (params.onError) {
-          params.onError(flowItem.id, result.error || '알 수 없는 오류');
-        }
-        console.error(`[FlowExecutor] Chain execution stopped due to error in flow: ${flowItem.id}`);
-        break;
-      }
-    } catch (error) {
-      console.error(`[FlowExecutor] Unexpected error in chain execution for flow ${flowItem.id}:`, error);
-      if (params.onError) {
-        params.onError(flowItem.id, error instanceof Error ? error : String(error));
-      }
-      break;
+    }
+  } catch (error) {
+    console.error(`[FlowExecutor] Error executing chain ${params.chainId}:`, error);
+    executorStore.setChainStatus(params.chainId, 'error');
+    if (params.onError) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      params.onError(params.chainId, '', errorMessage);
     }
   }
-  
-  console.log('[FlowExecutor] Chain execution completed');
 };
 
 /**
