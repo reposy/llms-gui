@@ -60,7 +60,7 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
     try {
       setFlowChainStatus(activeChain.id, 'running');
       await executeChain({
-        chainId: activeChain.id,
+        flowChainId: activeChain.id,
         onChainStart: (chainId) => {
         },
         onChainComplete: (chainId) => {
