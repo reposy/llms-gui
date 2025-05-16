@@ -4,18 +4,19 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { PlusIcon, TrashIcon, PenLineIcon } from '../Icons'; // 프로젝트 아이콘 import
 
 export const FlowChainList: React.FC = () => {
-  const { flows, addChain, removeChain, setChainName, activeChainId, setActiveChainId } = useExecutorStateStore(); // setActiveChainId 추가
+  const { flowExecutorStore, addFlowChain, removeFlowChain, setFlowChainName, setActiveChainId } = useExecutorStateStore(); // setActiveChainId 추가
+  const { activeChainId } = flowExecutorStore;
   
   const handleAddChain = () => {
-    const newChainName = `Flow Chain ${flows.chainIds.length + 1}`;
-    const newChainId = addChain(newChainName); // addChain이 id를 반환하도록 수정 필요 (또는 store에서 생성된 id를 가져옴)
-    // setActiveChainId(newChainId); // 새 체인 생성 시 활성화 (addChain 내부에서 처리하도록 변경되었으므로 주석 처리)
+    const newChainName = `Flow Chain ${flowExecutorStore.chainIds.length + 1}`;
+    const newChainId = addFlowChain(newChainName); // addFlowChain이 id를 반환하도록 수정 필요 (또는 store에서 생성된 id를 가져옴)
+    // setActiveChainId(newChainId); // 새 체인 생성 시 활성화 (addFlowChain 내부에서 처리하도록 변경되었으므로 주석 처리)
   };
 
   const handleRemoveChain = (e: React.MouseEvent, chainId: string) => {
     e.stopPropagation(); // 상위 li의 onClick 이벤트 전파 방지
     if (window.confirm('Are you sure you want to delete this Flow Chain?')) {
-      removeChain(chainId);
+      removeFlowChain(chainId);
     }
   };
 
@@ -23,12 +24,18 @@ export const FlowChainList: React.FC = () => {
     e.stopPropagation();
     const newName = window.prompt('Enter new name for the Flow Chain:', currentName);
     if (newName && newName.trim() !== '' && newName !== currentName) {
-      setChainName(chainId, newName.trim());
+      setFlowChainName(chainId, newName.trim());
     }
   };
 
   const handleChainSelect = (chainId: string) => {
+    console.log('[FlowChainList] handleChainSelect called with chainId:', chainId);
     setActiveChainId(chainId);
+    // 스토어 상태 변경 후 즉시 확인 (디버깅용)
+    setTimeout(() => {
+      const currentActive = useExecutorStateStore.getState().flowExecutorStore.activeChainId;
+      console.log('[FlowChainList] activeChainId in store after setActiveChainId:', currentActive);
+    }, 0);
   };
 
   return (
@@ -45,14 +52,14 @@ export const FlowChainList: React.FC = () => {
         </button>
       </div>
       
-      {flows.chainIds.length === 0 ? (
+      {flowExecutorStore.chainIds.length === 0 ? (
         <div className="flex-grow flex items-center justify-center">
           <p className="text-gray-500">No Flow Chains created yet.</p>
         </div>
       ) : (
         <ul className="flex-grow overflow-y-auto divide-y divide-gray-200">
-          {flows.chainIds.map((chainId) => {
-            const chain = flows.chains[chainId];
+          {flowExecutorStore.chainIds.map((chainId) => {
+            const chain = flowExecutorStore.flowChainMap[chainId];
             if (!chain) return null; // Should not happen if data is consistent
             return (
               <li

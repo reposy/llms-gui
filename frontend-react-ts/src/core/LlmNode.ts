@@ -25,10 +25,10 @@ export class LlmNode extends Node {
    */
   private resolvePrompt(input: any): string {
     let prompt = this.property.prompt || '';
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as LLMNodeContent;
-    if (nodeContent.prompt) {
-      prompt = nodeContent.prompt;
-    }
+    // const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as LLMNodeContent;
+    // if (nodeContent.prompt) {
+    //   prompt = nodeContent.prompt;
+    // }
     
     // 파일 또는 파일 메타데이터인 경우 파일명을 사용
     if (input instanceof File) {

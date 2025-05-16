@@ -89,6 +89,16 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             Go to Editor
           </Link>
           
+          <Link
+            to="/flow-chain"
+            className="px-3 py-1 text-green-600 border border-green-600 rounded hover:bg-green-50 transition-colors text-sm font-medium flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Flow Chain 관리
+          </Link>
+          
           <button
             className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium flex items-center"
             onClick={onExecuteFlow}

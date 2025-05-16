@@ -4,14 +4,34 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon, PlayIcon as PlayIconSolid } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconOutline, DocumentDuplicateIcon as RadioButtonCheckedIcon, DocumentIcon as RadioButtonUncheckedIcon } from '@heroicons/react/24/outline';
+import FileUploader from '../executor/FileUploader';
 
 interface FlowChainDetailProps {
   onFlowSelect: (chainId: string, flowId: string) => void;
 }
 
 export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }) => {
-  const { flows, removeFlowFromChain, moveFlow, setFlowStatus, setChainStatus, setSelectedFlow, activeChainId } = useExecutorStateStore();
-  const activeChain = activeChainId ? flows.chains[activeChainId] : null;
+  const {
+    flowExecutorStore,
+    removeFlowFromChain,
+    moveFlow,
+    setFlowStatus,
+    setFlowChainStatus,
+    setSelectedFlow,
+  } = useExecutorStateStore((state) => ({
+    flowExecutorStore: state.flowExecutorStore,
+    removeFlowFromChain: state.removeFlowFromChain,
+    moveFlow: state.moveFlow,
+    setFlowStatus: state.setFlowStatus,
+    setFlowChainStatus: state.setFlowChainStatus,
+    setSelectedFlow: state.setSelectedFlow,
+  }));
+
+  const activeChainId = flowExecutorStore.activeChainId;
+  const activeChain = activeChainId ? flowExecutorStore.flowChainMap[activeChainId] : null;
+
+  console.log('[FlowChainDetail] Rendering with activeChainId:', activeChainId);
+  console.log('[FlowChainDetail] activeChain object:', activeChain);
 
   if (!activeChain) {
     return (
@@ -38,13 +58,13 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
   const handleExecuteChain = async () => {
     if (!activeChain) return;
     try {
-      setChainStatus(activeChain.id, 'running');
+      setFlowChainStatus(activeChain.id, 'running');
       await executeChain({
         chainId: activeChain.id,
         onChainStart: (chainId) => {
         },
         onChainComplete: (chainId) => {
-          setChainStatus(chainId, 'success');
+          setFlowChainStatus(chainId, 'success');
         },
         onFlowStart: (chainId, flowId) => {
           setFlowStatus(chainId, flowId, 'running');
@@ -56,12 +76,12 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
           if (flowId) {
             setFlowStatus(chainId, flowId, 'error', error.toString());
           }
-          setChainStatus(chainId, 'error');
+          setFlowChainStatus(chainId, 'error');
         }
       });
     } catch (error) {
       console.error('Chain execution error in Detail:', error);
-      setChainStatus(activeChain.id, 'error');
+      setFlowChainStatus(activeChain.id, 'error');
     }
   };
 
@@ -102,7 +122,7 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
       ) : (
         <ul className="flex-grow overflow-y-auto divide-y divide-gray-200">
           {activeChain.flowIds.map((flowId, index) => {
-            const flow = activeChain.flows[flowId];
+            const flow = activeChain.flowMap[flowId];
             if (!flow) return null;
             return (
               <li
@@ -156,6 +176,11 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
             );
           })}
         </ul>
+      )}
+      {activeChain && (
+        <div className="p-3 border-t border-gray-200 mt-auto">
+          <FileUploader className="border-none p-0 shadow-none bg-transparent" /> 
+        </div>
       )}
     </div>
   );

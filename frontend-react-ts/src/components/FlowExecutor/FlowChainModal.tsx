@@ -30,10 +30,6 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
     return null;
   }
 
-  const handleInputChange = (newInputs: InputItem[]) => {
-    setFlowInputs(chainId, flowId, newInputs);
-  };
-
   const handleExecuteSingleFlow = async () => {
     if (!flow) return;
 
@@ -49,12 +45,25 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
         setFlowStatus(chainId, flowId, 'success');
         setFlowResults(chainId, flowId, result.outputs);
       } else {
-        setFlowStatus(chainId, flowId, 'error', result.error || 'Unknown error');
+        const errorMessage = result.error || 'Unknown error';
+        // LLM 모델 관련 에러인지 확인
+        if (errorMessage.includes("model") && errorMessage.includes("not found")) {
+          const actualError = `LLM 모델을 찾을 수 없습니다. 해당 모델이 Ollama에 설치되어 있는지 확인하세요. (${errorMessage})`;
+          setFlowStatus(chainId, flowId, 'error', actualError);
+        } else {
+          setFlowStatus(chainId, flowId, 'error', errorMessage);
+        }
         setFlowResults(chainId, flowId, []);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      setFlowStatus(chainId, flowId, 'error', errorMessage);
+      // LLM 관련 에러 확인
+      if (errorMessage.includes("model") && errorMessage.includes("not found")) {
+        const actualError = `LLM 모델을 찾을 수 없습니다. 해당 모델이 Ollama에 설치되어 있는지 확인하세요. (${errorMessage})`;
+        setFlowStatus(chainId, flowId, 'error', actualError);
+      } else {
+        setFlowStatus(chainId, flowId, 'error', errorMessage);
+      }
       setFlowResults(chainId, flowId, []);
       console.error('Error executing single flow in modal:', error);
     }
@@ -100,9 +109,9 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
           <div className="flex-shrink-0 border border-gray-200 rounded-lg p-3 bg-gray-50">
             <h3 className="text-md font-semibold text-gray-700 mb-2">Inputs</h3>
             <FlowInputForm
-              flowId={flow.id}
+              flowId={flowId}
               inputs={flow.inputs}
-              onInputChange={handleInputChange}
+              onInputChange={(newInputs) => setFlowInputs(chainId, flowId, newInputs)}
             />
           </div>
 
@@ -123,7 +132,7 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
           </div>
         </div>
       </div>
-      <style jsx global>{`
+      <style>{`
         @keyframes modalFadeInScaleUp {
           from {
             opacity: 0;

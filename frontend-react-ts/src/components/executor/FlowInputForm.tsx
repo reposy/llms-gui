@@ -6,6 +6,8 @@ import ReactMarkdown from 'react-markdown';
 
 interface FlowInputFormProps {
   flowId: string;
+  inputs?: any[];
+  onInputChange?: (inputs: any[]) => void;
 }
 
 type InputItem = {
@@ -14,35 +16,42 @@ type InputItem = {
   sourceFlowId?: string; // Flow 결과 참조 시 원본 Flow ID
 };
 
-const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
+const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange }) => {
   const [inputItems, setInputItems] = useState<InputItem[]>([{ type: 'text', value: '' }]);
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { 
-    flowChain,
-    getFlowById, 
-    setFlowInputData, 
-    getFlowResultById
+    getFlow, 
+    setFlowInputs, 
+    getFlowResultById,
+    getActiveFlowChain
   } = useExecutorStateStore();
   
-  const flow = getFlowById(flowId);
+  // 체인 ID와 Flow ID로 Flow 객체 조회
+  const activeChain = getActiveFlowChain();
+  const chainId = activeChain?.id || '';
+  const flow = activeChain ? getFlow(activeChain.id, flowId) : undefined;
   
-  // 이전 Flow IDs (참조용)
-  const previousFlows = flowChain
-    .filter(f => f.id !== flowId)
-    .map(f => ({
-      id: f.id, 
-      name: f.name,
-      hasResult: getFlowResultById(f.id) !== null
-    }));
+  // 이전 Flow IDs (참조용) - 현재 플로우 제외한 모든 플로우
+  const previousFlows = activeChain ? activeChain.flowIds
+    .filter(id => id !== flowId)
+    .map(id => {
+      const f = getFlow(activeChain.id, id);
+      return f ? {
+        id: f.id, 
+        name: f.name,
+        hasResult: f.lastResults !== null && f.lastResults.length > 0
+      } : null;
+    })
+    .filter(f => f !== null) : [];
   
   // 입력 값 초기화
   useEffect(() => {
     if (flow) {
-      if (flow.inputData && flow.inputData.length > 0) {
+      if (flow.inputs && flow.inputs.length > 0) {
         // 기존 입력 데이터가 있으면 변환해서 사용
-        const initialInputs: InputItem[] = flow.inputData.map(input => {
+        const initialInputs: InputItem[] = flow.inputs.map(input => {
           // Flow 결과 참조 여부 확인 (${result-flow-ID} 형식)
           if (typeof input === 'string' && input.match(/\$\{result-flow-([^}]+)\}/)) {
             const match = input.match(/\$\{result-flow-([^}]+)\}/);
@@ -64,11 +73,18 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
         // 기본 입력 데이터 설정 및 자동 확정
         const defaultInput = { type: 'text', value: '' };
         setInputItems([defaultInput]);
-        setFlowInputData(flowId, [defaultInput.value]); // 기본 입력 데이터 저장
+        
+        // props로 onInputChange가 전달되었다면 호출
+        if (onInputChange) {
+          onInputChange([defaultInput.value]);
+        } else if (chainId) {
+          setFlowInputs(chainId, flowId, [defaultInput.value]); // 기본 입력 데이터 저장
+        }
+        
         setConfirmed(true); // 자동으로 확정 상태로 설정
       }
     }
-  }, [flow, flowId]);
+  }, [flow, flowId, chainId, onInputChange]);
   
   if (!flow) {
     return <div className="text-red-500">Flow를 찾을 수 없습니다.</div>;
@@ -174,9 +190,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
   
   // Flow 결과 참조 추가
   const handleFlowResultSelect = (index: number, refFlowId: string) => {
-    if (!refFlowId) return;
+    if (!refFlowId || !activeChain) return;
 
-    const refFlow = getFlowById(refFlowId);
+    const refFlow = getFlow(activeChain.id, refFlowId);
     if (!refFlow) return;
     
     const refVariable = `\${result-flow-${refFlowId}}`;
@@ -202,21 +218,29 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
       }
     });
     
-    setFlowInputData(flowId, inputData);
+    // props로 onInputChange가 전달되었다면 호출
+    if (onInputChange) {
+      onInputChange(inputData);
+    } else if (chainId) {
+      setFlowInputs(chainId, flowId, inputData);
+    }
+    
     setConfirmed(true);
   };
   
   // Flow 결과 참조 상태 텍스트 생성
   const getFlowReferenceText = (sourceFlowId: string) => {
-    const refFlow = getFlowById(sourceFlowId);
+    if (!activeChain) return '알 수 없는 Flow';
+    
+    const refFlow = getFlow(activeChain.id, sourceFlowId);
     if (!refFlow) return '알 수 없는 Flow';
     
-    const hasResult = getFlowResultById(sourceFlowId) !== null;
+    const hasResult = refFlow.lastResults !== null && refFlow.lastResults.length > 0;
     return `${refFlow.name} ${hasResult ? '(결과 있음)' : '(결과 없음)'}`;
   };
   
   // 최근 실행 결과 가져오기
-  const lastResult = getFlowResultById(flowId);
+  const lastResult = flow.lastResults;
   
   return (
     <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">

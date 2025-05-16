@@ -21,7 +21,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   isExecuting
 }) => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const { flowChain } = useExecutorStateStore();
+  const { flowExecutorStore } = useExecutorStateStore();
   const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
 
   // Flow Chain 파일 선택 처리
@@ -69,9 +69,12 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         }
         
         // 각 Flow 추가
-        const addFlow = useExecutorStateStore.getState().addFlow;
-        const setFlowInputData = useExecutorStateStore.getState().setFlowInputData;
-        const setStage = useExecutorStateStore.getState().setStage;
+        const store = useExecutorStateStore.getState();
+        const addFlowToChain = store.addFlowToChain;
+        const setFlowInputs = store.setFlowInputs;
+        const setStage = store.setStage;
+        const activeChain = store.getActiveFlowChain();
+        const chainId = activeChain?.id || '';
         
         importData.flowChain.forEach((flow: any) => {
           try {
@@ -83,24 +86,24 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             
             // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
             const flowName = flow.name || flow.flowJson.name || '가져온-flow';
-            const timestamp = Date.now();
-            const random = Math.floor(Math.random() * 1000);
-            
-            // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
-            const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
-            const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
-            
-            const flowToAdd = {
-              ...flow.flowJson,
-              id: flowId
-            };
             
             // Flow 추가 (원본 ID 보존)
-            addFlow(flowToAdd);
-            
-            // 입력 데이터 설정
-            if (flow.inputData && flow.inputData.length > 0) {
-              setFlowInputData(flowId, flow.inputData);
+            if (chainId) {
+              addFlowToChain(chainId, flow.flowJson);
+              
+              // 새로 추가된 Flow ID 얻기
+              const updatedChain = useExecutorStateStore.getState().getFlowChain(chainId);
+              if (updatedChain) {
+                const flowId = updatedChain.flowIds[updatedChain.flowIds.length - 1];
+                
+                // 입력 데이터 설정
+                if (flow.inputData && flow.inputData.length > 0 && flowId) {
+                  setFlowInputs(chainId, flowId, flow.inputData);
+                }
+              }
+            } else {
+              // 활성 체인이 없으면 새 체인 생성 후 Flow 추가
+              console.warn('[ExecutorPanel] 활성 체인이 없습니다. 새 체인 생성 필요');
             }
           } catch (flowError) {
             console.error(`[ExecutorPanel] Flow 추가 중 오류:`, flowError);
@@ -109,7 +112,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         });
         
         // 스테이지 업데이트
-        if (flowChain.length === 0) {
+        if (flowExecutorStore.chainIds.length === 0) {
           setStage('input');
         }
         
@@ -152,8 +155,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             onClick={() => {
               onExportFlowChain(`flow-chain-${new Date().toISOString().slice(0, 10)}.json`, false);
             }}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChain.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={flowChain.length === 0}
+            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowExecutorStore.chainIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={flowExecutorStore.chainIds.length === 0}
             title="Flow 체인을 데이터 없이 내보냅니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -164,8 +167,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
 
           <button
             onClick={() => setExportModalOpen(true)}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChain.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={flowChain.length === 0}
+            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowExecutorStore.chainIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={flowExecutorStore.chainIds.length === 0}
             title="Flow 체인을 데이터 포함하여 내보냅니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -187,7 +190,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
           <button
             className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium flex items-center"
             onClick={onExecuteFlow}
-            disabled={isExecuting || flowChain.length === 0}
+            disabled={isExecuting || flowExecutorStore.chainIds.length === 0}
           >
             {isExecuting ? (
               <div className="flex items-center">

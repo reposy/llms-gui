@@ -1,70 +1,69 @@
 import React, { useState, useEffect } from 'react';
 // import { Link } from 'react-router-dom'; // Not used currently
-import FileUploader from '../components/executor/FileUploader';
 import { FlowChainList } from '../components/FlowExecutor/FlowChainList';
 import { FlowChainDetail } from '../components/FlowExecutor/FlowChainDetail';
 import { FlowChainModal } from '../components/FlowExecutor/FlowChainModal';
 import { useExecutorStateStore, ExecutorStage, Flow, FlowChain, FlowData } from '../store/useExecutorStateStore';
 import ExportModal from '../components/executor/ExportModal';
-// import ExecutorPanel from '../components/executor/ExecutorPanel'; // Replaced by StageNavigationBar and direct controls
+import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
 // import { Box, Grid } from '@mui/material'; // Removed @mui/material
 
 const ExecutorPage: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [modalFlow, setModalFlow] = useState<{ chainId: string; flowId: string } | null>(null);
-
+  const [isExecuting, setIsExecuting] = useState(false);
+  
   const {
-    flows,
-    stage,
-    error,
+    flowExecutorStore,
     setStage,
     setError,
-    getActiveChain,
-    // getChain, // Not directly used in UI logic here
+    getActiveFlowChain,
+    // getFlowChain, // Not directly used in UI logic here
     // getFlow, // Not directly used in UI logic here
     // setFlowResults, // Handled by execution service callbacks
     resetState,
-    addFlowToChain,
+    // addFlowToChain, // FileUploader가 직접 스토어 액션 사용하므로 ExecutorPage에서 직접 호출 필요 X
     // setFlowInputs, // Handled within FlowChainModal
   } = useExecutorStateStore();
   
-  const activeChain = getActiveChain();
-
+  const { stage, error } = flowExecutorStore;
+  const activeChain = getActiveFlowChain();
+  
   useEffect(() => {
-    if (flows.chainIds.length === 0 && stage !== 'upload') {
+    if (flowExecutorStore.chainIds.length === 0 && stage !== 'upload') {
       setStage('upload');
-    } else if (flows.chainIds.length > 0 && stage === 'upload') {
+    } else if (flowExecutorStore.chainIds.length > 0 && stage === 'upload') {
       setStage('input');
     }
-  }, [flows.chainIds, stage, setStage]);
+  }, [flowExecutorStore.chainIds, stage, setStage]);
 
   useEffect(() => {
     if (!activeChain || !activeChain.selectedFlowId) return;
-    const flow = activeChain.flows[activeChain.selectedFlowId];
+    const flow = activeChain.flowMap[activeChain.selectedFlowId];
     if (!flow) return;
     
     if (flow.status !== 'running' && flow.lastResults && stage === 'executing') {
-        setStage('result');
-    }
+          setStage('result');
+        }
   }, [activeChain, stage, setStage]);
 
   const handleExportWithFilename = (filename: string, includeData: boolean) => {
     try {
       const exportData = {
         version: '1.1',
-        flows: { ...flows } // Create a shallow copy to avoid direct mutation before stringify
+        flowExecutorStore: { ...flowExecutorStore } // Create a shallow copy to avoid direct mutation before stringify
       };
       
       if (!includeData) {
-        const flowsWithoutData = JSON.parse(JSON.stringify(flows)); 
-        Object.values(flowsWithoutData.chains).forEach((chain: any) => {
-          Object.values(chain.flows).forEach((flowItem: any) => { // Renamed to avoid conflict
+        const flowsWithoutData = JSON.parse(JSON.stringify(flowExecutorStore)); 
+        Object.values(flowsWithoutData.flowChainMap).forEach((chain: any) => {
+          Object.values(chain.flowMap).forEach((flowItem: any) => { // Renamed to avoid conflict
             flowItem.lastResults = null;
             flowItem.inputs = [];
           });
         });
-        exportData.flows = flowsWithoutData;
+        exportData.flowExecutorStore = flowsWithoutData;
       }
       
       const json = JSON.stringify(exportData, null, 2);
@@ -92,46 +91,36 @@ const ExecutorPage: React.FC = () => {
     setStage('upload');
   };
 
-  const handleFileUploaded = (flowData: FlowData) => {
+  const handleExecuteFlow = () => {
     if (activeChain) {
-      addFlowToChain(activeChain.id, flowData);
-      setStage('input');
+    setIsExecuting(true);
+      // Attempt to trigger executeChain in FlowChainDetail by simulating a click
+      // This is a workaround. Ideally, FlowChainDetail exposes a ref or a direct function.
+      const executeButton = document.querySelector('#flow-chain-detail-execute-button');
+      if (executeButton instanceof HTMLElement) {
+        executeButton.click();
+      }
+      setTimeout(() => setIsExecuting(false), 1000); // Set timeout to prevent multiple clicks
     } else {
-      const store = useExecutorStateStore.getState();
-      const newChainName = `Flow Chain 1`;
-      store.addChain(newChainName);
-      setTimeout(() => {
-        const currentActiveChain = useExecutorStateStore.getState().getActiveChain();
-        if (currentActiveChain) {
-          addFlowToChain(currentActiveChain.id, flowData);
-          setStage('input');
-        }
-      }, 100);
+      setError('실행할 활성 Flow Chain이 없습니다.');
     }
+  };
+
+  const handleExportFlowChain = (filename: string, includeData: boolean) => {
+    handleExportWithFilename(filename, includeData);
   };
 
   const panelActions = {
     onExport: () => setExportModalOpen(true),
     onReset: handleReset,
-    onExecuteAll: () => {
-      if (activeChain) {
-        // Attempt to trigger executeChain in FlowChainDetail by simulating a click
-        // This is a workaround. Ideally, FlowChainDetail exposes a ref or a direct function.
-        const executeButton = document.querySelector('#flow-chain-detail-execute-button');
-        if (executeButton instanceof HTMLElement) {
-          executeButton.click();
-        }
-      } else {
-        setError('실행할 활성 Flow Chain이 없습니다.');
-      }
-    },
+    onExecuteAll: handleExecuteFlow,
   };
 
   const stageNavProps = {
     currentStage: stage,
     onStageChange: setStage,
-    canSetInput: flows.chainIds.length > 0,
-    canViewResults: !!(activeChain && activeChain.selectedFlowId && activeChain.flows[activeChain.selectedFlowId]?.lastResults),
+    canSetInput: flowExecutorStore.chainIds.length > 0,
+    canViewResults: !!(activeChain && activeChain.selectedFlowId && activeChain.flowMap[activeChain.selectedFlowId]?.lastResults),
     isExecutionDisabled: !activeChain || activeChain.flowIds.length === 0 || (activeChain.status === 'running'),
     onExecute: panelActions.onExecuteAll,
     error,
@@ -147,6 +136,13 @@ const ExecutorPage: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
+      <ExecutorPanel 
+        onImportFlowChain={() => {}} // 필요한 경우 구현
+        onExportFlowChain={handleExportFlowChain}
+        onExecuteFlow={handleExecuteFlow}
+        onClearAll={handleReset}
+        isExecuting={isExecuting}
+      />
       <StageNavigationBar {...stageNavProps} />
       <div className="flex-grow overflow-hidden p-4">
         <div className="flex h-full space-x-4">
@@ -155,16 +151,13 @@ const ExecutorPage: React.FC = () => {
             <div className="bg-white shadow rounded-lg p-4 flex-grow overflow-y-auto">
               <FlowChainList />
             </div>
-            <div className="bg-white shadow rounded-lg p-4">
-              <FileUploader onFileUpload={handleFileUploaded} />
-            </div>
           </div>
           {/* Right Panel */}
           <div className="w-2/3 bg-white shadow rounded-lg p-4 h-full overflow-y-auto">
             <FlowChainDetail onFlowSelect={openFlowModal} />
           </div>
-        </div>
-      </div>
+                        </div>
+                      </div>
 
       <ExportModal
         isOpen={exportModalOpen}
