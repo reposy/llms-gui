@@ -4,7 +4,7 @@ import { deepClone } from '../utils/helpers';
 
 // 실행 파라미터 인터페이스
 export interface ExecuteFlowChainParams {
-  chainId: string;
+  flowChainId: string;
   onChainStart?: () => void;
   onChainComplete?: (results: any) => void;
   onFlowStart?: (flowId: string, flowName: string, index: number) => void;
@@ -17,17 +17,17 @@ export interface ExecuteFlowChainParams {
  * Chain 내 Flow들을 순서대로 실행하고 결과를 다음 Flow의 입력으로 전달합니다.
  */
 export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<void> => {
-  const { chainId, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
+  const { flowChainId, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
   
   try {
     // 실행기 스토어 가져오기
     const executorStore = useExecutorStateStore.getState();
     
     // Chain 정보 가져오기
-    const chain = executorStore.getFlowChain(chainId);
+    const chain = executorStore.getFlowChain(flowChainId);
     
     if (!chain) {
-      throw new Error(`Flow Chain not found: ${chainId}`);
+      throw new Error(`Flow Chain not found: ${flowChainId}`);
     }
     
     // 실행 시작 알림
@@ -36,9 +36,9 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     }
     
     // Chain 상태 업데이트
-    executorStore.setFlowChainStatus(chainId, 'running');
+    executorStore.setFlowChainStatus(flowChainId, 'running');
     
-    console.log(`[FlowChainExecution] Starting chain execution: ${chainId} (${chain.flowIds.length} flows)`);
+    console.log(`[FlowChainExecution] Starting chain execution: ${flowChainId} (${chain.flowIds.length} flows)`);
     
     // 순차 실행을 위한 결과 변수
     let chainResults: any = null;
@@ -56,7 +56,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
       console.log(`[FlowChainExecution] Executing flow ${i + 1}/${chain.flowIds.length}: ${flowId} (${flow.name})`);
       
       // Flow 상태 업데이트
-      executorStore.setFlowStatus(chainId, flowId, 'running');
+      executorStore.setFlowStatus(flowChainId, flowId, 'running');
       
       // Flow 시작 알림
       if (onFlowStart) {
@@ -72,7 +72,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
         // Flow 실행
         const result = await executeFlowExecutor({
           flowId,
-          chainId,
+          flowChainId,
           flowJson: {
             nodes: Object.values(flow.nodes).map(node => ({
               id: node.id,
@@ -108,8 +108,8 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
         console.error(`[FlowChainExecution] Error executing flow ${flowId}:`, errorMessage);
         
         // 상태 업데이트
-        executorStore.setFlowStatus(chainId, flowId, 'error', errorMessage);
-        executorStore.setFlowChainStatus(chainId, 'error', `Flow ${flow.name} 실행 중 오류: ${errorMessage}`);
+        executorStore.setFlowStatus(flowChainId, flowId, 'error', errorMessage);
+        executorStore.setFlowChainStatus(flowChainId, 'error', `Flow ${flow.name} 실행 중 오류: ${errorMessage}`);
         
         // 에러 콜백
         if (onError) {
@@ -122,10 +122,10 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     }
     
     // 모든 Flow 실행 성공
-    console.log(`[FlowChainExecution] Chain ${chainId} completed successfully`);
+    console.log(`[FlowChainExecution] Chain ${flowChainId} completed successfully`);
     
     // Chain 상태 업데이트
-    executorStore.setFlowChainStatus(chainId, 'success');
+    executorStore.setFlowChainStatus(flowChainId, 'success');
     
     // Chain 완료 알림
     if (onChainComplete) {
@@ -134,7 +134,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
   } catch (chainError) {
     // Chain 실행 에러 처리
     const errorMessage = chainError instanceof Error ? chainError.message : String(chainError);
-    console.error(`[FlowChainExecution] Error executing chain ${chainId}:`, errorMessage);
+    console.error(`[FlowChainExecution] Error executing chain ${flowChainId}:`, errorMessage);
     
     // onError가 아직 호출되지 않은 경우 (flowId 지정 없이)
     if (onError) {
@@ -143,7 +143,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     
     // ExecutorStateStore 호환성 유지 (전체 에러)
     const executorStore = useExecutorStateStore.getState();
-    executorStore.setFlowChainStatus(chainId, 'error');
+    executorStore.setFlowChainStatus(flowChainId, 'error');
     
     throw chainError;
   }

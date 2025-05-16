@@ -44,7 +44,7 @@ interface ExecuteFlowParams {
   flowJson: FlowData;
   inputs: any[];
   flowId: string;
-  chainId?: string;
+  flowChainId: string;
   onComplete?: (result: any) => void;
 }
 
@@ -64,12 +64,12 @@ interface FlowExecutionResultForService {
 }
 
 export interface ExecuteChainParams {
-  chainId: string;
-  onChainStart?: (chainId: string) => void;
-  onChainComplete?: (chainId: string, results: any[]) => void;
-  onFlowStart?: (chainId: string, flowId: string) => void;
-  onFlowComplete?: (chainId: string, flowId: string, results: any[]) => void;
-  onError?: (chainId: string, flowId: string, error: Error | string) => void;
+  flowChainId: string;
+  onChainStart?: (flowChainId: string) => void;
+  onChainComplete?: (flowChainId: string, results: any[]) => void;
+  onFlowStart?: (flowChainId: string, flowId: string) => void;
+  onFlowComplete?: (flowChainId: string, flowId: string, results: any[]) => void;
+  onError?: (flowChainId: string, flowId: string, error: Error | string) => void;
 }
 
 /**
@@ -267,38 +267,34 @@ export const executeFlowEditor = async (params: ExecuteFlowParams): Promise<Exec
  */
 export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   const executionId = `exec-${uuidv4()}`;
-  const chainId = params.chainId || `chain-${uuidv4()}`;
+  const flowChainId = params.flowChainId;
   const flowId = params.flowId;
   
   try {
-    console.log(`[FlowExecutor] Starting flow execution for flow: ${flowId}, chain: ${chainId || 'not provided'}`);
+    console.log(`[FlowExecutor] Starting flow execution for flow: ${flowId}, chain: ${flowChainId}`);
     
     // Flow 데이터 준비
     const flowJson = params.flowJson;
     console.log(`[FlowExecutor] Flow JSON 구조: nodes=${flowJson.nodes?.length || 0}, edges=${flowJson.edges?.length || 0}`);
     
-    // 체인 존재 확인 및 생성
-    if (chainId) {
-      ensureChainExists(chainId);
-    }
-    
+    // 체인 존재 확인 (생성하지 않음)
     // 스토어 상태 가져오기
     const storeState = useExecutorStateStore.getState();
     
     // 체인 확인
-    const chain = storeState.getFlowChain(chainId);
+    const chain = storeState.getFlowChain(flowChainId);
     if (!chain) {
-      throw new Error(`체인 ${chainId}을(를) 찾을 수 없으며 생성할 수 없습니다.`);
+      throw new Error(`체인 ${flowChainId}을(를) 찾을 수 없습니다. 실행 전 유효한 체인 ID가 필요합니다.`);
     }
     
     // Flow 확인
-    let flow = storeState.getFlow(chainId, flowId);
+    let flow = storeState.getFlow(flowChainId, flowId);
     if (!flow) {
-      console.warn(`[FlowExecutor] Flow ${flowId} not found in chain ${chainId}, adding it`);
+      console.warn(`[FlowExecutor] Flow ${flowId} not found in chain ${flowChainId}, adding it`);
       
       // Flow 추가
-      storeState.addFlowToChain(chainId, flowJson);
-      flow = storeState.getFlow(chainId, flowId);
+      storeState.addFlowToChain(flowChainId, flowJson);
+      flow = storeState.getFlow(flowChainId, flowId);
       
       if (!flow) {
         throw new Error(`Flow ${flowId}을(를) 찾을 수 없으며 생성할 수 없습니다.`);
@@ -306,7 +302,7 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     }
     
     // 루트 노드 가져오기
-    const rootNodes = storeState.getRootNodes(chainId, flowId);
+    const rootNodes = storeState.getRootNodes(flowChainId, flowId);
     
     if (rootNodes.length === 0) {
       console.warn(`[FlowExecutor] No root nodes found for flow ${flowId}`);
@@ -316,15 +312,15 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     console.log(`[FlowExecutor] Found ${rootNodes.length} root nodes in flow ${flowId}:`, rootNodes);
     
     // Flow 실행 상태 변경
-    storeState.setFlowStatus(chainId, flowId, 'running');
+    storeState.setFlowStatus(flowChainId, flowId, 'running');
     
     // 실행 컨텍스트 생성
     const context = new FlowExecutionContext(
       executionId,
-      (nodeId, nodeType) => {
+      (nodeId) => {
         // 실행 중인 Flow의 contents 가져오기
-        const nodeState = getNodeState(nodeId, nodeType);
-        return nodeState?.content || {};
+        const nodeState = getNodeState(nodeId);
+        return nodeState || {};
       },
       flowJson.nodes || [],
       flowJson.edges || [],
@@ -333,9 +329,9 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     
     // 루트 노드들 순차 실행
     for (const rootId of rootNodes) {
-      const rootNodeInstance = storeState.getNodeInstance(chainId, flowId, rootId);
+      const rootNodeInstance = storeState.getNodeInstance(flowChainId, flowId, rootId);
       if (rootNodeInstance) {
-        await executeNode(rootNodeInstance, params.inputs, context, chainId, flowId, storeState);
+        await executeNode(rootNodeInstance, params.inputs, context, flowChainId, flowId, storeState);
       } else {
         console.warn(`[FlowExecutor] Root node instance ${rootId} not found in flow ${flowId}`);
       }
@@ -346,8 +342,8 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     console.log(`[FlowExecutor] Flow ${flowId} execution completed, output size:`, outputs.length);
     
     // 결과 저장
-    storeState.setFlowResults(chainId, flowId, outputs);
-    storeState.setFlowStatus(chainId, flowId, 'success');
+    storeState.setFlowResults(flowChainId, flowId, outputs);
+    storeState.setFlowStatus(flowChainId, flowId, 'success');
     
     // 콜백 호출
     if (params.onComplete) {
@@ -367,8 +363,8 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     
     // 에러 상태 설정
     const storeState = useExecutorStateStore.getState();
-    if (chainId && flowId) {
-      storeState.setFlowStatus(chainId, flowId, 'error', error instanceof Error ? error.message : String(error));
+    if (flowChainId && flowId) {
+      storeState.setFlowStatus(flowChainId, flowId, 'error', error instanceof Error ? error.message : String(error));
     }
     
     // 콜백 호출
@@ -436,27 +432,27 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
  * 체인 내의 Flow들을 순서대로 실행하고 결과를 다음 Flow에 전달합니다.
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
-  const { chainId, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
+  const { flowChainId, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
   
   try {
     // 상태 스토어 가져오기
     const storeState = useExecutorStateStore.getState();
     
     // 체인 가져오기
-    const chain = storeState.getFlowChain(chainId);
+    const chain = storeState.getFlowChain(flowChainId);
     if (!chain) {
-      throw new Error(`Flow Chain not found: ${chainId}`);
+      throw new Error(`Flow Chain not found: ${flowChainId}`);
     }
     
     // 실행 시작
     if (onChainStart) {
-      onChainStart(chainId);
+      onChainStart(flowChainId);
     }
     
     // 체인 상태 변경
-    storeState.setFlowChainStatus(chainId, 'running');
+    storeState.setFlowChainStatus(flowChainId, 'running');
     
-    console.log(`[executeChain] Starting chain execution: ${chainId} (${chain.flowIds.length} flows)`);
+    console.log(`[executeChain] Starting chain execution: ${flowChainId} (${chain.flowIds.length} flows)`);
     
     // 이전 Flow 결과 저장
     const flowResults: Record<string, any> = {};
@@ -474,11 +470,11 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
       console.log(`[executeChain] Executing flow ${i+1}/${chain.flowIds.length}: ${flowId} (${flow.name})`);
       
       // Flow 상태 변경
-      storeState.setFlowStatus(chainId, flowId, 'running');
+      storeState.setFlowStatus(flowChainId, flowId, 'running');
       
       // Flow 시작 알림
       if (onFlowStart) {
-        onFlowStart(chainId, flowId);
+        onFlowStart(flowChainId, flowId);
       }
       
       try {
@@ -493,7 +489,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         // Flow 실행
         const result = await executeFlowExecutor({
           flowId,
-          chainId,
+          flowChainId,
           flowJson: flow.flowJson,
           inputs
         });
@@ -503,50 +499,50 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         
         // Flow 완료 알림
         if (onFlowComplete) {
-          onFlowComplete(chainId, flowId, result.outputs);
+          onFlowComplete(flowChainId, flowId, result.outputs);
         }
       } catch (error) {
         // Flow 실행 오류
         const errorMessage = error instanceof Error ? error.message : String(error);
         
         // 상태 변경
-        storeState.setFlowStatus(chainId, flowId, 'error', errorMessage);
+        storeState.setFlowStatus(flowChainId, flowId, 'error', errorMessage);
         
         // 오류 알림
         if (onError) {
-          onError(chainId, flowId, error);
+          onError(flowChainId, flowId, error instanceof Error ? error.message : String(error));
         }
         
         // 체인 실행 중단
-        storeState.setFlowChainStatus(chainId, 'error');
+        storeState.setFlowChainStatus(flowChainId, 'error');
         throw error;
       }
     }
     
     // 모든 Flow 실행 완료
-    console.log(`[executeChain] Chain ${chainId} completed successfully`);
+    console.log(`[executeChain] Chain ${flowChainId} completed successfully`);
     
     // 체인 상태 변경
-    storeState.setFlowChainStatus(chainId, 'success');
+    storeState.setFlowChainStatus(flowChainId, 'success');
     
     // 체인 완료 알림 (선택된 Flow 결과 반환)
     if (onChainComplete) {
       // 선택된 Flow의 결과 또는 마지막 Flow 결과
       const selectedFlowId = chain.selectedFlowId || chain.flowIds[chain.flowIds.length - 1];
       const finalResults = flowResults[selectedFlowId] || [];
-      onChainComplete(chainId, finalResults);
+      onChainComplete(flowChainId, finalResults);
     }
   } catch (error) {
     // 체인 실행 오류
-    console.error(`[executeChain] Error executing chain ${chainId}:`, error);
+    console.error(`[executeChain] Error executing chain ${flowChainId}:`, error);
     
     // 상태 스토어에서 상태 변경
     const storeState = useExecutorStateStore.getState();
-    storeState.setFlowChainStatus(chainId, 'error');
+    storeState.setFlowChainStatus(flowChainId, 'error');
     
     // 오류 알림 (특정 Flow 지정 없음)
     if (onError) {
-      onError(chainId, '', error);
+      onError(flowChainId, '', error instanceof Error ? error.message : String(error));
     }
     
     throw error;

@@ -108,7 +108,7 @@ const FlowChainPage: React.FC = () => {
     try {
       // Chain 실행
       await executeFlowChain({
-        chainId: selectedChainId,
+        flowChainId: selectedChainId,
         onChainStart: (id) => {
           console.log(`체인 실행 시작: ${id}`);
         },

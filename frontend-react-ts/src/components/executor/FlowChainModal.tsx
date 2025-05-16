@@ -51,6 +51,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
     try {
       const result = await executeFlowExecutor({
         flowId,
+        flowChainId: chainId,
         flowJson: flow.flowJson,
         inputs: flow.inputs
       });
