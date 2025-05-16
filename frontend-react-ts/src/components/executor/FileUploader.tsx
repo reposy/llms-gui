@@ -1,17 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FlowData } from '../../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import FileSelector from './FileSelector';
+import { PlusIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 
 interface FileUploaderProps {
   onFileUpload?: (flowData: FlowData, chainId?: string, flowId?: string) => void;
   externalFileInputRef?: React.RefObject<HTMLInputElement>;
   className?: string;
+  buttonStyle?: boolean;
+  buttonText?: string;
 }
 
-const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileInputRef, className = '' }) => {
+const FileUploader: React.FC<FileUploaderProps> = ({ 
+  onFileUpload, 
+  externalFileInputRef, 
+  className = '',
+  buttonStyle = false,
+  buttonText = 'Import Flow'
+}) => {
   const [fileName, setFileName] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [isDropping, setIsDropping] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const addFlowToChain = useExecutorStateStore(state => state.addFlowToChain);
@@ -45,6 +54,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setIsDropping(false);
     
     if (!event.dataTransfer.files?.length) return;
     
@@ -118,30 +128,60 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileI
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setIsDropping(true);
   };
+  
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDropping(false);
+  };
+
+  if (buttonStyle) {
+    return (
+      <>
+        <div
+          onClick={handleClick}
+          className="flex items-center gap-1"
+        >
+          <DocumentArrowUpIcon className="h-5 w-5 text-white" />
+          <span>{buttonText}</span>
+        </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept=".json"
+          onChange={(e) => handleFileChange(e.nativeEvent)}
+        />
+      </>
+    );
+  }
   
   return (
     <div className={`flow-uploader ${className}`}>
       <div
-        className="upload-area"
+        className={`upload-area p-4 border-2 border-dashed rounded-lg ${
+          isDropping ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+        } transition-colors duration-150 cursor-pointer flex flex-col items-center justify-center text-center`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         onClick={handleClick}
       >
-        <p>Flow JSON 파일을 드래그하거나 클릭하여 업로드하세요</p>
-        {fileName && <p className="file-name">선택된 파일: {fileName}</p>}
-        {error && <p className="error-message">{error}</p>}
+        <DocumentArrowUpIcon className="h-8 w-8 text-gray-400 mb-2" />
+        <p className="text-sm text-gray-600">Flow JSON 파일을 드래그하거나 클릭하여 업로드하세요</p>
+        {fileName && <p className="text-xs mt-1 text-gray-500">선택된 파일: {fileName}</p>}
+        {error && <p className="text-xs mt-1 text-red-500">{error}</p>}
       </div>
       
       <input
         type="file"
         ref={fileInputRef}
-        className="hidden-input"
+        className="hidden"
         accept=".json"
         onChange={(e) => handleFileChange(e.nativeEvent)}
       />
-      
-      <FileSelector onFileSelected={readFile} accept=".json" buttonText="파일 선택" />
     </div>
   );
 };

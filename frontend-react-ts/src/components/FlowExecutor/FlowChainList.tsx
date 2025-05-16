@@ -1,7 +1,8 @@
 import React from 'react';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
-import { PlusIcon, TrashIcon, PenLineIcon } from '../Icons'; // 프로젝트 아이콘 import
+import { PlusIcon, TrashIcon, PenLineIcon, ArrowDownTrayIcon } from '../Icons';
+import { FlowChainData, importFlowChainFromJson } from '../../utils/data/importExportUtils';
 
 export const FlowChainList: React.FC = () => {
   const { flowExecutorStore, addFlowChain, removeFlowChain, setFlowChainName, setActiveChainId } = useExecutorStateStore(); // setActiveChainId 추가
@@ -11,6 +12,52 @@ export const FlowChainList: React.FC = () => {
     const newChainName = `Flow Chain ${flowExecutorStore.chainIds.length + 1}`;
     const newChainId = addFlowChain(newChainName); // addFlowChain이 id를 반환하도록 수정 필요 (또는 store에서 생성된 id를 가져옴)
     // setActiveChainId(newChainId); // 새 체인 생성 시 활성화 (addFlowChain 내부에서 처리하도록 변경되었으므로 주석 처리)
+  };
+
+  // Flow Chain 가져오기 핸들러
+  const handleImportChain = () => {
+    // 파일 선택기 생성
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    
+    // 파일 선택 처리
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const json = event.target?.result as string;
+          const chainData = JSON.parse(json) as FlowChainData;
+          
+          // Chain 데이터 검증
+          if (!chainData || !chainData.name || !chainData.flowIds || !chainData.flowMap) {
+            throw new Error('유효하지 않은 Flow Chain 데이터입니다.');
+          }
+          
+          // Chain 가져오기
+          const newChainId = importFlowChainFromJson(chainData);
+          
+          if (newChainId) {
+            // 새 체인 활성화
+            setActiveChainId(newChainId);
+            console.log(`[FlowChainList] Successfully imported chain: ${newChainId}`);
+          } else {
+            throw new Error('Flow Chain 가져오기에 실패했습니다.');
+          }
+        } catch (error) {
+          console.error('Flow Chain 가져오기 오류:', error);
+          alert('Flow Chain 파일을 처리하는 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : String(error)));
+        }
+      };
+      
+      reader.readAsText(file);
+    };
+    
+    // 파일 선택기 클릭
+    input.click();
   };
 
   const handleRemoveChain = (e: React.MouseEvent, chainId: string) => {
@@ -42,14 +89,24 @@ export const FlowChainList: React.FC = () => {
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
       <div className="p-3 border-b border-gray-200 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-700">Flow Chains</h2>
-        <button
-          onClick={handleAddChain}
-          className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
-          title="Add new Flow Chain"
-        >
-          <PlusIcon size={18} className="mr-1.5" />
-          Add Chain
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleImportChain}
+            className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
+            title="Import Flow Chain"
+          >
+            <ArrowDownTrayIcon size={18} className="mr-1.5" />
+            Import
+          </button>
+          <button
+            onClick={handleAddChain}
+            className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
+            title="Add new Flow Chain"
+          >
+            <PlusIcon size={18} className="mr-1.5" />
+            Add Chain
+          </button>
+        </div>
       </div>
       
       {flowExecutorStore.chainIds.length === 0 ? (
@@ -97,4 +154,4 @@ export const FlowChainList: React.FC = () => {
       )}
     </div>
   );
-}; 
+};
