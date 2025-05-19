@@ -3,12 +3,8 @@ import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import FlowInputForm from "../executor/FlowInputForm";
 import ResultDisplay from "../executor/ResultDisplay";
 import { executeFlowExecutor } from '../../services/flowExecutionService';
-import { XMarkIcon, PlayIcon as PlayIconSolid } from '@heroicons/react/20/solid';
-import { Button } from "@/components/ui/button";
-import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, ModalOverlay } from "@/components/ui/modal";
-import { Flow } from "@/types/flow";
-import { PlayIcon, StopIcon, TrashIcon } from "@heroicons/react/24/outline";
-import { NodeStatusIndicator } from "../nodes/shared/NodeStatusIndicator";
+import { Button } from "../ui/button";
+import { PlusIcon, XIcon, PlayIcon, StopIcon, TrashIcon } from "../Icons";
 
 interface FlowChainModalProps {
   chainId: string;
@@ -91,7 +87,7 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
                 </>
               ) : (
                 <>
-                  <PlayIconSolid className="mr-1.5 h-5 w-5" />
+                  <PlayIcon size={18} className="mr-1.5" />
                   Execute Flow
                 </>
               )}
@@ -101,7 +97,7 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
               className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md transition-colors duration-150"
               aria-label="Close modal"
             >
-              <XMarkIcon className="h-6 w-6" />
+              <XIcon size={24} />
             </button>
           </div>
         </div>

@@ -1,72 +1,44 @@
 import { Node } from './Node';
 import { getNodeFactory, getAllNodeTypes } from './NodeRegistry';
 import { FlowExecutionContext } from './FlowExecutionContext';
-// Import store getter directly - assumes it doesn't rely on hooks
-import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts'; 
-import { LLMNodeContent } from '../types/nodes.ts'; // 타입 임포트 경로 수정
-import { FlowNode } from '../types/nodes';
+import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts';
 
 /**
- * Factory to create and manage nodes
+ * 노드 팩토리 클래스
+ * 노드 인스턴스를 생성하고 관리하는 책임을 가짐
  */
 export class NodeFactory {
   private nodes: Map<string, Node>;
+  private readonly typeDefaults: Record<string, any> = {};
 
   constructor() {
     this.nodes = new Map<string, Node>();
   }
 
   /**
-   * Create a node of the specified type.
-   * Context can be optionally provided during creation for special nodes like GroupNode.
-   * @param id The node ID
-   * @param type The node type
-   * @param reactFlowProps Properties passed from the React Flow node data object
-   * @param context Optional execution context that can be passed to node constructors that support it
-   * @returns The created node
+   * 특정 노드 유형의 기본값을 등록
+   * @param type 노드 유형
+   * @param defaults 기본 속성
+   */
+  registerTypeDefaults(type: string, defaults: any): void {
+    this.typeDefaults[type] = defaults;
+  }
+
+  /**
+   * 지정된 유형의 노드 인스턴스 생성
+   * @param id 노드 ID
+   * @param type 노드 유형
+   * @param props 노드 속성
+   * @param context 실행 컨텍스트 (선택 사항)
+   * @returns 생성된 노드 인스턴스
    */
   create(
     id: string, 
     type: string, 
-    reactFlowProps: Record<string, any> = {},
-    context?: FlowExecutionContext // 컨텍스트 매개변수 추가
+    props: Record<string, any> = {},
+    context?: FlowExecutionContext
   ): Node {
-    // 1. Fetch the latest content state from the store
-    let latestStoredContent = getNodeContent(id, type); 
-    
-    // 2. Ensure essential properties exist, using defaults if necessary
-    if (type === 'llm') {
-        const defaultLLMContent = createDefaultNodeContent('llm', id) as LLMNodeContent;
-        latestStoredContent = {
-            ...defaultLLMContent, 
-            ...(latestStoredContent || {}), 
-            label: latestStoredContent?.label || reactFlowProps?.label || defaultLLMContent.label
-        } as LLMNodeContent;
-        
-        if (!latestStoredContent.provider || !latestStoredContent.model) {
-             console.warn(`[NodeFactory] LLM node ${id} missing provider or model in store. Applying defaults.`);
-             latestStoredContent.provider = latestStoredContent.provider || defaultLLMContent.provider;
-             latestStoredContent.model = latestStoredContent.model || defaultLLMContent.model;
-        }
-    } else if (!latestStoredContent || Object.keys(latestStoredContent).length === 0) {
-        // For other node types, if not found in store, try using reactFlowProps
-        // or fall back to default content for the type.
-        console.warn(`[NodeFactory] Content for ${type} node ${id} not found in store. Using reactFlowProps or defaults.`);
-        latestStoredContent = reactFlowProps && Object.keys(reactFlowProps).length > 0 
-                              ? reactFlowProps 
-                              : createDefaultNodeContent(type, id);
-        // Ensure label is consistent
-        latestStoredContent.label = reactFlowProps?.label || latestStoredContent.label || `Default ${type} Label`;
-    }
-    
-    // 3. Prepare properties - nodeFactory reference might still be useful if needed internally
-    //    context is provided to special nodes like GroupNode
-    const finalProperties = {
-      ...latestStoredContent,
-      nodeFactory: this // Keep nodeFactory reference for now, might be needed by some node logic
-    };
-
-    // 4. Use the node factory function from the registry to create the instance
+    // 1. 노드 팩토리 함수 가져오기
     const factoryFn = getNodeFactory(type);
     if (!factoryFn) {
       const registeredTypes = getAllNodeTypes();
@@ -74,83 +46,57 @@ export class NodeFactory {
       throw new Error(`Unknown node type: ${type}. Check console for registered types.`);
     }
 
-    // 특수 노드(GroupNode 등)용 로직 - context 매개변수 전달
+    // 2. 노드 콘텐츠 가져오기 (스토어에서)
+    const storedContent = getNodeContent(id, type);
+    
+    // 3. 속성 준비
+    // - 스토어에 저장된 콘텐츠가 있으면 사용
+    // - 없으면 제공된 props와 기본값 결합
+    const nodeContent = storedContent && Object.keys(storedContent).length > 0
+      ? storedContent
+      : {
+          ...createDefaultNodeContent(type, id),
+          ...this.typeDefaults[type] || {},
+          ...props
+        };
+    
+    // 4. 항상 라벨이 있는지 확인
+    if (!nodeContent.label) {
+      nodeContent.label = props.label || `${type.charAt(0).toUpperCase() + type.slice(1)} Node`;
+    }
+    
+    // 5. 노드 인스턴스 생성
     let node: Node;
-    if (type === 'group') {
-      // GroupNode 생성자는 context를 받을 수 있음
-      node = factoryFn(id, finalProperties, context);
-      console.log(`[NodeFactory] Created GroupNode ${id} with context: ${!!context}`);
+    
+    // 특별한 컨텍스트 처리가 필요한 노드(예: GroupNode)와 일반 노드 구분
+    if (type === 'group' && context) {
+      node = factoryFn(id, nodeContent, context);
     } else {
-      // 표준 노드는 context 매개변수 없이 생성
-      node = factoryFn(id, finalProperties);
+      node = factoryFn(id, nodeContent);
+      
+      // 생성 후 컨텍스트 설정(필요한 경우)
+      if (context && typeof node.setContext === 'function') {
+        node.setContext(context);
+      }
     }
     
-    // 모든 노드에 context를 직접 설정 (생성자에서 처리되지 않은 경우)
-    if (context) {
-      // Node 클래스 내에서 생성자에서 처리하므로 여기서는 생략
-      // 각 노드 생성자가 context를 설정하도록 수정함
-      console.log(`[NodeFactory] Node ${id} (${type}) will use provided context: ${!!context}`);
-    }
-    
-    // 5. Store the created node instance in the factory's map
+    // 6. 생성된 노드 저장
     this.nodes.set(id, node);
-    console.log(`[NodeFactory] Created node ${id} (${type}) with properties:`, finalProperties);
+    
     return node;
   }
 
   /**
-   * Get a node by ID
-   * @param id The node ID
-   * @returns The node or undefined if not found
+   * ID로 노드 조회
+   * @param id 노드 ID
+   * @returns 노드 인스턴스 또는 undefined
    */
   getNode(id: string): Node | undefined {
     return this.nodes.get(id);
   }
 
   /**
-   * Set child node relationships - Deprecated
-   * 이 메서드는 불필요해졌습니다.
-   * 노드의 자식 관계는 이제 getChildNodes()에서 context.edges를 직접 사용하여 동적으로 계산됩니다.
-   * @deprecated 더 이상 사용하지 않습니다.
-   */
-  /*
-  setRelationships(edges: Array<{ source: string, target: string }>): void {
-    // Create a map of child IDs for each node
-    const childMap = new Map<string, string[]>();
-
-    // Process all edges
-    for (const edge of edges) {
-      const { source, target } = edge;
-      
-      // Skip if source doesn't exist
-      if (!this.nodes.has(source)) {
-        continue;
-      }
-
-      // Get or create child array
-      const children = childMap.get(source) || [];
-      
-      // Add target as child if not already present
-      if (!children.includes(target)) {
-        children.push(target);
-      }
-      
-      // Update the map
-      childMap.set(source, children);
-    }
-
-    // Set child IDs for each node
-    for (const [nodeId, childIds] of childMap.entries()) {
-      const node = this.nodes.get(nodeId);
-      if (node) {
-        node.setChildIds(childIds);
-      }
-    }
-  }
-  */
-
-  /**
-   * Clear all nodes
+   * 등록된 모든 노드 삭제
    */
   clear(): void {
     this.nodes.clear();

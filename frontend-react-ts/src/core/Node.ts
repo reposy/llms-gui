@@ -42,6 +42,14 @@ export abstract class Node {
   }
 
   /**
+   * Set the execution context for this node
+   * @param context The execution context
+   */
+  setContext(context: FlowExecutionContext): void {
+    this.context = context;
+  }
+
+  /**
    * Simple logging helper that uses context logger when available
    * @param message The message to log
    */

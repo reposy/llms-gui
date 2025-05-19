@@ -3,6 +3,8 @@ import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { NodeContent } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
 import { NodeFactory } from './NodeFactory';
+import { Node } from './Node';
+import { FlowData } from '../utils/data/importExportUtils';
 
 /**
  * Implementation of the ExecutionContext interface for flow execution
@@ -48,6 +50,11 @@ export class FlowExecutionContext implements ExecutionContext {
    * Current iteration item (for foreach mode)
    */
   iterationItem?: any;
+
+  /**
+   * Initial inputs for this execution
+   */
+  private inputs: any[] = [];
 
   /** Map of node outputs (node ID -> array of outputs) */
   private outputs: Map<string, any[]> = new Map();
@@ -100,14 +107,87 @@ export class FlowExecutionContext implements ExecutionContext {
     getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
     nodes: FlowNode[],
     edges: Edge[],
-    nodeFactory: NodeFactory
+    nodeFactory?: NodeFactory
   ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
     this.getNodeContentFunc = getNodeContentFunc;
     this.nodes = nodes;
     this.edges = edges;
-    this.nodeFactory = nodeFactory;
+    this.nodeFactory = nodeFactory || new NodeFactory();
+  }
+
+  /**
+   * 에디터용 실행 컨텍스트 생성 팩토리 메서드
+   * @param executionId 실행 ID
+   * @param flowData Flow 데이터
+   * @returns 새로운 FlowExecutionContext 인스턴스
+   */
+  static createForEditor(executionId: string, flowData: FlowData): FlowExecutionContext {
+    return new FlowExecutionContext(
+      executionId,
+      (nodeId) => {
+        const node = flowData.nodes.find(n => n.id === nodeId);
+        return node?.data || {};
+      },
+      flowData.nodes,
+      flowData.edges,
+      new NodeFactory() // 에디터 전용 팩토리 인스턴스 생성
+    );
+  }
+
+  /**
+   * 실행기용 실행 컨텍스트 생성 팩토리 메서드
+   * @param executionId 실행 ID
+   * @param flowData Flow 데이터
+   * @param nodeFactory 기존 NodeFactory 인스턴스 (옵션)
+   * @returns 새로운 FlowExecutionContext 인스턴스
+   */
+  static createForExecutor(executionId: string, flowData: FlowData, nodeFactory?: NodeFactory): FlowExecutionContext {
+    return new FlowExecutionContext(
+      executionId,
+      (nodeId) => {
+        const node = flowData.nodes.find(n => n.id === nodeId);
+        return node?.data || {};
+      },
+      flowData.nodes,
+      flowData.edges,
+      nodeFactory || new NodeFactory() // 실행기 전용 팩토리 인스턴스 생성 또는 기존 인스턴스 재사용
+    );
+  }
+
+  /**
+   * 실행의 초기 입력 설정
+   * @param inputs 입력 배열
+   */
+  setInputs(inputs: any[]): void {
+    this.inputs = Array.isArray(inputs) ? [...inputs] : [inputs];
+    this.log(`설정된 입력: ${this.inputs.length}개 항목`);
+  }
+
+  /**
+   * 초기 입력 값 가져오기
+   * @returns 입력 배열
+   */
+  getInputs(): any[] {
+    return this.inputs;
+  }
+
+  /**
+   * 노드 인스턴스 생성
+   * @param nodeId 노드 ID
+   * @param nodeType 노드 유형
+   * @param nodeData 노드 데이터
+   * @returns 생성된 노드 인스턴스 또는 null
+   */
+  createNodeInstance(nodeId: string, nodeType: string, nodeData: any): Node | null {
+    try {
+      return this.nodeFactory.create(nodeId, nodeType, nodeData, this);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log(`Error creating node instance ${nodeId}: ${errorMessage}`);
+      return null;
+    }
   }
 
   /**
