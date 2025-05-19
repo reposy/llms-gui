@@ -4,7 +4,7 @@ import FlowInputForm from "../executor/FlowInputForm";
 import ResultDisplay from "../executor/ResultDisplay";
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { Button } from "../ui/button";
-import { PlusIcon, XIcon, PlayIcon, StopIcon, TrashIcon } from "../Icons";
+import { XIcon, PlayIcon } from "../Icons";
 
 interface FlowChainModalProps {
   chainId: string;
