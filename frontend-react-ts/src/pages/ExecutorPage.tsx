@@ -94,8 +94,28 @@ const ExecutorPage: React.FC = () => {
   };
 
   const handleReset = () => {
-    resetState();
-    setStage('upload');
+    // 확인 대화 상자 표시
+    if (window.confirm('모든 내용을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      try {
+        console.log('[ExecutorPage] 모든 내용 초기화 시작');
+        
+        // 로컬 스토리지에서 저장된 상태 정보 직접 제거
+        localStorage.removeItem('executor-state-store');
+        localStorage.removeItem('executor-graph-storage');
+        localStorage.removeItem('flow-executor-store');
+        
+        // Zustand 스토어 상태 초기화
+        resetState();
+        
+        console.log('[ExecutorPage] 초기화 완료');
+        
+        // 페이지 새로고침
+        window.location.reload();
+      } catch (error) {
+        console.error('[ExecutorPage] 초기화 중 오류 발생:', error);
+        alert('초기화 중 오류가 발생했습니다.');
+      }
+    }
   };
 
   const handleExecuteFlow = () => {

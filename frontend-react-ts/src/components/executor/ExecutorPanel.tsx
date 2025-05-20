@@ -149,7 +149,10 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         <h1 className="text-xl font-semibold text-gray-900">Flow Executor</h1>
         <div className="flex gap-2">
           <button
-            onClick={onClearAll}
+            onClick={() => {
+              console.log('[ExecutorPanel] 모든 내용 초기화 버튼 클릭됨');
+              onClearAll();
+            }}
             className="px-3 py-1 text-red-600 border border-red-600 rounded hover:bg-red-50 transition-colors text-sm font-medium flex items-center"
             title="모든 Flow와 실행 결과를 초기화합니다."
           >

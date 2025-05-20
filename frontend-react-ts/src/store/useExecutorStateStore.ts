@@ -63,6 +63,7 @@ export interface FlowChain {
   selectedFlowId: string | null;  // 체이닝에 사용될 Flow의 ID
   flowIds: string[];  // 실행 순서
   error?: string;
+  inputs: any[]; // Flow Chain 전체의 입력 (추가)
 }
 
 // 정규화된 스토어 상태
@@ -89,6 +90,7 @@ interface ExecutorState {
   setSelectedFlow: (chainId: string, flowId: string | null) => void;
   moveFlow: (chainId: string, flowId: string, direction: 'up' | 'down') => void;
   setFlowInputs: (chainId: string, flowId: string, inputs: any[]) => void;
+  setFlowChainInputs: (chainId: string, inputs: any[]) => void; // Flow Chain 입력 설정 액션 (추가)
   setFlowResults: (chainId: string, flowId: string, results: any[]) => void;
   setFlowNodeState: (chainId: string, flowId: string, nodeId: string, nodeState: FlowNodeExecutionState) => void;
   getFlowNodeState: (chainId: string, flowId: string, nodeId: string) => FlowNodeExecutionState | undefined;
@@ -98,6 +100,9 @@ interface ExecutorState {
   setStage: (stage: ExecutorStage) => void;
   setError: (error: string | null) => void;
   resetState: () => void;
+  
+  // 모든 플로우의 결과 초기화
+  resetResults: () => void;
   
   // 편의 함수
   getFlow: (chainId: string, flowId: string) => Flow | undefined;
@@ -219,7 +224,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
                 status: 'idle',
                 selectedFlowId: null,
                 flowIds: [],
-                error: undefined
+                error: undefined,
+                inputs: [] // inputs 초기화 (추가)
               }
             },
             chainIds: [...state.chainIds, id],
@@ -424,7 +430,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
 
       setFlowInputs: (chainId, flowId, inputs) => set((state) => {
         const flow = state.flows[flowId];
-        if (!flow) return state;
+        if (!flow || flow.chainId !== chainId) return state; // flow.chainId 조건 추가
         
         return {
           flows: {
@@ -437,16 +443,72 @@ export const useExecutorStateStore = create<ExecutorState>()(
         };
       }),
 
+      setFlowChainInputs: (chainId, inputs) => set((state) => { // 액션 구현 (추가)
+        const chain = state.chains[chainId];
+        if (!chain) return state;
+
+        return {
+          chains: {
+            ...state.chains,
+            [chainId]: {
+              ...chain,
+              inputs: deepClone(inputs)
+            }
+          }
+        };
+      }),
+
       setFlowResults: (chainId, flowId, results) => set((state) => {
         const flow = state.flows[flowId];
         if (!flow) return state;
+        
+        // Handle null/undefined results case
+        if (results === null || results === undefined) {
+          console.warn(`[useExecutorStateStore] 결과가 null/undefined입니다: Flow ${flowId} (${flow.name})`);
+          return {
+            flows: {
+              ...state.flows,
+              [flowId]: {
+                ...flow,
+                lastResults: [] // Use empty array instead of null
+              }
+            }
+          };
+        }
+        
+        // 결과가 객체인지 확인하고 필요한 구조로 변환
+        let normalizedResults = results;
+        
+        // 결과가 배열이 아니고 객체인 경우, 배열로 변환
+        if (!Array.isArray(normalizedResults) && typeof normalizedResults === 'object' && normalizedResults !== null) {
+          // 타입 단언을 사용하여 'outputs' 속성에 안전하게 접근
+          const resultObj = normalizedResults as {outputs?: any};
+          if (resultObj.outputs !== undefined) {
+            // If outputs exists but is null, use empty array
+            if (resultObj.outputs === null) {
+              normalizedResults = [];
+            } else {
+              // 이미 적절한 구조인 경우 그대로 사용
+              normalizedResults = resultObj.outputs;
+            }
+          } else {
+            // 기타 객체인 경우 배열로 변환
+            normalizedResults = [normalizedResults];
+          }
+        } else if (!Array.isArray(normalizedResults)) {
+          // 배열이 아닌 기본 값인 경우 배열로 감싸기
+          normalizedResults = [normalizedResults];
+        }
+        
+        // 결과 로그 출력
+        console.log(`[useExecutorStateStore] 결과 저장: Flow ${flowId} (${flow.name}), 결과:`, normalizedResults);
         
         return {
           flows: {
             ...state.flows,
             [flowId]: {
               ...flow,
-              lastResults: deepClone(results)
+              lastResults: normalizedResults
             }
           }
         };
@@ -485,6 +547,38 @@ export const useExecutorStateStore = create<ExecutorState>()(
       resetState: () => set({
         ...initialState,
         nodeFactory: get().nodeFactory // NodeFactory 인스턴스 유지
+      }),
+      
+      // 모든 플로우의 결과 초기화
+      resetResults: () => set((state) => {
+        const updatedFlows = { ...state.flows };
+        
+        // 모든 플로우의 lastResults를 null로 설정
+        Object.keys(updatedFlows).forEach(flowId => {
+          updatedFlows[flowId] = {
+            ...updatedFlows[flowId],
+            lastResults: null,
+            status: 'idle',
+            error: undefined
+          };
+        });
+        
+        // 모든 체인의 상태도 초기화
+        const updatedChains = { ...state.chains };
+        Object.keys(updatedChains).forEach(chainId => {
+          updatedChains[chainId] = {
+            ...updatedChains[chainId],
+            status: 'idle',
+            error: undefined
+          };
+        });
+        
+        console.log('[useExecutorStateStore] 모든 플로우 결과 초기화 완료');
+        
+        return {
+          flows: updatedFlows,
+          chains: updatedChains
+        };
       }),
       
       // 편의 함수

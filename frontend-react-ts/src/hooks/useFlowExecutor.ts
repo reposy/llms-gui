@@ -136,7 +136,72 @@ export const useFlowExecutor = () => {
    */
   const getFlowResultById = (flowId) => {
     if (!flowId || !flows[flowId]) return null;
-    return flows[flowId].lastResults;
+    
+    const flow = flows[flowId];
+    // lastResults가 없으면 null 반환
+    if (!flow.lastResults) return null;
+    
+    // FlowExecutionResult 형태로 데이터 구조화
+    return {
+      status: flow.status,
+      outputs: flow.lastResults,
+      error: flow.error,
+      flowId: flowId
+    };
+  };
+
+  /**
+   * 단일 Flow 실행
+   */
+  const handleExecuteSingleFlow = async (flowId: string) => {
+    if (!flowId) {
+      setError('실행할 Flow를 선택해주세요.');
+      return;
+    }
+    
+    const flow = getFlowById(flowId);
+    if (!flow) {
+      setError('선택한 Flow를 찾을 수 없습니다.');
+      return;
+    }
+    
+    setIsExecuting(true);
+    setStage('executing');
+    setError(null);
+
+    try {
+      const response = await executeFlowExecutor({
+        flowId: flow.id,
+        flowJson: flow.flowJson,
+        inputs: flow.inputData || [],
+        chainId: flow.chainId, // Make sure chainId is included
+        onComplete: (result) => {
+          console.log(`[handleExecuteSingleFlow] Execution completed for flow ${flowId}, results:`, result);
+          
+          // Process and verify result before saving
+          if (result) {
+            // If result is valid, save it
+            setFlowResult(flow.id, result);
+          } else {
+            console.warn(`[handleExecuteSingleFlow] Received null or invalid result for flow ${flowId}`);
+            setFlowResult(flow.id, []); // Set empty array instead of null
+          }
+          
+          setIsExecuting(false);
+          setStage('result');
+        }
+      });
+
+      if (response.status === 'error') {
+        setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
+        setIsExecuting(false);
+      }
+    } catch (err) {
+      setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
+      console.error('실행 오류:', err);
+      setIsExecuting(false);
+      setStage('result');
+    }
   };
 
   /**
@@ -293,50 +358,6 @@ export const useFlowExecutor = () => {
   };
 
   /**
-   * 단일 Flow 실행
-   */
-  const handleExecuteSingleFlow = async (flowId: string) => {
-    if (!flowId) {
-      setError('실행할 Flow를 선택해주세요.');
-      return;
-    }
-    
-    const flow = getFlowById(flowId);
-    if (!flow) {
-      setError('선택한 Flow를 찾을 수 없습니다.');
-      return;
-    }
-    
-    setIsExecuting(true);
-    setStage('executing');
-    setError(null);
-
-    try {
-      const response = await executeFlowExecutor({
-        flowId: flow.id,
-        flowJson: flow.flowJson,
-        inputs: flow.inputData || [],
-        onComplete: (result) => {
-          // 결과 저장 및 상태 업데이트
-          setFlowResult(flow.id, result);
-          setIsExecuting(false);
-          setStage('result');
-        }
-      });
-
-      if (response.status === 'error') {
-        setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
-        setIsExecuting(false);
-      }
-    } catch (err) {
-      setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('실행 오류:', err);
-      setIsExecuting(false);
-      setStage('result');
-    }
-  };
-
-  /**
    * Flow Chain 실행
    */
   const handleExecuteChain = async () => {
@@ -357,7 +378,8 @@ export const useFlowExecutor = () => {
       const flowItems = flowChain.map(flow => ({
         id: flow.id,
         flowJson: flow.flowJson,
-        inputData: flow.inputData || []
+        inputData: flow.inputData || [],
+        chainId: flow.chainId // Ensure chainId is included
       }));
       
       // Flow 그래프 초기화 (필요한 경우)
@@ -371,8 +393,16 @@ export const useFlowExecutor = () => {
       await executeChain({
         flowItems,
         onFlowComplete: (flowId, result) => {
-          console.log(`Flow ${flowId} completed with result:`, result);
-          setFlowResult(flowId, result);
+          console.log(`[handleExecuteChain] Flow ${flowId} completed with result:`, result);
+          
+          // Process and verify result before saving
+          if (result) {
+            // If result is valid, save it
+            setFlowResult(flowId, result);
+          } else {
+            console.warn(`[handleExecuteChain] Received null or invalid result for flow ${flowId}`);
+            setFlowResult(flowId, []); // Set empty array instead of null
+          }
           
           // 마지막 Flow인 경우 실행 완료 처리
           const isLastFlow = flowId === flowItems[flowItems.length - 1].id;
@@ -382,7 +412,7 @@ export const useFlowExecutor = () => {
           }
         },
         onError: (flowId, errorMsg) => {
-          console.error(`Error executing flow ${flowId}:`, errorMsg);
+          console.error(`[handleExecuteChain] Error executing flow ${flowId}:`, errorMsg);
           setError(`Flow "${getFlowById(flowId)?.name || flowId}" 실행 중 오류: ${errorMsg}`);
           setIsExecuting(false);
           setStage('result');
@@ -390,7 +420,7 @@ export const useFlowExecutor = () => {
       });
     } catch (err) {
       setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('체인 실행 오류:', err);
+      console.error('[handleExecuteChain] Chain execution error:', err);
       setIsExecuting(false);
       setStage('result');
     }
@@ -400,15 +430,46 @@ export const useFlowExecutor = () => {
    * 모든 Flow 초기화
    */
   const handleClearAll = () => {
-    if (window.confirm('모든 내용을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      // 스토어 초기화
-      resetState();
-      resetFlowGraphs();
+    console.log('[FlowExecutor] handleClearAll 함수가 호출되었습니다.');
+    
+    // 직접 초기화 작업 수행 (confirm 대화 상자 제거)
+    try {
+      console.log('[FlowExecutor] 모든 내용 초기화 시작');
       
-      // 상태 초기화
+      // 상태 초기화 (먼저 설정)
       setStage('upload');
       setError(null);
       setIsExecuting(false);
+      
+      // 로컬 스토리지에서 저장된 상태 정보 직접 제거
+      localStorage.removeItem('executor-state-store');
+      localStorage.removeItem('executor-graph-storage');
+      
+      // Zustand 스토어 상태 초기화
+      resetState();
+      resetFlowGraphs();
+      
+      // Zustand 상태가 제대로 초기화되었는지 확인
+      const stateStore = useExecutorStateStore.getState();
+      const graphStore = useExecutorGraphStore.getState();
+      
+      console.log('[FlowExecutor] 상태 초기화 결과:', {
+        chains: Object.keys(stateStore.chains).length,
+        flows: Object.keys(stateStore.flows).length,
+        activeChainId: stateStore.activeChainId,
+        flowChains: Object.keys(graphStore.flowChains).length
+      });
+      
+      console.log('[FlowExecutor] 초기화 완료');
+
+      // 사용자에게 알림
+      alert('모든 Flow 내용이 초기화되었습니다. 페이지가 새로고침됩니다.');
+      
+      // 초기화 후 페이지 새로고침
+      window.location.reload();
+    } catch (error) {
+      console.error('[FlowExecutor] 초기화 중 오류 발생:', error);
+      alert('초기화 중 오류가 발생했습니다.');
     }
   };
 

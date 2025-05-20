@@ -8,7 +8,10 @@ import { useExecutorStateStore, FlowChain, Flow, ExecutionStatus } from '../stor
 // 출력 결과 타입 정의
 export interface NodeResult {
   nodeId: string;
+  nodeName?: string;
+  nodeType?: string;
   outputs: any[];
+  result?: any;
 }
 
 // 코드 흐름 개선: 실행을 위한 공통 인터페이스 정의
@@ -30,6 +33,7 @@ export interface ExecutionResponse {
 
 export interface ExecuteChainParams {
   flowChainId: string;
+  inputs?: any[];
   onChainStart?: (flowChainId: string) => void;
   onChainComplete?: (flowChainId: string, results: any[]) => void;
   onFlowStart?: (flowChainId: string, flowId: string) => void;
@@ -241,14 +245,28 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
     const nodeOutputs = context.getOutput(nodeId);
     
     if (nodeOutputs && nodeOutputs.length > 0) {
+      // 노드 정보 추가
+      const nodeType = node.type || '';
+      
       results.push({
         nodeId,
-        outputs: nodeOutputs
+        nodeName: nodeType, // 노드 타입을 이름으로 사용
+        nodeType,
+        outputs: nodeOutputs,
+        result: nodeOutputs[0] // 첫 번째 출력을 result로 설정 (호환성 유지)
       });
     }
   }
   
-  return results;
+  // 리프 노드만 필터링 (자식이 없는 노드)
+  const leafNodeResults = results.filter(result => {
+    const nodeId = result.nodeId;
+    // 이 노드가 다른 노드의 소스로 사용되지 않는지 확인
+    return !context.edges.some(edge => edge.source === nodeId);
+  });
+  
+  // 리프 노드가 있으면 리프 노드만 반환, 없으면 모든 결과 반환
+  return leafNodeResults.length > 0 ? leafNodeResults : results;
 };
 
 /**
@@ -308,7 +326,25 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     console.warn('[flowExecutionService.executeFlowExecutor] chainId or flowId is missing. Context might be for editor.');
     return editorFlowExecutor.execute(params);
   }
-  return executorFlowExecutor.execute(params);
+  
+  // 응답 결과 받기
+  const response = await executorFlowExecutor.execute(params);
+  
+  // onComplete 콜백이 제공된 경우, 결과를 올바른 형식으로 변환하여 전달
+  if (params.onComplete && response.status === 'success') {
+    // 결과를 FlowExecutionResult 형식으로 변환
+    params.onComplete(response.outputs);
+    
+    // 결과가 성공적으로 생성되면 등록된 콜백에도 알림
+    notifyResultCallbacks(params.flowId, {
+      status: response.status,
+      outputs: response.outputs,
+      error: response.error,
+      flowId: params.flowId
+    });
+  }
+  
+  return response;
 };
 
 /**
@@ -367,7 +403,7 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
  * @param params 실행 매개변수
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
-  const { flowChainId, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
+  const { flowChainId, inputs: chainInputs, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
   const store = useExecutorStateStore.getState();
 
   onChainStart?.(flowChainId);
@@ -398,21 +434,21 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
 
-    // 이전 플로우의 결과를 현재 플로우의 입력으로 매핑 (간단한 예시)
-    // 실제로는 사용자가 UI에서 매핑을 설정할 수 있어야 함.
-    // 여기서는 마지막 실행된 플로우의 lastResults를 사용하도록 가정.
-    let currentFlowInputs = [...flow.inputs]; // 사용자가 설정한 기본 입력
-    if (chain.flowIds.indexOf(flowId) > 0) {
+    let currentFlowInputs = [...flow.inputs]; // 각 Flow에 저장된 기본 입력
+
+    // 현재 Flow가 체인의 첫 번째 Flow이고, 체인 전체 입력(chainInputs)이 제공된 경우,
+    // 해당 Flow의 입력을 체인 전체 입력으로 설정한다.
+    if (chain.flowIds.indexOf(flowId) === 0 && chainInputs !== undefined) {
+      currentFlowInputs = deepClone(chainInputs);
+      // 스토어의 Flow 개별 입력도 업데이트 (선택적, UI 반영을 위함이라면 필요)
+      store.setFlowInputs(flowChainId, flowId, currentFlowInputs); 
+    } else if (chain.flowIds.indexOf(flowId) > 0) { 
+      // 첫 번째 Flow가 아니고, 이전 Flow가 있는 경우 (기존 로직)
       const previousFlowId = chain.flowIds[chain.flowIds.indexOf(flowId) - 1];
       const previousFlow = store.getFlow(flowChainId, previousFlowId);
       if (previousFlow?.lastResults) {
-        // TODO: 정교한 입력 매핑 로직 필요. 현재는 이전 결과를 그대로 사용.
-        // 예를 들어, previousFlow.lastResults가 배열이고, currentFlowInputs도 배열 형식의 입력을 여러 개 받을 수 있다면,
-        // 어떻게 매핑할지 정책이 필요합니다. (예: 첫번째 결과만 사용, 특정 이름의 결과 사용 등)
-        // 지금은 단순화를 위해 이전 lastResults 전체를 현재 inputs의 첫번째 항목으로 덮어쓰거나 추가하는 방식을 고려할 수 있습니다.
-        // 여기서는 previousFlow.lastResults를 currentFlowInputs으로 사용한다고 가정.
-        currentFlowInputs = previousFlow.lastResults;
-        store.setFlowInputs(flowChainId, flowId, currentFlowInputs); // 매핑된 입력을 스토어에 반영
+        currentFlowInputs = deepClone(previousFlow.lastResults);
+        store.setFlowInputs(flowChainId, flowId, currentFlowInputs);
       }
     }
 
@@ -423,7 +459,10 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         flowId: flow.id,
         chainId: flowChainId, // chainId 전달
         onComplete: (outputs) => {
+          // 여기에서 정규화된 형식으로 결과 저장
           store.setFlowResults(flowChainId, flowId, outputs);
+          // 로그로 결과 확인
+          console.log(`[executeChain] Flow ${flowId} completed, outputs:`, outputs);
           chainResults.push({ flowId, outputs }); // 개별 플로우 결과 저장 (필요시)
         },
       });

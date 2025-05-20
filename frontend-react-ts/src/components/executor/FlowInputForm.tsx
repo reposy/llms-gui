@@ -8,6 +8,7 @@ interface FlowInputFormProps {
   flowId: string;
   inputs?: any[];
   onInputChange?: (inputs: any[]) => void;
+  isChainInput?: boolean;
 }
 
 type InputItem = {
@@ -16,7 +17,7 @@ type InputItem = {
   sourceFlowId?: string; // Flow 결과 참조 시 원본 Flow ID
 };
 
-const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange }) => {
+const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
   const [inputItems, setInputItems] = useState<InputItem[]>([{ type: 'text', value: '' }]);
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,8 +87,8 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     }
   }, [flow, flowId, chainId, onInputChange]);
   
-  if (!flow) {
-    return <div className="text-red-500">Flow를 찾을 수 없습니다.</div>;
+  if (!flow && !isChainInput) {
+    return <div className="text-gray-500 italic p-2">입력을 설정할 Flow를 선택하세요.</div>;
   }
   
   // 입력 필드 변경 처리
@@ -239,14 +240,14 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     return `${refFlow.name} ${hasResult ? '(결과 있음)' : '(결과 없음)'}`;
   };
   
-  // 최근 실행 결과 가져오기
-  const lastResult = flow.lastResults;
+  // 최근 실행 결과 가져오기 - flow가 없는 경우 안전하게 처리
+  const lastResult = flow?.lastResults || null;
   
   return (
     <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
       <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
         <div>
-          <h2 className="font-medium text-lg">{flow.name}</h2>
+          <h2 className="font-medium text-lg">{isChainInput ? "Chain Input" : flow?.name || "Flow Input"}</h2>
           <p className="text-sm text-gray-500">입력 데이터를 입력하고 확정하세요</p>
         </div>
         
@@ -446,8 +447,8 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
         multiple
       />
       
-      {/* 최근 실행 결과 표시 */}
-      {lastResult && (
+      {/* 최근 실행 결과 표시 - flow가 있고 lastResult가 있을 때만 표시 */}
+      {flow && lastResult && (
         <div className="mt-4 p-4 border-t border-gray-200">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-700">최근 실행 결과</h3>

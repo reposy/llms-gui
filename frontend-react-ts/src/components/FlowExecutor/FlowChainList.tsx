@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { Button } from '../ui/button';
 import { PlusIcon, TrashIcon, PenLineIcon } from '../Icons';
+import { v4 as uuidv4 } from 'uuid';
 
 export const FlowChainList: React.FC = () => {
   // 상태
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [newChainName, setNewChainName] = useState('');
   const [editingChainId, setEditingChainId] = useState<string | null>(null);
   const [editChainName, setEditChainName] = useState('');
 
@@ -15,54 +14,51 @@ export const FlowChainList: React.FC = () => {
   const {
     chains,
     activeChainId,
-    addChain,
-    removeChain,
-    setChainName,
-    setActiveChain
-  } = useFlowExecutorStore(state => ({
+    addFlowChain,
+    removeFlowChain,
+    setFlowChainName,
+    setActiveChainId
+  } = useExecutorStateStore(state => ({
     chains: state.chains,
     activeChainId: state.activeChainId,
-    addChain: state.addChain,
-    removeChain: state.removeChain,
-    setChainName: state.setChainName,
-    setActiveChain: state.setActiveChain
+    addFlowChain: state.addFlowChain,
+    removeFlowChain: state.removeFlowChain,
+    setFlowChainName: state.setFlowChainName,
+    setActiveChainId: state.setActiveChainId
   }));
 
-  // 체인 생성 처리
-  const handleCreateChain = () => {
-    const chainId = addChain(newChainName.trim() || `새 Flow 체인 ${Object.keys(chains).length + 1}`);
-    setActiveChain(chainId);
-    setNewChainName('');
-    setCreateDialogOpen(false);
+  // 체인 생성 처리 (버튼 클릭 시 바로 실행되도록 수정)
+  const handleDirectCreateChain = () => {
+    const defaultChainName = `Flow-Chain-${uuidv4().substring(0, 8)}`;
+    const chainId = addFlowChain(defaultChainName);
+    setActiveChainId(chainId);
   };
 
-  // 체인 수정 처리
-  const handleEditChain = () => {
+  // 체인 이름 인라인 편집 시작
+  const startEditChainName = (chainId: string, currentName: string) => {
+    setEditingChainId(chainId);
+    setEditChainName(currentName);
+  };
+
+  // 체인 이름 인라인 편집 저장
+  const handleSaveChainName = () => {
     if (editingChainId && editChainName.trim()) {
-      setChainName(editingChainId, editChainName.trim());
-      setEditingChainId(null);
-      setEditChainName('');
-      setEditDialogOpen(false);
+      setFlowChainName(editingChainId, editChainName.trim());
     }
+    setEditingChainId(null); // 편집 모드 종료
+    // setEditChainName(''); // 입력 필드가 사라지므로 초기화 불필요할 수 있음
   };
 
   // 체인 삭제 처리
   const handleDeleteChain = (chainId: string) => {
     if (window.confirm('정말 이 체인을 삭제하시겠습니까?')) {
-      removeChain(chainId);
+      removeFlowChain(chainId);
     }
   };
 
   // 체인 선택 처리
   const handleSelectChain = (chainId: string) => {
-    setActiveChain(chainId);
-  };
-
-  // 체인 편집 모달 열기
-  const openEditDialog = (chainId: string, name: string) => {
-    setEditingChainId(chainId);
-    setEditChainName(name);
-    setEditDialogOpen(true);
+    setActiveChainId(chainId);
   };
 
   // 체인 목록 정렬
@@ -76,7 +72,7 @@ export const FlowChainList: React.FC = () => {
         <Button 
           variant="primary" 
           className="flex items-center"
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={handleDirectCreateChain}
         >
           <PlusIcon size={18} className="mr-2" />
           New Chain
@@ -100,21 +96,41 @@ export const FlowChainList: React.FC = () => {
               >
                 <div className="flex justify-between items-center">
                   <div>
-                    <div className="font-medium">{chain.name}</div>
+                    {editingChainId === chain.id ? (
+                      <input
+                        type="text"
+                        value={editChainName}
+                        onChange={(e) => setEditChainName(e.target.value)}
+                        onBlur={handleSaveChainName}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveChainName();
+                            (e.target as HTMLInputElement).blur(); // Enter 시 blur 처리하여 저장
+                          }
+                          if (e.key === 'Escape') {
+                            setEditingChainId(null); // Esc 시 편집 취소
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()} // 이벤트 전파 중단
+                        className="font-medium p-0 m-0 border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        autoFocus
+                      />
+                    ) : (
+                      <div 
+                        className="font-medium cursor-pointer hover:text-blue-600"
+                        onClick={(e) => {
+                          e.stopPropagation(); // 이벤트 전파 중단
+                          startEditChainName(chain.id, chain.name);
+                        }}
+                      >
+                        {chain.name}
+                      </div>
+                    )}
                     <div className="text-sm text-gray-500">
                       {`${chain.flowIds.length} flows | Status: ${chain.status}`}
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <button
-                      className="p-1 rounded hover:bg-gray-200"
-                      onClick={e => {
-                        e.stopPropagation();
-                        openEditDialog(chain.id, chain.name);
-                      }}
-                    >
-                      <PenLineIcon size={20} className="text-gray-600" />
-                    </button>
                     <button
                       className="p-1 rounded hover:bg-gray-200"
                       onClick={e => {
@@ -132,46 +148,6 @@ export const FlowChainList: React.FC = () => {
         )}
       </div>
 
-      {/* 체인 생성 다이얼로그 */}
-      {createDialogOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium">새 Flow Chain 생성</h3>
-            </div>
-            <div className="p-4">
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">체인 이름</label>
-                <input
-                  type="text"
-                  className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={newChainName}
-                  onChange={e => setNewChainName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleCreateChain();
-                  }}
-                  autoFocus
-                />
-              </div>
-            </div>
-            <div className="p-4 bg-gray-50 flex justify-end space-x-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setCreateDialogOpen(false)}
-              >
-                취소
-              </Button>
-              <Button 
-                variant="primary" 
-                onClick={handleCreateChain}
-              >
-                생성
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 체인 편집 다이얼로그 */}
       {editDialogOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
@@ -188,7 +164,7 @@ export const FlowChainList: React.FC = () => {
                   value={editChainName}
                   onChange={e => setEditChainName(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') handleEditChain();
+                    if (e.key === 'Enter') handleSaveChainName();
                   }}
                   autoFocus
                 />
@@ -203,7 +179,7 @@ export const FlowChainList: React.FC = () => {
               </Button>
               <Button 
                 variant="primary" 
-                onClick={handleEditChain}
+                onClick={handleSaveChainName}
               >
                 저장
               </Button>

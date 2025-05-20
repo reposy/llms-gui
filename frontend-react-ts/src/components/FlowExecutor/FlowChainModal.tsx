@@ -33,7 +33,7 @@ export const FlowChainModal: React.FC<FlowChainModalProps> = ({
     try {
       const result = await executeFlowExecutor({
         flowId: flow.id,
-        flowChainId: chainId,
+        chainId: chainId,
         flowJson: flow.flowJson,
         inputs: flow.inputs,
       });

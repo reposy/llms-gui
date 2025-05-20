@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FlowData } from '../../utils/data/importExportUtils';
-import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { PlusIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 
 interface FileUploaderProps {
@@ -23,7 +23,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   const [isDropping, setIsDropping] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const { addFlowToChain, activeChainId } = useFlowExecutorStore();
+  const { addFlowToChain, activeChainId } = useExecutorStateStore(state => ({
+    addFlowToChain: state.addFlowToChain,
+    activeChainId: state.activeChainId
+  }));
   
   useEffect(() => {
     // 외부 ref가 제공된 경우 이벤트 리스너 등록

@@ -88,6 +88,8 @@ interface ExecutorGraphState {
   
   // 초기화
   resetState: () => void;
+  resetResults: () => void;
+  resetFlowGraphs: () => void;
 }
 
 /**
@@ -623,7 +625,50 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
           chainIds: [],
           activeChainId: null
         });
-      }
+      },
+      
+      // resetState와 동일한 기능을 수행하는 별칭 함수
+      resetFlowGraphs: () => {
+        set({
+          flowChains: {},
+          chainIds: [],
+          activeChainId: null
+        });
+      },
+      
+      // 모든 플로우의 결과 초기화
+      resetResults: () => set(state => {
+        // 복사된 flowChains 객체 생성
+        const updatedFlowChains = { ...state.flowChains };
+        
+        // 각 체인의 각 플로우에 대해 결과 및 상태 초기화
+        Object.keys(updatedFlowChains).forEach(chainId => {
+          const chain = updatedFlowChains[chainId];
+          const updatedFlows = { ...chain.flows };
+          
+          Object.keys(updatedFlows).forEach(flowId => {
+            updatedFlows[flowId] = {
+              ...updatedFlows[flowId],
+              lastResult: null,
+              status: 'idle',
+              error: undefined
+            };
+          });
+          
+          updatedFlowChains[chainId] = {
+            ...chain,
+            flows: updatedFlows,
+            status: 'idle',
+            error: undefined
+          };
+        });
+        
+        console.log('[useExecutorGraphStore] 모든 플로우 결과 초기화 완료');
+        
+        return {
+          flowChains: updatedFlowChains
+        };
+      })
     }),
     {
       name: 'executor-graph-storage'
