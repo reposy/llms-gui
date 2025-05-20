@@ -3,6 +3,7 @@ import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
 import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
+import { useExecutorStateStore, FlowChain, Flow, ExecutionStatus } from '../store/useExecutorStateStore';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -15,8 +16,9 @@ export interface ExecuteFlowParams {
   flowJson: FlowData;
   inputs: any[];
   flowId: string;
-  flowChainId?: string;
-  onComplete?: (result: any) => void;
+  chainId?: string;
+  onComplete?: (outputs: any) => void;
+  onNodeStateChange?: (nodeId: string, status: string, result?: any, error?: string) => void;
 }
 
 export interface ExecutionResponse {
@@ -45,11 +47,11 @@ class FlowExecutor {
    * @returns 실행 응답
    */
   async execute(params: ExecuteFlowParams): Promise<ExecutionResponse> {
-    const { flowJson, inputs, flowId, flowChainId } = params;
+    const { flowJson, inputs, flowId, chainId } = params;
     const executionId = `exec-${uuidv4()}`;
     
     try {
-      console.log(`[FlowExecutor] Executing flow: ${flowId}${flowChainId ? ` (chain: ${flowChainId})` : ''}`);
+      console.log(`[FlowExecutor] Executing flow: ${flowId}${chainId ? ` (chain: ${chainId})` : ''}`);
       
       // 루트 노드 찾기
       const rootNodes = this.findRootNodes(flowJson);
@@ -59,7 +61,7 @@ class FlowExecutor {
       }
       
       // 실행 컨텍스트 생성
-      const context = this.createExecutionContext(executionId, flowJson);
+      const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
       
       // 입력 설정
       context.setInputs(inputs);
@@ -112,9 +114,19 @@ class FlowExecutor {
    * 실행 컨텍스트 생성
    * @param executionId 실행 ID
    * @param flowJson 플로우 데이터
+   * @param chainId 체인 ID
+   * @param flowId 플로우 ID
    * @returns 실행 컨텍스트
    */
-  protected createExecutionContext(executionId: string, flowJson: FlowData): FlowExecutionContext {
+  protected createExecutionContext(
+    executionId: string, 
+    flowJson: FlowData, 
+    chainId?: string,
+    flowId?: string
+  ): FlowExecutionContext {
+    if (!chainId || !flowId) {
+      throw new Error('chainId and flowId are required for ExecutorFlowExecutor context');
+    }
     // 기본 구현은 에디터용 컨텍스트 생성
     return FlowExecutionContext.createForEditor(executionId, flowJson);
   }
@@ -146,11 +158,27 @@ class ExecutorFlowExecutor extends FlowExecutor {
    * 실행 컨텍스트 생성 (오버라이드)
    * @param executionId 실행 ID
    * @param flowJson 플로우 데이터
+   * @param chainId 체인 ID
+   * @param flowId 플로우 ID
    * @returns 실행 컨텍스트
    */
-  protected createExecutionContext(executionId: string, flowJson: FlowData): FlowExecutionContext {
+  protected createExecutionContext(
+    executionId: string, 
+    flowJson: FlowData, 
+    chainId?: string,
+    flowId?: string
+  ): FlowExecutionContext {
+    if (!chainId || !flowId) {
+      throw new Error('chainId and flowId are required for ExecutorFlowExecutor context');
+    }
     // 실행기용 컨텍스트 생성
-    return FlowExecutionContext.createForExecutor(executionId, flowJson);
+    return FlowExecutionContext.createForExecutor(
+      executionId, 
+      flowJson, 
+      undefined, // nodeFactory는 context 내부에서 기본값으로 생성됨
+      chainId, 
+      flowId
+    );
   }
 }
 
@@ -276,6 +304,10 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
  * @returns 실행 응답
  */
 export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  if (!params.chainId || !params.flowId) {
+    console.warn('[flowExecutionService.executeFlowExecutor] chainId or flowId is missing. Context might be for editor.');
+    return editorFlowExecutor.execute(params);
+  }
   return executorFlowExecutor.execute(params);
 };
 
@@ -335,5 +367,96 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
  * @param params 실행 매개변수
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
-  console.log(`[flowExecutionService] executeChain 호출됨: ${params.flowChainId}`);
+  const { flowChainId, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
+  const store = useExecutorStateStore.getState();
+
+  onChainStart?.(flowChainId);
+  store.setFlowChainStatus(flowChainId, 'running');
+
+  const chain = store.getFlowChain(flowChainId);
+  if (!chain) {
+    const errorMsg = `FlowChain not found: ${flowChainId}`;
+    store.setFlowChainStatus(flowChainId, 'error', errorMsg);
+    onError?.(flowChainId, '', errorMsg);
+    onChainComplete?.(flowChainId, []);
+    return;
+  }
+
+  const chainResults: any[] = []; // 체인의 최종 결과 (selectedFlowId의 결과만 담을 수도 있음)
+  let chainOverallStatus: ExecutionStatus = 'success';
+
+  for (const flowId of chain.flowIds) {
+    const flow = store.getFlow(flowChainId, flowId);
+    if (!flow) {
+      const errorMsg = `Flow not found: ${flowId} in chain: ${flowChainId}`;
+      store.setFlowStatus(flowChainId, flowId, 'error', errorMsg);
+      onError?.(flowChainId, flowId, errorMsg);
+      chainOverallStatus = 'error';
+      break; // 현재 플로우를 찾지 못하면 체인 실행 중단
+    }
+
+    onFlowStart?.(flowChainId, flowId);
+    store.setFlowStatus(flowChainId, flowId, 'running');
+
+    // 이전 플로우의 결과를 현재 플로우의 입력으로 매핑 (간단한 예시)
+    // 실제로는 사용자가 UI에서 매핑을 설정할 수 있어야 함.
+    // 여기서는 마지막 실행된 플로우의 lastResults를 사용하도록 가정.
+    let currentFlowInputs = [...flow.inputs]; // 사용자가 설정한 기본 입력
+    if (chain.flowIds.indexOf(flowId) > 0) {
+      const previousFlowId = chain.flowIds[chain.flowIds.indexOf(flowId) - 1];
+      const previousFlow = store.getFlow(flowChainId, previousFlowId);
+      if (previousFlow?.lastResults) {
+        // TODO: 정교한 입력 매핑 로직 필요. 현재는 이전 결과를 그대로 사용.
+        // 예를 들어, previousFlow.lastResults가 배열이고, currentFlowInputs도 배열 형식의 입력을 여러 개 받을 수 있다면,
+        // 어떻게 매핑할지 정책이 필요합니다. (예: 첫번째 결과만 사용, 특정 이름의 결과 사용 등)
+        // 지금은 단순화를 위해 이전 lastResults 전체를 현재 inputs의 첫번째 항목으로 덮어쓰거나 추가하는 방식을 고려할 수 있습니다.
+        // 여기서는 previousFlow.lastResults를 currentFlowInputs으로 사용한다고 가정.
+        currentFlowInputs = previousFlow.lastResults;
+        store.setFlowInputs(flowChainId, flowId, currentFlowInputs); // 매핑된 입력을 스토어에 반영
+      }
+    }
+
+    try {
+      const flowExecutionResult = await executeFlowExecutor({
+        flowJson: flow.flowJson,
+        inputs: currentFlowInputs, 
+        flowId: flow.id,
+        chainId: flowChainId, // chainId 전달
+        onComplete: (outputs) => {
+          store.setFlowResults(flowChainId, flowId, outputs);
+          chainResults.push({ flowId, outputs }); // 개별 플로우 결과 저장 (필요시)
+        },
+      });
+
+      if (flowExecutionResult.status === 'success') {
+        store.setFlowStatus(flowChainId, flowId, 'success');
+        onFlowComplete?.(flowChainId, flowId, flowExecutionResult.outputs);
+        // 체인의 selectedFlowId에 해당하는 결과만 최종 결과로 사용할 경우 여기서 처리
+        if (flowId === chain.selectedFlowId) {
+          // chainResults = flowExecutionResult.outputs; // 이런 식으로 덮어쓰거나 할 수 있음
+        }
+      } else {
+        store.setFlowStatus(flowChainId, flowId, 'error', flowExecutionResult.error);
+        onError?.(flowChainId, flowId, flowExecutionResult.error || 'Unknown error in flow');
+        chainOverallStatus = 'error';
+        break; // 플로우 실행 실패 시 체인 실행 중단
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      store.setFlowStatus(flowChainId, flowId, 'error', errorMsg);
+      onError?.(flowChainId, flowId, errorMsg);
+      chainOverallStatus = 'error';
+      break; // 예외 발생 시 체인 실행 중단
+    }
+  }
+
+  // 체인 실행 완료 후 최종 상태 설정
+  store.setFlowChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
+  
+  // 체인의 최종 결과는 selectedFlowId에 해당하는 Flow의 lastResults로 결정
+  const finalChainResultFlow = chain.selectedFlowId ? store.getFlow(flowChainId, chain.selectedFlowId) : null;
+  const finalOutputs = finalChainResultFlow?.lastResults || [];
+  
+  onChainComplete?.(flowChainId, finalOutputs);
+  console.log(`[flowExecutionService] executeChain 완료: ${flowChainId}, 최종 결과:`, finalOutputs);
 }; 

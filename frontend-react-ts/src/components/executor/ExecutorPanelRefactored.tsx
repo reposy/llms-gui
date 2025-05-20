@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import ExportModal from './ExportModal';
@@ -23,7 +23,20 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   isExecuting
 }) => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const { flowChain } = useExecutorStateStore();
+  
+  // 정규화된 스토어 데이터에서 필요한 상태 가져오기
+  const { chains = {}, activeChainId, flows = {} } = useExecutorStateStore();
+  
+  // 활성 체인의 Flow 개수 계산 (안전하게 접근)
+  const activeFlowCount = useMemo(() => {
+    if (!activeChainId) return 0;
+    const activeChain = chains[activeChainId];
+    if (!activeChain) return 0;
+    return activeChain.flowIds?.length || 0;
+  }, [chains, activeChainId]);
+  
+  // UI 상태: Flow가 있는지 여부
+  const hasFlows = activeFlowCount > 0;
 
   return (
     <>
@@ -57,8 +70,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             onClick={() => {
               onExportFlowChain(`flow-chain-${new Date().toISOString().slice(0, 10)}.json`, false);
             }}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChain.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={flowChain.length === 0}
+            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${!hasFlows ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!hasFlows}
             title="Flow 체인을 데이터 없이 내보냅니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -69,8 +82,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
           
           <button
             onClick={() => setExportModalOpen(true)}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChain.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={flowChain.length === 0}
+            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${!hasFlows ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!hasFlows}
             title="Flow 체인을 데이터 포함하여 내보냅니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -102,7 +115,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
           <button
             className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium flex items-center"
             onClick={onExecuteFlow}
-            disabled={isExecuting || flowChain.length === 0}
+            disabled={isExecuting || !hasFlows}
           >
             {isExecuting ? (
               <div className="flex items-center">

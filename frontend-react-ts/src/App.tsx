@@ -5,7 +5,8 @@ import { NodeFactory } from './core/NodeFactory';
 import { useFlowStructureStore } from './store/useFlowStructureStore';
 import FlowEditorPage from './pages/FlowEditorPage';
 import ExecutorPage from './pages/ExecutorPage';
-import FlowChainPage from './components/executor/FlowChainPage';
+// import ExecutorPageRefactored from './pages/ExecutorPageRefactored';
+// import FlowChainPage from './components/executor/FlowChainPage';
 
 export default function App() {
   // Zustand persist hydration 상태 확인
@@ -50,7 +51,8 @@ export default function App() {
         <Route path="/" element={<FlowEditorPage />} />
         <Route path="/editor" element={<FlowEditorPage />} />
         <Route path="/executor" element={<ExecutorPage />} />
-        <Route path="/flow-chain" element={<FlowChainPage />} />
+        {/* <Route path="/executor-legacy" element={<ExecutorPage />} /> */}
+        {/* <Route path="/flow-chain" element={<FlowChainPage />} /> */}
       </Routes>
     </BrowserRouter>
   );

@@ -12,27 +12,132 @@ export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 export const useFlowExecutor = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
+  
+  // ExecutorStateStore에서 필요한 상태와 액션 가져오기
   const { 
-    flowChain, 
+    // 상태
+    chainIds = [],
+    chains = {},
+    flows = {},
+    activeChainId = null,
+    stage = 'upload',
+    
+    // 액션
     addFlow, 
     setFlowInputData, 
-    setFlowResult, 
-    getFlowById,
-    getFlowResultById,
+    setFlowResult,
     resetResults,
     removeFlow,
     resetState,
     setStage,
-    stage,
-    getActiveFlow
+    
+    // 편의 함수
+    getFlow,
+    getFlowChain,
+    getActiveFlowChain
   } = useExecutorStateStore();
-
+  
+  // 그래프 관련 스토어에서 필요한 함수 가져오기
   const {
     getFlowGraph,
     setFlowGraph,
     resetFlowGraphs
   } = useExecutorGraphStore();
+
+  /**
+   * 현재 Flow Chain을 구성하는 배열 반환 (가상 구조)
+   * 정규화된 데이터 구조(chains, flows)를 기반으로 UI에 표시할 간소화된 형태로 변환
+   */
+  const getFlowChainList = () => {
+    // 활성 체인이 없는 경우 빈 배열 반환
+    if (!activeChainId || !chains[activeChainId]) {
+      return [];
+    }
+    
+    const activeChain = chains[activeChainId];
+    
+    // 체인의 flowIds 배열을 순회하며 각 Flow 정보 구성
+    return activeChain.flowIds.map(flowId => {
+      const flow = flows[flowId];
+      if (!flow) return null;
+      
+      return {
+        id: flow.id,
+        name: flow.name,
+        flowJson: flow.flowJson,
+        inputData: flow.inputs || [], // 입력 데이터
+        status: flow.status
+      };
+    }).filter(Boolean); // null 값 제거
+  };
+
+  /**
+   * 현재 Flow Chain 배열 계산 (메모이제이션된 값으로 간주)
+   */
+  const flowChain = getFlowChainList();
+
+  /**
+   * 현재 활성화된 Flow 가져오기
+   * 활성 체인의 선택된 Flow 또는 첫 번째 Flow 반환
+   */
+  const getActiveFlow = () => {
+    if (!activeChainId || !chains[activeChainId]) return null;
+    
+    const activeChain = chains[activeChainId];
+    
+    // 선택된 Flow가 있으면 해당 Flow 반환
+    if (activeChain.selectedFlowId && flows[activeChain.selectedFlowId]) {
+      const flow = flows[activeChain.selectedFlowId];
+      return {
+        id: flow.id,
+        name: flow.name,
+        flowJson: flow.flowJson,
+        inputData: flow.inputs || [],
+        status: flow.status
+      };
+    }
+    
+    // 선택된 Flow가 없으면 첫 번째 Flow 반환 (있는 경우)
+    if (activeChain.flowIds.length > 0) {
+      const firstFlowId = activeChain.flowIds[0];
+      const flow = flows[firstFlowId];
+      if (flow) {
+        return {
+          id: flow.id,
+          name: flow.name,
+          flowJson: flow.flowJson,
+          inputData: flow.inputs || [],
+          status: flow.status
+        };
+      }
+    }
+    
+    return null;
+  };
+
+  /**
+   * 특정 Flow ID로 Flow 정보 가져오기
+   */
+  const getFlowById = (flowId) => {
+    if (!flowId || !flows[flowId]) return null;
+    
+    const flow = flows[flowId];
+    return {
+      id: flow.id,
+      name: flow.name,
+      flowJson: flow.flowJson,
+      inputData: flow.inputs || [],
+      status: flow.status
+    };
+  };
+
+  /**
+   * 특정 Flow ID로 실행 결과 가져오기
+   */
+  const getFlowResultById = (flowId) => {
+    if (!flowId || !flows[flowId]) return null;
+    return flows[flowId].lastResults;
+  };
 
   /**
    * Flow Chain 가져오기

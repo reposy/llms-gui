@@ -1,5 +1,5 @@
 import React from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon, PlayIcon as PlayIconSolid } from '@heroicons/react/20/solid';
@@ -13,23 +13,17 @@ interface FlowChainDetailProps {
 
 export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }) => {
   const {
-    flowExecutorStore,
+    chains,
+    activeChainId,
     removeFlowFromChain,
     moveFlow,
     setFlowStatus,
-    setFlowChainStatus,
+    setChainStatus: setFlowChainStatus,
     setSelectedFlow,
-  } = useExecutorStateStore((state) => ({
-    flowExecutorStore: state.flowExecutorStore,
-    removeFlowFromChain: state.removeFlowFromChain,
-    moveFlow: state.moveFlow,
-    setFlowStatus: state.setFlowStatus,
-    setFlowChainStatus: state.setFlowChainStatus,
-    setSelectedFlow: state.setSelectedFlow,
-  }));
+    getActiveChain
+  } = useFlowExecutorStore();
 
-  const activeChainId = flowExecutorStore.activeChainId;
-  const activeChain = activeChainId ? flowExecutorStore.flowChainMap[activeChainId] : null;
+  const activeChain = getActiveChain();
 
   console.log('[FlowChainDetail] Rendering with activeChainId:', activeChainId);
   console.log('[FlowChainDetail] activeChain object:', activeChain);
@@ -153,7 +147,7 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
         <div className="flex-grow flex flex-col">
           <ul className="overflow-y-auto divide-y divide-gray-200 flex-grow">
             {activeChain.flowIds.map((flowId, index) => {
-              const flow = activeChain.flowMap[flowId];
+              const flow = chains[activeChainId].flows[flowId];
               if (!flow) return null;
               return (
                 <li
@@ -166,7 +160,7 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
                     <p className="text-sm font-medium text-gray-800 truncate" title={flow.name}>{flow.name}</p>
                     <p className="text-xs text-gray-500 truncate">
                       {flow.status === 'error' && flow.error ? <span className="text-red-500">Error: {flow.error}</span> : 
-                       (flow.lastResults ? `${Array.isArray(flow.lastResults) ? flow.lastResults.length : 1} result(s)` : 'No results')}
+                       (flow.results ? `${Array.isArray(flow.results) ? flow.results.length : 1} result(s)` : 'No results')}
                     </p>
                   </div>
                   <div className="ml-2 flex-shrink-0 flex items-center space-x-1 opacity-100 transition-opacity duration-150">
@@ -209,17 +203,17 @@ export const FlowChainDetail: React.FC<FlowChainDetailProps> = ({ onFlowSelect }
           </ul>
           
           {/* 선택된 Flow의 실행 결과 표시 */}
-          {activeChain.selectedFlowId && activeChain.flowMap[activeChain.selectedFlowId]?.lastResults && (
+          {activeChain.selectedFlowId && chains[activeChainId].flows[activeChain.selectedFlowId]?.results && (
             <div className="border-t border-gray-200 p-4 bg-gray-50">
               <div className="mb-2 flex items-center">
                 <h3 className="text-sm font-semibold text-gray-700">Selected Flow Result</h3>
                 <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
-                  {activeChain.flowMap[activeChain.selectedFlowId].name}
+                  {chains[activeChainId].flows[activeChain.selectedFlowId].name}
                 </span>
               </div>
               <div className="bg-white rounded-md border border-gray-200 p-3 max-h-40 overflow-y-auto">
                 <pre className="text-xs whitespace-pre-wrap text-gray-700">
-                  {JSON.stringify(activeChain.flowMap[activeChain.selectedFlowId].lastResults, null, 2)}
+                  {JSON.stringify(chains[activeChainId].flows[activeChain.selectedFlowId].results, null, 2)}
                 </pre>
               </div>
             </div>

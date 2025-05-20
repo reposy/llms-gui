@@ -3,7 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { FlowChainList } from '../components/FlowExecutor/FlowChainList';
 import { FlowChainDetail } from '../components/FlowExecutor/FlowChainDetail';
 import { FlowChainModal } from '../components/FlowExecutor/FlowChainModal';
-import { useExecutorStateStore, ExecutorStage, Flow, FlowChain, FlowData } from '../store/useExecutorStateStore';
+import { ExecutorStage, Flow, FlowChain } from '../store/useFlowExecutorStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
+import { type FlowData } from '../utils/data/importExportUtils';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
@@ -14,56 +16,61 @@ const ExecutorPage: React.FC = () => {
   const [modalFlow, setModalFlow] = useState<{ chainId: string; flowId: string } | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   
+  // 스토어에서 상태와 액션 가져오기
   const {
-    flowExecutorStore,
+    stage,
+    error,
+    chains,
+    flows,
+    activeChainId,
     setStage,
     setError,
-    getActiveFlowChain,
-    // getFlowChain, // Not directly used in UI logic here
-    // getFlow, // Not directly used in UI logic here
-    // setFlowResults, // Handled by execution service callbacks
-    resetState,
-    // addFlowToChain, // FileUploader가 직접 스토어 액션 사용하므로 ExecutorPage에서 직접 호출 필요 X
-    // setFlowInputs, // Handled within FlowChainModal
-  } = useExecutorStateStore();
+    getChain,
+    getFlow,
+    getActiveChain,
+    resetState
+  } = useFlowExecutorStore();
   
-  const { stage, error } = flowExecutorStore;
-  const activeChain = getActiveFlowChain();
+  // 활성 체인 가져오기
+  const activeChain = getActiveChain();
   
   useEffect(() => {
-    if (flowExecutorStore.chainIds.length === 0 && stage !== 'upload') {
+    // 체인이 없는 경우 upload 단계로 이동
+    const chainIds = Object.keys(chains);
+    if (chainIds.length === 0 && stage !== 'upload') {
       setStage('upload');
-    } else if (flowExecutorStore.chainIds.length > 0 && stage === 'upload') {
+    } else if (chainIds.length > 0 && stage === 'upload') {
       setStage('input');
     }
-  }, [flowExecutorStore.chainIds, stage, setStage]);
+  }, [chains, stage, setStage]);
 
   useEffect(() => {
     if (!activeChain || !activeChain.selectedFlowId) return;
-    const flow = activeChain.flowMap[activeChain.selectedFlowId];
+    const flow = flows[activeChain.selectedFlowId];
     if (!flow) return;
     
-    if (flow.status !== 'running' && flow.lastResults && stage === 'executing') {
-          setStage('result');
-        }
-  }, [activeChain, stage, setStage]);
+    if (flow.status !== 'running' && flow.results && stage === 'executing') {
+      setStage('result');
+    }
+  }, [activeChain, stage, setStage, flows]);
 
   const handleExportWithFilename = (filename: string, includeData: boolean) => {
     try {
       const exportData = {
         version: '1.1',
-        flowExecutorStore: { ...flowExecutorStore } // Create a shallow copy to avoid direct mutation before stringify
+        chains,
+        flows
       };
       
       if (!includeData) {
-        const flowsWithoutData = JSON.parse(JSON.stringify(flowExecutorStore)); 
-        Object.values(flowsWithoutData.flowChainMap).forEach((chain: any) => {
-          Object.values(chain.flowMap).forEach((flowItem: any) => { // Renamed to avoid conflict
-            flowItem.lastResults = null;
-            flowItem.inputs = [];
-          });
+        // 데이터 제외 시 복사본 생성하여 결과 데이터 제거
+        const dataWithoutResults = JSON.parse(JSON.stringify(exportData));
+        Object.keys(dataWithoutResults.flows).forEach(flowId => {
+          dataWithoutResults.flows[flowId].results = null;
+          dataWithoutResults.flows[flowId].inputs = [];
         });
-        exportData.flowExecutorStore = flowsWithoutData;
+        exportData.chains = dataWithoutResults.chains;
+        exportData.flows = dataWithoutResults.flows;
       }
       
       const json = JSON.stringify(exportData, null, 2);
@@ -93,7 +100,7 @@ const ExecutorPage: React.FC = () => {
 
   const handleExecuteFlow = () => {
     if (activeChain) {
-    setIsExecuting(true);
+      setIsExecuting(true);
       // Attempt to trigger executeChain in FlowChainDetail by simulating a click
       // This is a workaround. Ideally, FlowChainDetail exposes a ref or a direct function.
       const executeButton = document.querySelector('#flow-chain-detail-execute-button');
@@ -119,8 +126,8 @@ const ExecutorPage: React.FC = () => {
   const stageNavProps = {
     currentStage: stage,
     onStageChange: setStage,
-    canSetInput: flowExecutorStore.chainIds.length > 0,
-    canViewResults: !!(activeChain && activeChain.selectedFlowId && activeChain.flowMap[activeChain.selectedFlowId]?.lastResults),
+    canSetInput: Object.keys(chains).length > 0,
+    canViewResults: !!(activeChain && activeChain.selectedFlowId && flows[activeChain.selectedFlowId]?.results),
     isExecutionDisabled: !activeChain || activeChain.flowIds.length === 0 || (activeChain.status === 'running'),
     onExecute: panelActions.onExecuteAll,
     error,

@@ -30,12 +30,10 @@ export const FlowChainList: React.FC = () => {
 
   // 체인 생성 처리
   const handleCreateChain = () => {
-    if (newChainName.trim()) {
-      const chainId = addChain(newChainName.trim());
-      setActiveChain(chainId);
-      setNewChainName('');
-      setCreateDialogOpen(false);
-    }
+    const chainId = addChain(newChainName.trim() || `새 Flow 체인 ${Object.keys(chains).length + 1}`);
+    setActiveChain(chainId);
+    setNewChainName('');
+    setCreateDialogOpen(false);
   };
 
   // 체인 수정 처리

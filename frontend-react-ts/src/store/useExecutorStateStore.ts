@@ -28,6 +28,14 @@ interface GraphNode {
   isGroupNode: boolean;
 }
 
+// Flow 내 개별 노드의 실행 상태
+export interface FlowNodeExecutionState {
+  status: ExecutionStatus;
+  result?: any;
+  error?: string;
+  // 필요에 따라 executionId, lastTriggerNodeId 등을 추가할 수 있습니다.
+}
+
 // Flow 하나의 정보 (그래프 정보 포함)
 export interface Flow {
   id: string;
@@ -44,6 +52,7 @@ export interface Flow {
   graph: Record<string, NodeRelation>;
   roots: string[];
   leafs: string[];
+  nodeStates: Record<string, FlowNodeExecutionState>; // Executor에서 실행 시 각 노드의 상태
 }
 
 // Flow Chain의 정보
@@ -81,6 +90,8 @@ interface ExecutorState {
   moveFlow: (chainId: string, flowId: string, direction: 'up' | 'down') => void;
   setFlowInputs: (chainId: string, flowId: string, inputs: any[]) => void;
   setFlowResults: (chainId: string, flowId: string, results: any[]) => void;
+  setFlowNodeState: (chainId: string, flowId: string, nodeId: string, nodeState: FlowNodeExecutionState) => void;
+  getFlowNodeState: (chainId: string, flowId: string, nodeId: string) => FlowNodeExecutionState | undefined;
   setActiveChainId: (id: string | null) => void;
   
   // 상태 관리
@@ -285,7 +296,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
             nodes: nodeMap,
             graph: graphRelations,
             roots,
-            leafs
+            leafs,
+            nodeStates: {} // nodeStates 초기화
           };
           
           // 상태 업데이트
@@ -439,6 +451,30 @@ export const useExecutorStateStore = create<ExecutorState>()(
           }
         };
       }),
+
+      setFlowNodeState: (chainId, flowId, nodeId, nodeState) => set((state) => {
+        const flow = state.flows[flowId];
+        if (!flow || flow.chainId !== chainId) return state;
+
+        return {
+          flows: {
+            ...state.flows,
+            [flowId]: {
+              ...flow,
+              nodeStates: {
+                ...flow.nodeStates,
+                [nodeId]: deepClone(nodeState)
+              }
+            }
+          }
+        };
+      }),
+
+      getFlowNodeState: (chainId, flowId, nodeId) => {
+        const flow = get().flows[flowId];
+        if (!flow || flow.chainId !== chainId) return undefined;
+        return flow.nodeStates[nodeId];
+      },
 
       setActiveChainId: (id) => set({ activeChainId: id }),
       
