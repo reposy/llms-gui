@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
-import { executeChain } from '../../services/flowExecutionService';
+import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import FileUploader from './FileUploader';
@@ -19,6 +19,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
   const flowIds = chain ? chain.flowIds : [];
   const flowMap = chain ? chain.flowMap : {};
   const [isExecuting, setIsExecuting] = useState(false);
+  const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
 
   if (!chain) {
     return (
@@ -70,6 +71,28 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
   const handleExportChain = () => {
     // TODO: implement export logic if needed
     alert('Export 기능은 별도 구현 필요');
+  };
+
+  const handleExecuteFlow = async (flowId: string) => {
+    const flow = flowMap[flowId];
+    if (!flow) return;
+    setExecutingFlowId(flowId);
+    store.setFlowStatus(chain.id, flowId, 'running');
+    try {
+      const execInputs = flow.inputs || [];
+      const result = await executeFlowExecutor({
+        flowId,
+        chainId: chain.id,
+        flowJson: flow.flowJson,
+        inputs: execInputs
+      });
+      store.setFlowResult(chain.id, flowId, result.outputs || []);
+      store.setFlowStatus(chain.id, flowId, result.status === 'success' ? 'success' : 'error', result.error);
+    } catch (error) {
+      store.setFlowStatus(chain.id, flowId, 'error', error instanceof Error ? error.message : String(error));
+    } finally {
+      setExecutingFlowId(null);
+    }
   };
 
   const selectedFlow = chain.selectedFlowId ? flowMap[chain.selectedFlowId] : null;
@@ -154,6 +177,21 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="currentColor" /></svg>
                       ) : (
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="white" /></svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleExecuteFlow(flowId); }}
+                      className={`p-1.5 rounded-md transition-colors duration-150 ${executingFlowId === flowId ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-100'}`}
+                      title="이 Flow만 실행"
+                      disabled={executingFlowId === flowId || flow.status === 'running'}
+                    >
+                      {executingFlowId === flowId || flow.status === 'running' ? (
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <PlayIconSolid className="h-5 w-5" />
                       )}
                     </button>
                     <button
