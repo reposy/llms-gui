@@ -54,18 +54,18 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
 
   const handleExecuteFlow = async () => {
     if (isExecuting) return;
-    
     setIsExecuting(true);
     store.setFlowStatus(chainId, flowId, 'running');
-    
     try {
+      // flow의 최신 nodes/edges 정보로 실행
       const result = await executeFlowExecutor({
         flowId,
         chainId,
         flowJson: flow.flowJson,
-        inputs: flow.inputs
+        inputs: flow.inputs,
+        nodes: flow.flowJson.nodes,
+        edges: flow.flowJson.edges
       });
-      
       if (result.status === 'error') {
         store.setFlowStatus(chainId, flowId, 'error', result.error);
       } else {
