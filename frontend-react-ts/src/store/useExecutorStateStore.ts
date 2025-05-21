@@ -9,7 +9,6 @@ import { deepClone } from '../utils/helpers';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
-import { GroupNode } from '../core/GroupNode';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error';

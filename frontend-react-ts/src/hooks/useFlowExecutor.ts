@@ -1,8 +1,24 @@
 import { useState } from 'react';
-import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
+import { useFlowExecutorStore, getFlow, getChain, getActiveChain, addFlowToChain, resetResults, resetFlowGraphs, resetState } from '../store/useFlowExecutorStore';
 import { executeChain, executeFlowExecutor } from '../services/flowExecutionService';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
+
+interface FlowChainItem {
+  id: string;
+  chainId: string;
+  name: string;
+  flowJson: any;
+  inputData: any[];
+  status: string;
+}
+
+interface FlowResult {
+  status: string;
+  outputs: any[];
+  error?: string;
+  flowId: string;
+}
 
 /**
  * Flow Executor 기능을 위한 커스텀 훅
@@ -11,98 +27,52 @@ export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 export const useFlowExecutor = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // ExecutorStateStore에서 필요한 상태와 액션 가져오기
-  const { 
-    // 상태
-    chainIds = [],
-    chains = {},
-    flows = {},
-    activeChainId = null,
-    stage = 'upload',
-    
-    // 액션
-    addFlow, 
-    setFlowInputData, 
-    setFlowResult,
-    resetResults,
-    removeFlow,
-    resetState,
-    setStage,
-    
-    // 편의 함수
-    getFlow,
-    getFlowChain,
-    getActiveFlowChain
-  } = useFlowExecutorStore();
-  
-  // 그래프 관련 스토어에서 필요한 함수 가져오기
-  const {
-    getFlowGraph,
-    setFlowGraph,
-    resetFlowGraphs
-  } = useFlowExecutorStore();
+  const store = useFlowExecutorStore();
+  const { activeChainId, chains, flows, stage } = store;
 
-  /**
-   * 현재 Flow Chain을 구성하는 배열 반환 (가상 구조)
-   * 정규화된 데이터 구조(chains, flows)를 기반으로 UI에 표시할 간소화된 형태로 변환
-   */
-  const getFlowChainList = () => {
-    // 활성 체인이 없는 경우 빈 배열 반환
+  // 현재 Flow Chain을 구성하는 배열 반환
+  const getFlowChainList = (): FlowChainItem[] => {
     if (!activeChainId || !chains[activeChainId]) {
       return [];
     }
-    
     const activeChain = chains[activeChainId];
-    
-    // 체인의 flowIds 배열을 순회하며 각 Flow 정보 구성
-    return activeChain.flowIds.map(flowId => {
+    return activeChain.flowIds.map((flowId: string) => {
       const flow = flows[flowId];
       if (!flow) return null;
-      
       return {
         id: flow.id,
+        chainId: flow.chainId,
         name: flow.name,
         flowJson: flow.flowJson,
-        inputData: flow.inputs || [], // 입력 데이터
+        inputData: flow.inputs || [],
         status: flow.status
       };
-    }).filter(Boolean); // null 값 제거
+    }).filter(Boolean) as FlowChainItem[];
   };
 
-  /**
-   * 현재 Flow Chain 배열 계산 (메모이제이션된 값으로 간주)
-   */
   const flowChain = getFlowChainList();
 
-  /**
-   * 현재 활성화된 Flow 가져오기
-   * 활성 체인의 선택된 Flow 또는 첫 번째 Flow 반환
-   */
-  const getActiveFlow = () => {
+  const getActiveFlow = (): FlowChainItem | null => {
     if (!activeChainId || !chains[activeChainId]) return null;
-    
     const activeChain = chains[activeChainId];
-    
-    // 선택된 Flow가 있으면 해당 Flow 반환
     if (activeChain.selectedFlowId && flows[activeChain.selectedFlowId]) {
       const flow = flows[activeChain.selectedFlowId];
       return {
         id: flow.id,
+        chainId: flow.chainId,
         name: flow.name,
         flowJson: flow.flowJson,
         inputData: flow.inputs || [],
         status: flow.status
       };
     }
-    
-    // 선택된 Flow가 없으면 첫 번째 Flow 반환 (있는 경우)
     if (activeChain.flowIds.length > 0) {
       const firstFlowId = activeChain.flowIds[0];
       const flow = flows[firstFlowId];
       if (flow) {
         return {
           id: flow.id,
+          chainId: flow.chainId,
           name: flow.name,
           flowJson: flow.flowJson,
           inputData: flow.inputs || [],
@@ -110,19 +80,15 @@ export const useFlowExecutor = () => {
         };
       }
     }
-    
     return null;
   };
 
-  /**
-   * 특정 Flow ID로 Flow 정보 가져오기
-   */
-  const getFlowById = (flowId) => {
-    if (!flowId || !flows[flowId]) return null;
-    
+  const getFlowById = (flowId: string): FlowChainItem | null => {
+    if (!activeChainId || !flowId || !flows[flowId]) return null;
     const flow = flows[flowId];
     return {
       id: flow.id,
+      chainId: flow.chainId,
       name: flow.name,
       flowJson: flow.flowJson,
       inputData: flow.inputs || [],
@@ -130,17 +96,10 @@ export const useFlowExecutor = () => {
     };
   };
 
-  /**
-   * 특정 Flow ID로 실행 결과 가져오기
-   */
-  const getFlowResultById = (flowId) => {
-    if (!flowId || !flows[flowId]) return null;
-    
+  const getFlowResultById = (flowId: string): FlowResult | null => {
+    if (!activeChainId || !flowId || !flows[flowId]) return null;
     const flow = flows[flowId];
-    // lastResults가 없으면 null 반환
     if (!flow.lastResults) return null;
-    
-    // FlowExecutionResult 형태로 데이터 구조화
     return {
       status: flow.status,
       outputs: flow.lastResults,
@@ -157,49 +116,36 @@ export const useFlowExecutor = () => {
       setError('실행할 Flow를 선택해주세요.');
       return;
     }
-    
     const flow = getFlowById(flowId);
     if (!flow) {
       setError('선택한 Flow를 찾을 수 없습니다.');
       return;
     }
-    
     setIsExecuting(true);
-    setStage('executing');
+    store.setStage('executing');
     setError(null);
-
     try {
       const response = await executeFlowExecutor({
         flowId: flow.id,
         flowJson: flow.flowJson,
         inputs: flow.inputData || [],
-        chainId: flow.chainId, // Make sure chainId is included
-        onComplete: (result) => {
-          console.log(`[handleExecuteSingleFlow] Execution completed for flow ${flowId}, results:`, result);
-          
-          // Process and verify result before saving
-          if (result) {
-            // If result is valid, save it
-            setFlowResult(flow.id, result);
-          } else {
-            console.warn(`[handleExecuteSingleFlow] Received null or invalid result for flow ${flowId}`);
-            setFlowResult(flow.id, []); // Set empty array instead of null
+        chainId: flow.chainId,
+        onComplete: (result: any) => {
+          if (activeChainId) {
+            store.setFlowResult(activeChainId, flow.id, result || []);
           }
-          
           setIsExecuting(false);
-          setStage('result');
+          store.setStage('result');
         }
       });
-
       if (response.status === 'error') {
         setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
         setIsExecuting(false);
       }
     } catch (err) {
       setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('실행 오류:', err);
       setIsExecuting(false);
-      setStage('result');
+      store.setStage('result');
     }
   };
 
@@ -208,47 +154,30 @@ export const useFlowExecutor = () => {
    */
   const handleImportFlowChain = () => {
     try {
-      // 파일 선택기 생성
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'application/json';
-      
-      // 파일 선택 처리
       input.onchange = (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
-        
         const reader = new FileReader();
         reader.onload = (event) => {
           try {
             const json = event.target?.result as string;
             let importData;
-            
             try {
               importData = JSON.parse(json);
             } catch (parseError) {
-              console.error(`[FlowExecutor] JSON 파싱 오류:`, parseError);
               alert('JSON 파일 형식이 올바르지 않습니다.');
               return;
             }
-            
-            // 기본 유효성 검사
             if (!importData || typeof importData !== 'object') {
               throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
             }
-            
-            // 버전 확인
             if (!importData.version) {
-              console.warn('[FlowExecutor] 버전 정보가 없는 파일입니다.');
               // 버전 없이 계속 진행
             }
-            
-            // flowChain 배열 존재 확인
             if (!Array.isArray(importData.flowChain)) {
-              // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
-              console.log('[FlowExecutor] flowChain 배열이 없습니다. 단일 Flow JSON으로 처리합니다.');
-              
-              // 단일 Flow 객체 생성
               importData = {
                 version: '1.0',
                 flowChain: [{
@@ -259,57 +188,40 @@ export const useFlowExecutor = () => {
                 }]
               };
             }
-            
-            // 각 Flow 추가
+            if (!activeChainId) {
+              alert('Flow Chain이 없습니다. 먼저 체인을 생성하세요.');
+              return;
+            }
             importData.flowChain.forEach((flow: any) => {
               try {
-                // flowJson 유효성 검사
                 if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-                  console.warn(`[FlowExecutor] 유효하지 않은 flowJson 형식, flow:`, flow);
-                  return; // 이 Flow는 건너뛰고 계속 진행
+                  return;
                 }
-                
-                // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
                 const flowName = flow.name || flow.flowJson.name || '가져온-flow';
                 const timestamp = Date.now();
                 const random = Math.floor(Math.random() * 1000);
-                
-                // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
                 const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
                 const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
-                
                 const flowToAdd = {
                   ...flow.flowJson,
                   id: flowId
                 };
-                
-                // Flow 추가 (원본 ID 보존)
-                addFlow(flowToAdd);
-                
-                // 입력 데이터 설정
+                addFlowToChain(activeChainId, flowToAdd);
                 if (flow.inputData && flow.inputData.length > 0) {
-                  setFlowInputData(flowId, flow.inputData);
+                  store.setFlowInputData(activeChainId, flowId, flow.inputData);
                 }
               } catch (flowError) {
-                console.error(`[FlowExecutor] Flow 추가 중 오류:`, flowError);
                 // 이 Flow는 건너뛰고 계속 진행
               }
             });
-            
-            console.log(`[FlowExecutor] Flow chain imported successfully`);
           } catch (error) {
-            console.error(`[FlowExecutor] Error parsing imported flow chain:`, error);
             alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
           }
         };
-        
         reader.readAsText(file);
       };
-      
-      // 파일 선택기 클릭
       input.click();
     } catch (error) {
-      console.error(`[FlowExecutor] Error importing flow chain:`, error);
       alert('Flow 체인 가져오기 중 오류가 발생했습니다.');
     }
   };
@@ -319,7 +231,6 @@ export const useFlowExecutor = () => {
    */
   const handleExportFlowChain = (filename: string, includeData: boolean) => {
     try {
-      // 현재 체인 데이터 추출
       const exportData = {
         version: '1.0',
         flowChain: flowChain.map(flow => {
@@ -329,29 +240,21 @@ export const useFlowExecutor = () => {
             name: flow.name,
             flowJson: flow.flowJson,
             inputData: flow.inputData || [],
-            result: result // 옵션에 따라 결과 데이터 포함
+            result: result
           };
         })
       };
-      
-      // JSON 변환 및 파일 다운로드
       const json = JSON.stringify(exportData, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      
-      // 정리
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
-      console.log(`[FlowExecutor] Flow chain exported successfully with ${includeData ? '' : 'no '}data`);
     } catch (error) {
-      console.error(`[FlowExecutor] Error exporting flow chain:`, error);
       alert('Flow 체인 내보내기 중 오류가 발생했습니다.');
     }
   };
@@ -364,64 +267,37 @@ export const useFlowExecutor = () => {
       setError('실행할 Flow가 없습니다. 먼저 Flow를 추가해주세요.');
       return;
     }
-    
     setIsExecuting(true);
-    setStage('executing');
+    store.setStage('executing');
     setError(null);
-    
-    // 이전 결과 초기화
     resetResults();
-    
     try {
-      // 체인 실행을 위한 Flow 항목 준비
-      const flowItems = flowChain.map(flow => ({
-        id: flow.id,
-        flowJson: flow.flowJson,
-        inputData: flow.inputData || [],
-        chainId: flow.chainId // Ensure chainId is included
-      }));
-      
-      // Flow 그래프 초기화 (필요한 경우)
-      flowChain.forEach(flow => {
-        if (!getFlowGraph(flow.id)) {
-          setFlowGraph(flow.id, flow.flowJson);
-        }
-      });
-      
-      // 체인 실행
+      // 첫 Flow의 inputData만 inputs로 전달
+      const firstFlowInput = flowChain[0]?.inputData as any[] || [];
       await executeChain({
-        flowItems,
-        onFlowComplete: (flowId, result) => {
-          console.log(`[handleExecuteChain] Flow ${flowId} completed with result:`, result);
-          
-          // Process and verify result before saving
-          if (result) {
-            // If result is valid, save it
-            setFlowResult(flowId, result);
-          } else {
-            console.warn(`[handleExecuteChain] Received null or invalid result for flow ${flowId}`);
-            setFlowResult(flowId, []); // Set empty array instead of null
+        flowChainId: activeChainId!,
+        inputs: firstFlowInput,
+        onFlowComplete: (flowChainId, flowId, result) => {
+          if (activeChainId) {
+            store.setFlowResult(activeChainId, flowId, result || []);
           }
-          
           // 마지막 Flow인 경우 실행 완료 처리
-          const isLastFlow = flowId === flowItems[flowItems.length - 1].id;
+          const isLastFlow = flowId === flowChain[flowChain.length - 1].id;
           if (isLastFlow) {
             setIsExecuting(false);
-            setStage('result');
+            store.setStage('result');
           }
         },
-        onError: (flowId, errorMsg) => {
-          console.error(`[handleExecuteChain] Error executing flow ${flowId}:`, errorMsg);
-          setError(`Flow "${getFlowById(flowId)?.name || flowId}" 실행 중 오류: ${errorMsg}`);
+        onError: (flowChainId, flowId, errorMsg) => {
+          setError(`Flow \"${getFlowById(flowId)?.name || flowId}\" 실행 중 오류: ${errorMsg}`);
           setIsExecuting(false);
-          setStage('result');
+          store.setStage('result');
         }
       });
     } catch (err) {
       setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('[handleExecuteChain] Chain execution error:', err);
       setIsExecuting(false);
-      setStage('result');
+      store.setStage('result');
     }
   };
 
@@ -429,47 +305,15 @@ export const useFlowExecutor = () => {
    * 모든 Flow 초기화
    */
   const handleClearAll = () => {
-    console.log('[FlowExecutor] handleClearAll 함수가 호출되었습니다.');
-    
-    // 직접 초기화 작업 수행 (confirm 대화 상자 제거)
-    try {
-      console.log('[FlowExecutor] 모든 내용 초기화 시작');
-      
-      // 상태 초기화 (먼저 설정)
-      setStage('upload');
-      setError(null);
-      setIsExecuting(false);
-      
-      // 로컬 스토리지에서 저장된 상태 정보 직접 제거
-      localStorage.removeItem('executor-state-store');
-      localStorage.removeItem('executor-graph-storage');
-      
-      // Zustand 스토어 상태 초기화
-      resetState();
-      resetFlowGraphs();
-      
-      // Zustand 상태가 제대로 초기화되었는지 확인
-      const stateStore = useFlowExecutorStore.getState();
-      const graphStore = useFlowExecutorStore.getState();
-      
-      console.log('[FlowExecutor] 상태 초기화 결과:', {
-        chains: Object.keys(stateStore.chains).length,
-        flows: Object.keys(stateStore.flows).length,
-        activeChainId: stateStore.activeChainId,
-        flowChains: Object.keys(graphStore.flowChains).length
-      });
-      
-      console.log('[FlowExecutor] 초기화 완료');
-
-      // 사용자에게 알림
-      alert('모든 Flow 내용이 초기화되었습니다. 페이지가 새로고침됩니다.');
-      
-      // 초기화 후 페이지 새로고침
-      window.location.reload();
-    } catch (error) {
-      console.error('[FlowExecutor] 초기화 중 오류 발생:', error);
-      alert('초기화 중 오류가 발생했습니다.');
-    }
+    store.setStage('upload');
+    setError(null);
+    setIsExecuting(false);
+    localStorage.removeItem('executor-state-store');
+    localStorage.removeItem('executor-graph-storage');
+    resetState();
+    resetFlowGraphs();
+    alert('모든 Flow 내용이 초기화되었습니다. 페이지가 새로고침됩니다.');
+    window.location.reload();
   };
 
   return {
@@ -483,7 +327,7 @@ export const useFlowExecutor = () => {
     handleClearAll,
     flowChain,
     stage,
-    setStage,
+    setStage: store.setStage,
     getActiveFlow,
     getFlowById,
     getFlowResultById

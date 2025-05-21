@@ -5,7 +5,7 @@ import { Node as FlowNode, Edge } from '@xyflow/react';
 import { NodeFactory } from './NodeFactory';
 import { Node } from './Node';
 import { FlowData } from '../utils/data/importExportUtils';
-import { useExecutorStateStore, FlowNodeExecutionState } from '../store/useExecutorStateStore';
+import { useExecutorStateStore } from '../store/useExecutorStateStore';
 
 /**
  * Implementation of the ExecutionContext interface for flow execution
