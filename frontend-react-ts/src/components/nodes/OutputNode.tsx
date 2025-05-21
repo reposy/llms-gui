@@ -1,5 +1,5 @@
 // src/components/nodes/OutputNode.tsx
-import React, { useRef, useEffect, useCallback } from 'react';
+import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { OutputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';

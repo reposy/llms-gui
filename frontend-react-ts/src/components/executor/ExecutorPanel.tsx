@@ -28,16 +28,16 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
 
   // 스토어에서 필요한 상태 가져오기
   const store = useFlowExecutorStore();
-  const activeChainId = store.activeChainId;
+  const focusedFlowChainId = store.focusedFlowChainId;
   const { 
     chains, 
     setStage,
-    getActiveChain 
+    getFocusedChain 
   } = useFlowExecutorStore();
   
   // 활성 체인의 Flow 개수 계산 (안전하게 접근)
-  const activeChain = getActiveChain();
-  const hasFlows = activeChain && activeChain.flowIds.length > 0;
+  const focusedChain = getFocusedChain();
+  const hasFlows = focusedChain && focusedChain.flowIds.length > 0;
   const chainCount = Object.keys(chains).length;
 
   // Flow Chain 파일 선택 처리
@@ -88,8 +88,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         const addFlowToChain = store.addFlowToChain;
         const setFlowInputData = store.setFlowInputData;
         const setStage = store.setStage;
-        const activeChain = store.getActiveChain();
-        const chainId = activeChain?.id || '';
+        const focusedChain = store.getFocusedChain();
+        const chainId = focusedChain?.id || '';
         
         importData.flowChain.forEach((flow: any) => {
           try {
@@ -142,8 +142,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   };
 
   const handleAddFlow = (flow: any) => {
-    if (activeChainId) {
-      store.addFlowToChain(activeChainId, flow.flowJson);
+    if (focusedFlowChainId) {
+      store.addFlowToChain(focusedFlowChainId, flow.flowJson);
     }
   };
 
