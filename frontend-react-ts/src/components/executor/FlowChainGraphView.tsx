@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 
 interface FlowChainGraphViewProps {
   flowId: string;
@@ -11,12 +11,12 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
   const [tab, setTab] = useState<'graph' | 'roots' | 'leafs'>('graph');
   
   // 활성화된 체인 가져오기
-  const activeChainId = useExecutorGraphStore(state => state.activeChainId);
+  const activeChainId = useFlowExecutorStore(state => state.activeChainId);
   // 실제 사용할 체인 ID 결정 (props의 chainId 또는 활성 체인 ID)
   const effectiveChainId = chainId || activeChainId;
   
   // Flow 구조 가져오기
-  const flowStructure = useExecutorGraphStore(state => 
+  const flowStructure = useFlowExecutorStore(state => 
     effectiveChainId ? state.getFlow(effectiveChainId, flowId) : null
   );
   

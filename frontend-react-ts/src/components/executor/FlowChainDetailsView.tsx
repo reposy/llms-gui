@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useExecutorStateStore, Flow, FlowChain } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { useFlowExecutorStore, Flow, FlowChain } from '../../store/useFlowExecutorStore';
 import { executeFlowChain } from '../../services/flowChainExecutionService';
 import FlowChainGraphView from './FlowChainGraphView';
 
@@ -19,7 +18,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   const [selectedFlowForGraph, setSelectedFlowForGraph] = useState<string | null>(null);
   
   const { getFlowChain, setSelectedFlow, moveFlow, removeFlowFromChain, setFlowChainStatus, setFlowStatus } =
-    useExecutorStateStore((state) => ({
+    useFlowExecutorStore((state) => ({
       getFlowChain: state.getFlowChain,
       setSelectedFlow: state.setSelectedFlow,
       moveFlow: state.moveFlow,
@@ -31,7 +30,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   const chain = getFlowChain(chainId);
   
   // ExecutorGraphStore 사용하여 그래프 관련 정보 확인
-  const graphChain = useExecutorGraphStore(state => state.getChain(chainId));
+  const graphChain = useFlowExecutorStore(state => state.getChain(chainId));
   const graphFlows = graphChain?.flows || {};
 
   useEffect(() => {

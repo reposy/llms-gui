@@ -1,3 +1,5 @@
+// DEPRECATED: Flow Executor는 useFlowExecutorStore만 사용하세요. 이 파일은 더 이상 직접 사용하지 마십시오.
+import { useFlowExecutorStore } from './useFlowExecutorStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Node, Edge } from '@xyflow/react';
@@ -642,3 +644,5 @@ export const useExecutorStateStore = create<ExecutorState>()(
     }
   )
 ); 
+
+export default useFlowExecutorStore; 

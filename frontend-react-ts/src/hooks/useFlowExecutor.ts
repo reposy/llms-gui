@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useExecutorStateStore } from '../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import { executeChain, executeFlowExecutor } from '../services/flowExecutionService';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
@@ -35,14 +34,14 @@ export const useFlowExecutor = () => {
     getFlow,
     getFlowChain,
     getActiveFlowChain
-  } = useExecutorStateStore();
+  } = useFlowExecutorStore();
   
   // 그래프 관련 스토어에서 필요한 함수 가져오기
   const {
     getFlowGraph,
     setFlowGraph,
     resetFlowGraphs
-  } = useExecutorGraphStore();
+  } = useFlowExecutorStore();
 
   /**
    * 현재 Flow Chain을 구성하는 배열 반환 (가상 구조)
@@ -450,8 +449,8 @@ export const useFlowExecutor = () => {
       resetFlowGraphs();
       
       // Zustand 상태가 제대로 초기화되었는지 확인
-      const stateStore = useExecutorStateStore.getState();
-      const graphStore = useExecutorGraphStore.getState();
+      const stateStore = useFlowExecutorStore.getState();
+      const graphStore = useFlowExecutorStore.getState();
       
       console.log('[FlowExecutor] 상태 초기화 결과:', {
         chains: Object.keys(stateStore.chains).length,

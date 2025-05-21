@@ -1,3 +1,4 @@
+// DEPRECATED: Flow Executor는 useFlowExecutorStore만 사용하세요. 이 파일은 더 이상 직접 사용하지 마십시오.
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Node, Edge } from '@xyflow/react';
@@ -7,6 +8,7 @@ import { Node as BaseNode } from '../core/Node';
 import { GroupNode } from '../core/GroupNode';
 import { deepClone } from '../utils/helpers';
 import { v4 as uuidv4 } from 'uuid';
+import { useFlowExecutorStore } from './useFlowExecutorStore';
 
 // 그래프 노드 관계 정보 인터페이스
 interface NodeRelation {
@@ -674,4 +676,6 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       name: 'executor-graph-storage'
     }
   )
-); 
+);
+
+export default useFlowExecutorStore; 

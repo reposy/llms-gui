@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { NodeResult } from '../../core/outputCollector';
 import ReactMarkdown from 'react-markdown';
 
@@ -27,7 +26,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     setFlowInputs, 
     getFlowResultById,
     getActiveFlowChain
-  } = useExecutorStateStore();
+  } = useFlowExecutorStore();
   
   // 체인 ID와 Flow ID로 Flow 객체 조회
   const activeChain = getActiveFlowChain();

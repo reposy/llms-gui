@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 
 /**
@@ -24,13 +23,7 @@ export const useExecutorPanelHooks = () => {
     resetState,
     setStage,
     stage
-  } = useExecutorStateStore();
-
-  const {
-    getFlowGraph,
-    setFlowGraph,
-    resetFlowGraphs
-  } = useExecutorGraphStore();
+  } = useFlowExecutorStore();
 
   /**
    * Flow Chain 가져오기
@@ -209,13 +202,6 @@ export const useExecutorPanelHooks = () => {
         inputData: flow.inputData || []
       }));
       
-      // Flow 그래프 초기화 (필요한 경우)
-      flowChain.forEach(flow => {
-        if (!getFlowGraph(flow.id)) {
-          setFlowGraph(flow.id, flow.flowJson);
-        }
-      });
-      
       // 체인 실행
       await executeChain({
         flowItems,
@@ -250,7 +236,6 @@ export const useExecutorPanelHooks = () => {
     if (window.confirm('모든 내용을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
       // 스토어 초기화
       resetState();
-      resetFlowGraphs();
       
       // 상태 초기화
       setStage('upload');
