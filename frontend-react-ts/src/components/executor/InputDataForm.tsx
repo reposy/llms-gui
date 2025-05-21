@@ -1,5 +1,5 @@
 import React, { useState, useEffect, KeyboardEvent, useRef, useMemo } from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { isEqual } from 'lodash';
 import { TrashIcon, PenLineIcon } from '../Icons';
 
@@ -84,7 +84,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({ message, onConfirm, onCance
 
 const InputDataForm: React.FC<InputDataFormProps> = ({ onInputDataSubmit }) => {
   // Zustand 스토어에서 저장된 입력 데이터 가져오기
-  const storedInputData = useExecutorStateStore(state => state.inputData);
+  const store = useFlowExecutorStore();
   
   // 데이터 형식 상태
   const [dataFormat, setDataFormat] = useState<DataFormat>('array');
@@ -116,12 +116,12 @@ const InputDataForm: React.FC<InputDataFormProps> = ({ onInputDataSubmit }) => {
   
   // 컴포넌트 마운트 시 스토어에서 데이터 초기화
   useEffect(() => {
-    if (storedInputData && storedInputData.length > 0) {
+    if (submittedData && submittedData.length > 0) {
       // 저장된 데이터가 있으면 현재 입력 폼에 반영
-      if (typeof storedInputData[0] === 'object' && !(storedInputData[0] instanceof File)) {
+      if (typeof submittedData[0] === 'object' && !(submittedData[0] instanceof File)) {
         // JSON 형식 데이터
         setDataFormat('json');
-        const keyValuePairs = Object.entries(storedInputData[0]).map(([key, value]) => ({
+        const keyValuePairs = Object.entries(submittedData[0]).map(([key, value]) => ({
           key,
           value: typeof value === 'string' ? value : JSON.stringify(value)
         }));
@@ -129,13 +129,13 @@ const InputDataForm: React.FC<InputDataFormProps> = ({ onInputDataSubmit }) => {
       } else {
         // 배열 형식 데이터
         setDataFormat('array');
-        setArrayInputs(storedInputData.length > 0 ? storedInputData : ['']);
+        setArrayInputs(submittedData.length > 0 ? submittedData : ['']);
       }
       // 제출된 상태로 설정
-      setSubmittedData(storedInputData);
+      setSubmittedData(submittedData);
       setSubmitStatus('submitted');
     }
-  }, [storedInputData]);
+  }, [submittedData]);
   
   // 현재 UI의 데이터가 제출된 데이터와 같은지 확인 (변경사항 감지)
   const hasChanges = useMemo(() => {

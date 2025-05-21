@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useExecutorStateStore, FlowExecutionResult } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FileUploader from './FileUploader';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { Node, Edge } from '@xyflow/react';
@@ -22,14 +21,8 @@ interface FlowAnalysis {
 }
 
 // Flow 노드 정보 분석 함수
-const analyzeFlowNodes = (flowId: string): FlowAnalysis => {
-  const executorState = useExecutorStateStore.getState(); // 스토어 상태 가져오기
-  const flowItem = executorState.getFlowById(flowId);
-
-  const graphStore = useExecutorGraphStore.getState();
-  const graph = graphStore.getFlowGraph(flowId); // 이건 rootNodeIds, leafNodeIds 등을 위해 유지할 수 있음
-
-  if (!flowItem || !flowItem.flowJson) { // flowItem 및 flowJson 존재 여부 확인
+const analyzeFlowNodes = (flow: any): FlowAnalysis => {
+  if (!flow || !flow.flowJson) {
     return {
       totalNodes: 0,
       totalEdges: 0,
@@ -37,21 +30,14 @@ const analyzeFlowNodes = (flowId: string): FlowAnalysis => {
       leafNodeCount: 0
     };
   }
-
-  // flowJson.nodes와 flowJson.edges가 배열인지 확인 (타입 안정성)
-  const nodesArray = Array.isArray(flowItem.flowJson.nodes) ? flowItem.flowJson.nodes : [];
-  const edgesArray = Array.isArray(flowItem.flowJson.edges) ? flowItem.flowJson.edges : [];
-
-  // 루트 노드와 리프 노드 찾기 (현재 구현은 전역 상태를 참조할 수 있으므로 주의)
-  // 이상적으로는 findRootNodes(nodesArray, edgesArray) 와 같이 인자를 전달해야 함.
-  const rootNodeIds = graph ? graph.rootNodeIds : findRootNodes(); // graphStore의 계산된 값 활용 또는 기존 함수 호출
-  const leafNodeIds = graph ? graph.leafNodeIds : findLeafNodes();
-  
+  const nodesArray = Array.isArray(flow.flowJson.nodes) ? flow.flowJson.nodes : [];
+  const edgesArray = Array.isArray(flow.flowJson.edges) ? flow.flowJson.edges : [];
+  // root/leaf 계산은 생략 또는 필요시 store에서 제공
   return {
-    totalNodes: nodesArray.length, // flowItem.flowJson.nodes.length 사용
-    totalEdges: edgesArray.length, // flowItem.flowJson.edges.length 사용
-    rootNodeCount: rootNodeIds.length,
-    leafNodeCount: leafNodeIds.length
+    totalNodes: nodesArray.length,
+    totalEdges: edgesArray.length,
+    rootNodeCount: 0,
+    leafNodeCount: 0
   };
 };
 
@@ -62,14 +48,16 @@ interface FlowChainExport {
     id: string;
     name: string;
     flowJson: any;
-    inputData: any[];
+    inputs: any[];
   }[];
 }
 
 const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handleImportFlowChain }) => {
-  // Flow 분석 결과 캐시
+  const store = useFlowExecutorStore();
+  const chainIds = store.chainIds;
+  const chains = store.chains;
+  const focusedFlowChainId = store.focusedFlowChainId;
   const [flowAnalysisCache, setFlowAnalysisCache] = useState<Record<string, FlowAnalysis>>({});
-  // 내보내기 모달 상태
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportWithData, setExportWithData] = useState(false);
   
@@ -77,29 +65,20 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
   
-  const {
-    flowChain,
-    activeFlowIndex,
-    removeFlow,
-    moveFlowUp,
-    moveFlowDown,
-    setActiveFlowIndex,
-    getFlowResultById,
-    setFlowResult,
-    addFlow,
-    setFlowInputData,
-    setFlowName  // useExecutorStateStore에서 setFlowName 함수 가져오기
-  } = useExecutorStateStore();
-  
-  const graphStore = useExecutorGraphStore();
+  // 현재 활성 체인
+  const chain = focusedFlowChainId ? chains[focusedFlowChainId] : undefined;
+  const flowIds = chain ? chain.flowIds : [];
+  const flowMap = chain ? chain.flowMap : {};
+  const activeFlowIndex = chain ? chain.selectedFlowId ? flowIds.indexOf(chain.selectedFlowId) : 0 : 0;
 
   // Flow 선택 처리
   const handleSelectFlow = (index: number) => {
-    setActiveFlowIndex(index);
-    const flow = flowChain[index];
-    if (flow && onSelectFlow) {
-      onSelectFlow(flow.id);
+    if (!chain) return;
+    const flowId = flowIds[index];
+    if (flowId && onSelectFlow) {
+      onSelectFlow(flowId);
     }
+    store.setSelectedFlow(focusedFlowChainId!, flowId);
   };
   
   // 단일 Flow 가져오기 (Flow Editor에서 내보낸 Flow)
@@ -235,14 +214,11 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
           };
           
           // Flow 추가
-          addFlow(flowToAdd);
+          store.addFlowToChain(focusedFlowChainId!, flowToAdd);
           console.log(`[FlowChainManager] Flow 추가 완료:`, flowToAdd);
           
-          // 그래프 초기화
-          graphStore.setFlowGraph(flowId, flowToAdd);
-          
           // 선택 처리
-          const newIndex = flowChain.length; // 방금 추가된 Flow의 인덱스
+          const newIndex = flowIds.length; // 방금 추가된 Flow의 인덱스
           handleSelectFlow(newIndex);
           
           resolve(flowId);
@@ -265,13 +241,14 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
       // 현재 체인 데이터 추출
       const exportData: FlowChainExport = {
         version: '1.0',
-        flowChain: flowChain.map(flow => {
-          const result = includeData ? getFlowResultById(flow.id) : null;
+        flowChain: flowIds.map(flowId => {
+          const flow = flowMap[flowId];
+          const result = includeData ? flow.lastResults : null;
           return {
-            id: flow.id,
+            id: flowId,
             name: flow.name,
             flowJson: flow.flowJson,
-            inputData: flow.inputData || [],
+            inputs: flow.inputs || [],
             result: result // 옵션에 따라 결과 데이터 포함
           };
         })
@@ -301,50 +278,45 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   
   // Flow 분석 수행 및 캐시 갱신
   useEffect(() => {
+    if (!chain) return;
     const newCache: Record<string, FlowAnalysis> = {};
-    
-    // 각 Flow에 대해 분석 실행
-    flowChain.forEach(flow => {
-      newCache[flow.id] = analyzeFlowNodes(flow.id);
+    flowIds.forEach(flowId => {
+      newCache[flowId] = analyzeFlowNodes(flowMap[flowId]);
     });
-    
     setFlowAnalysisCache(newCache);
-  }, [flowChain]);
+  }, [chain, flowIds, flowMap]);
   
   // Flow 체인 실행 처리
   const handleExecuteChain = async () => {
-    if (flowChain.length === 0) {
+    if (flowIds.length === 0) {
       console.warn('No flows to execute');
       return;
     }
 
-    const flowItems = flowChain.map(flow => ({
-      id: flow.id,
-      flowJson: flow.flowJson,
-      inputData: flow.inputData
-    }));
+    const flowItems = flowIds.map(flowId => {
+      const flow = flowMap[flowId];
+      return {
+        id: flowId,
+        flowJson: flow.flowJson,
+        inputs: flow.inputs
+      };
+    });
 
     try {
-      flowChain.forEach(flow => {
-        if (!graphStore.getFlowGraph(flow.id)) {
-          graphStore.setFlowGraph(flow.id, flow.flowJson);
-        }
-      });
-
       await executeChain({
-        flowItems,
-        onFlowStart: (flowId: string) => { // executeChain 서비스가 이 콜백을 지원한다고 가정
-          setFlowResult(flowId, { status: 'running', outputs: null, error: undefined });
+        flowChainId: focusedFlowChainId!,
+        onFlowStart: (chainId, flowId) => {
+          store.setFlowResult(chainId, flowId, []); // set to empty array to indicate running
+          store.setFlowStatus(chainId, flowId, 'running');
         },
-        onFlowComplete: (flowId, result: FlowExecutionResult) => {
-          console.log(`[FlowChainManager] Flow ${flowId} completed with result:`, result);
-          // result 객체가 이미 { status: 'success', outputs: ..., error: ... } 형태라고 가정
-          setFlowResult(flowId, result);
+        onFlowComplete: (chainId, flowId, results) => {
+          console.log(`[FlowChainManager] Flow ${flowId} completed with result:`, results);
+          store.setFlowResult(chainId, flowId, results);
         },
-        onError: (flowId, error: Error | string) => {
+        onError: (chainId, flowId, error) => {
           console.error(`[FlowChainManager] Error executing flow ${flowId}:`, error);
           const errorMessage = typeof error === 'string' ? error : error.message;
-          setFlowResult(flowId, { status: 'error', error: errorMessage, outputs: null });
+          store.setFlowStatus(chainId, flowId, 'error', errorMessage);
         }
       });
 
@@ -359,13 +331,14 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
 
   // Flow 실행 처리
   const handleExecuteFlow = async (flowId: string) => {
-    const flow = flowChain.find(f => f.id === flowId);
+    const flow = flowMap[flowId];
     if (!flow) return;
 
     // 실행 시작 시 'running' 상태로 설정
-    setFlowResult(flow.id, { status: 'running', outputs: null });
+    store.setFlowResult(focusedFlowChainId!, flowId, []);
+    store.setFlowStatus(focusedFlowChainId!, flowId, 'running');
 
-    const flowElement = document.getElementById(`flow-item-${flow.id}`);
+    const flowElement = document.getElementById(`flow-item-${flowId}`);
     if (flowElement) {
       // animate-pulse는 상태 아이콘으로 대체 가능하므로 제거하거나 유지할 수 있습니다.
       // 여기서는 유지하되, 상태 아이콘이 명확하므로 제거를 고려할 수 있습니다.
@@ -375,57 +348,55 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     try {
       console.log(`[FlowChainManager] Executing flow: ${flowId}`);
       
-      const flowIndex = flowChain.findIndex(f => f.id === flowId);
-      let inputs = [...(flow.inputData || [])];
+      const flowIndex = flowIds.indexOf(flowId);
+      let inputs = [...(flow.inputs || [])];
 
       if (inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
         console.log(`[FlowChainManager] 이전 Flow 결과 참조 발견:`, inputs[0]);
         if (flowIndex > 0) {
-          const prevFlowId = flowChain[flowIndex - 1].id;
-          const prevFlow = useExecutorStateStore.getState().getFlowById(prevFlowId);
-          const prevResult = prevFlow?.result;
+          const prevFlowId = flowIds[flowIndex - 1];
+          const prevFlow = flowMap[prevFlowId];
+          const prevResult = prevFlow?.lastResults;
           console.log(`[FlowChainManager] 이전 Flow(${prevFlowId})의 결과:`, prevResult);
-          if (prevResult && Array.isArray(prevResult.outputs) && prevResult.outputs.length > 0) {
-            // NodeResult[] 형식인지 확인 (nodeId, nodeName, nodeType, result 필드가 있는지)
-            // prevResult.outputs가 NodeResult[]라고 가정하고, 첫 번째 노드의 result를 사용
-            if (typeof prevResult.outputs[0] === 'object' && prevResult.outputs[0] !== null && 'result' in prevResult.outputs[0]) {
-              inputs = [prevResult.outputs[0].result];
+          if (prevResult && Array.isArray(prevResult) && prevResult.length > 0) {
+            if (typeof prevResult[0] === 'object' && prevResult[0] !== null && 'result' in prevResult[0]) {
+              inputs = [prevResult[0].result];
               console.log(`[FlowChainManager] 사용할 입력 데이터 (노드 결과):`, inputs[0]);
             } else {
-              // 일반 배열인 경우 첫 번째 요소 사용 (이 경우는 지양해야 함)
-              inputs = [prevResult.outputs[0]];
+              inputs = [prevResult[0]];
               console.log(`[FlowChainManager] 사용할 입력 데이터 (배열 요소):`, inputs[0]);
             }
-          } else if (prevResult && prevResult.outputs) { // 단일 값 결과일 경우
-            inputs = [prevResult.outputs];
-             console.log(`[FlowChainManager] 사용할 입력 데이터 (단일 값):`, inputs[0]);
+          } else if (prevResult) {
+            inputs = [prevResult];
+            console.log(`[FlowChainManager] 사용할 입력 데이터 (단일 값):`, inputs[0]);
           }
         }
       }
       
       console.log(`[FlowChainManager] 최종 입력 데이터:`, inputs);
       
-      const result: FlowExecutionResult = await executeFlowExecutor({
-        flowId: flow.id,
+      const resultResponse = await executeFlowExecutor({
+        flowId: flowId,
         flowJson: flow.flowJson,
         inputs: inputs,
+        chainId: focusedFlowChainId!
       });
       
-      console.log(`[FlowChainManager] Flow execution completed:`, result);
-      setFlowResult(flow.id, result); // 실행 결과를 상태에 업데이트
+      console.log(`[FlowChainManager] Flow execution completed:`, resultResponse);
+      store.setFlowResult(focusedFlowChainId!, flowId, resultResponse.outputs);
+      store.setFlowStatus(focusedFlowChainId!, flowId, resultResponse.status === 'success' ? 'success' : 'error', resultResponse.error);
 
-      if (result.status === 'success') {
-        if (onSelectFlow) {
-          onSelectFlow(flowId); // 성공 시 결과 표시를 위해 선택된 Flow 갱신
-        }
-      } else if (result.status === 'error') {
-        alert(`Flow 실행 중 오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`);
+      if (onSelectFlow) {
+        onSelectFlow(flowId);
+      }
+      if (resultResponse.status === 'error') {
+        alert(`Flow 실행 중 오류가 발생했습니다: ${resultResponse.error || '알 수 없는 오류'}`);
       }
 
     } catch (error: any) {
       console.error(`[FlowChainManager] Error executing flow:`, error);
       const errorMessage = error.message || '알 수 없는 오류가 발생했습니다.';
-      setFlowResult(flow.id, { status: 'error', error: errorMessage, outputs: null });
+      store.setFlowStatus(focusedFlowChainId!, flowId, 'error', errorMessage);
       alert(`Flow 실행 중 예외가 발생했습니다: ${errorMessage}`);
     } finally {
       if (flowElement) {
@@ -446,17 +417,9 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   };
 
   const handleNameInputBlur = () => {
-    if (editingFlowId) {
-      // 이름이 비어있으면 원래 이름을 유지
-      if (editingName.trim()) {
-        setFlowName(editingFlowId, editingName.trim());
-      } else {
-        // 현재 Flow의 원래 이름 찾기
-        const flow = flowChain.find(f => f.id === editingFlowId);
-        if (flow) {
-          // 알림 표시
-          alert('Flow 이름은 비워둘 수 없습니다. 원래 이름을 유지합니다.');
-        }
+    if (editingFlowId && editingName.trim()) {
+      if (store.setChainName) {
+        store.setChainName(focusedFlowChainId!, editingName.trim());
       }
     }
     setEditingFlowId(null);
@@ -464,29 +427,34 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
 
   const handleNameInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (editingFlowId) {
-        // 이름이 비어있으면 원래 이름을 유지
-        if (editingName.trim()) {
-          setFlowName(editingFlowId, editingName.trim());
-        } else {
-          // 현재 Flow의 원래 이름 찾기
-          const flow = flowChain.find(f => f.id === editingFlowId);
-          if (flow) {
-            // 알림 표시
-            alert('Flow 이름은 비워둘 수 없습니다. 원래 이름을 유지합니다.');
-          }
-        }
-      }
-      setEditingFlowId(null);
+      handleNameInputBlur();
     } else if (e.key === 'Escape') {
       setEditingFlowId(null);
     }
   };
 
+  // Flow 추가 (예시, 실제 구현 필요시 store.addFlowToChain 사용)
+  const handleAddFlow = (flowData: any) => {
+    if (!focusedFlowChainId) return;
+    store.addFlowToChain(focusedFlowChainId, flowData);
+  };
+
+  // Flow 삭제
+  const handleRemoveFlow = (flowId: string) => {
+    if (!focusedFlowChainId) return;
+    store.removeFlowFromChain(focusedFlowChainId, flowId);
+  };
+
+  // Flow 이동
+  const handleMoveFlow = (flowId: string, direction: 'up' | 'down') => {
+    if (!focusedFlowChainId) return;
+    store.moveFlow(focusedFlowChainId, flowId, direction);
+  };
+
   return (
     <div className="border border-gray-300 rounded-lg overflow-hidden">
       <div className="p-4 bg-white border-b border-gray-300 flex justify-between items-center">
-        <h2 className="font-medium text-lg">Flow 체인 ({flowChain.length})</h2>
+        <h2 className="font-medium text-lg">Flow 체인 ({flowIds.length})</h2>
         
         <div className="flex space-x-2">
           <button
@@ -514,7 +482,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
       </div>
       
       <div className="bg-white max-h-[60vh] overflow-y-auto">
-        {flowChain.length === 0 ? (
+        {flowIds.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
@@ -524,59 +492,46 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
           </div>
         ) : (
           <ul>
-            {flowChain.map((flow, index) => {
+            {flowIds.map((flowId, index) => {
+              const flow = flowMap[flowId];
               const isActive = index === activeFlowIndex;
-              const flowExecutionResult = getFlowResultById(flow.id);
               let statusIcon = null;
               let statusColor = '';
-
-              if (flowExecutionResult) {
-                if (flowExecutionResult.status === 'running') {
-                  statusIcon = (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v.01M12 8v.01M12 12v.01M12 16v.01M12 20v.01M4 12h.01M8 12h.01M16 12h.01M20 12h.01" />
-                    </svg>
-                  );
-                  statusColor = 'text-blue-500';
-                } else if (flowExecutionResult.status === 'success') {
-                  statusIcon = (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  );
-                  statusColor = 'text-green-500';
-                } else if (flowExecutionResult.status === 'error') {
-                  statusIcon = (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  );
-                  statusColor = 'text-red-500';
-                }
+              if (flow.status === 'running') {
+                statusIcon = (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v.01M12 8v.01M12 12v.01M12 16v.01M12 20v.01M4 12h.01M8 12h.01M16 12h.01M20 12h.01" />
+                  </svg>
+                );
+                statusColor = 'text-blue-500';
+              } else if (flow.status === 'success') {
+                statusIcon = (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                );
+                statusColor = 'text-green-500';
+              } else if (flow.status === 'error') {
+                statusIcon = (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                );
+                statusColor = 'text-red-500';
               }
-              
-              const analysis = flowAnalysisCache[flow.id] || {
+              const analysis = flowAnalysisCache[flowId] || {
                 totalNodes: 0,
                 totalEdges: 0,
                 rootNodeCount: 0,
                 leafNodeCount: 0
               };
-              
-              const isEditing = editingFlowId === flow.id;
-              
+              const isEditing = editingFlowId === flowId;
               return (
-                <li 
-                  key={flow.id}
-                  id={`flow-item-${flow.id}`}
-                  className={`border-b border-gray-200 last:border-b-0 p-3 cursor-pointer ${
-                    isEditing ? 'bg-blue-50 outline outline-2 outline-blue-400' : 
-                    isActive ? 'bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
+                <li
+                  key={flowId}
+                  className={`border-b border-gray-200 last:border-b-0 p-3 cursor-pointer ${isEditing ? 'bg-blue-50 outline outline-2 outline-blue-400' : isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                   onClick={() => {
-                    // 편집 중인 경우 항목 클릭 시 선택하지 않도록 함
-                    if (!isEditing) {
-                      handleSelectFlow(index);
-                    }
+                    if (!isEditing) handleSelectFlow(index);
                   }}
                 >
                   <div className="flex justify-between items-center">
@@ -594,15 +549,15 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                             onBlur={handleNameInputBlur}
                             onKeyDown={handleNameInputKeyDown}
                             className="border border-blue-500 rounded px-2 py-1 text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={e => e.stopPropagation()}
                             autoFocus
                           />
                         ) : (
-                          <h3 
-                            className="font-medium text-gray-900 hover:bg-gray-100 px-2 py-1 rounded cursor-pointer" 
-                            onClick={(e) => {
+                          <h3
+                            className="font-medium text-gray-900 hover:bg-gray-100 px-2 py-1 rounded cursor-pointer"
+                            onClick={e => {
                               e.stopPropagation();
-                              handleEditNameClick(e, flow.id, flow.name);
+                              handleEditNameClick(e, flowId, flow.name);
                             }}
                             title="클릭하여 Flow 이름 편집"
                           >
@@ -610,13 +565,12 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                           </h3>
                         )}
                         <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-1">
-                          <span>{flow.inputData && flow.inputData.length ? `${flow.inputData.length}개의 입력` : '입력 없음'}</span>
-                          {flowExecutionResult && flowExecutionResult.status && (
+                          <span>{flow.inputs && flow.inputs.length ? `${flow.inputs.length}개의 입력` : '입력 없음'}</span>
+                          {flow.status && (
                             <span className={`${statusColor} font-medium`}>
-                              • {flowExecutionResult.status.charAt(0).toUpperCase() + flowExecutionResult.status.slice(1)}
+                              • {flow.status.charAt(0).toUpperCase() + flow.status.slice(1)}
                             </span>
                           )}
-                          
                           <div className="flex gap-2 text-gray-400 ml-1">
                             <span title="노드 수">{analysis.totalNodes} 노드</span>
                             <span title="엣지 수">{analysis.totalEdges} 엣지</span>
@@ -626,12 +580,11 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                         </div>
                       </div>
                     </div>
-                    
                     <div className="flex space-x-1">
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
-                          handleExecuteFlow(flow.id);
+                          handleExecuteFlow(flowId);
                         }}
                         className="p-1.5 text-blue-700 hover:bg-blue-100 rounded-full transition-colors"
                         title="이 Flow 실행"
@@ -641,15 +594,12 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </button>
-                      
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
-                          moveFlowUp(flow.id);
+                          handleMoveFlow(flowId, 'up');
                         }}
-                        className={`p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors ${
-                          index === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
+                        className={`p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors ${index === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
                         disabled={index === 0}
                         title="위로 이동"
                       >
@@ -657,28 +607,24 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                         </svg>
                       </button>
-                      
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
-                          moveFlowDown(flow.id);
+                          handleMoveFlow(flowId, 'down');
                         }}
-                        className={`p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors ${
-                          index === flowChain.length - 1 ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                        disabled={index === flowChain.length - 1}
+                        className={`p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors ${index === flowIds.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={index === flowIds.length - 1}
                         title="아래로 이동"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                         </svg>
                       </button>
-                      
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
                           if (window.confirm(`"${flow.name}" Flow를 제거하시겠습니까?`)) {
-                            removeFlow(flow.id);
+                            handleRemoveFlow(flowId);
                           }
                         }}
                         className="p-1.5 text-red-600 hover:bg-red-100 rounded-full transition-colors"

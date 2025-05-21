@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import FlowInputForm from './FlowInputForm';
 import ResultDisplay from './ResultDisplay';
@@ -20,14 +20,9 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   const [activeTab, setActiveTab] = useState<'input' | 'result'>('input');
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   
-  const { 
-    getFlow, 
-    setFlowInputs, 
-    setFlowResults, 
-    setFlowStatus 
-  } = useExecutorStateStore();
-  
-  const flow = getFlow(chainId, flowId);
+  const store = useFlowExecutorStore();
+  const chain = store.chains[chainId];
+  const flow = chain?.flowMap[flowId];
 
   // 모달이 닫힐 때 resetState
   useEffect(() => {
@@ -39,34 +34,34 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   if (!isOpen || !flow) return null;
 
   const handleInputChange = (inputs: any[]) => {
-    setFlowInputs(chainId, flowId, inputs);
+    store.setFlowInputData(chainId, flowId, inputs);
   };
 
   const handleExecuteFlow = async () => {
     if (isExecuting) return;
     
     setIsExecuting(true);
-    setFlowStatus(chainId, flowId, 'running');
+    store.setFlowStatus(chainId, flowId, 'running');
     
     try {
       const result = await executeFlowExecutor({
         flowId,
-        flowChainId: chainId,
+        chainId,
         flowJson: flow.flowJson,
         inputs: flow.inputs
       });
       
       if (result.status === 'error') {
-        setFlowStatus(chainId, flowId, 'error', result.error);
+        store.setFlowStatus(chainId, flowId, 'error', result.error);
       } else {
         const outputs = result.outputs || [];
-        setFlowResults(chainId, flowId, outputs);
-        setFlowStatus(chainId, flowId, 'success');
+        store.setFlowResult(chainId, flowId, outputs);
+        store.setFlowStatus(chainId, flowId, 'success');
         setActiveTab('result');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      setFlowStatus(chainId, flowId, 'error', errorMessage);
+      store.setFlowStatus(chainId, flowId, 'error', errorMessage);
       console.error('[FlowChainModal] 실행 오류:', error);
     } finally {
       setIsExecuting(false);
@@ -80,7 +75,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
     } else {
       setActiveTab('input');
     }
-  }, [flow.lastResults]);
+  }, [flow?.lastResults]);
 
   return (
     <div className={`fixed inset-0 z-50 overflow-y-auto ${isOpen ? 'block' : 'hidden'}`}>
@@ -198,12 +193,9 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
               <>
                 {/* 결과 표시 */}
                 {flow.lastResults && flow.lastResults.length > 0 ? (
-                  <ResultDisplay results={flow.lastResults} />
+                  <ResultDisplay result={{ status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id }} flowId={flowId} flowName={flow.name} />
                 ) : (
-                  <div className="text-center py-10 text-gray-500">
-                    <p>결과가 없습니다.</p>
-                    <p className="text-sm mt-2">먼저 Flow를 실행해야 결과를 볼 수 있습니다.</p>
-                  </div>
+                  <div className="text-gray-500 italic">결과가 없습니다.</div>
                 )}
               </>
             )}

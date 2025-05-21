@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useExecutorStateStore, FlowChain } from '../../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 
 interface FlowChainListViewProps {
@@ -8,39 +7,31 @@ interface FlowChainListViewProps {
 
 const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) => {
   const [newChainName, setNewChainName] = useState<string>('');
-
-  const { 
-    flows, 
-    addChain, 
-    removeChain,
-    setFocusedFlowChainId
-  } = useExecutorStateStore();
-
-  const { setActiveChainId } = useFlowExecutorStore();
+  const store = useFlowExecutorStore();
+  const chainIds = store.chainIds;
+  const chains = store.chains;
+  const focusedFlowChainId = store.focusedFlowChainId;
 
   const handleAddChain = () => {
-    const name = newChainName.trim() || `새 Flow 체인 ${flows.chainIds.length + 1}`;
-    addChain(name);
+    const name = newChainName.trim() || `새 Flow 체인 ${chainIds.length + 1}`;
+    const newChainId = store.addChain(name);
     setNewChainName('');
-    
-    // 새로 추가된 체인 ID는 flows.chainIds의 마지막 항목입니다
-    if (flows.chainIds.length > 0) {
-      const newChainId = flows.chainIds[flows.chainIds.length - 1];
+    if (newChainId) {
       onChainSelect(newChainId);
-      setFocusedFlowChainId(newChainId);
+      store.setFocusedFlowChainId(newChainId);
     }
   };
 
   const handleRemoveChain = (e: React.MouseEvent, chainId: string) => {
     e.stopPropagation();
     if (window.confirm('이 Flow 체인을 삭제하시겠습니까? 체인 내의 모든 Flow 데이터가 삭제됩니다.')) {
-      removeChain(chainId);
+      store.removeChain(chainId);
     }
   };
 
   const handleChainClick = (chainId: string) => {
     onChainSelect(chainId);
-    setFocusedFlowChainId(chainId);
+    store.setFocusedFlowChainId(chainId);
   };
 
   return (
@@ -48,7 +39,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
         <h2 className="text-lg font-medium text-gray-700">Flow 체인 목록</h2>
         <div className="text-sm text-gray-500">
-          {flows.chainIds.length}개의 체인
+          {chainIds.length}개의 체인
         </div>
       </div>
 
@@ -71,22 +62,22 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
         </div>
 
         {/* 체인 목록 */}
-        {flows.chainIds.length === 0 ? (
+        {chainIds.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <p>등록된 Flow 체인이 없습니다.</p>
             <p className="text-sm mt-2">위의 "체인 추가" 버튼을 클릭하여 새 체인을 만드세요.</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-            {flows.chainIds.map((chainId) => {
-              const chain = flows.chains[chainId];
+            {chainIds.map((chainId) => {
+              const chain = chains[chainId];
               if (!chain) return null;
 
               return (
                 <div
                   key={chainId}
                   className={`border rounded p-3 ${
-                    flows.focusedFlowChainId === chainId ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50'
+                    focusedFlowChainId === chainId ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50'
                   } cursor-pointer transition-colors`}
                   onClick={() => handleChainClick(chainId)}
                 >
@@ -116,7 +107,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
                       </button>
                     </div>
                   </div>
-                  
                   {/* Flow 통계 정보 */}
                   <div className="mt-2 flex text-xs text-gray-500">
                     <div className="mr-3">
@@ -124,7 +114,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
                     </div>
                     {chain.selectedFlowId && (
                       <div>
-                        <span className="font-medium">선택된 Flow:</span> {chain.flows[chain.selectedFlowId]?.name || '없음'}
+                        <span className="font-medium">선택된 Flow:</span> {chain.flowMap[chain.selectedFlowId]?.name || '없음'}
                       </div>
                     )}
                     {chain.status === 'error' && chain.error && (

@@ -1,7 +1,6 @@
 import React from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowInputForm from './FlowInputForm';
-import { NodeResult } from '../../core/outputCollector';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import ReactMarkdown from 'react-markdown';
@@ -13,56 +12,48 @@ interface FlowDetailModalProps {
 }
 
 const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onClose }) => {
-  const { 
-    getFlow, 
-    setFlowStatus, 
-    setFlowInputs 
-  } = useExecutorStateStore();
-  
-  const flow = getFlow(chainId, flowId);
-  
-  if (!flow) {
-    return null;
-  }
-  
+  const store = useFlowExecutorStore();
+  const chain = store.chains[chainId];
+  const flow = chain?.flowMap[flowId];
+
+  if (!flow) return null;
+
   const handleExecuteFlow = async () => {
     if (!flow) return;
-    
     try {
-      setFlowStatus(chainId, flowId, 'running');
-      
+      store.setFlowStatus(chainId, flowId, 'running');
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,
         inputs: flow.inputs,
         flowId: flow.id,
         chainId: chainId,
         onComplete: (outputs) => {
-          console.log(`[FlowDetailModal] Flow ${flowId} completed with results:`, outputs);
+          // 결과 핸들링 필요시 구현
         }
       });
-      
       if (response.status === 'success') {
-        setFlowStatus(chainId, flowId, 'success');
+        store.setFlowStatus(chainId, flowId, 'success');
+        store.setFlowResult(chainId, flowId, response.outputs);
       } else {
-        setFlowStatus(chainId, flowId, 'error', response.error);
+        store.setFlowStatus(chainId, flowId, 'error', response.error);
       }
     } catch (error) {
       console.error(`[FlowDetailModal] Error executing flow ${flowId}:`, error);
-      setFlowStatus(chainId, flowId, 'error', String(error));
+      store.setFlowStatus(chainId, flowId, 'error', String(error));
     }
   };
-  
+
   const handleInputChange = (inputs: any[]) => {
-    setFlowInputs(chainId, flowId, inputs);
+    store.setFlowInputData(chainId, flowId, inputs);
   };
-  
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-lg w-4/5 h-4/5 flex flex-col max-w-6xl">
         {/* 모달 헤더 */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center">
-            <NodeStatusIndicator status={flow.status} size="medium" className="mr-2" />
+            <NodeStatusIndicator status={flow.status} className="mr-2" />
             <h2 className="text-xl font-semibold">{flow.name}</h2>
           </div>
           <div className="flex items-center space-x-2">
@@ -97,7 +88,6 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onCl
             </button>
           </div>
         </div>
-        
         {/* 모달 내용 */}
         <div className="flex-grow overflow-auto p-4">
           <div className="grid grid-cols-1 gap-4">
@@ -109,7 +99,6 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onCl
                 onInputChange={handleInputChange} 
               />
             </div>
-            
             {/* Flow 실행 결과 */}
             {flow.lastResults && (
               <div className="col-span-1 mt-4">
@@ -119,7 +108,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onCl
                   </div>
                   <div className="p-4 bg-white max-h-96 overflow-y-auto">
                     {Array.isArray(flow.lastResults) && flow.lastResults.length > 0 ? (
-                      flow.lastResults.map((result: NodeResult, index: number) => (
+                      flow.lastResults.map((result: any, index: number) => (
                         <div key={index} className="mb-4 pb-4 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
                           <div className="font-medium text-sm text-gray-600 mb-2">
                             {result?.nodeType || 'Node'} - {result?.nodeId || `결과 ${index + 1}`}

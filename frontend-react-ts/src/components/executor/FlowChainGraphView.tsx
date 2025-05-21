@@ -11,9 +11,9 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
   const [tab, setTab] = useState<'graph' | 'roots' | 'leafs'>('graph');
   
   // 활성화된 체인 가져오기
-  const activeChainId = useFlowExecutorStore(state => state.activeChainId);
+  const focusedFlowChainId = useFlowExecutorStore(state => state.focusedFlowChainId);
   // 실제 사용할 체인 ID 결정 (props의 chainId 또는 활성 체인 ID)
-  const effectiveChainId = chainId || activeChainId;
+  const effectiveChainId = chainId || focusedFlowChainId;
   
   // Flow 구조 가져오기
   const flowStructure = useFlowExecutorStore(state => 
@@ -21,18 +21,17 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
   );
   
   const nodeCount = useMemo(() => {
-    return flowStructure ? Object.keys(flowStructure.nodes).length : 0;
+    return flowStructure && flowStructure.nodeMap ? Object.keys(flowStructure.nodeMap).length : 0;
   }, [flowStructure]);
   
   const edgeCount = useMemo(() => {
-    if (!flowStructure) return 0;
-    
-    // 모든 연결의 수 = 모든 자식 노드 연결의 합
+    if (!flowStructure || !flowStructure.graphMap) return 0;
     let totalEdges = 0;
-    Object.values(flowStructure.graph).forEach(node => {
-      totalEdges += node.childs.length;
+    Object.values(flowStructure.graphMap).forEach((node: any) => {
+      if (node && Array.isArray(node.childs)) {
+        totalEdges += node.childs.length;
+      }
     });
-    
     return totalEdges;
   }, [flowStructure]);
   
@@ -93,23 +92,23 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {Object.keys(flowStructure.nodes).map(nodeId => {
-                      const node = flowStructure.nodes[nodeId];
-                      const nodeGraph = flowStructure.graph[nodeId];
+                    {Object.keys(flowStructure.nodeMap).map(nodeId => {
+                      const node = flowStructure.nodeMap[nodeId];
+                      const nodeGraph = flowStructure.graphMap[nodeId];
                       
                       return (
                         <tr key={nodeId} className="hover:bg-gray-50">
                           <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{nodeId.slice(-6)}</td>
                           <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{node.type}</td>
                           <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                            {nodeGraph.parents.length > 0 
-                              ? nodeGraph.parents.map(id => id.slice(-6)).join(', ')
+                            {nodeGraph && Array.isArray(nodeGraph.parents) && nodeGraph.parents.length > 0 
+                              ? nodeGraph.parents.map((id: string) => id.slice(-6)).join(', ')
                               : <span className="text-gray-400">없음</span>
                             }
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                            {nodeGraph.childs.length > 0 
-                              ? nodeGraph.childs.map(id => id.slice(-6)).join(', ')
+                            {nodeGraph && Array.isArray(nodeGraph.childs) && nodeGraph.childs.length > 0 
+                              ? nodeGraph.childs.map((id: string) => id.slice(-6)).join(', ')
                               : <span className="text-gray-400">없음</span>
                             }
                           </td>
@@ -128,8 +127,8 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
             <h4 className="font-medium mb-2">루트 노드 목록 (시작점)</h4>
             {flowStructure.roots.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {flowStructure.roots.map(nodeId => {
-                  const node = flowStructure.nodes[nodeId];
+                {flowStructure.roots.map((nodeId: string) => {
+                  const node = flowStructure.nodeMap[nodeId];
                   return (
                     <div key={nodeId} className="flex items-center p-2 border rounded border-gray-200 bg-white">
                       <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
@@ -152,8 +151,8 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
             <h4 className="font-medium mb-2">리프 노드 목록 (종료점)</h4>
             {flowStructure.leafs.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {flowStructure.leafs.map(nodeId => {
-                  const node = flowStructure.nodes[nodeId];
+                {flowStructure.leafs.map((nodeId: string) => {
+                  const node = flowStructure.nodeMap[nodeId];
                   return (
                     <div key={nodeId} className="flex items-center p-2 border rounded border-gray-200 bg-white">
                       <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
