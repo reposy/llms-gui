@@ -9,7 +9,6 @@ import { type FlowData } from '../utils/data/importExportUtils';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
-// import { Box, Grid } from '@mui/material'; // Removed @mui/material
 
 const ExecutorPage: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false);

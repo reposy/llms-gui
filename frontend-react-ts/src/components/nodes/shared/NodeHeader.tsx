@@ -3,7 +3,6 @@ import { memo } from 'react';
 import clsx from 'clsx';
 import { EditableNodeLabel } from './EditableNodeLabel';
 import { VIEW_MODES } from '../../../store/viewModeStore';
-import { FaCircle} from 'react-icons/fa'; // Example icon for dirty state
 
 interface Props {
   nodeId: string;
@@ -86,7 +85,6 @@ export const NodeHeader: React.FC<Props> = memo(({
             title="Run full flow from this node"
           >
             {/* Optional: Add indicator for dirty state ON the run button? */}
-            {/* {isContentDirty && <FaCircle className="absolute -top-1 -right-1 text-yellow-400 text-[8px]" />} */} 
             {isRunning ? '⏳' : '▶'} Run
           </button>
         ) : (
@@ -111,7 +109,9 @@ export const NodeHeader: React.FC<Props> = memo(({
             {/* Display dirty indicator next to label */}
             {isContentDirty && (
                 <span title="Unsaved changes">
-                  <FaCircle className="text-yellow-400 text-[8px]" />
+                  <svg className="text-yellow-400 text-[8px]" width="8" height="8" viewBox="0 0 8 8" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="4" cy="4" r="4" />
+                  </svg>
                 </span>
             )}
         </div>
