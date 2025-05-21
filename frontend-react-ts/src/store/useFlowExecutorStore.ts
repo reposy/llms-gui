@@ -6,7 +6,6 @@ import { deepClone } from '../utils/helpers';
 import { type FlowData } from '../utils/data/importExportUtils';
 import { NodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
-import { GroupNode } from '../core/GroupNode';
 
 // 실행 상태 타입
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error';
@@ -26,7 +25,7 @@ interface GraphNode {
   type: string;
   data: any;
   position: { x: number, y: number };
-  parentNodeId: string | null;
+  parentId: string | null;
   isGroupNode: boolean;
   nodeInstance?: BaseNode;
 }
@@ -48,10 +47,9 @@ export interface Flow {
   lastResults: any[] | null;
   status: ExecutionStatus;
   error?: string;
-  
   // 그래프 구조 정보
-  nodes: Record<string, GraphNode>;
-  graph: Record<string, NodeRelation>;
+  nodeMap: Record<string, GraphNode>;
+  graphMap: Record<string, NodeRelation>;
   nodeInstances: Record<string, BaseNode>;
   roots: string[];
   leafs: string[];
@@ -65,17 +63,14 @@ export interface FlowChain {
   status: ExecutionStatus;
   selectedFlowId: string | null;  // 현재 선택된 Flow의 ID
   flowIds: string[];  // 실행 순서
+  flowMap: Record<string, Flow>; // flowMap 추가
   error?: string;
   inputs?: any[]; // Flow Chain 전체의 입력
 }
 
 // 정규화된 스토어 상태
 interface FlowExecutorState {
-  // 엔티티 컬렉션 (정규화된 데이터)
   chains: Record<string, FlowChain>;
-  flows: Record<string, Flow>;
-  
-  // 순서 및 참조 데이터
   chainIds: string[];  // Chain 순서 유지
   activeChainId: string | null;
   stage: ExecutorStage;
@@ -140,7 +135,7 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFact
       type: node.type || '',
       data: node.data || {},
       position: node.position || { x: 0, y: 0 },
-      parentNodeId: node.parentNode || null,
+      parentId: node.parentId || null,
       isGroupNode: node.type === 'group'
     };
   });
@@ -162,7 +157,7 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFact
         node.id,
         node.type || '',
         node.data || {},
-        null // 컨텍스트는 실행 시점에 주입
+        undefined // 컨텍스트는 실행 시점에 주입
       );
       
       nodeInstances[node.id] = nodeInstance;
@@ -175,7 +170,7 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFact
   // 3. 그룹 노드 및 내부 노드 관계 설정
   const nodesInGroups = new Set<string>();
   nodes.forEach(node => {
-    if (node.type === 'group' && node.data?.nodeIds) {
+    if (node.type === 'group' && Array.isArray(node.data?.nodeIds)) {
       node.data.nodeIds.forEach((childId: string) => {
         if (graphRelations[childId]) {
           graphRelations[node.id].childs.push(childId);
@@ -223,7 +218,6 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFact
 // 초기 상태
 const initialState = {
   chains: {},
-  flows: {},
   chainIds: [],
   activeChainId: null,
   stage: 'upload' as ExecutorStage,
@@ -251,6 +245,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
                 status: 'idle',
                 selectedFlowId: null,
                 flowIds: [],
+                flowMap: {},
                 inputs: []
               }
             },
@@ -267,7 +262,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
           
           // 연결된 모든 Flow 삭제
           const flowIds = state.chains[chainId].flowIds;
-          const newFlows = { ...state.flows };
+          const newFlows = { ...state.chains[chainId].flowMap };
           flowIds.forEach(flowId => {
             delete newFlows[flowId];
           });
@@ -284,7 +279,6 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
           
           return {
             chains: remainingChains,
-            flows: newFlows,
             chainIds: newChainIds,
             activeChainId: newActiveChainId
           };
@@ -370,25 +364,25 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
               [chainId]: {
                 ...state.chains[chainId],
                 flowIds: chainFlowIds,
-                selectedFlowId: selectedFlowId || flowId // 선택된 Flow가 없으면 새 Flow 선택
-              }
-            },
-            flows: {
-              ...state.flows,
-              [flowId]: {
-                id: flowId,
-                chainId,
-                name: flowData.name || `Flow-${uuidv4().slice(0, 8)}`,
-                flowJson: deepClone(flowData),
-                inputs: [],
-                lastResults: null,
-                status: 'idle',
-                nodes: nodeMap,
-                graph: graphRelations,
-                nodeInstances,
-                roots,
-                leafs,
-                nodeStates: {}
+                selectedFlowId: selectedFlowId || flowId, // 선택된 Flow가 없으면 새 Flow 선택
+                flowMap: {
+                  ...state.chains[chainId].flowMap,
+                  [flowId]: {
+                    id: flowId,
+                    chainId,
+                    name: flowData.name || `Flow-${uuidv4().slice(0, 8)}`,
+                    flowJson: deepClone(flowData),
+                    inputs: [],
+                    lastResults: null,
+                    status: 'idle',
+                    nodeMap,
+                    graphMap: graphRelations,
+                    nodeInstances,
+                    roots,
+                    leafs,
+                    nodeStates: {}
+                  }
+                }
               }
             }
           };
@@ -399,7 +393,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       removeFlowFromChain: (chainId, flowId) => {
         set((state) => {
-          if (!state.chains[chainId] || !state.flows[flowId]) return state;
+          if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId]) return state;
           
           // 체인의 flowIds에서 제거
           const newFlowIds = state.chains[chainId].flowIds.filter(id => id !== flowId);
@@ -411,7 +405,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
           }
           
           // Flow 객체 제거
-          const { [flowId]: removedFlow, ...remainingFlows } = state.flows;
+          const { [flowId]: removedFlow, ...remainingFlows } = state.chains[chainId].flowMap;
           
           return {
             chains: {
@@ -419,25 +413,31 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
               [chainId]: {
                 ...state.chains[chainId],
                 flowIds: newFlowIds,
-                selectedFlowId: newSelectedFlowId
+                selectedFlowId: newSelectedFlowId,
+                flowMap: remainingFlows
               }
-            },
-            flows: remainingFlows
+            }
           };
         });
       },
       
       setFlowStatus: (chainId, flowId, status, error) => {
         set((state) => {
-          if (!state.flows[flowId]) return state;
+          if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId]) return state;
           
           return {
-            flows: {
-              ...state.flows,
-              [flowId]: {
-                ...state.flows[flowId],
-                status,
-                error: error !== undefined ? error : state.flows[flowId].error
+            chains: {
+              ...state.chains,
+              [chainId]: {
+                ...state.chains[chainId],
+                flowMap: {
+                  ...state.chains[chainId].flowMap,
+                  [flowId]: {
+                    ...state.chains[chainId].flowMap[flowId],
+                    status,
+                    error: error !== undefined ? error : state.chains[chainId].flowMap[flowId].error
+                  }
+                }
               }
             }
           };
@@ -446,14 +446,20 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       setFlowInputData: (chainId, flowId, inputs) => {
         set((state) => {
-          if (!state.flows[flowId]) return state;
+          if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId]) return state;
           
           return {
-            flows: {
-              ...state.flows,
-              [flowId]: {
-                ...state.flows[flowId],
-                inputs
+            chains: {
+              ...state.chains,
+              [chainId]: {
+                ...state.chains[chainId],
+                flowMap: {
+                  ...state.chains[chainId].flowMap,
+                  [flowId]: {
+                    ...state.chains[chainId].flowMap[flowId],
+                    inputs
+                  }
+                }
               }
             }
           };
@@ -462,15 +468,21 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       setFlowResult: (chainId, flowId, results) => {
         set((state) => {
-          if (!state.flows[flowId]) return state;
+          if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId]) return state;
           
           return {
-            flows: {
-              ...state.flows,
-              [flowId]: {
-                ...state.flows[flowId],
-                lastResults: results,
-                status: 'success' // 결과 설정 시 상태를 success로 변경
+            chains: {
+              ...state.chains,
+              [chainId]: {
+                ...state.chains[chainId],
+                flowMap: {
+                  ...state.chains[chainId].flowMap,
+                  [flowId]: {
+                    ...state.chains[chainId].flowMap[flowId],
+                    lastResults: results,
+                    status: 'success' // 결과 설정 시 상태를 success로 변경
+                  }
+                }
               }
             }
           };
@@ -479,7 +491,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       moveFlow: (chainId, flowId, direction) => {
         set((state) => {
-          if (!state.chains[chainId] || !state.flows[flowId]) return state;
+          if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId]) return state;
           
           const flowIds = [...state.chains[chainId].flowIds];
           const currentIndex = flowIds.indexOf(flowId);
@@ -513,16 +525,22 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       // 노드 상태 관련 액션
       setFlowNodeState: (chainId, flowId, nodeId, nodeState) => {
         set((state) => {
-          if (!state.flows[flowId] || !state.flows[flowId].nodes[nodeId]) return state;
+          if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId] || !state.chains[chainId].flowMap[flowId].nodeMap[nodeId]) return state;
           
           return {
-            flows: {
-              ...state.flows,
-              [flowId]: {
-                ...state.flows[flowId],
-                nodeStates: {
-                  ...state.flows[flowId].nodeStates,
-                  [nodeId]: nodeState
+            chains: {
+              ...state.chains,
+              [chainId]: {
+                ...state.chains[chainId],
+                flowMap: {
+                  ...state.chains[chainId].flowMap,
+                  [flowId]: {
+                    ...state.chains[chainId].flowMap[flowId],
+                    nodeStates: {
+                      ...state.chains[chainId].flowMap[flowId].nodeStates,
+                      [nodeId]: nodeState
+                    }
+                  }
                 }
               }
             }
@@ -532,28 +550,28 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       getFlowNodeState: (chainId, flowId, nodeId) => {
         const state = get();
-        if (!state.flows[flowId] || !state.flows[flowId].nodes[nodeId]) return undefined;
+        if (!state.chains[chainId] || !state.chains[chainId].flowMap[flowId] || !state.chains[chainId].flowMap[flowId].nodeMap[nodeId]) return undefined;
         
-        return state.flows[flowId].nodeStates[nodeId];
+        return state.chains[chainId].flowMap[flowId].nodeStates[nodeId];
       },
       
       // 그래프 데이터 접근 함수
       getRootNodes: (chainId, flowId) => {
-        const flow = get().flows[flowId];
+        const flow = get().chains[chainId].flowMap[flowId];
         if (!flow) return [];
         
         return flow.roots;
       },
       
       getLeafNodes: (chainId, flowId) => {
-        const flow = get().flows[flowId];
+        const flow = get().chains[chainId].flowMap[flowId];
         if (!flow) return [];
         
         return flow.leafs;
       },
       
       getNodeInstance: (chainId, flowId, nodeId) => {
-        const flow = get().flows[flowId];
+        const flow = get().chains[chainId].flowMap[flowId];
         if (!flow || !flow.nodeInstances[nodeId]) return null;
         
         return flow.nodeInstances[nodeId];
@@ -574,32 +592,33 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       resetResults: () => {
         set((state) => {
-          const newFlows = { ...state.flows };
+          const newChains = { ...state.chains };
           
           // 모든 Flow의 결과 초기화
-          Object.keys(newFlows).forEach(flowId => {
-            newFlows[flowId] = {
-              ...newFlows[flowId],
-              lastResults: null,
-              status: 'idle',
-              error: undefined,
-              nodeStates: {}
-            };
+          Object.keys(newChains).forEach(chainId => {
+            Object.keys(newChains[chainId].flowMap).forEach(flowId => {
+              newChains[chainId].flowMap[flowId] = {
+                ...newChains[chainId].flowMap[flowId],
+                lastResults: null,
+                status: 'idle',
+                error: undefined,
+                nodeStates: {}
+              };
+            });
           });
           
           // 모든 Chain의 상태 초기화
-          const newChains = { ...state.chains };
-          Object.keys(newChains).forEach(chainId => {
-            newChains[chainId] = {
-              ...newChains[chainId],
+          const newChains2 = { ...state.chains };
+          Object.keys(newChains2).forEach(chainId => {
+            newChains2[chainId] = {
+              ...newChains2[chainId],
               status: 'idle',
               error: undefined
             };
           });
           
           return {
-            flows: newFlows,
-            chains: newChains,
+            chains: newChains2,
             error: null
           };
         });
@@ -607,36 +626,38 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       resetFlowGraphs: () => {
         set((state) => {
-          const newFlows = { ...state.flows };
+          const newChains2 = { ...state.chains };
           
           // 각 Flow의 노드 인스턴스 재생성
-          Object.keys(newFlows).forEach(flowId => {
-            const flow = newFlows[flowId];
-            const { nodeMap, graphRelations, nodeInstances, roots, leafs } = buildGraphStructure(
-              flow.flowJson.nodes,
-              flow.flowJson.edges,
-              state.nodeFactory
-            );
-            
-            newFlows[flowId] = {
-              ...flow,
-              nodes: nodeMap,
-              graph: graphRelations,
-              nodeInstances,
-              roots,
-              leafs
-            };
+          Object.keys(newChains2).forEach(chainId => {
+            Object.keys(newChains2[chainId].flowMap).forEach(flowId => {
+              const flow = newChains2[chainId].flowMap[flowId];
+              const { nodeMap, graphRelations, nodeInstances, roots, leafs } = buildGraphStructure(
+                flow.flowJson.nodes,
+                flow.flowJson.edges,
+                state.nodeFactory
+              );
+              
+              newChains2[chainId].flowMap[flowId] = {
+                ...flow,
+                nodeMap,
+                graphMap: graphRelations,
+                nodeInstances,
+                roots,
+                leafs
+              };
+            });
           });
           
           return {
-            flows: newFlows
+            chains: newChains2
           };
         });
       },
       
       // 편의 함수
       getFlow: (chainId, flowId) => {
-        return get().flows[flowId];
+        return get().chains[chainId].flowMap[flowId];
       },
       
       getChain: (chainId) => {
@@ -655,7 +676,6 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       partialize: (state) => ({
         // localStorage에 저장할 상태만 선택
         chains: state.chains,
-        flows: state.flows,
         chainIds: state.chainIds,
         activeChainId: state.activeChainId,
         stage: state.stage

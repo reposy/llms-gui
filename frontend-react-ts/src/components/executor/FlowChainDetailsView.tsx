@@ -21,8 +21,8 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   const chain = store.getChain(chainId);
   
   // ExecutorGraphStore 사용하여 그래프 관련 정보 확인
-  const graphChain = useFlowExecutorStore(state => state.getChain(chainId));
-  const graphFlows = graphChain?.flows || {};
+  const graphChain = store.getChain(chainId);
+  const graphFlows = graphChain?.flowMap || {};
 
   useEffect(() => {
     // 선택된 플로우가 없을 때 초기 선택
@@ -121,7 +121,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
       ) : (
         <div className="space-y-2">
           {chain.flowIds.map((flowId, index) => {
-            const flow = chain.flowMap[flowId];
+            const flow = chain.flowMap && chain.flowMap[flowId] ? chain.flowMap[flowId] : undefined;
             if (!flow) return null;
             
             // 해당 Flow의 구조 정보 가져오기
@@ -155,7 +155,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                     
                     {hasGraphInfo && (
                       <div className="text-xs text-gray-500 mt-1">
-                        노드: {Object.keys(flowStructure.nodes).length} |
+                        노드: {Object.keys(flowStructure.nodeMap).length} |
                         루트: {flowStructure.roots.length} |
                         리프: {flowStructure.leafs.length}
                       </div>
@@ -226,7 +226,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
           <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-lg font-medium">
-                {chain.flowMap[selectedFlowForGraph]?.name || 'Flow'} - 그래프 구조
+                {chain.flowMap && chain.flowMap[selectedFlowForGraph]?.name ? chain.flowMap[selectedFlowForGraph].name : 'Flow'} - 그래프 구조
               </h3>
               <button
                 className="text-gray-500 hover:text-gray-700"

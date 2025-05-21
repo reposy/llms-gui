@@ -26,20 +26,20 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   
   const { 
     getFlow, 
-    setFlowInputs, 
+    setFlowInputs,
     getFlowResultById,
     getActiveFlowChain
   } = useFlowExecutorStore();
   
   // 체인 ID와 Flow ID로 Flow 객체 조회
   const chainId = activeChain?.id || '';
-  const flow = activeChain ? getFlow(activeChain.id, flowId) : undefined;
+  const flow = activeChain ? activeChain.flowMap[flowId] : undefined;
   
   // 이전 Flow IDs (참조용) - 현재 플로우 제외한 모든 플로우
   const previousFlows = activeChain ? activeChain.flowIds
     .filter(id => id !== flowId)
     .map(id => {
-      const f = getFlow(activeChain.id, id);
+      const f = activeChain.flowMap[id];
       return f ? {
         id: f.id, 
         name: f.name,
@@ -80,7 +80,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
         if (onInputChange) {
           onInputChange([defaultInput.value]);
         } else if (chainId) {
-          setFlowInputs(chainId, flowId, [defaultInput.value]); // 기본 입력 데이터 저장
+          store.setFlowInputData(chainId, flowId, [defaultInput.value]); // 기본 입력 데이터 저장
         }
         
         setConfirmed(true); // 자동으로 확정 상태로 설정
@@ -194,7 +194,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const handleFlowResultSelect = (index: number, refFlowId: string) => {
     if (!refFlowId || !activeChain) return;
 
-    const refFlow = getFlow(activeChain.id, refFlowId);
+    const refFlow = store.getFlow(activeChain.id, refFlowId);
     if (!refFlow) return;
     
     const refVariable = `\${result-flow-${refFlowId}}`;
@@ -224,7 +224,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     if (onInputChange) {
       onInputChange(inputData);
     } else if (chainId) {
-      setFlowInputs(chainId, flowId, inputData);
+      store.setFlowInputData(chainId, flowId, inputData);
     }
     
     setConfirmed(true);
@@ -234,7 +234,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const getFlowReferenceText = (sourceFlowId: string) => {
     if (!activeChain) return '알 수 없는 Flow';
     
-    const refFlow = getFlow(activeChain.id, sourceFlowId);
+    const refFlow = store.getFlow(activeChain.id, sourceFlowId);
     if (!refFlow) return '알 수 없는 Flow';
     
     const hasResult = refFlow.lastResults !== null && refFlow.lastResults.length > 0;
