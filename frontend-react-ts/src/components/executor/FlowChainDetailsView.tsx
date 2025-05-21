@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useFlowExecutorStore, Flow, FlowChain } from '../../store/useFlowExecutorStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { executeFlowChain } from '../../services/flowChainExecutionService';
 import FlowChainGraphView from './FlowChainGraphView';
 
@@ -19,13 +19,10 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   
   const store = useFlowExecutorStore();
   const chain = store.getChain(chainId);
-  
-  // ExecutorGraphStore 사용하여 그래프 관련 정보 확인
-  const graphChain = store.getChain(chainId);
+  const graphChain = chain;
   const graphFlows = graphChain?.flowMap || {};
 
   useEffect(() => {
-    // 선택된 플로우가 없을 때 초기 선택
     if (chain && !chain.selectedFlowId && chain.flowIds.length > 0) {
       store.setSelectedFlow(chainId, chain.flowIds[0]);
     }
@@ -51,20 +48,16 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   };
 
   const handleRunChain = async () => {
-    store.setFlowChainStatus(chainId, 'running');
-    
-    // 모든 Flow 상태 초기화
+    store.setChainStatus(chainId, 'running');
     chain.flowIds.forEach(flowId => {
       store.setFlowStatus(chainId, flowId, 'idle');
     });
-    
     try {
       await executeFlowChain({
-        chainId,
+        flowChainId: chainId,
         onChainStart: () => console.log(`Chain execution started: ${chainId}`),
         onChainComplete: (results) => {
           console.log(`Chain execution completed: ${chainId}`, results);
-          // 결과 또는 UI 업데이트 처리
         },
         onFlowStart: (flowId, flowName, index) => {
           console.log(`Flow execution started: ${flowId} (${flowName}) in chain ${chainId}`);
@@ -78,10 +71,10 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
       });
     } catch (error) {
       console.error('Chain execution error:', error);
-      store.setFlowChainStatus(chainId, 'error');
+      store.setChainStatus(chainId, 'error');
     }
   };
-  
+
   const handleViewGraphDetails = (flowId: string) => {
     setSelectedFlowForGraph(flowId);
     setShowGraphDetails(true);
@@ -107,7 +100,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
           </button>
         </div>
       </div>
-      
       {chain.flowIds.length === 0 ? (
         <div className="p-4 border border-gray-300 rounded bg-gray-50 text-center">
           <p className="text-gray-600">체인에 Flow가 없습니다.</p>
@@ -123,11 +115,8 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
           {chain.flowIds.map((flowId, index) => {
             const flow = chain.flowMap && chain.flowMap[flowId] ? chain.flowMap[flowId] : undefined;
             if (!flow) return null;
-            
-            // 해당 Flow의 구조 정보 가져오기
             const flowStructure = graphFlows[flowId];
             const hasGraphInfo = flowStructure !== undefined;
-            
             return (
               <div 
                 key={flowId}
@@ -152,7 +141,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                       }`}></span>
                       <span className="font-medium">{flow.name}</span>
                     </div>
-                    
                     {hasGraphInfo && (
                       <div className="text-xs text-gray-500 mt-1">
                         노드: {Object.keys(flowStructure.nodeMap).length} |
@@ -161,7 +149,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                       </div>
                     )}
                   </div>
-                  
                   <div className="flex items-center gap-2">
                     {hasGraphInfo && (
                       <button
@@ -172,7 +159,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                         그래프 보기
                       </button>
                     )}
-                    
                     <button
                       className={`px-2 py-1 text-xs ${
                         chain.selectedFlowId === flowId
@@ -183,7 +169,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                     >
                       {chain.selectedFlowId === flowId ? '선택됨' : '선택'}
                     </button>
-                    
                     <div className="flex gap-1">
                       <button
                         disabled={index === 0}
@@ -200,7 +185,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                         ↓
                       </button>
                     </div>
-                    
                     <button
                       className="p-1 text-red-500 hover:text-red-700"
                       onClick={() => handleRemoveFlow(flowId)}
@@ -209,7 +193,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                     </button>
                   </div>
                 </div>
-                
                 {flow.error && (
                   <div className="mt-2 p-2 bg-red-100 text-red-700 text-sm rounded">
                     {flow.error}
@@ -220,7 +203,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
           })}
         </div>
       )}
-      
       {showGraphDetails && selectedFlowForGraph && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -235,11 +217,9 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
                 ×
               </button>
             </div>
-            
             <div className="flex-1 overflow-auto p-4">
               <FlowChainGraphView flowId={selectedFlowForGraph} chainId={chainId} />
             </div>
-            
             <div className="p-4 border-t border-gray-200 flex justify-end">
               <button
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"

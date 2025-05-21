@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useFlowExecutorStore, getFlow, getChain, getActiveChain, addFlowToChain, resetResults, resetFlowGraphs, resetState } from '../store/useFlowExecutorStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import { executeChain, executeFlowExecutor } from '../services/flowExecutionService';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
@@ -9,7 +9,7 @@ interface FlowChainItem {
   chainId: string;
   name: string;
   flowJson: any;
-  inputData: any[];
+  inputs: any[];
   status: string;
 }
 
@@ -28,54 +28,33 @@ export const useFlowExecutor = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const store = useFlowExecutorStore();
-  const { activeChainId, chains, flows, stage } = store;
-
-  // 현재 Flow Chain을 구성하는 배열 반환
-  const getFlowChainList = (): FlowChainItem[] => {
-    if (!activeChainId || !chains[activeChainId]) {
-      return [];
-    }
-    const activeChain = chains[activeChainId];
-    return activeChain.flowIds.map((flowId: string) => {
-      const flow = flows[flowId];
-      if (!flow) return null;
-      return {
-        id: flow.id,
-        chainId: flow.chainId,
-        name: flow.name,
-        flowJson: flow.flowJson,
-        inputData: flow.inputs || [],
-        status: flow.status
-      };
-    }).filter(Boolean) as FlowChainItem[];
-  };
-
-  const flowChain = getFlowChainList();
+  const { activeChainId, chains, stage } = store;
+  const flowChain = activeChainId ? chains[activeChainId]?.flowIds.map((id: string) => chains[activeChainId].flowMap[id]) : [];
 
   const getActiveFlow = (): FlowChainItem | null => {
     if (!activeChainId || !chains[activeChainId]) return null;
     const activeChain = chains[activeChainId];
-    if (activeChain.selectedFlowId && flows[activeChain.selectedFlowId]) {
-      const flow = flows[activeChain.selectedFlowId];
+    if (activeChain.selectedFlowId && chains[activeChainId].flowMap[activeChain.selectedFlowId]) {
+      const flow = chains[activeChainId].flowMap[activeChain.selectedFlowId];
       return {
         id: flow.id,
         chainId: flow.chainId,
         name: flow.name,
         flowJson: flow.flowJson,
-        inputData: flow.inputs || [],
+        inputs: flow.inputs || [],
         status: flow.status
       };
     }
     if (activeChain.flowIds.length > 0) {
       const firstFlowId = activeChain.flowIds[0];
-      const flow = flows[firstFlowId];
+      const flow = chains[activeChainId].flowMap[firstFlowId];
       if (flow) {
         return {
           id: flow.id,
           chainId: flow.chainId,
           name: flow.name,
           flowJson: flow.flowJson,
-          inputData: flow.inputs || [],
+          inputs: flow.inputs || [],
           status: flow.status
         };
       }
@@ -84,21 +63,21 @@ export const useFlowExecutor = () => {
   };
 
   const getFlowById = (flowId: string): FlowChainItem | null => {
-    if (!activeChainId || !flowId || !flows[flowId]) return null;
-    const flow = flows[flowId];
+    if (!activeChainId || !flowId || !chains[activeChainId]?.flowMap[flowId]) return null;
+    const flow = chains[activeChainId].flowMap[flowId];
     return {
       id: flow.id,
       chainId: flow.chainId,
       name: flow.name,
       flowJson: flow.flowJson,
-      inputData: flow.inputs || [],
+      inputs: flow.inputs || [],
       status: flow.status
     };
   };
 
   const getFlowResultById = (flowId: string): FlowResult | null => {
-    if (!activeChainId || !flowId || !flows[flowId]) return null;
-    const flow = flows[flowId];
+    if (!activeChainId || !flowId || !chains[activeChainId]?.flowMap[flowId]) return null;
+    const flow = chains[activeChainId].flowMap[flowId];
     if (!flow.lastResults) return null;
     return {
       status: flow.status,
@@ -128,7 +107,7 @@ export const useFlowExecutor = () => {
       const response = await executeFlowExecutor({
         flowId: flow.id,
         flowJson: flow.flowJson,
-        inputs: flow.inputData || [],
+        inputs: flow.inputs || [],
         chainId: flow.chainId,
         onComplete: (result: any) => {
           if (activeChainId) {
@@ -184,7 +163,7 @@ export const useFlowExecutor = () => {
                   id: `flow-${Date.now()}`,
                   name: file.name.replace(/\.json$/, '') || '가져온 Flow',
                   flowJson: importData,
-                  inputData: []
+                  inputs: []
                 }]
               };
             }
@@ -206,9 +185,9 @@ export const useFlowExecutor = () => {
                   ...flow.flowJson,
                   id: flowId
                 };
-                addFlowToChain(activeChainId, flowToAdd);
-                if (flow.inputData && flow.inputData.length > 0) {
-                  store.setFlowInputData(activeChainId, flowId, flow.inputData);
+                store.addFlowToChain(activeChainId, flowToAdd);
+                if (flow.inputs && flow.inputs.length > 0) {
+                  store.setFlowInputData(activeChainId, flowId, flow.inputs);
                 }
               } catch (flowError) {
                 // 이 Flow는 건너뛰고 계속 진행
@@ -239,7 +218,7 @@ export const useFlowExecutor = () => {
             id: flow.id,
             name: flow.name,
             flowJson: flow.flowJson,
-            inputData: flow.inputData || [],
+            inputs: flow.inputs || [],
             result: result
           };
         })
@@ -270,34 +249,33 @@ export const useFlowExecutor = () => {
     setIsExecuting(true);
     store.setStage('executing');
     setError(null);
-    resetResults();
+    store.resetResults();
     try {
-      // 첫 Flow의 inputData만 inputs로 전달
-      const firstFlowInput = flowChain[0]?.inputData as any[] || [];
+      // 첫 Flow의 inputs만 inputs로 전달
+      const firstFlowInput = (flowChain[0] && Array.isArray(flowChain[0].inputs)) ? flowChain[0].inputs : [];
       await executeChain({
         flowChainId: activeChainId!,
         inputs: firstFlowInput,
-        onFlowComplete: (flowChainId, flowId, result) => {
+        onFlowComplete: (flowId, result) => {
           if (activeChainId) {
-            store.setFlowResult(activeChainId, flowId, result || []);
+            store.setFlowResult(activeChainId, flowId, (Array.isArray(result) ? result : []));
           }
           // 마지막 Flow인 경우 실행 완료 처리
-          const isLastFlow = flowId === flowChain[flowChain.length - 1].id;
-          if (isLastFlow) {
+          if (flowId === flowChain[flowChain.length - 1].id) {
             setIsExecuting(false);
             store.setStage('result');
           }
         },
-        onError: (flowChainId, flowId, errorMsg) => {
-          setError(`Flow \"${getFlowById(flowId)?.name || flowId}\" 실행 중 오류: ${errorMsg}`);
+        onError: (flowId, errorMsg) => {
+          setError(errorMsg);
           setIsExecuting(false);
-          store.setStage('result');
-        }
+          store.setStage('input');
+        },
       });
-    } catch (err) {
-      setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
+    } catch (err: any) {
+      setError(err?.message || '실행 중 오류가 발생했습니다.');
       setIsExecuting(false);
-      store.setStage('result');
+      store.setStage('input');
     }
   };
 
@@ -310,8 +288,8 @@ export const useFlowExecutor = () => {
     setIsExecuting(false);
     localStorage.removeItem('executor-state-store');
     localStorage.removeItem('executor-graph-storage');
-    resetState();
-    resetFlowGraphs();
+    store.resetState();
+    store.resetFlowGraphs();
     alert('모든 Flow 내용이 초기화되었습니다. 페이지가 새로고침됩니다.');
     window.location.reload();
   };
