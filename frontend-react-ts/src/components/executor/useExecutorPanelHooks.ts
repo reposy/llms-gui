@@ -11,19 +11,9 @@ export const useExecutorPanelHooks = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Zustand 스토어에서 상태와 액션 가져오기
-  const { 
-    flowChain, 
-    addFlow, 
-    setFlowInputData, 
-    setFlowResult, 
-    getFlowById,
-    getFlowResultById,
-    resetResults,
-    resetState,
-    setStage,
-    stage
-  } = useFlowExecutorStore();
+  const store = useFlowExecutorStore();
+  const { flowChain, getFlowById, getFlowResultById, resetResults, resetState, setStage, stage } = store;
+  const activeChainId = store.activeChainId;
 
   /**
    * Flow Chain 가져오기
@@ -85,35 +75,25 @@ export const useExecutorPanelHooks = () => {
             // 각 Flow 추가
             importData.flowChain.forEach((flow: any) => {
               try {
-                // flowJson 유효성 검사
                 if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-                  console.warn(`[ExecutorPanel] 유효하지 않은 flowJson 형식, flow:`, flow);
-                  return; // 이 Flow는 건너뛰고 계속 진행
+                  return;
                 }
-                
-                // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
                 const flowName = flow.name || flow.flowJson.name || '가져온-flow';
                 const timestamp = Date.now();
                 const random = Math.floor(Math.random() * 1000);
-                
-                // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
                 const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
                 const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
-                
                 const flowToAdd = {
                   ...flow.flowJson,
                   id: flowId
                 };
-                
-                // Flow 추가 (원본 ID 보존)
-                addFlow(flowToAdd);
-                
-                // 입력 데이터 설정
-                if (flow.inputData && flow.inputData.length > 0) {
-                  setFlowInputData(flowId, flow.inputData);
+                if (activeChainId) {
+                  store.addFlowToChain(activeChainId, flowToAdd);
+                  if (flow.inputData && flow.inputData.length > 0) {
+                    store.setFlowInputData(activeChainId, flowId, flow.inputData);
+                  }
                 }
               } catch (flowError) {
-                console.error(`[ExecutorPanel] Flow 추가 중 오류:`, flowError);
                 // 이 Flow는 건너뛰고 계속 진행
               }
             });
@@ -186,46 +166,35 @@ export const useExecutorPanelHooks = () => {
       setError('실행할 Flow가 없습니다. 먼저 Flow를 추가해주세요.');
       return;
     }
-    
     setIsExecuting(true);
     setStage('executing');
     setError(null);
-    
-    // 이전 결과 초기화
     resetResults();
-    
     try {
-      // 체인 실행을 위한 Flow 항목 준비
-      const flowItems = flowChain.map(flow => ({
-        id: flow.id,
-        flowJson: flow.flowJson,
-        inputData: flow.inputData || []
-      }));
-      
-      // 체인 실행
+      const firstFlowInput = flowChain[0]?.inputData as any[] || [];
       await executeChain({
-        flowItems,
-        onFlowComplete: (flowId, result) => {
-          console.log(`[ExecutorPanel] Flow ${flowId} completed with result:`, result);
-          setFlowResult(flowId, result);
-          
-          // 마지막 Flow인 경우 실행 완료 처리
-          const isLastFlow = flowId === flowItems[flowItems.length - 1].id;
+        flowChainId: activeChainId!,
+        inputs: firstFlowInput,
+        onFlowComplete: (flowChainId, flowId, result) => {
+          if (activeChainId) {
+            store.setFlowResult(activeChainId, flowId, result || []);
+          }
+          const isLastFlow = flowId === flowChain[flowChain.length - 1].id;
           if (isLastFlow) {
             setIsExecuting(false);
             setStage('result');
           }
         },
-        onError: (flowId, error) => {
-          console.error(`[ExecutorPanel] Error executing flow ${flowId}:`, error);
+        onError: (flowChainId, flowId, errorMsg) => {
+          setError(`Flow \"${getFlowById(flowId)?.name || flowId}\" 실행 중 오류: ${errorMsg}`);
           setIsExecuting(false);
+          setStage('result');
         }
       });
-      
-      console.log('[ExecutorPanel] All flows in chain executed successfully');
-    } catch (error) {
-      console.error('[ExecutorPanel] Error executing flow chain:', error);
+    } catch (err) {
+      setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
       setIsExecuting(false);
+      setStage('result');
     }
   };
 

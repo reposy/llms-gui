@@ -27,9 +27,10 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
 
   // 스토어에서 필요한 상태 가져오기
+  const store = useFlowExecutorStore();
+  const activeChainId = store.activeChainId;
   const { 
     chains, 
-    activeChainId, 
     setStage,
     getActiveChain 
   } = useFlowExecutorStore();
@@ -84,9 +85,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         }
         
         // 각 Flow 추가
-        const store = useFlowExecutorStore.getState();
         const addFlowToChain = store.addFlowToChain;
-        const setFlowInputs = store.setFlowInputs;
+        const setFlowInputData = store.setFlowInputData;
         const setStage = store.setStage;
         const activeChain = store.getActiveChain();
         const chainId = activeChain?.id || '';
@@ -107,13 +107,13 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
               addFlowToChain(chainId, flow.flowJson);
               
               // 새로 추가된 Flow ID 얻기
-              const updatedChain = useFlowExecutorStore.getState().getChain(chainId);
+              const updatedChain = store.getChain(chainId);
               if (updatedChain) {
                 const flowId = updatedChain.flowIds[updatedChain.flowIds.length - 1];
                 
                 // 입력 데이터 설정
-                if (flow.inputData && flow.inputData.length > 0 && flowId) {
-                  setFlowInputs(chainId, flowId, flow.inputData);
+                if (flow.inputData && flow.inputData.length > 0) {
+                  setFlowInputData(chainId, flowId, flow.inputData);
                 }
               }
             } else {
@@ -139,6 +139,12 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
     };
     
     reader.readAsText(file);
+  };
+
+  const handleAddFlow = (flow: any) => {
+    if (activeChainId) {
+      store.addFlowToChain(activeChainId, flow.flowJson);
+    }
   };
 
   return (

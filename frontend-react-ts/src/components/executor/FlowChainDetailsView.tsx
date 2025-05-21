@@ -17,17 +17,8 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   const [showGraphDetails, setShowGraphDetails] = useState(false);
   const [selectedFlowForGraph, setSelectedFlowForGraph] = useState<string | null>(null);
   
-  const { getFlowChain, setSelectedFlow, moveFlow, removeFlowFromChain, setFlowChainStatus, setFlowStatus } =
-    useFlowExecutorStore((state) => ({
-      getFlowChain: state.getFlowChain,
-      setSelectedFlow: state.setSelectedFlow,
-      moveFlow: state.moveFlow,
-      removeFlowFromChain: state.removeFlowFromChain,
-      setFlowChainStatus: state.setFlowChainStatus,
-      setFlowStatus: state.setFlowStatus,
-    }));
-
-  const chain = getFlowChain(chainId);
+  const store = useFlowExecutorStore();
+  const chain = store.getChain(chainId);
   
   // ExecutorGraphStore 사용하여 그래프 관련 정보 확인
   const graphChain = useFlowExecutorStore(state => state.getChain(chainId));
@@ -36,35 +27,35 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
   useEffect(() => {
     // 선택된 플로우가 없을 때 초기 선택
     if (chain && !chain.selectedFlowId && chain.flowIds.length > 0) {
-      setSelectedFlow(chainId, chain.flowIds[0]);
+      store.setSelectedFlow(chainId, chain.flowIds[0]);
     }
-  }, [chain, chainId, setSelectedFlow]);
+  }, [chain, chainId, store]);
 
   if (!chain) {
     return <div className="p-4">체인 정보를 찾을 수 없습니다: {chainId}</div>;
   }
 
   const handleSelectFlow = (flowId: string) => {
-    setSelectedFlow(chainId, flowId);
+    store.setSelectedFlow(chainId, flowId);
     onFlowSelect(flowId);
   };
 
   const handleMoveFlow = (flowId: string, direction: 'up' | 'down') => {
-    moveFlow(chainId, flowId, direction);
+    store.moveFlow(chainId, flowId, direction);
   };
 
   const handleRemoveFlow = (flowId: string) => {
     if (window.confirm('정말로 이 Flow를 제거하시겠습니까?')) {
-      removeFlowFromChain(chainId, flowId);
+      store.removeFlowFromChain(chainId, flowId);
     }
   };
 
   const handleRunChain = async () => {
-    setFlowChainStatus(chainId, 'running');
+    store.setFlowChainStatus(chainId, 'running');
     
     // 모든 Flow 상태 초기화
     chain.flowIds.forEach(flowId => {
-      setFlowStatus(chainId, flowId, 'idle');
+      store.setFlowStatus(chainId, flowId, 'idle');
     });
     
     try {
@@ -87,7 +78,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({
       });
     } catch (error) {
       console.error('Chain execution error:', error);
-      setFlowChainStatus(chainId, 'error');
+      store.setFlowChainStatus(chainId, 'error');
     }
   };
   

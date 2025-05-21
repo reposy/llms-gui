@@ -21,6 +21,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const store = useFlowExecutorStore();
+  const activeChain = store.getActiveChain();
+  
   const { 
     getFlow, 
     setFlowInputs, 
@@ -29,7 +32,6 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   } = useFlowExecutorStore();
   
   // 체인 ID와 Flow ID로 Flow 객체 조회
-  const activeChain = getActiveFlowChain();
   const chainId = activeChain?.id || '';
   const flow = activeChain ? getFlow(activeChain.id, flowId) : undefined;
   
