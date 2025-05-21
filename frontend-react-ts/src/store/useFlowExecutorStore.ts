@@ -72,7 +72,7 @@ export interface FlowChain {
 interface FlowExecutorState {
   chains: Record<string, FlowChain>;
   chainIds: string[];  // Chain 순서 유지
-  activeChainId: string | null;
+  focusedFlowChainId: string | null;
   stage: ExecutorStage;
   error: string | null;
   nodeFactory: NodeFactory; // 그래프 노드 생성 팩토리
@@ -83,7 +83,7 @@ interface FlowExecutorState {
   setChainName: (chainId: string, name: string) => void;
   setChainStatus: (chainId: string, status: ExecutionStatus, error?: string) => void;
   setSelectedFlow: (chainId: string, flowId: string | null) => void;
-  setActiveChain: (chainId: string | null) => void;
+  setFocusedFlowChainId: (id: string | null) => void;
   
   // Flow 관련 액션
   addFlowToChain: (chainId: string, flowData: FlowData) => string; // 생성된 flow-id 반환
@@ -114,7 +114,7 @@ interface FlowExecutorState {
   // 편의 함수
   getFlow: (chainId: string, flowId: string) => Flow | undefined;
   getChain: (chainId: string) => FlowChain | undefined;
-  getActiveChain: () => FlowChain | undefined;
+  getFocusedChain: () => FlowChain | undefined;
 }
 
 /**
@@ -219,7 +219,7 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFact
 const initialState = {
   chains: {},
   chainIds: [],
-  activeChainId: null,
+  focusedFlowChainId: null,
   stage: 'upload' as ExecutorStage,
   error: null,
   nodeFactory: new NodeFactory()
@@ -250,7 +250,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
               }
             },
             chainIds: newChainIds,
-            activeChainId: state.activeChainId || chainId // 첫 체인이면 활성화
+            focusedFlowChainId: state.focusedFlowChainId || chainId // 첫 체인이면 활성화
           };
         });
         return chainId;
@@ -271,16 +271,16 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
           const { [chainId]: removedChain, ...remainingChains } = state.chains;
           const newChainIds = state.chainIds.filter(id => id !== chainId);
           
-          // activeChainId 업데이트
-          let newActiveChainId = state.activeChainId;
-          if (newActiveChainId === chainId) {
-            newActiveChainId = newChainIds.length > 0 ? newChainIds[0] : null;
+          // focusedFlowChainId 업데이트
+          let newFocusedFlowChainId = state.focusedFlowChainId;
+          if (newFocusedFlowChainId === chainId) {
+            newFocusedFlowChainId = newChainIds.length > 0 ? newChainIds[0] : null;
           }
           
           return {
             chains: remainingChains,
             chainIds: newChainIds,
-            activeChainId: newActiveChainId
+            focusedFlowChainId: newFocusedFlowChainId
           };
         });
       },
@@ -334,8 +334,8 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
         });
       },
       
-      setActiveChain: (chainId) => {
-        set({ activeChainId: chainId });
+      setFocusedFlowChainId: (id) => {
+        set({ focusedFlowChainId: id });
       },
       
       // Flow 관련 액션
@@ -664,11 +664,11 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
         return get().chains[chainId];
       },
       
-      getActiveChain: () => {
+      getFocusedChain: () => {
         const state = get();
-        if (!state.activeChainId) return undefined;
+        if (!state.focusedFlowChainId) return undefined;
         
-        return state.chains[state.activeChainId];
+        return state.chains[state.focusedFlowChainId];
       }
     }),
     {
@@ -677,7 +677,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
         // localStorage에 저장할 상태만 선택
         chains: state.chains,
         chainIds: state.chainIds,
-        activeChainId: state.activeChainId,
+        focusedFlowChainId: state.focusedFlowChainId,
         stage: state.stage
       })
     }
@@ -687,11 +687,11 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
 // 편의 함수를 위한 직접 export
 export const addChain = (name: string) => useFlowExecutorStore.getState().addChain(name);
 export const removeChain = (chainId: string) => useFlowExecutorStore.getState().removeChain(chainId);
-export const setActiveChain = (chainId: string | null) => useFlowExecutorStore.getState().setActiveChain(chainId);
+export const setFocusedFlowChainId = (id: string | null) => useFlowExecutorStore.getState().setFocusedFlowChainId(id);
 export const addFlowToChain = (chainId: string, flowData: FlowData) => useFlowExecutorStore.getState().addFlowToChain(chainId, flowData);
 export const resetState = () => useFlowExecutorStore.getState().resetState();
 export const resetResults = () => useFlowExecutorStore.getState().resetResults();
 export const resetFlowGraphs = () => useFlowExecutorStore.getState().resetFlowGraphs();
 export const getFlow = (chainId: string, flowId: string) => useFlowExecutorStore.getState().getFlow(chainId, flowId);
 export const getChain = (chainId: string) => useFlowExecutorStore.getState().getChain(chainId);
-export const getActiveChain = () => useFlowExecutorStore.getState().getActiveChain(); 
+export const getFocusedChain = () => useFlowExecutorStore.getState().getFocusedChain(); 

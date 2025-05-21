@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useExecutorStateStore, FlowChain } from '../../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 
 interface FlowChainListViewProps {
   onChainSelect: (chainId: string) => void;
@@ -12,8 +13,10 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
     flows, 
     addChain, 
     removeChain,
-    setActiveChainId
+    setFocusedFlowChainId
   } = useExecutorStateStore();
+
+  const { setActiveChainId } = useFlowExecutorStore();
 
   const handleAddChain = () => {
     const name = newChainName.trim() || `새 Flow 체인 ${flows.chainIds.length + 1}`;
@@ -24,7 +27,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
     if (flows.chainIds.length > 0) {
       const newChainId = flows.chainIds[flows.chainIds.length - 1];
       onChainSelect(newChainId);
-      setActiveChainId(newChainId);
+      setFocusedFlowChainId(newChainId);
     }
   };
 
@@ -37,7 +40,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
 
   const handleChainClick = (chainId: string) => {
     onChainSelect(chainId);
-    setActiveChainId(chainId);
+    setFocusedFlowChainId(chainId);
   };
 
   return (
@@ -83,7 +86,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
                 <div
                   key={chainId}
                   className={`border rounded p-3 ${
-                    flows.activeChainId === chainId ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50'
+                    flows.focusedFlowChainId === chainId ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50'
                   } cursor-pointer transition-colors`}
                   onClick={() => handleChainClick(chainId)}
                 >

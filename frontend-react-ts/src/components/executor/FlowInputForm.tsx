@@ -22,7 +22,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const store = useFlowExecutorStore();
-  const activeChain = store.getActiveChain();
+  const focusedChain = store.getFocusedChain();
   
   const { 
     getFlow, 
@@ -32,14 +32,14 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   } = useFlowExecutorStore();
   
   // 체인 ID와 Flow ID로 Flow 객체 조회
-  const chainId = activeChain?.id || '';
-  const flow = activeChain ? activeChain.flowMap[flowId] : undefined;
+  const chainId = focusedChain?.id || '';
+  const flow = focusedChain ? focusedChain.flowMap[flowId] : undefined;
   
   // 이전 Flow IDs (참조용) - 현재 플로우 제외한 모든 플로우
-  const previousFlows = activeChain ? activeChain.flowIds
+  const previousFlows = focusedChain ? focusedChain.flowIds
     .filter(id => id !== flowId)
     .map(id => {
-      const f = activeChain.flowMap[id];
+      const f = focusedChain.flowMap[id];
       return f ? {
         id: f.id, 
         name: f.name,
@@ -192,9 +192,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   
   // Flow 결과 참조 추가
   const handleFlowResultSelect = (index: number, refFlowId: string) => {
-    if (!refFlowId || !activeChain) return;
+    if (!refFlowId || !focusedChain) return;
 
-    const refFlow = store.getFlow(activeChain.id, refFlowId);
+    const refFlow = store.getFlow(focusedChain.id, refFlowId);
     if (!refFlow) return;
     
     const refVariable = `\${result-flow-${refFlowId}}`;
@@ -232,9 +232,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   
   // Flow 결과 참조 상태 텍스트 생성
   const getFlowReferenceText = (sourceFlowId: string) => {
-    if (!activeChain) return '알 수 없는 Flow';
+    if (!focusedChain) return '알 수 없는 Flow';
     
-    const refFlow = store.getFlow(activeChain.id, sourceFlowId);
+    const refFlow = store.getFlow(focusedChain.id, sourceFlowId);
     if (!refFlow) return '알 수 없는 Flow';
     
     const hasResult = refFlow.lastResults !== null && refFlow.lastResults.length > 0;

@@ -22,21 +22,20 @@ const ExecutorPage: React.FC = () => {
     error,
     chains,
     flows,
-    activeChainId,
-    setStage,
-    setError,
+    focusedFlowChainId,
+    chainIds,
     getChain,
     getFlow,
-    getActiveChain,
+    getFocusedChain,
+    setStage,
     resetState
   } = useFlowExecutorStore();
   
   // 활성 체인 가져오기
-  const activeChain = getActiveChain();
+  const focusedChain = getFocusedChain();
   
   useEffect(() => {
     // 체인이 없는 경우 upload 단계로 이동
-    const chainIds = Object.keys(chains);
     if (chainIds.length === 0 && stage !== 'upload') {
       setStage('upload');
     } else if (chainIds.length > 0 && stage === 'upload') {
@@ -45,14 +44,14 @@ const ExecutorPage: React.FC = () => {
   }, [chains, stage, setStage]);
 
   useEffect(() => {
-    if (!activeChain || !activeChain.selectedFlowId) return;
-    const flow = flows[activeChain.selectedFlowId];
+    if (!focusedChain || !focusedChain.selectedFlowId) return;
+    const flow = flows[focusedChain.selectedFlowId];
     if (!flow) return;
     
     if (flow.status !== 'running' && flow.results && stage === 'executing') {
       setStage('result');
     }
-  }, [activeChain, stage, setStage, flows]);
+  }, [focusedChain, stage, setStage, flows]);
 
   const handleExportWithFilename = (filename: string, includeData: boolean) => {
     try {
@@ -119,7 +118,7 @@ const ExecutorPage: React.FC = () => {
   };
 
   const handleExecuteFlow = () => {
-    if (activeChain) {
+    if (focusedChain) {
       setIsExecuting(true);
       // Attempt to trigger executeChain in FlowChainDetail by simulating a click
       // This is a workaround. Ideally, FlowChainDetail exposes a ref or a direct function.
@@ -147,8 +146,8 @@ const ExecutorPage: React.FC = () => {
     currentStage: stage,
     onStageChange: setStage,
     canSetInput: Object.keys(chains).length > 0,
-    canViewResults: !!(activeChain && activeChain.selectedFlowId && flows[activeChain.selectedFlowId]?.results),
-    isExecutionDisabled: !activeChain || activeChain.flowIds.length === 0 || (activeChain.status === 'running'),
+    canViewResults: !!(focusedChain && focusedChain.selectedFlowId && flows[focusedChain.selectedFlowId]?.results),
+    isExecutionDisabled: !focusedChain || focusedChain.flowIds.length === 0 || (focusedChain.status === 'running'),
     onExecute: panelActions.onExecuteAll,
     error,
   };

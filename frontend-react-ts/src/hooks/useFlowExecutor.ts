@@ -28,14 +28,14 @@ export const useFlowExecutor = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const store = useFlowExecutorStore();
-  const { activeChainId, chains, stage } = store;
-  const flowChain = activeChainId ? chains[activeChainId]?.flowIds.map((id: string) => chains[activeChainId].flowMap[id]) : [];
+  const { focusedFlowChainId, chains, stage } = store;
+  const flowChain = focusedFlowChainId ? chains[focusedFlowChainId]?.flowIds.map((id: string) => chains[focusedFlowChainId].flowMap[id]) : [];
 
-  const getActiveFlow = (): FlowChainItem | null => {
-    if (!activeChainId || !chains[activeChainId]) return null;
-    const activeChain = chains[activeChainId];
-    if (activeChain.selectedFlowId && chains[activeChainId].flowMap[activeChain.selectedFlowId]) {
-      const flow = chains[activeChainId].flowMap[activeChain.selectedFlowId];
+  const getFocusedFlow = (): FlowChainItem | null => {
+    if (!focusedFlowChainId || !chains[focusedFlowChainId]) return null;
+    const focusedChain = chains[focusedFlowChainId];
+    if (focusedChain.selectedFlowId && chains[focusedFlowChainId].flowMap[focusedChain.selectedFlowId]) {
+      const flow = chains[focusedFlowChainId].flowMap[focusedChain.selectedFlowId];
       return {
         id: flow.id,
         chainId: flow.chainId,
@@ -45,9 +45,9 @@ export const useFlowExecutor = () => {
         status: flow.status
       };
     }
-    if (activeChain.flowIds.length > 0) {
-      const firstFlowId = activeChain.flowIds[0];
-      const flow = chains[activeChainId].flowMap[firstFlowId];
+    if (focusedChain.flowIds.length > 0) {
+      const firstFlowId = focusedChain.flowIds[0];
+      const flow = chains[focusedFlowChainId].flowMap[firstFlowId];
       if (flow) {
         return {
           id: flow.id,
@@ -63,8 +63,8 @@ export const useFlowExecutor = () => {
   };
 
   const getFlowById = (flowId: string): FlowChainItem | null => {
-    if (!activeChainId || !flowId || !chains[activeChainId]?.flowMap[flowId]) return null;
-    const flow = chains[activeChainId].flowMap[flowId];
+    if (!focusedFlowChainId || !flowId || !chains[focusedFlowChainId]?.flowMap[flowId]) return null;
+    const flow = chains[focusedFlowChainId].flowMap[flowId];
     return {
       id: flow.id,
       chainId: flow.chainId,
@@ -76,8 +76,8 @@ export const useFlowExecutor = () => {
   };
 
   const getFlowResultById = (flowId: string): FlowResult | null => {
-    if (!activeChainId || !flowId || !chains[activeChainId]?.flowMap[flowId]) return null;
-    const flow = chains[activeChainId].flowMap[flowId];
+    if (!focusedFlowChainId || !flowId || !chains[focusedFlowChainId]?.flowMap[flowId]) return null;
+    const flow = chains[focusedFlowChainId].flowMap[flowId];
     if (!flow.lastResults) return null;
     return {
       status: flow.status,
@@ -110,8 +110,8 @@ export const useFlowExecutor = () => {
         inputs: flow.inputs || [],
         chainId: flow.chainId,
         onComplete: (result: any) => {
-          if (activeChainId) {
-            store.setFlowResult(activeChainId, flow.id, result || []);
+          if (focusedFlowChainId) {
+            store.setFlowResult(focusedFlowChainId, flow.id, result || []);
           }
           setIsExecuting(false);
           store.setStage('result');
@@ -167,7 +167,7 @@ export const useFlowExecutor = () => {
                 }]
               };
             }
-            if (!activeChainId) {
+            if (!focusedFlowChainId) {
               alert('Flow Chain이 없습니다. 먼저 체인을 생성하세요.');
               return;
             }
@@ -185,9 +185,9 @@ export const useFlowExecutor = () => {
                   ...flow.flowJson,
                   id: flowId
                 };
-                store.addFlowToChain(activeChainId, flowToAdd);
+                store.addFlowToChain(focusedFlowChainId, flowToAdd);
                 if (flow.inputs && flow.inputs.length > 0) {
-                  store.setFlowInputData(activeChainId, flowId, flow.inputs);
+                  store.setFlowInputData(focusedFlowChainId, flowId, flow.inputs);
                 }
               } catch (flowError) {
                 // 이 Flow는 건너뛰고 계속 진행
@@ -254,11 +254,11 @@ export const useFlowExecutor = () => {
       // 첫 Flow의 inputs만 inputs로 전달
       const firstFlowInput = (flowChain[0] && Array.isArray(flowChain[0].inputs)) ? flowChain[0].inputs : [];
       await executeChain({
-        flowChainId: activeChainId!,
+        flowChainId: focusedFlowChainId!,
         inputs: firstFlowInput,
         onFlowComplete: (flowId, result) => {
-          if (activeChainId) {
-            store.setFlowResult(activeChainId, flowId, (Array.isArray(result) ? result : []));
+          if (focusedFlowChainId) {
+            store.setFlowResult(focusedFlowChainId, flowId, (Array.isArray(result) ? result : []));
           }
           // 마지막 Flow인 경우 실행 완료 처리
           if (flowId === flowChain[flowChain.length - 1].id) {
@@ -306,7 +306,7 @@ export const useFlowExecutor = () => {
     flowChain,
     stage,
     setStage: store.setStage,
-    getActiveFlow,
+    getFocusedFlow,
     getFlowById,
     getFlowResultById
   };

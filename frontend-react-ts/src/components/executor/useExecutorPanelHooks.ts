@@ -13,7 +13,7 @@ export const useExecutorPanelHooks = () => {
 
   const store = useFlowExecutorStore();
   const { flowChain, getFlowById, getFlowResultById, resetResults, resetState, setStage, stage } = store;
-  const activeChainId = store.activeChainId;
+  const focusedFlowChainId = store.focusedFlowChainId;
 
   /**
    * Flow Chain 가져오기
@@ -87,10 +87,10 @@ export const useExecutorPanelHooks = () => {
                   ...flow.flowJson,
                   id: flowId
                 };
-                if (activeChainId) {
-                  store.addFlowToChain(activeChainId, flowToAdd);
+                if (focusedFlowChainId) {
+                  store.addFlowToChain(focusedFlowChainId, flowToAdd);
                   if (flow.inputData && flow.inputData.length > 0) {
-                    store.setFlowInputData(activeChainId, flowId, flow.inputData);
+                    store.setFlowInputData(focusedFlowChainId, flowId, flow.inputData);
                   }
                 }
               } catch (flowError) {
@@ -173,11 +173,11 @@ export const useExecutorPanelHooks = () => {
     try {
       const firstFlowInput = flowChain[0]?.inputData as any[] || [];
       await executeChain({
-        flowChainId: activeChainId!,
+        flowChainId: focusedFlowChainId!,
         inputs: firstFlowInput,
         onFlowComplete: (flowChainId, flowId, result) => {
-          if (activeChainId) {
-            store.setFlowResult(activeChainId, flowId, result || []);
+          if (focusedFlowChainId) {
+            store.setFlowResult(focusedFlowChainId, flowId, result || []);
           }
           const isLastFlow = flowId === flowChain[flowChain.length - 1].id;
           if (isLastFlow) {
