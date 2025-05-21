@@ -23,17 +23,12 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const flow = chain && flowId ? chain.flowMap[flowId] : undefined;
   const prevFlows = chain ? chain.flowIds.filter(id => id !== flowId && chain.flowIds.indexOf(id) < chain.flowIds.indexOf(flowId)) : [];
 
-  // 입력 Row 상태
-  const [rows, setRows] = useState<InputRow[]>(
-    propInputs && propInputs.length > 0
-      ? propInputs
-      : [{ type: 'text', value: '' }]
-  );
-
+  // store의 값을 직접 구독 (propInputs가 없으면)
+  const initialRows = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
+  const [rows, setRows] = useState<InputRow[]>(initialRows);
   const [editMode, setEditMode] = useState(false);
   const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
 
-  // propInputs/flow.inputs 동기화
   useEffect(() => {
     if (propInputs) setRows(propInputs);
     else if (flow && flow.inputs) setRows(flow.inputs);
@@ -126,8 +121,12 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     }
   };
 
+  // 저장 버튼 클릭 시 store에 반영
   const handleSave = () => {
     setEditMode(false);
+    if (focusedFlowChainId && flowId) {
+      store.setFlowInputData(focusedFlowChainId, flowId, draftInputs);
+    }
     if (onInputChange) onInputChange(draftInputs);
   };
 

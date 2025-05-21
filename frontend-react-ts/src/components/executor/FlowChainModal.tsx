@@ -4,6 +4,15 @@ import { executeFlowExecutor } from '../../services/flowExecutionService';
 import FlowInputForm from './FlowInputForm';
 import ResultDisplay from './ResultDisplay';
 import ReactMarkdown from 'react-markdown';
+import { ExecutionStatus } from '../../store/useExecutorStateStore';
+
+// ResultDisplay 컴포넌트에서 기대하는 인터페이스와 동일하게 정의
+interface FlowExecutionResult {
+  status: ExecutionStatus;
+  outputs: any[]; // 항상 배열로 정의
+  error?: string;
+  flowId?: string;
+}
 
 interface FlowChainModalProps {
   isOpen: boolean;
@@ -22,75 +31,96 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [resultTab, setResultTab] = useState<'node' | 'output'>('node');
   const [outputFormat, setOutputFormat] = useState<'text' | 'markdown'>('text');
-  const [inputEditMode, setInputEditMode] = useState(false);
-  const [pendingInputs, setPendingInputs] = useState<any[]>([]);
-  
   const store = useFlowExecutorStore();
   const chain = store.chains[chainId];
   const flow = chain?.flowMap[flowId];
 
-  // 모달이 닫힐 때 resetState
+  // 모달이 닫힐 때 입력 탭으로 초기화
   useEffect(() => {
     if (!isOpen) {
       setActiveTab('input');
     }
   }, [isOpen]);
 
+  // flow.lastResults 변경 감지 및 탭 전환
+  useEffect(() => {
+    if (flow?.lastResults) {
+      // 결과가 있으면 결과 탭으로 전환
+      if (flow.lastResults.length > 0) {
+        console.log(`[FlowChainModal] 결과 감지: ${flow.lastResults.length}개 항목, 결과 탭으로 전환`);
+        setActiveTab('result');
+      }
+    }
+  }, [flow?.lastResults]);
+
   if (!isOpen || !flow) return null;
-
-  const handleInputChange = (inputs: any[]) => {
-    setPendingInputs(inputs);
-  };
-
-  const handleSaveInputs = () => {
-    store.setFlowInputData(chainId, flowId, pendingInputs);
-    setInputEditMode(false);
-  };
-
-  const handleCancelInputs = () => {
-    setPendingInputs(flow?.inputs || []);
-    setInputEditMode(false);
-  };
 
   const handleExecuteFlow = async () => {
     if (isExecuting) return;
     setIsExecuting(true);
     store.setFlowStatus(chainId, flowId, 'running');
     try {
-      // flow의 최신 nodes/edges 정보로 실행
+      // 입력 전처리
+      let execInputs = flow.inputs;
+      if (Array.isArray(execInputs) && execInputs.length > 0 && typeof execInputs[0] === 'object' && 'value' in execInputs[0]) {
+        execInputs = execInputs.map((row: any) => row.value);
+      }
+      
+      // Flow 실행
+      console.log(`[FlowChainModal] Flow ${flowId} 실행 시작`);
       const result = await executeFlowExecutor({
         flowId,
         chainId,
         flowJson: flow.flowJson,
-        inputs: flow.inputs,
-        nodes: flow.flowJson.nodes,
-        edges: flow.flowJson.edges
+        inputs: execInputs
       });
+      
+      // 결과 처리
       if (result.status === 'error') {
+        console.error(`[FlowChainModal] 실행 오류:`, result.error);
         store.setFlowStatus(chainId, flowId, 'error', result.error);
       } else {
         const outputs = result.outputs || [];
+        console.log(`[FlowChainModal] 실행 성공, 결과 ${outputs.length}개 항목 저장`);
+        
+        // 결과 저장
         store.setFlowResult(chainId, flowId, outputs);
         store.setFlowStatus(chainId, flowId, 'success');
+        
+        // 결과 탭으로 전환
         setActiveTab('result');
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      store.setFlowStatus(chainId, flowId, 'error', errorMessage);
       console.error('[FlowChainModal] 실행 오류:', error);
+      store.setFlowStatus(chainId, flowId, 'error', errorMessage);
     } finally {
       setIsExecuting(false);
     }
   };
 
-  // 결과가 있으면 결과 탭 활성화 (처음 열 때)
+  // lastResults 유무에 따른 렌더링
+  const hasResults = flow.lastResults && Array.isArray(flow.lastResults) && flow.lastResults.length > 0;
+  // 타입 안전을 위해 항상 빈 배열이라도 제공
+  const safeResults = flow.lastResults && Array.isArray(flow.lastResults) ? [...flow.lastResults] : [];
+
+  // ResultDisplay에 전달할 result 객체 생성
+  const flowResult: FlowExecutionResult | null = hasResults ? {
+    status: flow.status,
+    outputs: safeResults,
+    error: flow.error,
+    flowId: flow.id
+  } : null;
+
+  // 개발 모드에서 디버깅을 위한 로깅
   useEffect(() => {
-    if (flow.lastResults && flow.lastResults.length > 0) {
-      setActiveTab('result');
-    } else {
-      setActiveTab('input');
+    if (flow.lastResults) {
+      console.log(`[FlowChainModal] lastResults 구조 확인:`, flow.lastResults);
+      if (Array.isArray(flow.lastResults) && flow.lastResults.length > 0) {
+        console.log(`[FlowChainModal] 첫 번째 결과 항목 확인:`, flow.lastResults[0]);
+      }
     }
-  }, [flow?.lastResults]);
+  }, [flow.lastResults]);
 
   return (
     <div className={`fixed inset-0 z-50 overflow-y-auto ${isOpen ? 'block' : 'hidden'}`}>
@@ -99,7 +129,6 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
         <div className="fixed inset-0 transition-opacity" aria-hidden="true">
           <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
         </div>
-
         {/* 모달 컨테이너 */}
         <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full" style={{ width: '85%', maxWidth: '1200px' }}>
           {/* 모달 헤더 */}
@@ -119,7 +148,6 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
                 flow.status === 'success' ? '완료' : '오류'}
               </span>
             </div>
-            
             <button
               onClick={onClose}
               className="rounded-md text-gray-400 hover:text-gray-500 focus:outline-none"
@@ -130,22 +158,11 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
               </svg>
             </button>
           </div>
-
           {/* 모달 본문 */}
           <div className="bg-white p-6 max-h-[70vh] overflow-y-auto">
             {/* 입력폼 */}
             <div className="mb-6">
-              <FlowInputForm
-                flowId={flowId}
-                inputs={pendingInputs}
-                onInputChange={handleInputChange}
-              />
-              {inputEditMode && (
-                <div className="flex gap-2 mt-2">
-                  <button className="px-3 py-1 bg-green-500 text-white rounded" onClick={handleSaveInputs}>저장</button>
-                  <button className="px-3 py-1 bg-gray-300 text-gray-700 rounded" onClick={handleCancelInputs}>취소</button>
-                </div>
-              )}
+              <FlowInputForm flowId={flowId} />
             </div>
             {/* 실행 버튼 */}
             <div className="mb-6 flex justify-end">
@@ -179,50 +196,38 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
                 )}
               </div>
               {resultTab === 'node' ? (
-                flow.lastResults && flow.lastResults.length > 0 ? (
+                hasResults ? (
                   <div className="space-y-3">
-                    {flow.lastResults.map((result: any, idx: number) => (
-                      <div key={idx} className="bg-gray-50 p-3 rounded border">
-                        <div className="font-semibold text-sm text-gray-700 mb-1">{result.nodeName || result.nodeType || result.nodeId}</div>
-                        {typeof result.result === 'string' ? (
-                          <pre className="text-xs whitespace-pre-wrap text-gray-700">{result.result}</pre>
-                        ) : result.result && result.result.name ? (
-                          <span className="text-xs text-gray-700">파일: {result.result.name}</span>
-                        ) : (
-                          <pre className="text-xs whitespace-pre-wrap text-gray-700">{JSON.stringify(result.result, null, 2)}</pre>
-                        )}
-                      </div>
-                    ))}
+                    {safeResults.map((result: any, idx: number) => {
+                      console.log(`[FlowChainModal] 노드별 결과 출력 항목 ${idx}:`, result);
+                      return (
+                        <div key={idx} className="bg-gray-50 p-3 rounded border">
+                          <div className="font-semibold text-sm text-gray-700 mb-1">{result.nodeName || result.nodeType || result.nodeId}</div>
+                          {typeof result.result === 'string' ? (
+                            <pre className="text-xs whitespace-pre-wrap text-gray-700">{result.result}</pre>
+                          ) : result.result && result.result.name ? (
+                            <span className="text-xs text-gray-700">파일: {result.result.name}</span>
+                          ) : (
+                            <pre className="text-xs whitespace-pre-wrap text-gray-700">{JSON.stringify(result.result, null, 2)}</pre>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="text-gray-400 italic">실행 결과가 없습니다</div>
+                  <div className="text-gray-400 italic p-4 bg-gray-50 rounded">
+                    실행 결과가 없습니다. Flow를 실행하여 결과를 확인하세요.
+                  </div>
                 )
               ) : (
-                flow.lastResults && flow.lastResults.length > 0 ? (
-                  <div className="bg-gray-50 p-3 rounded max-h-60 overflow-y-auto text-xs">
-                    {outputFormat === 'markdown' ? (
-                      <ReactMarkdown className="prose prose-sm max-w-none">
-                        {flow.lastResults.map((r: any) => typeof r.result === 'string' ? r.result : (r.result && r.result.name ? `파일: ${r.result.name}` : JSON.stringify(r.result, null, 2))).join('\n')}
-                      </ReactMarkdown>
-                    ) : (
-                      <pre>{flow.lastResults.map((r: any) => typeof r.result === 'string' ? r.result : (r.result && r.result.name ? `파일: ${r.result.name}` : JSON.stringify(r.result, null, 2))).join('\n')}</pre>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-gray-400 italic">실행 결과가 없습니다</div>
-                )
+                <ResultDisplay
+                  result={flowResult}
+                  flowId={flow.id}
+                  flowName={flow.name}
+                  outputFormat={outputFormat}
+                />
               )}
             </div>
-          </div>
-
-          {/* 모달 푸터 */}
-          <div className="bg-gray-50 px-4 py-3 border-t border-gray-200 flex justify-end">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              닫기
-            </button>
           </div>
         </div>
       </div>

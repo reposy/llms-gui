@@ -238,36 +238,139 @@ const notifyResultCallbacks = (flowId: string, result: any) => {
  * @returns 수집된 모든 출력
  */
 export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
+  console.log('[getAllOutputs] 결과 수집 시작');
   const results: NodeResult[] = [];
   
-  // 컨텍스트의 모든 노드에 대해 반복
-  for (const node of context.nodes) {
-    const nodeId = node.id;
-    const nodeOutputs = context.getOutput(nodeId);
+  // 안전하게 노드와 엣지 접근
+  if (!context.nodes || !Array.isArray(context.nodes)) {
+    console.warn('[getAllOutputs] context.nodes가 없거나 배열이 아닙니다.');
+    return [];
+  }
+  
+  // 1. leaf 노드 id 목록 수집 (그룹에 속하지 않고 + 출력 엣지가 없는 노드)
+  let leafNodeIds: string[] = [];
+  
+  try {
+    if (context.edges && Array.isArray(context.edges)) {
+      // 출력 엣지가 없는 노드 중에서 그룹 노드에 속하지 않은 노드만 leaf로 간주
+      leafNodeIds = context.nodes
+        .filter(node => {
+          // 그룹에 속하지 않음 (parentNodeId 또는 parentId가 없음)
+          const notInGroup = !node.parentNodeId && !node.parentId;
+          // 출력 엣지가 없음 (source로 사용되지 않음)
+          const hasNoOutputEdge = !context.edges.some(edge => edge.source === node.id);
+          return notInGroup && hasNoOutputEdge;
+        })
+        .map(n => n.id);
+    } else {
+      // edges가 없으면 모든 노드 중 그룹에 속하지 않은 노드를 leaf로 간주
+      leafNodeIds = context.nodes
+        .filter(node => !node.parentNodeId && !node.parentId)
+        .map(n => n.id);
+    }
     
-    if (nodeOutputs && nodeOutputs.length > 0) {
-      // 노드 정보 추가
-      const nodeType = node.type || '';
-      
-      results.push({
-        nodeId,
-        nodeName: nodeType, // 노드 타입을 이름으로 사용
-        nodeType,
-        outputs: nodeOutputs,
-        result: nodeOutputs[0] // 첫 번째 출력을 result로 설정 (호환성 유지)
-      });
+    console.log(`[getAllOutputs] ${leafNodeIds.length}개의 leaf 노드 발견`);
+    
+    // leaf 노드가 하나도 없으면 모든 노드 중 출력 엣지가 없는 노드를 leaf로 간주 
+    // (그룹 노드 속성을 확인할 수 없는 경우를 위한 대비책)
+    if (leafNodeIds.length === 0 && context.edges) {
+      leafNodeIds = context.nodes
+        .filter(node => !context.edges.some(edge => edge.source === node.id))
+        .map(n => n.id);
+      console.log(`[getAllOutputs] 그룹 속성 무시하고 ${leafNodeIds.length}개의 출력 엣지 없는 노드를 leaf로 간주`);
+    }
+  } catch (error) {
+    console.error('[getAllOutputs] leaf 노드 식별 중 오류:', error);
+    // 오류 발생 시 안전하게 모든 노드를 leaf로 간주
+    leafNodeIds = context.nodes.map(n => n.id);
+  }
+  
+  // 출력이 있는 모든 노드 ID 목록 (백업용)
+  let nodesWithOutputs: string[] = [];
+  
+  // 모든 노드를 반복하면서 출력 있는 노드 ID 찾기 (failsafe)
+  for (const node of context.nodes) {
+    const outputs = context.getOutput(node.id);
+    if (outputs && outputs.length > 0) {
+      nodesWithOutputs.push(node.id);
     }
   }
   
-  // 리프 노드만 필터링 (자식이 없는 노드)
-  const leafNodeResults = results.filter(result => {
-    const nodeId = result.nodeId;
-    // 이 노드가 다른 노드의 소스로 사용되지 않는지 확인
-    return !context.edges.some(edge => edge.source === nodeId);
-  });
+  console.log(`[getAllOutputs] 총 ${nodesWithOutputs.length}개 노드에 출력 데이터 있음`);
   
-  // 리프 노드가 있으면 리프 노드만 반환, 없으면 모든 결과 반환
-  return leafNodeResults.length > 0 ? leafNodeResults : results;
+  // 2. 각 leaf 노드의 결과 수집
+  for (const nodeId of leafNodeIds) {
+    try {
+      const node = context.nodes.find(n => n.id === nodeId);
+      const nodeOutputs = context.getOutput(nodeId);
+      const nodeType = node?.type || '';
+      const nodeName = node?.data?.label || nodeType || nodeId;
+      
+      // nodeOutputs: outputs array
+      // nodeOutput: single output (from nodeOutputs map, if available)
+      let nodeOutput = undefined;
+      if ('nodeOutputs' in context && context.nodeOutputs instanceof Map) {
+        nodeOutput = context.nodeOutputs.get(nodeId);
+      } else if ('nodeOutputs' in context && typeof context.nodeOutputs === 'object') {
+        nodeOutput = context.nodeOutputs[nodeId];
+      }
+      if (typeof nodeOutput === 'undefined') {
+        console.warn(`[getAllOutputs] nodeOutputs에 ${nodeId} 결과 없음. (outputs:`, nodeOutputs, ")");
+      }
+      results.push({
+        nodeId,
+        nodeName,
+        nodeType,
+        outputs: nodeOutputs,
+        result: nodeOutput
+      });
+    } catch (error) {
+      console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);
+    }
+  }
+  
+  // 3. Leaf 노드에서 결과를 찾지 못했고, 출력이 있는 다른 노드가 있다면 그 노드들의 결과 수집
+  if (results.length === 0 && nodesWithOutputs.length > 0) {
+    console.log(`[getAllOutputs] Leaf 노드에서 결과를 찾지 못함. 출력이 있는 ${nodesWithOutputs.length}개 노드에서 결과 수집 시도`);
+    
+    for (const nodeId of nodesWithOutputs) {
+      try {
+        const node = context.nodes.find(n => n.id === nodeId);
+        const nodeOutputs = context.getOutput(nodeId);
+        const nodeType = node?.type || '';
+        const nodeName = node?.data?.label || nodeType || nodeId;
+        
+        if (nodeOutputs && nodeOutputs.length > 0) {
+          console.log(`[getAllOutputs] 비-leaf 노드 ${nodeId} (${nodeName})에서 ${nodeOutputs.length}개 출력 발견`);
+          for (const output of nodeOutputs) {
+            // 파일 객체인 경우 파일명/경로만 남김
+            if (output && typeof output === 'object' && (output.name || output.path)) {
+              results.push({
+                nodeId,
+                nodeName,
+                nodeType,
+                outputs: [output],
+                result: output.name ? `${output.name}${output.path ? ` (${output.path})` : ''}` : JSON.stringify(output)
+              });
+            } else {
+              results.push({
+                nodeId,
+                nodeName,
+                nodeType,
+                outputs: [output],
+                result: output
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);
+      }
+    }
+  }
+  
+  console.log(`[getAllOutputs] 최종 결과 ${results.length}개 수집 완료`);
+  return results;
 };
 
 /**
@@ -333,10 +436,20 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
 
   // leaf node 결과를 flow에 저장 (lastResults)
   if (response.status === 'success') {
-    // getAllOutputs는 executorFlowExecutor.execute 내부에서 context로부터 반환됨
-    // response.outputs가 이미 leaf node 기준이면 그대로 사용
-    // (만약 outputs가 전체 노드 결과라면, leaf node만 필터링 필요)
-    useFlowExecutorStore.getState().setFlowResult(params.chainId, params.flowId, response.outputs);
+    console.log(`[executeFlowExecutor] ${params.flowId} 실행 성공, 결과 항목 수: ${response.outputs?.length || 0}`);
+    
+    // outputs이 null/undefined인 경우 빈 배열로 처리
+    const safeOutputs = response.outputs || [];
+    
+    // 결과 저장
+    useFlowExecutorStore.getState().setFlowResult(params.chainId, params.flowId, safeOutputs);
+    
+    // 저장 후 결과 확인 (UI 디버깅용)
+    const storedResults = useFlowExecutorStore.getState().chains[params.chainId]?.flowMap[params.flowId]?.lastResults;
+    console.log(`[executeFlowExecutor] ${params.chainId}/${params.flowId} 저장된 lastResults:`, 
+                storedResults ? `${storedResults.length}개 항목` : '없음');
+  } else {
+    console.warn(`[executeFlowExecutor] ${params.flowId} 실행 실패:`, response.error);
   }
   
   // onComplete 콜백이 제공된 경우, 결과를 올바른 형식으로 변환하여 전달

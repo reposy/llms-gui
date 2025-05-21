@@ -368,6 +368,9 @@ export class FlowExecutionContext implements ExecutionContext {
       this.outputs.set(nodeId, outputArray);
     }
     outputArray.push(output);
+
+    // 항상 nodeOutputs에도 저장 (대표값)
+    this.nodeOutputs.set(nodeId, output);
     
     if (process.env.NODE_ENV === 'development') {
       this.log(`Appended output for node ${nodeId}. Total outputs: ${outputArray.length}`);

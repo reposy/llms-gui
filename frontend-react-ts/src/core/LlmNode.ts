@@ -112,6 +112,7 @@ export class LlmNode extends Node {
    * Main execution method for the LLMNode
    */
   async execute(input: any): Promise<string | null> {
+    console.log('[LLMNode] execute input:', input);
     this._log('Executing LLMNode');
 
     // 필수 속성 확인
@@ -130,6 +131,7 @@ export class LlmNode extends Node {
     
     // 프롬프트 템플릿 처리
     const finalPrompt = this.resolvePrompt(input);
+    console.log('[LLMNode] final prompt after input replace:', finalPrompt);
     
     // 이미지 추출
     const { files: imageFiles, metaData: localImageMetadata } = this.extractImages(input);
@@ -161,6 +163,7 @@ export class LlmNode extends Node {
     try {
       // LLM 서비스 호출
       this._log(`Calling LLM service with: ${params.mode} mode, ${imageFiles.length + localImageMetadata.length} images`);
+      console.log('[LLMNode] Sending to LLM service:', params);
       const result = await runLLM(params);
       if (!result) {
         throw new Error('LLM service returned null or undefined unexpectedly.');
@@ -201,6 +204,8 @@ export class LlmNode extends Node {
       
       // 로그로 실제 결과 값 출력 (디버깅용)
       this._log(`Result value: "${resultText}"`);
+      
+      console.log('[LLMNode] LLM service response:', resultText);
       
       return resultText;
     } catch (error) {
