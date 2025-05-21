@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 // import { Link } from 'react-router-dom'; // Not used currently
 import { FlowChainList } from '../components/FlowExecutor/FlowChainList';
 import { FlowChainDetail } from '../components/FlowExecutor/FlowChainDetail';
-import { FlowChainModal } from '../components/FlowExecutor/FlowChainModal';
+import FlowChainModal from '../components/executor/FlowChainModal';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';

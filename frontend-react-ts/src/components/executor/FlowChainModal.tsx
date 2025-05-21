@@ -116,89 +116,41 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
             </button>
           </div>
 
-          {/* 탭 네비게이션 */}
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex">
-              <button
-                className={`${
-                  activeTab === 'input'
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm`}
-                onClick={() => setActiveTab('input')}
-              >
-                입력 설정
-              </button>
-              <button
-                className={`${
-                  activeTab === 'result'
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm ${
-                  !flow.lastResults || flow.lastResults.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                onClick={() => {
-                  if (flow.lastResults && flow.lastResults.length > 0) {
-                    setActiveTab('result');
-                  }
-                }}
-                disabled={!flow.lastResults || flow.lastResults.length === 0}
-              >
-                결과 보기
-              </button>
-            </nav>
-          </div>
-
           {/* 모달 본문 */}
           <div className="bg-white p-6 max-h-[70vh] overflow-y-auto">
-            {activeTab === 'input' ? (
-              <>
-                {/* 입력 설정 */}
-                <div className="mb-4">
-                  <FlowInputForm 
-                    flowId={flowId}
-                  />
+            {/* 입력폼 */}
+            <div className="mb-6">
+              <FlowInputForm flowId={flowId} />
+            </div>
+            {/* 실행 버튼 */}
+            <div className="mb-6 flex justify-end">
+              <button
+                onClick={handleExecuteFlow}
+                disabled={isExecuting}
+                className={`px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${isExecuting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isExecuting ? (
+                  <span className="flex items-center">
+                    <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    실행 중...
+                  </span>
+                ) : 'Flow 실행'}
+              </button>
+            </div>
+            {/* 결과 섹션 */}
+            <div className="border-t pt-6 mt-6">
+              <h3 className="text-md font-semibold mb-2">Flow 실행 결과</h3>
+              {flow.lastResults && flow.lastResults.length > 0 ? (
+                <div className="bg-gray-50 p-3 rounded max-h-60 overflow-y-auto text-xs">
+                  <pre>{JSON.stringify(flow.lastResults, null, 2)}</pre>
                 </div>
-
-                {/* 실행 버튼 */}
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={handleExecuteFlow}
-                    disabled={isExecuting}
-                    className={`px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                      isExecuting ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {isExecuting ? (
-                      <span className="flex items-center">
-                        <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        실행 중...
-                      </span>
-                    ) : 'Flow 실행'}
-                  </button>
-                </div>
-
-                {/* 오류 메시지 */}
-                {flow.status === 'error' && flow.error && (
-                  <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-md border border-red-200">
-                    <h4 className="font-medium">실행 오류</h4>
-                    <p className="mt-1 text-sm">{flow.error}</p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {/* 결과 표시 */}
-                {flow.lastResults && flow.lastResults.length > 0 ? (
-                  <ResultDisplay result={{ status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id }} flowId={flowId} flowName={flow.name} />
-                ) : (
-                  <div className="text-gray-500 italic">결과가 없습니다.</div>
-                )}
-              </>
-            )}
+              ) : (
+                <div className="text-gray-400 italic">실행 결과가 없습니다</div>
+              )}
+            </div>
           </div>
 
           {/* 모달 푸터 */}
