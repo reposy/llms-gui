@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // import { Link } from 'react-router-dom'; // Not used currently
 import { FlowChainList } from '../components/FlowExecutor/FlowChainList';
 import { FlowChainDetail } from '../components/FlowExecutor/FlowChainDetail';
@@ -7,52 +7,104 @@ import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
+import FlowChainListView from '../components/executor/FlowChainListView';
+import FlowChainDetailsView from '../components/executor/FlowChainDetailsView';
 
 const ExecutorPage: React.FC = () => {
+  const store = useFlowExecutorStore();
+  const chainIds = store.chainIds;
+  const chains = store.chains;
+  const focusedFlowChainId = store.focusedFlowChainId;
+  const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
+  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  const [isFlowModalOpen, setIsFlowModalOpen] = useState<boolean>(false);
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [modalFlow, setModalFlow] = useState<{ chainId: string; flowId: string } | null>(null);
-  const [isExecuting, setIsExecuting] = useState(false);
-  
-  // 스토어에서 상태와 액션 가져오기
-  const {
-    stage,
-    error,
-    chains,
-    flows,
-    chainIds,
-    getFocusedChain,
-    setStage,
-    resetState
-  } = useFlowExecutorStore();
-  
-  // 활성 체인 가져오기
-  const focusedChain = getFocusedChain();
-  
-  useEffect(() => {
-    // 체인이 없는 경우 upload 단계로 이동
-    if (chainIds.length === 0 && stage !== 'upload') {
-      setStage('upload');
-    } else if (chainIds.length > 0 && stage === 'upload') {
-      setStage('input');
-    }
-  }, [chains, stage, setStage]);
 
+  // 활성 체인 ID가 변경되면 선택된 체인 ID 업데이트
   useEffect(() => {
-    if (!focusedChain || !focusedChain.selectedFlowId) return;
-    const flow = flows[focusedChain.selectedFlowId];
-    if (!flow) return;
-    
-    if (flow.status !== 'running' && flow.results && stage === 'executing') {
-      setStage('result');
+    if (focusedFlowChainId) {
+      setSelectedChainId(focusedFlowChainId);
+    } else if (chainIds.length > 0) {
+      setSelectedChainId(chainIds[0]);
+      store.setFocusedFlowChainId(chainIds[0]);
+    } else {
+      setSelectedChainId(null);
     }
-  }, [focusedChain, stage, setStage, flows]);
+  }, [focusedFlowChainId, chainIds.length]);
+
+  const handleChainSelect = (chainId: string) => {
+    setSelectedChainId(chainId);
+    setSelectedFlowId(null);
+    store.setFocusedFlowChainId(chainId);
+  };
+
+  const handleFlowSelect = (flowId: string) => {
+    setSelectedFlowId(flowId);
+    setIsFlowModalOpen(true);
+  };
+
+  const handleCloseFlowModal = () => {
+    setIsFlowModalOpen(false);
+  };
+
+  const handleImportFlow = () => {
+    if (!selectedChainId) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const json = event.target?.result as string;
+          const flowData = JSON.parse(json);
+          store.addFlowToChain(selectedChainId, flowData);
+        } catch (error) {
+          console.error('Flow 가져오기 오류:', error);
+          alert('Flow 파일을 처리하는 중 오류가 발생했습니다.');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm('모든 Flow Chain과 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      store.resetState();
+      setSelectedChainId(null);
+      setSelectedFlowId(null);
+    }
+  };
+
+  const handleStageChange = (newStage: typeof store.stage) => {
+    store.setStage(newStage);
+  };
+
+  // 현재 선택된 체인
+  const selectedChain = selectedChainId ? chains[selectedChainId] : null;
+
+  // 결과를 볼 수 있는지 확인
+  const canViewResults = useMemo(() => {
+    if (!selectedChain) return false;
+    return selectedChain.flowIds?.some(flowId => {
+      const flow = selectedChain.flowMap?.[flowId];
+      return flow && flow.lastResults && flow.lastResults.length > 0;
+    }) || false;
+  }, [selectedChain]);
+
+  // 입력 설정 가능한지 확인
+  const canSetInput = useMemo(() => (selectedChain?.flowIds?.length || 0) > 0, [selectedChain]);
 
   const handleExportWithFilename = (filename: string, includeData: boolean) => {
     try {
       const exportData = {
         version: '1.1',
         chains,
-        flows
+        flows: selectedChain?.flowMap || {}
       };
       
       if (!includeData) {
@@ -86,33 +138,8 @@ const ExecutorPage: React.FC = () => {
     }
   };
 
-  const handleReset = () => {
-    // 확인 대화 상자 표시
-    if (window.confirm('모든 내용을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      try {
-        console.log('[ExecutorPage] 모든 내용 초기화 시작');
-        
-        // 로컬 스토리지에서 저장된 상태 정보 직접 제거
-        localStorage.removeItem('executor-state-store');
-        localStorage.removeItem('executor-graph-storage');
-        localStorage.removeItem('flow-executor-store');
-        
-        // Zustand 스토어 상태 초기화
-        resetState();
-        
-        console.log('[ExecutorPage] 초기화 완료');
-        
-        // 페이지 새로고침
-        window.location.reload();
-      } catch (error) {
-        console.error('[ExecutorPage] 초기화 중 오류 발생:', error);
-        alert('초기화 중 오류가 발생했습니다.');
-      }
-    }
-  };
-
   const handleExecuteFlow = () => {
-    if (focusedChain) {
+    if (selectedChain) {
       setIsExecuting(true);
       // Attempt to trigger executeChain in FlowChainDetail by simulating a click
       // This is a workaround. Ideally, FlowChainDetail exposes a ref or a direct function.
@@ -122,7 +149,7 @@ const ExecutorPage: React.FC = () => {
       }
       setTimeout(() => setIsExecuting(false), 1000); // Set timeout to prevent multiple clicks
     } else {
-      setError('실행할 활성 Flow Chain이 없습니다.');
+      store.setError('실행할 활성 Flow Chain이 없습니다.');
     }
   };
 
@@ -132,35 +159,27 @@ const ExecutorPage: React.FC = () => {
 
   const panelActions = {
     onExport: () => setExportModalOpen(true),
-    onReset: handleReset,
+    onReset: handleClearAll,
     onExecuteAll: handleExecuteFlow,
   };
 
   const stageNavProps = {
-    currentStage: stage,
-    onStageChange: setStage,
-    canSetInput: Object.keys(chains).length > 0,
-    canViewResults: !!(focusedChain && focusedChain.selectedFlowId && flows[focusedChain.selectedFlowId]?.results),
-    isExecutionDisabled: !focusedChain || focusedChain.flowIds.length === 0 || (focusedChain.status === 'running'),
+    currentStage: store.stage,
+    onStageChange: handleStageChange,
+    canSetInput: canSetInput,
+    canViewResults: canViewResults,
+    isExecutionDisabled: !selectedChain || selectedChain.flowIds.length === 0 || (selectedChain.status === 'running'),
     onExecute: panelActions.onExecuteAll,
-    error,
-  };
-
-  const openFlowModal = (chainId: string, flowId: string) => {
-    setModalFlow({ chainId, flowId });
-  };
-
-  const closeFlowModal = () => {
-    setModalFlow(null);
+    error: store.error,
   };
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       <ExecutorPanel 
-        onImportFlowChain={() => {}} // 필요한 경우 구현
+        onImportFlowChain={handleImportFlow}
         onExportFlowChain={handleExportFlowChain}
         onExecuteFlow={handleExecuteFlow}
-        onClearAll={handleReset}
+        onClearAll={handleClearAll}
         isExecuting={isExecuting}
       />
       <StageNavigationBar {...stageNavProps} />
@@ -169,31 +188,38 @@ const ExecutorPage: React.FC = () => {
           {/* Left Panel */}
           <div className="w-1/3 flex flex-col space-y-4 h-full">
             <div className="bg-white shadow rounded-lg p-4 flex-grow overflow-y-auto">
-              <FlowChainList />
+              <FlowChainListView onChainSelect={handleChainSelect} />
             </div>
           </div>
           {/* Right Panel */}
           <div className="w-2/3 bg-white shadow rounded-lg p-4 h-full overflow-y-auto">
-            <FlowChainDetail onFlowSelect={openFlowModal} />
+            {selectedChainId ? (
+              <FlowChainDetailsView
+                chainId={selectedChainId}
+                onFlowSelect={handleFlowSelect}
+                onImportFlow={handleImportFlow}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-gray-500">Select or Create a Flow Chain from the left panel.</p>
+              </div>
+            )}
           </div>
-                        </div>
-                      </div>
-
+        </div>
+      </div>
       <ExportModal
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         onExport={handleExportWithFilename}
         defaultFilename="flows-export.json"
       />
-
-      {/* FlowChainModal is now expected to be triggered from FlowChainDetail clicks */}
-      {/* Ensure FlowChainDetail has a mechanism to open this modal by passing setModalFlow or similar */}
-      {modalFlow && (
+      {/* Flow 상세 모달 */}
+      {selectedChainId && selectedFlowId && isFlowModalOpen && (
         <FlowChainModal
-          chainId={modalFlow.chainId}
-          flowId={modalFlow.flowId}
-          open={!!modalFlow}
-          onClose={closeFlowModal}
+          isOpen={isFlowModalOpen}
+          onClose={handleCloseFlowModal}
+          chainId={selectedChainId}
+          flowId={selectedFlowId}
         />
       )}
     </div>
