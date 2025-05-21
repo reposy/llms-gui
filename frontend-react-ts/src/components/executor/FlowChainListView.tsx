@@ -51,7 +51,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
             value={newChainName}
             onChange={(e) => setNewChainName(e.target.value)}
             placeholder="새 체인 이름"
-            className="flex-1 border border-gray-300 rounded-l px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 border border-gray-300 rounded-l px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           />
           <button
             onClick={handleAddChain}
