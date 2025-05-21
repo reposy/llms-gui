@@ -30,11 +30,18 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
       : [{ type: 'text', value: '' }]
   );
 
+  const [editMode, setEditMode] = useState(false);
+  const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
+
   // propInputs/flow.inputs 동기화
   useEffect(() => {
     if (propInputs) setRows(propInputs);
     else if (flow && flow.inputs) setRows(flow.inputs);
   }, [propInputs, flow]);
+
+  useEffect(() => {
+    setDraftInputs(rows);
+  }, [rows]);
 
   // 입력 변경 핸들러
   const updateRows = (newRows: InputRow[]) => {
@@ -119,6 +126,16 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     }
   };
 
+  const handleSave = () => {
+    setEditMode(false);
+    if (onInputChange) onInputChange(draftInputs);
+  };
+
+  const handleCancel = () => {
+    setEditMode(false);
+    setDraftInputs(rows);
+  };
+
   // SVG 아이콘 (프로젝트 내 선언된 것 사용 예시)
   const TrashIcon = (
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -136,6 +153,17 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
       {rows.length === 0 && (
         <div className="text-gray-400 text-sm mb-2">입력값을 추가하세요</div>
       )}
+      {/* 수정/저장/취소 버튼 */}
+      <div className="flex gap-2 mb-4">
+        {!editMode ? (
+          <button className="px-3 py-1 bg-blue-500 text-white rounded" onClick={() => setEditMode(true)}>수정</button>
+        ) : (
+          <>
+            <button className="px-3 py-1 bg-green-500 text-white rounded" onClick={handleSave}>저장</button>
+            <button className="px-3 py-1 bg-gray-300 text-gray-700 rounded" onClick={handleCancel}>취소</button>
+          </>
+        )}
+      </div>
       {rows.map((row, idx) => (
         <div key={idx} className="flex items-center gap-2 mb-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
           {/* 타입 토글 */}
@@ -191,7 +219,9 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
           </div>
         </div>
       ))}
-      <button type="button" className="mt-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => addRow()}>+ 입력 추가</button>
+      {editMode && (
+        <button className="mt-2 px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRow()}>+ 입력 추가</button>
+      )}
     </div>
   );
 };

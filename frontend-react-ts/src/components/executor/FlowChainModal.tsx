@@ -3,6 +3,7 @@ import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import FlowInputForm from './FlowInputForm';
 import ResultDisplay from './ResultDisplay';
+import ReactMarkdown from 'react-markdown';
 
 interface FlowChainModalProps {
   isOpen: boolean;
@@ -19,6 +20,10 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'input' | 'result'>('input');
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [resultTab, setResultTab] = useState<'node' | 'output'>('node');
+  const [outputFormat, setOutputFormat] = useState<'text' | 'markdown'>('text');
+  const [inputEditMode, setInputEditMode] = useState(false);
+  const [pendingInputs, setPendingInputs] = useState<any[]>([]);
   
   const store = useFlowExecutorStore();
   const chain = store.chains[chainId];
@@ -34,7 +39,17 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   if (!isOpen || !flow) return null;
 
   const handleInputChange = (inputs: any[]) => {
-    store.setFlowInputData(chainId, flowId, inputs);
+    setPendingInputs(inputs);
+  };
+
+  const handleSaveInputs = () => {
+    store.setFlowInputData(chainId, flowId, pendingInputs);
+    setInputEditMode(false);
+  };
+
+  const handleCancelInputs = () => {
+    setPendingInputs(flow?.inputs || []);
+    setInputEditMode(false);
   };
 
   const handleExecuteFlow = async () => {
@@ -120,7 +135,17 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
           <div className="bg-white p-6 max-h-[70vh] overflow-y-auto">
             {/* 입력폼 */}
             <div className="mb-6">
-              <FlowInputForm flowId={flowId} />
+              <FlowInputForm
+                flowId={flowId}
+                inputs={pendingInputs}
+                onInputChange={handleInputChange}
+              />
+              {inputEditMode && (
+                <div className="flex gap-2 mt-2">
+                  <button className="px-3 py-1 bg-green-500 text-white rounded" onClick={handleSaveInputs}>저장</button>
+                  <button className="px-3 py-1 bg-gray-300 text-gray-700 rounded" onClick={handleCancelInputs}>취소</button>
+                </div>
+              )}
             </div>
             {/* 실행 버튼 */}
             <div className="mb-6 flex justify-end">
@@ -142,13 +167,50 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
             </div>
             {/* 결과 섹션 */}
             <div className="border-t pt-6 mt-6">
-              <h3 className="text-md font-semibold mb-2">Flow 실행 결과</h3>
-              {flow.lastResults && flow.lastResults.length > 0 ? (
-                <div className="bg-gray-50 p-3 rounded max-h-60 overflow-y-auto text-xs">
-                  <pre>{JSON.stringify(flow.lastResults, null, 2)}</pre>
-                </div>
+              <div className="flex gap-4 mb-2">
+                <button className={`px-3 py-1 rounded-t ${resultTab === 'node' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`} onClick={() => setResultTab('node')}>노드별 결과 확인</button>
+                <button className={`px-3 py-1 rounded-t ${resultTab === 'output' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`} onClick={() => setResultTab('output')}>결과만 모아보기</button>
+                {resultTab === 'output' && (
+                  <div className="ml-4 flex items-center gap-2">
+                    <span className="text-xs text-gray-500">포맷:</span>
+                    <button className={`px-2 py-0.5 rounded ${outputFormat === 'text' ? 'bg-blue-200 text-blue-800' : 'bg-white border'}`} onClick={() => setOutputFormat('text')}>Text</button>
+                    <button className={`px-2 py-0.5 rounded ${outputFormat === 'markdown' ? 'bg-blue-200 text-blue-800' : 'bg-white border'}`} onClick={() => setOutputFormat('markdown')}>Markdown</button>
+                  </div>
+                )}
+              </div>
+              {resultTab === 'node' ? (
+                flow.lastResults && flow.lastResults.length > 0 ? (
+                  <div className="space-y-3">
+                    {flow.lastResults.map((result: any, idx: number) => (
+                      <div key={idx} className="bg-gray-50 p-3 rounded border">
+                        <div className="font-semibold text-sm text-gray-700 mb-1">{result.nodeName || result.nodeType || result.nodeId}</div>
+                        {typeof result.result === 'string' ? (
+                          <pre className="text-xs whitespace-pre-wrap text-gray-700">{result.result}</pre>
+                        ) : result.result && result.result.name ? (
+                          <span className="text-xs text-gray-700">파일: {result.result.name}</span>
+                        ) : (
+                          <pre className="text-xs whitespace-pre-wrap text-gray-700">{JSON.stringify(result.result, null, 2)}</pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 italic">실행 결과가 없습니다</div>
+                )
               ) : (
-                <div className="text-gray-400 italic">실행 결과가 없습니다</div>
+                flow.lastResults && flow.lastResults.length > 0 ? (
+                  <div className="bg-gray-50 p-3 rounded max-h-60 overflow-y-auto text-xs">
+                    {outputFormat === 'markdown' ? (
+                      <ReactMarkdown className="prose prose-sm max-w-none">
+                        {flow.lastResults.map((r: any) => typeof r.result === 'string' ? r.result : (r.result && r.result.name ? `파일: ${r.result.name}` : JSON.stringify(r.result, null, 2))).join('\n')}
+                      </ReactMarkdown>
+                    ) : (
+                      <pre>{flow.lastResults.map((r: any) => typeof r.result === 'string' ? r.result : (r.result && r.result.name ? `파일: ${r.result.name}` : JSON.stringify(r.result, null, 2))).join('\n')}</pre>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 italic">실행 결과가 없습니다</div>
+                )
               )}
             </div>
           </div>

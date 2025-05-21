@@ -4,6 +4,7 @@ import { Node as BaseNode } from '../core/Node';
 import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
 import { useExecutorStateStore, FlowChain, Flow, ExecutionStatus } from '../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -329,13 +330,18 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
   
   // 응답 결과 받기
   const response = await executorFlowExecutor.execute(params);
+
+  // leaf node 결과를 flow에 저장 (lastResults)
+  if (response.status === 'success') {
+    // getAllOutputs는 executorFlowExecutor.execute 내부에서 context로부터 반환됨
+    // response.outputs가 이미 leaf node 기준이면 그대로 사용
+    // (만약 outputs가 전체 노드 결과라면, leaf node만 필터링 필요)
+    useFlowExecutorStore.getState().setFlowResult(params.chainId, params.flowId, response.outputs);
+  }
   
   // onComplete 콜백이 제공된 경우, 결과를 올바른 형식으로 변환하여 전달
   if (params.onComplete && response.status === 'success') {
-    // 결과를 FlowExecutionResult 형식으로 변환
     params.onComplete(response.outputs);
-    
-    // 결과가 성공적으로 생성되면 등록된 콜백에도 알림
     notifyResultCallbacks(params.flowId, {
       status: response.status,
       outputs: response.outputs,
