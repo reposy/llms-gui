@@ -4,11 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { Edge, Node } from '@xyflow/react';
 import { deepClone } from '../utils/helpers';
 import { type FlowData } from '../utils/data/importExportUtils';
+import { NodeData } from '../types/nodes';
 
 // 스토어 상태 타입 정의
 interface FlowEditorState {
   // 노드 및 에지 데이터
-  nodes: Node[];
+  nodes: Node<NodeData>[];
   edges: Edge[];
   
   // 현재 Flow 메타데이터
@@ -24,16 +25,16 @@ interface FlowEditorState {
   
   // 기록 관리
   history: {
-    past: { nodes: Node[], edges: Edge[] }[];
-    future: { nodes: Node[], edges: Edge[] }[];
+    past: { nodes: Node<NodeData>[], edges: Edge[] }[];
+    future: { nodes: Node<NodeData>[], edges: Edge[] }[];
   };
   
   // 액션
   // 노드 관련
-  addNode: (node: Node) => void;
-  updateNode: (id: string, updates: Partial<Node>) => void;
+  addNode: (node: Node<NodeData>) => void;
+  updateNode: (id: string, updates: Partial<Node<NodeData>>) => void;
   removeNode: (id: string) => void;
-  setNodes: (nodes: Node[]) => void;
+  setNodes: (nodes: Node<NodeData>[]) => void;
   
   // 에지 관련
   addEdge: (edge: Edge) => void;
@@ -63,8 +64,8 @@ interface FlowEditorState {
 
 // 초기 상태
 const initialState = {
-  nodes: [],
-  edges: [],
+  nodes: [] as Node<NodeData>[],
+  edges: [] as Edge[],
   currentFlow: null,
   selectedNodes: [],
   selectedEdges: [],
@@ -115,7 +116,7 @@ export const useFlowEditorStore = create<FlowEditorState>()(
         get().recordHistory();
       },
       
-      setNodes: (nodes) => {
+      setNodes: (nodes: Node<NodeData>[]) => {
         set({ nodes });
         get().recordHistory();
       },
@@ -159,7 +160,7 @@ export const useFlowEditorStore = create<FlowEditorState>()(
         get().recordHistory();
       },
       
-      setEdges: (edges) => {
+      setEdges: (edges: Edge[]) => {
         set({ edges });
         get().recordHistory();
       },
@@ -218,12 +219,12 @@ export const useFlowEditorStore = create<FlowEditorState>()(
         return flowId;
       },
       
-      loadFlow: (flow) => {
+      loadFlow: (flow: FlowData) => {
         set({
-          nodes: flow.nodes || [],
-          edges: flow.edges || [],
+          nodes: deepClone(flow.nodes) as Node<NodeData>[],
+          edges: deepClone(flow.edges) as Edge[],
           currentFlow: {
-            id: flow.id || `flow-${uuidv4()}`,
+            id: `flow-${uuidv4()}`,
             name: flow.name || 'Imported Flow',
             lastModified: new Date()
           },
@@ -238,25 +239,19 @@ export const useFlowEditorStore = create<FlowEditorState>()(
       
       saveCurrentFlow: () => {
         const { nodes, edges, currentFlow } = get();
-        
         if (!currentFlow) {
           return null;
         }
-        
         const flowData: FlowData = {
-          id: currentFlow.id,
           name: currentFlow.name,
-          nodes: deepClone(nodes),
-          edges: deepClone(edges)
+          nodes: deepClone(nodes) as Node<NodeData>[],
+          edges: deepClone(edges) as Edge[]
         };
-        
-        // lastModified 업데이트
         set(state => ({
           currentFlow: state.currentFlow 
             ? { ...state.currentFlow, lastModified: new Date() }
             : null
         }));
-        
         return flowData;
       },
       

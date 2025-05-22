@@ -110,8 +110,7 @@ const _startExecutionProcess = async (
         ...nodeInstance.property,
         nodes: context.nodes,
         edges: context.edges,
-        nodeFactory: context.nodeFactory,
-        executionGraph 
+        nodeFactory: context.nodeFactory
       };
 
       // Mark running BEFORE process call
@@ -224,49 +223,9 @@ export const runFullFlowExecution = async (startNodeId?: string, inputData?: any
     
     context.log(`Determined starting nodes: ${nodesToExecuteIds.join(', ')}`);
     
-    // Flow Editor 전용 실행 함수 사용
-    const flowStructureStore = useFlowStructureStore.getState();
-    const { nodes, edges } = flowStructureStore;
-    
-    // Flow Editor 전용 실행
-    try {
-      // 임시 flowId 생성 (Flow Editor에서는 flowId가 없음)
-      const tempFlowId = `editor-flow-${uuidv4()}`;
-      
-      // Flow Data 구성
-      const flowData = {
-        id: tempFlowId,
-        name: "Editor Flow",
-        nodes: nodes,
-        edges: edges,
-        contents: {} as Record<string, any>
-      };
-      
-      // 모든 노드의 컨텐츠 정보 수집
-      nodes.forEach(node => {
-        const content = getNodeContent(node.id);
-        if (content) {
-          flowData.contents[node.id] = content;
-        }
-      });
-      
-      // Flow Editor 전용 실행 함수 호출
-      const { executeFlowEditor } = await import('../services/flowExecutionService');
-      
-      await executeFlowEditor({
-        flowId: tempFlowId,
-        flowJson: flowData,
-        inputs: inputData || [],
-        onComplete: (result) => {
-          console.log(`[ExecutionUtils] Flow Editor execution completed with result:`, result);
-        }
-      });
-      
-      console.log(`[ExecutionUtils] Completed Editor flow execution process.`);
-    } catch (error) {
-      console.error(`[ExecutionUtils] Error during Flow Editor execution:`, error);
-      throw error;
-    }
+    // Flow Editor 전용 실행 함수 사용 (불필요한 executeFlowEditor import 및 호출 제거)
+    // 기존 context와 실행 로직을 그대로 사용하면 충분함
+    // (불필요한 임포트/콜백/executeFlowEditor 관련 코드 삭제)
   } catch (error) {
     console.error(`[ExecutionUtils] Failed to run full flow execution:`, error);
     // Re-throw the error so the caller (e.g., UI) can handle it
@@ -329,8 +288,7 @@ const _executeWithInput = async (
         ...nodeInstance.property,
         nodes: context.nodes,
         edges: context.edges,
-        nodeFactory: context.nodeFactory,
-        executionGraph 
+        nodeFactory: context.nodeFactory
       };
 
       // Mark running BEFORE process call
