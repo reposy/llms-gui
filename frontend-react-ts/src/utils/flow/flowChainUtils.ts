@@ -11,7 +11,7 @@ import { deepClone } from '../helpers';
 export const synchronizeFlowData = (
   flowId: string,
   flowData: FlowData,
-  chainId?: string,
+  flowChainId?: string,
   name?: string
 ): void => {
   // 깊은 복사를 사용하여 원본 데이터 변경 방지
@@ -38,18 +38,18 @@ export const synchronizeFlowData = (
     graphStore.setFlowGraph(flowId, flowDataClone);
   }
   
-  // 3. Chain ID가 제공된 경우 ExecutorStateStore 동기화
-  if (chainId) {
+  // 3. Flow Chain ID가 제공된 경우 ExecutorStateStore 동기화
+  if (flowChainId) {
     const executorStore = useExecutorStateStore.getState();
-    const chain = executorStore.getChain(chainId);
+    const flowChain = executorStore.getFlowChain(flowChainId);
     
-    if (chain) {
+    if (flowChain) {
       // 체인 내에 해당 Flow가 존재하는지 확인
-      const flowExists = chain.flowIds.includes(flowId);
+      const flowExists = flowChain.flowIds.includes(flowId);
       
       if (!flowExists) {
-        console.log(`[flowChainUtils] Adding flow to chain in ExecutorStateStore: ${flowId} to chain ${chainId}`);
-        executorStore.addFlowToChain(chainId, flowDataClone);
+        console.log(`[flowChainUtils] Adding flow to flow chain in ExecutorStateStore: ${flowId} to flow chain ${flowChainId}`);
+        executorStore.addFlowToChain(flowChainId, flowDataClone);
       }
     }
   }

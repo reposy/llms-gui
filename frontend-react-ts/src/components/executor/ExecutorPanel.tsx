@@ -32,11 +32,11 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   const { 
     flowChainMap, 
     setStage,
-    getFocusedChain 
+    getFlowChain 
   } = useFlowExecutorStore();
   
   // 활성 체인의 Flow 개수 계산 (안전하게 접근)
-  const focusedChain = getFocusedChain();
+  const focusedChain = getFlowChain();
   const hasFlows = focusedChain && focusedChain.flowIds.length > 0;
   const flowChainIds = Object.keys(flowChainMap);
 
@@ -88,8 +88,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         const addFlowToChain = store.addFlowToChain;
         const setFlowInputData = store.setFlowInputData;
         const setStage = store.setStage;
-        const focusedChain = store.getFocusedChain();
-        const chainId = focusedChain?.id || '';
+        const focusedChain = store.getFlowChain();
+        const flowChainId = focusedChain?.id || '';
         
         importData.flowChain.forEach((flow: any) => {
           try {
@@ -103,17 +103,17 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             const flowName = flow.name || flow.flowJson.name || '가져온-flow';
             
             // Flow 추가 (원본 ID 보존)
-            if (chainId) {
-              addFlowToChain(chainId, flow.flowJson);
+            if (flowChainId) {
+              addFlowToChain(flowChainId, flow.flowJson);
               
               // 새로 추가된 Flow ID 얻기
-              const updatedChain = store.getChain(chainId);
+              const updatedChain = store.getChain(flowChainId);
               if (updatedChain) {
                 const flowId = updatedChain.flowIds[updatedChain.flowIds.length - 1];
                 
                 // 입력 데이터 설정
                 if (flow.inputData && flow.inputData.length > 0) {
-                  setFlowInputData(chainId, flowId, flow.inputData);
+                  setFlowInputData(flowChainId, flowId, flow.inputData);
                 }
               }
             } else {

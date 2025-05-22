@@ -49,15 +49,15 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
       setIsExecuting(true);
       await executeChain({
         flowChainId: chainId,
-        onFlowStart: (chainId, flowId) => {
-          store.setFlowStatus(chainId, flowId, 'running');
+        onFlowStart: (flowChainId, flowId) => {
+          store.setFlowStatus(flowChainId, flowId, 'running');
         },
-        onFlowComplete: (chainId, flowId, results) => {
-          store.setFlowStatus(chainId, flowId, 'success');
-          store.setFlowResult(chainId, flowId, results);
+        onFlowComplete: (flowChainId, flowId, results) => {
+          store.setFlowStatus(flowChainId, flowId, 'success');
+          store.setFlowResult(flowChainId, flowId, results);
         },
-        onError: (chainId, flowId, error) => {
-          store.setFlowStatus(chainId, flowId, 'error', error?.toString());
+        onError: (flowChainId, flowId, error) => {
+          store.setFlowStatus(flowChainId, flowId, 'error', error?.toString());
         }
       });
     } catch (error) {
@@ -83,7 +83,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
     try {
       const result = await executeFlowExecutor({
         flowId,
-        chainId,
+        chainId: chainId,
         flowJson: flow.flowJson,
         inputs: execInputs
       });

@@ -566,5 +566,6 @@ export const resetState = () => useFlowExecutorStore.getState().resetState();
 export const resetResults = () => useFlowExecutorStore.getState().resetResults();
 export const resetFlowGraphs = () => useFlowExecutorStore.getState().resetFlowGraphs();
 export const getFlow = (chainId: string, flowId: string) => useFlowExecutorStore.getState().getFlow(chainId, flowId);
-export const getChain = (chainId: string) => useFlowExecutorStore.getState().getChain(chainId);
-export const getFocusedChain = () => useFlowExecutorStore.getState().getFocusedChain(); 
+export const getFlowChain = (flowChainId: string) => useFlowExecutorStore.getState().getChain(flowChainId);
+export const getFocusedChain = () => useFlowExecutorStore.getState().getFocusedChain();
+export const setFlowChainStatus = (flowChainId: string, status: ExecutionStatus, error?: string) => useFlowExecutorStore.getState().setChainStatus(flowChainId, status, error); 
