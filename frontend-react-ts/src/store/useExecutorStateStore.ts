@@ -1,267 +1,647 @@
+// DEPRECATED: Flow Executor는 useFlowExecutorStore만 사용하세요. 이 파일은 더 이상 직접 사용하지 마십시오.
+import { useFlowExecutorStore } from './useFlowExecutorStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FlowData } from '../utils/data/importExportUtils';
-import { useExecutorGraphStore } from './useExecutorGraphStore';
+import { Node, Edge } from '@xyflow/react';
+import { type FlowData } from '../utils/data/importExportUtils';
+export type { FlowData } from '../utils/data/importExportUtils';
 import { deepClone } from '../utils/helpers';
+import { v4 as uuidv4 } from 'uuid';
+import { NodeFactory } from '../core/NodeFactory';
+import { Node as BaseNode } from '../core/Node';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
+export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error';
 
-// Flow 항목 인터페이스 (기존에 있다면 export 추가, 없다면 새로 정의하고 export)
-export interface FlowExecutionItem {
+// 그래프 노드 관계 정보
+interface NodeRelation {
+  parents: string[];  // 부모 노드 ID 목록
+  childs: string[];   // 자식 노드 ID 목록
+}
+
+// 그래프 노드 정보
+interface GraphNode {
+  id: string;
+  type: string;
+  data: any;
+  position: { x: number, y: number };
+  parentNodeId: string | null;
+  isGroupNode: boolean;
+}
+
+// Flow 내 개별 노드의 실행 상태
+export interface FlowNodeExecutionState {
+  status: ExecutionStatus;
+  result?: any;
+  error?: string;
+  // 필요에 따라 executionId, lastTriggerNodeId 등을 추가할 수 있습니다.
+}
+
+// Flow 하나의 정보 (그래프 정보 포함)
+export interface Flow {
+  id: string;
+  chainId: string; // Flow가 속한 Chain ID
+  name: string;
+  flowJson: FlowData;
+  inputs: any[];
+  lastResults: any[] | null;
+  status: ExecutionStatus;
+  error?: string;
+  
+  // 그래프 구조 정보
+  nodes: Record<string, GraphNode>;
+  graph: Record<string, NodeRelation>;
+  roots: string[];
+  leafs: string[];
+  nodeStates: Record<string, FlowNodeExecutionState>; // Executor에서 실행 시 각 노드의 상태
+}
+
+// Flow Chain의 정보
+export interface FlowChain {
   id: string;
   name: string;
-  flowJson: any; // FlowData 타입 등 구체적인 타입 사용 권장
-  inputData: any[];
-  result?: FlowExecutionResult | any | null;
-}
-
-// Flow 실행 결과 인터페이스 (기존에 있다면 export 추가, 없다면 새로 정의하고 export)
-// NodeResult 타입을 core/outputCollector에서 가져오거나 여기서 직접 정의할 수 있습니다.
-// 우선 간단히 any로 정의하고, 실제 프로젝트의 NodeResult 타입으로 대체해야 합니다.
-export interface FlowExecutionResult {
-  status: 'running' | 'success' | 'error';
-  outputs: any[] | null; // 실제로는 NodeResult[] 타입이어야 함
+  status: ExecutionStatus;
+  selectedFlowId: string | null;  // 체이닝에 사용될 Flow의 ID
+  flowIds: string[];  // 실행 순서
   error?: string;
-  // 기타 필요한 필드들...
+  inputs: any[]; // Flow Chain 전체의 입력 (추가)
 }
 
+// 정규화된 스토어 상태
 interface ExecutorState {
-  // Flow 체인 데이터
-  flowChain: FlowExecutionItem[];
+  // 엔티티 컬렉션 (정규화된 데이터)
+  flowChainMap: Record<string, FlowChain>;
+  flows: Record<string, Flow>;
   
-  // 현재 선택된/활성화된 Flow 인덱스
-  activeFlowIndex: number;
-  
-  // 현재 단계
+  // 순서 및 참조 데이터
+  flowChainIds: string[];  // Chain 순서 유지
+  activeChainId: string | null;
   stage: ExecutorStage;
-  
-  // 오류 메시지
   error: string | null;
+  nodeFactory: NodeFactory; // 그래프 노드 생성 팩토리
+
+  // Flow Chain 관련 액션
+  addFlowChain: (name: string) => string; // 생성된 chain-id 반환
+  removeFlowChain: (id: string) => void;
+  setFlowChainName: (id: string, name: string) => void;
+  addFlowToChain: (chainId: string, flowJson: FlowData) => string; // 생성된 flow-id 반환
+  removeFlowFromChain: (chainId: string, flowId: string) => void;
+  setFlowChainStatus: (chainId: string, status: ExecutionStatus, error?: string) => void;
+  setFlowStatus: (chainId: string, flowId: string, status: ExecutionStatus, error?: string) => void;
+  setSelectedFlow: (chainId: string, flowId: string | null) => void;
+  moveFlow: (chainId: string, flowId: string, direction: 'up' | 'down') => void;
+  setFlowInputs: (chainId: string, flowId: string, inputs: any[]) => void;
+  setFlowChainInputs: (chainId: string, inputs: any[]) => void; // Flow Chain 입력 설정 액션 (추가)
+  setFlowResults: (chainId: string, flowId: string, results: any[]) => void;
+  setFlowNodeState: (chainId: string, flowId: string, nodeId: string, nodeState: FlowNodeExecutionState) => void;
+  getFlowNodeState: (chainId: string, flowId: string, nodeId: string) => FlowNodeExecutionState | undefined;
+  setActiveChainId: (id: string | null) => void;
   
-  // 체인 상태 설정 함수
-  addFlow: (flowJson: FlowData) => void;
-  removeFlow: (id: string) => void;
-  moveFlowUp: (id: string) => void;
-  moveFlowDown: (id: string) => void;
-  setFlowInputData: (id: string, inputData: any[]) => void;
-  setFlowResult: (id: string, result: any | null) => void;
-  setFlowName: (id: string, name: string) => void;
-  
-  // 현재 활성 Flow 설정
-  setActiveFlowIndex: (index: number) => void;
-  
-  // 기타 상태 설정 함수
+  // 상태 관리
   setStage: (stage: ExecutorStage) => void;
   setError: (error: string | null) => void;
-  
-  // 상태 초기화 함수
   resetState: () => void;
+  
+  // 모든 플로우의 결과 초기화
   resetResults: () => void;
   
   // 편의 함수
-  getFlowById: (id: string) => FlowExecutionItem | undefined;
-  getFlowResultById: (id: string) => any | null;
-  getActiveFlow: () => FlowExecutionItem | null;
+  getFlow: (chainId: string, flowId: string) => Flow | undefined;
+  getFlowChain: (chainId: string) => FlowChain | undefined;
+  getActiveFlowChain: () => FlowChain | undefined;
+  
+  // 그래프 데이터 접근 함수
+  getRootNodes: (chainId: string, flowId: string) => string[];
+  getLeafNodes: (chainId: string, flowId: string) => string[];
+  getNodeInstance: (chainId: string, flowId: string, nodeId: string) => BaseNode | null;
 }
 
-// 초기 상태
-const initialState = {
-  flowChain: [],
-  activeFlowIndex: 0,
-  stage: 'upload' as ExecutorStage,
-  error: null
-};
-
-// 고유 ID 생성 함수
-const generateId = (flowName?: string) => {
-  const namePart = flowName 
-    ? flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20)
-    : 'flow';
-  const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 1000);
+/**
+ * 그래프 구조 분석 함수 - 부모/자식 관계 및 루트/리프 노드 식별
+ */
+const buildGraphStructure = (nodes: Node[], edges: Edge[]): {
+  nodeMap: Record<string, GraphNode>;
+  graphRelations: Record<string, NodeRelation>;
+  roots: string[];
+  leafs: string[];
+} => {
+  // 1. 노드 맵 생성
+  const nodeMap: Record<string, GraphNode> = {};
+  nodes.forEach(node => {
+    nodeMap[node.id] = {
+      id: node.id,
+      type: node.type || '',
+      data: node.data || {},
+      position: node.position || { x: 0, y: 0 },
+      parentNodeId: node.parentId || null,
+      isGroupNode: node.type === 'group'
+    };
+  });
   
-  return `${namePart}-${timestamp}-${random}`;
+  // 2. 그래프 관계 구조 초기화
+  const graphRelations: Record<string, NodeRelation> = {};
+  
+  // 모든 노드에 대해 관계 구조 생성
+  nodes.forEach(node => {
+    graphRelations[node.id] = {
+      parents: [],
+      childs: []
+    };
+  });
+  
+  // 3. 그룹 노드 및 내부 노드 관계 설정
+  const nodesInGroups = new Set<string>();
+  nodes.forEach(node => {
+    if (node.type === 'group' && node.data?.nodeIds && Array.isArray(node.data.nodeIds)) {
+      node.data.nodeIds.forEach((childId: string) => {
+        if (graphRelations[childId]) {
+          graphRelations[node.id].childs.push(childId);
+          graphRelations[childId].parents.push(node.id);
+          nodesInGroups.add(childId);
+        }
+      });
+    }
+  });
+  
+  // 4. 엣지 기반 부모-자식 관계 설정
+  edges.forEach(edge => {
+    if (edge.source && edge.target) {
+      // 소스 노드에 자식 추가
+      if (graphRelations[edge.source]) {
+        graphRelations[edge.source].childs.push(edge.target);
+      }
+      
+      // 타겟 노드에 부모 추가
+      if (graphRelations[edge.target]) {
+        graphRelations[edge.target].parents.push(edge.source);
+      }
+    }
+  });
+  
+  // 5. 루트 노드 식별 (부모가 없는 노드)
+  const roots = Object.keys(graphRelations).filter(nodeId => 
+    !nodesInGroups.has(nodeId) && graphRelations[nodeId].parents.length === 0
+  );
+  
+  // 6. 리프 노드 식별 (자식이 없는 노드)
+  const leafs = Object.keys(graphRelations).filter(nodeId => 
+    !nodesInGroups.has(nodeId) && graphRelations[nodeId].childs.length === 0
+  );
+  
+  return {
+    nodeMap,
+    graphRelations,
+    roots,
+    leafs
+  };
 };
 
-// Flow 데이터 깊은 복사 함수
-const cloneFlowData = (flowData: FlowData): FlowData => {
-  return deepClone(flowData);
+const initialState = {
+  flowChainMap: {},
+  flows: {},
+  flowChainIds: [],
+  activeChainId: null,
+  stage: 'upload' as ExecutorStage,
+  error: null,
+  nodeFactory: new NodeFactory()
 };
 
 export const useExecutorStateStore = create<ExecutorState>()(
   persist(
     (set, get) => ({
+      // 정규화된 상태
       ...initialState,
-      
-      // Flow 체인 관리 함수
-      addFlow: (flowJson) => set((state) => {
-        // 깊은 복사를 통해 Flow 편집기 데이터와 실행기 데이터 완전히 분리
-        const clonedFlowJson = cloneFlowData(flowJson);
+
+      // Flow Chain 관련 액션
+      addFlowChain: (name) => {
+        const id = `chain-${uuidv4()}`;
+        set((state) => {
+          return {
+            flowChainMap: {
+              ...state.flowChainMap,
+              [id]: {
+                id,
+                name,
+                status: 'idle',
+                selectedFlowId: null,
+                flowIds: [],
+                error: undefined,
+                inputs: [] // inputs 초기화 (추가)
+              }
+            },
+            flowChainIds: [...state.flowChainIds, id],
+            activeChainId: state.activeChainId || id
+          };
+        });
+        return id;
+      },
+
+      removeFlowChain: (id) => set((state) => {
+        const { [id]: removed, ...remainingChains } = state.flowChainMap;
         
-        const newFlow: FlowExecutionItem = {
-          id: generateId(clonedFlowJson.name),
-          name: clonedFlowJson.name || `Flow ${state.flowChain.length + 1}`,
-          flowJson: clonedFlowJson,
-          inputData: [],
-        };
+        // Chain에 속한 Flow들도 제거
+        const flowsToRemove = state.flowChainMap[id]?.flowIds || [];
+        const newFlows = { ...state.flows };
         
-        // 그래프 스토어에 Flow 그래프 정보 저장
-        const graphStore = useExecutorGraphStore.getState();
-        graphStore.setFlowGraph(newFlow.id, clonedFlowJson);
-        
-        return {
-          flowChain: [...state.flowChain, newFlow],
-          stage: state.stage === 'upload' ? 'input' : state.stage
-        };
-      }),
-      
-      removeFlow: (id) => set((state) => {
-        const newFlowChain = state.flowChain.filter(flow => flow.id !== id);
-        let newActiveFlowIndex = state.activeFlowIndex;
-        
-        // 현재 활성 Flow가 삭제된 경우 인덱스 조정
-        if (newFlowChain.length <= newActiveFlowIndex) {
-          newActiveFlowIndex = Math.max(0, newFlowChain.length - 1);
-        }
-        
-        // 그래프 스토어에서도 Flow 정보 제거
-        // (getFlowGraph 함수를 사용하기 때문에 명시적 제거는 필요 없으나, 메모리 관리 차원에서 추가)
-        
-        return {
-          flowChain: newFlowChain,
-          activeFlowIndex: newActiveFlowIndex,
-          stage: newFlowChain.length === 0 ? 'upload' : state.stage
-        };
-      }),
-      
-      moveFlowUp: (id) => set((state) => {
-        const index = state.flowChain.findIndex(flow => flow.id === id);
-        if (index <= 0) return state; // 이미 첫 번째이거나 존재하지 않음
-        
-        const newFlowChain = [...state.flowChain];
-        const temp = newFlowChain[index];
-        newFlowChain[index] = newFlowChain[index - 1];
-        newFlowChain[index - 1] = temp;
-        
-        // 활성 Flow가 이동된 경우 인덱스 조정
-        let newActiveFlowIndex = state.activeFlowIndex;
-        if (index === state.activeFlowIndex) {
-          newActiveFlowIndex = index - 1;
-        } else if (index - 1 === state.activeFlowIndex) {
-          newActiveFlowIndex = index;
-        }
-        
-        return {
-          flowChain: newFlowChain,
-          activeFlowIndex: newActiveFlowIndex
-        };
-      }),
-      
-      moveFlowDown: (id) => set((state) => {
-        const index = state.flowChain.findIndex(flow => flow.id === id);
-        if (index === -1 || index >= state.flowChain.length - 1) return state; // 이미 마지막이거나 존재하지 않음
-        
-        const newFlowChain = [...state.flowChain];
-        const temp = newFlowChain[index];
-        newFlowChain[index] = newFlowChain[index + 1];
-        newFlowChain[index + 1] = temp;
-        
-        // 활성 Flow가 이동된 경우 인덱스 조정
-        let newActiveFlowIndex = state.activeFlowIndex;
-        if (index === state.activeFlowIndex) {
-          newActiveFlowIndex = index + 1;
-        } else if (index + 1 === state.activeFlowIndex) {
-          newActiveFlowIndex = index;
-        }
-        
-        return {
-          flowChain: newFlowChain,
-          activeFlowIndex: newActiveFlowIndex
-        };
-      }),
-      
-      setFlowInputData: (id, inputData) => set((state) => {
-        const newFlowChain = state.flowChain.map(flow => 
-          flow.id === id ? { ...flow, inputData } : flow
-        );
-        
-        return { flowChain: newFlowChain };
-      }),
-      
-      setFlowName: (id, name) => set((state) => {
-        const newFlowChain = state.flowChain.map(flow => {
-          if (flow.id === id) {
-            // flow 객체와 내부 flowJson의 name도 함께 업데이트
-            const updatedFlowJson = { ...flow.flowJson, name };
-            return { ...flow, name, flowJson: updatedFlowJson };
-          }
-          return flow;
+        flowsToRemove.forEach(flowId => {
+          delete newFlows[flowId];
         });
         
-        return { flowChain: newFlowChain };
-      }),
-      
-      setFlowResult: (id, result) => set((state) => {
-        const newFlowChain = state.flowChain.map(flow => 
-          flow.id === id ? { ...flow, result } : flow
-        );
+        // flowChainIds 업데이트
+        const newFlowChainIds = state.flowChainIds.filter(chainId => chainId !== id);
         
-        return { flowChain: newFlowChain };
-      }),
-      
-      // 활성 Flow 인덱스 설정
-      setActiveFlowIndex: (index) => set({ activeFlowIndex: index }),
-      
-      // 상태 설정 함수
-      setStage: (stage) => set({ stage }),
-      setError: (error) => set({ error }),
-      
-      // 상태 초기화 함수
-      resetState: () => {
-        // 그래프 스토어 초기화
-        useExecutorGraphStore.getState().resetFlowGraphs();
-        
-        // 실행기 상태 초기화
-        set(initialState);
-      },
-      
-      resetResults: () => set((state) => {
-        const newFlowChain = state.flowChain.map(flow => ({
-          ...flow,
-          result: null
-        }));
+        // activeChainId 조정
+        let newActiveChainId = state.activeChainId;
+        if (newActiveChainId === id) {
+          newActiveChainId = newFlowChainIds.length > 0 ? newFlowChainIds[0] : null;
+        }
         
         return {
-          flowChain: newFlowChain,
-          stage: 'input',
-          error: null
+          flowChainMap: remainingChains,
+          flows: newFlows,
+          flowChainIds: newFlowChainIds,
+          activeChainId: newActiveChainId
+        };
+      }),
+
+      setFlowChainName: (id, name) => set((state) => {
+        const chain = state.flowChainMap[id];
+        if (!chain) return state;
+        
+        return {
+          flowChainMap: {
+            ...state.flowChainMap,
+            [id]: { ...chain, name }
+          }
+        };
+      }),
+
+      addFlowToChain: (chainId, flowJson) => {
+        const flowId = (flowJson as any).id || `flow-${uuidv4()}`;
+        
+        // 그래프 구조 분석
+        const { nodeMap, graphRelations, roots, leafs } = buildGraphStructure(
+          flowJson.nodes || [],
+          flowJson.edges || []
+        );
+        
+        set((state) => {
+          // Chain이 없으면 상태 변경 없음
+          if (!state.flowChainMap[chainId]) return state;
+          
+          const chain = state.flowChainMap[chainId];
+          
+          // 새로운 Flow 생성
+          const newFlow: Flow = {
+            id: flowId,
+            chainId,
+            name: flowJson.name || `Flow ${flowId.substring(0, 8)}`,
+            flowJson: deepClone(flowJson),
+            inputs: [],
+            lastResults: null,
+            status: 'idle',
+            nodes: nodeMap,
+            graph: graphRelations,
+            roots,
+            leafs,
+            nodeStates: {} // nodeStates 초기화
+          };
+          
+          // 상태 업데이트
+          return {
+            flows: {
+              ...state.flows,
+              [flowId]: newFlow
+            },
+            flowChainMap: {
+              ...state.flowChainMap,
+              [chainId]: {
+                ...chain,
+                flowIds: [...chain.flowIds, flowId],
+                selectedFlowId: chain.selectedFlowId || flowId
+              }
+            }
+          };
+        });
+        
+        return flowId;
+      },
+
+      removeFlowFromChain: (chainId, flowId) => set((state) => {
+        // Chain이 없으면 상태 변경 없음
+        if (!state.flowChainMap[chainId]) return state;
+        
+        const chain = state.flowChainMap[chainId];
+        
+        // flowIds에서 제거
+        const newFlowIds = chain.flowIds.filter(id => id !== flowId);
+        
+        // selectedFlowId 조정
+        let newSelectedFlowId = chain.selectedFlowId;
+        if (chain.selectedFlowId === flowId) {
+          newSelectedFlowId = newFlowIds.length > 0 ? newFlowIds[0] : null;
+        }
+        
+        // Flow 엔티티 제거
+        const { [flowId]: removed, ...remainingFlows } = state.flows;
+        
+        return {
+          flows: remainingFlows,
+          flowChainMap: {
+            ...state.flowChainMap,
+            [chainId]: {
+              ...chain,
+              flowIds: newFlowIds,
+              selectedFlowId: newSelectedFlowId
+            }
+          }
+        };
+      }),
+
+      setFlowChainStatus: (chainId, status, error) => set((state) => {
+        const chain = state.flowChainMap[chainId];
+        if (!chain) return state;
+        
+        return {
+          flowChainMap: {
+            ...state.flowChainMap,
+            [chainId]: { 
+              ...chain, 
+              status,
+              ...(error !== undefined ? { error } : {})
+            }
+          }
+        };
+      }),
+
+      setFlowStatus: (chainId, flowId, status, error) => set((state) => {
+        const flow = state.flows[flowId];
+        if (!flow) return state;
+        
+        return {
+          flows: {
+            ...state.flows,
+            [flowId]: {
+              ...flow,
+              status,
+              ...(error !== undefined ? { error } : {})
+            }
+          }
+        };
+      }),
+
+      setSelectedFlow: (chainId, flowId) => set((state) => {
+        const chain = state.flowChainMap[chainId];
+        if (!chain) return state;
+        
+        return {
+          flowChainMap: {
+            ...state.flowChainMap,
+            [chainId]: {
+              ...chain,
+              selectedFlowId: flowId
+            }
+          }
+        };
+      }),
+
+      moveFlow: (chainId, flowId, direction) => set((state) => {
+        const chain = state.flowChainMap[chainId];
+        if (!chain) return state;
+        
+        const currentIndex = chain.flowIds.indexOf(flowId);
+        if (currentIndex === -1) return state;
+        
+        const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (newIndex < 0 || newIndex >= chain.flowIds.length) return state;
+        
+        const newFlowIds = [...chain.flowIds];
+        [newFlowIds[currentIndex], newFlowIds[newIndex]] = [newFlowIds[newIndex], newFlowIds[currentIndex]];
+        
+        return {
+          flowChainMap: {
+            ...state.flowChainMap,
+            [chainId]: {
+              ...chain,
+              flowIds: newFlowIds
+            }
+          }
+        };
+      }),
+
+      setFlowInputs: (chainId, flowId, inputs) => set((state) => {
+        const flow = state.flows[flowId];
+        if (!flow || flow.chainId !== chainId) return state; // flow.chainId 조건 추가
+        
+        return {
+          flows: {
+            ...state.flows,
+            [flowId]: {
+              ...flow,
+              inputs: deepClone(inputs)
+            }
+          }
+        };
+      }),
+
+      setFlowChainInputs: (chainId, inputs) => set((state) => { // 액션 구현 (추가)
+        const chain = state.flowChainMap[chainId];
+        if (!chain) return state;
+
+        return {
+          flowChainMap: {
+            ...state.flowChainMap,
+            [chainId]: {
+              ...chain,
+              inputs: deepClone(inputs)
+            }
+          }
+        };
+      }),
+
+      setFlowResults: (chainId, flowId, results) => set((state) => {
+        const flow = state.flows[flowId];
+        if (!flow) return state;
+        
+        // Handle null/undefined results case
+        if (results === null || results === undefined) {
+          console.warn(`[useExecutorStateStore] 결과가 null/undefined입니다: Flow ${flowId} (${flow.name})`);
+          return {
+            flows: {
+              ...state.flows,
+              [flowId]: {
+                ...flow,
+                lastResults: [] // Use empty array instead of null
+              }
+            }
+          };
+        }
+        
+        // 결과가 객체인지 확인하고 필요한 구조로 변환
+        let normalizedResults = results;
+        
+        // 결과가 배열이 아니고 객체인 경우, 배열로 변환
+        if (!Array.isArray(normalizedResults) && typeof normalizedResults === 'object' && normalizedResults !== null) {
+          // 타입 단언을 사용하여 'outputs' 속성에 안전하게 접근
+          const resultObj = normalizedResults as {outputs?: any};
+          if (resultObj.outputs !== undefined) {
+            // If outputs exists but is null, use empty array
+            if (resultObj.outputs === null) {
+              normalizedResults = [];
+            } else {
+              // 이미 적절한 구조인 경우 그대로 사용
+              normalizedResults = resultObj.outputs;
+            }
+          } else {
+            // 기타 객체인 경우 배열로 변환
+            normalizedResults = [normalizedResults];
+          }
+        } else if (!Array.isArray(normalizedResults)) {
+          // 배열이 아닌 기본 값인 경우 배열로 감싸기
+          normalizedResults = [normalizedResults];
+        }
+        
+        // 결과 로그 출력
+        console.log(`[useExecutorStateStore] 결과 저장: Flow ${flowId} (${flow.name}), 결과:`, normalizedResults);
+        
+        return {
+          flows: {
+            ...state.flows,
+            [flowId]: {
+              ...flow,
+              lastResults: normalizedResults
+            }
+          }
+        };
+      }),
+
+      setFlowNodeState: (chainId, flowId, nodeId, nodeState) => set((state) => {
+        const flow = state.flows[flowId];
+        if (!flow || flow.chainId !== chainId) return state;
+
+        return {
+          flows: {
+            ...state.flows,
+            [flowId]: {
+              ...flow,
+              nodeStates: {
+                ...flow.nodeStates,
+                [nodeId]: deepClone(nodeState)
+              }
+            }
+          }
+        };
+      }),
+
+      getFlowNodeState: (chainId, flowId, nodeId) => {
+        const flow = get().flows[flowId];
+        if (!flow || flow.chainId !== chainId) return undefined;
+        return flow.nodeStates[nodeId];
+      },
+
+      setActiveChainId: (id) => set({ activeChainId: id }),
+      
+      setStage: (stage) => set({ stage }),
+      
+      setError: (error) => set({ error }),
+      
+      resetState: () => set({
+        ...initialState,
+        nodeFactory: get().nodeFactory // NodeFactory 인스턴스 유지
+      }),
+      
+      // 모든 플로우의 결과 초기화
+      resetResults: () => set((state) => {
+        const updatedFlows = { ...state.flows };
+        
+        // 모든 플로우의 lastResults를 null로 설정
+        Object.keys(updatedFlows).forEach(flowId => {
+          updatedFlows[flowId] = {
+            ...updatedFlows[flowId],
+            lastResults: null,
+            status: 'idle',
+            error: undefined
+          };
+        });
+        
+        // 모든 체인의 상태도 초기화
+        const updatedFlowChainMap = { ...state.flowChainMap };
+        Object.keys(updatedFlowChainMap).forEach(chainId => {
+          updatedFlowChainMap[chainId] = {
+            ...updatedFlowChainMap[chainId],
+            status: 'idle',
+            error: undefined
+          };
+        });
+        
+        console.log('[useExecutorStateStore] 모든 플로우 결과 초기화 완료');
+        
+        return {
+          flows: updatedFlows,
+          flowChainMap: updatedFlowChainMap
         };
       }),
       
       // 편의 함수
-      getFlowById: (id) => {
-        return get().flowChain.find(flow => flow.id === id);
+      getFlow: (chainId, flowId) => {
+        return get().flows[flowId];
       },
       
-      getFlowResultById: (id) => {
-        const flow = get().flowChain.find(flow => flow.id === id);
-        return flow ? flow.result : null;
+      getFlowChain: (chainId) => {
+        return get().flowChainMap[chainId];
       },
       
-      getActiveFlow: () => {
-        const { flowChain, activeFlowIndex } = get();
-        return flowChain.length > 0 && activeFlowIndex < flowChain.length
-          ? flowChain[activeFlowIndex]
-          : null;
+      getActiveFlowChain: () => {
+        const { activeChainId, flowChainMap } = get();
+        if (!activeChainId) return undefined;
+        return flowChainMap[activeChainId];
+      },
+      
+      // 그래프 데이터 접근 함수
+      getRootNodes: (chainId, flowId) => {
+        const flow = get().flows[flowId];
+        return flow?.roots || [];
+      },
+      
+      getLeafNodes: (chainId, flowId) => {
+        const flow = get().flows[flowId];
+        return flow?.leafs || [];
+      },
+      
+      getNodeInstance: (chainId, flowId, nodeId) => {
+        const flow = get().flows[flowId];
+        if (!flow) return null;
+        
+        const nodeFactory = get().nodeFactory;
+        const nodeData = flow.nodes[nodeId];
+        
+        if (!nodeData) return null;
+        
+        try {
+          return nodeFactory.create(
+            nodeId,
+            nodeData.type,
+            nodeData.data,
+            undefined // 실행 시 컨텍스트 주입
+          );
+        } catch (error) {
+          console.error(`Failed to create node instance: ${error}`);
+          return null;
+        }
       }
     }),
     {
-      name: 'flow-executor-storage', // localStorage/IndexedDB 키 이름
+      name: 'executor-state-store',
       partialize: (state) => ({
-        flowChain: state.flowChain,
-        activeFlowIndex: state.activeFlowIndex,
-        stage: state.stage
-      }),
+        flowChainMap: state.flowChainMap,
+        flows: state.flows,
+        flowChainIds: state.flowChainIds,
+        activeChainId: state.activeChainId,
+        stage: state.stage,
+        // nodeFactory는 직렬화할 수 없으므로 제외
+      })
     }
   )
 ); 
+
+export default useFlowExecutorStore; 

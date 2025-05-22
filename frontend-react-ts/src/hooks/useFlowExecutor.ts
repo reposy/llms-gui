@@ -1,9 +1,24 @@
 import { useState } from 'react';
-import { useExecutorStateStore } from '../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import { executeChain, executeFlowExecutor } from '../services/flowExecutionService';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
+
+interface FlowChainItem {
+  id: string;
+  chainId: string;
+  name: string;
+  flowJson: any;
+  inputs: any[];
+  status: string;
+}
+
+interface FlowResult {
+  status: string;
+  outputs: any[];
+  error?: string;
+  flowId: string;
+}
 
 /**
  * Flow Executor 기능을 위한 커스텀 훅
@@ -12,179 +27,76 @@ export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 export const useFlowExecutor = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const store = useFlowExecutorStore();
+  const { flowChainMap, flowChainIds, stage } = store;
+  const flowChain = flowChainIds.map(id => flowChainMap[id]) || [];
 
-  const { 
-    flowChain, 
-    addFlow, 
-    setFlowInputData, 
-    setFlowResult, 
-    getFlowById,
-    getFlowResultById,
-    resetResults,
-    removeFlow,
-    resetState,
-    setStage,
-    stage,
-    getActiveFlow
-  } = useExecutorStateStore();
-
-  const {
-    getFlowGraph,
-    setFlowGraph,
-    resetFlowGraphs
-  } = useExecutorGraphStore();
-
-  /**
-   * Flow Chain 가져오기
-   */
-  const handleImportFlowChain = () => {
-    try {
-      // 파일 선택기 생성
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'application/json';
-      
-      // 파일 선택 처리
-      input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const json = event.target?.result as string;
-            let importData;
-            
-            try {
-              importData = JSON.parse(json);
-            } catch (parseError) {
-              console.error(`[FlowExecutor] JSON 파싱 오류:`, parseError);
-              alert('JSON 파일 형식이 올바르지 않습니다.');
-              return;
-            }
-            
-            // 기본 유효성 검사
-            if (!importData || typeof importData !== 'object') {
-              throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
-            }
-            
-            // 버전 확인
-            if (!importData.version) {
-              console.warn('[FlowExecutor] 버전 정보가 없는 파일입니다.');
-              // 버전 없이 계속 진행
-            }
-            
-            // flowChain 배열 존재 확인
-            if (!Array.isArray(importData.flowChain)) {
-              // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
-              console.log('[FlowExecutor] flowChain 배열이 없습니다. 단일 Flow JSON으로 처리합니다.');
-              
-              // 단일 Flow 객체 생성
-              importData = {
-                version: '1.0',
-                flowChain: [{
-                  id: `flow-${Date.now()}`,
-                  name: file.name.replace(/\.json$/, '') || '가져온 Flow',
-                  flowJson: importData,
-                  inputData: []
-                }]
-              };
-            }
-            
-            // 각 Flow 추가
-            importData.flowChain.forEach((flow: any) => {
-              try {
-                // flowJson 유효성 검사
-                if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-                  console.warn(`[FlowExecutor] 유효하지 않은 flowJson 형식, flow:`, flow);
-                  return; // 이 Flow는 건너뛰고 계속 진행
-                }
-                
-                // 원본 ID 보존: flow.id가 있으면 해당 ID 사용, 없으면 파일명 기반 ID 생성
-                const flowName = flow.name || flow.flowJson.name || '가져온-flow';
-                const timestamp = Date.now();
-                const random = Math.floor(Math.random() * 1000);
-                
-                // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
-                const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
-                const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
-                
-                const flowToAdd = {
-                  ...flow.flowJson,
-                  id: flowId
-                };
-                
-                // Flow 추가 (원본 ID 보존)
-                addFlow(flowToAdd);
-                
-                // 입력 데이터 설정
-                if (flow.inputData && flow.inputData.length > 0) {
-                  setFlowInputData(flowId, flow.inputData);
-                }
-              } catch (flowError) {
-                console.error(`[FlowExecutor] Flow 추가 중 오류:`, flowError);
-                // 이 Flow는 건너뛰고 계속 진행
-              }
-            });
-            
-            console.log(`[FlowExecutor] Flow chain imported successfully`);
-          } catch (error) {
-            console.error(`[FlowExecutor] Error parsing imported flow chain:`, error);
-            alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-          }
-        };
-        
-        reader.readAsText(file);
+  const getFocusedFlow = (): FlowChainItem | null => {
+    if (!flowChainIds.length || !flowChainMap[flowChainIds[0]]) return null;
+    const focusedChain = flowChainMap[flowChainIds[0]];
+    if (focusedChain.selectedFlowId && focusedChain.flowMap[focusedChain.selectedFlowId]) {
+      const flow = focusedChain.flowMap[focusedChain.selectedFlowId];
+      return {
+        id: flow.id,
+        chainId: flow.chainId,
+        name: flow.name,
+        flowJson: flow.flowJson,
+        inputs: flow.inputs || [],
+        status: flow.status
       };
-      
-      // 파일 선택기 클릭
-      input.click();
-    } catch (error) {
-      console.error(`[FlowExecutor] Error importing flow chain:`, error);
-      alert('Flow 체인 가져오기 중 오류가 발생했습니다.');
     }
+    if (focusedChain.flowIds.length > 0) {
+      const firstFlowId = focusedChain.flowIds[0];
+      const flow = focusedChain.flowMap[firstFlowId];
+      if (flow) {
+        return {
+          id: flow.id,
+          chainId: flow.chainId,
+          name: flow.name,
+          flowJson: flow.flowJson,
+          inputs: flow.inputs || [],
+          status: flow.status
+        };
+      }
+    }
+    return null;
   };
 
-  /**
-   * Flow Chain 내보내기
-   */
-  const handleExportFlowChain = (filename: string, includeData: boolean) => {
-    try {
-      // 현재 체인 데이터 추출
-      const exportData = {
-        version: '1.0',
-        flowChain: flowChain.map(flow => {
-          const result = includeData ? getFlowResultById(flow.id) : null;
-          return {
-            id: flow.id,
-            name: flow.name,
-            flowJson: flow.flowJson,
-            inputData: flow.inputData || [],
-            result: result // 옵션에 따라 결과 데이터 포함
-          };
-        })
-      };
-      
-      // JSON 변환 및 파일 다운로드
-      const json = JSON.stringify(exportData, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      
-      // 정리
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      console.log(`[FlowExecutor] Flow chain exported successfully with ${includeData ? '' : 'no '}data`);
-    } catch (error) {
-      console.error(`[FlowExecutor] Error exporting flow chain:`, error);
-      alert('Flow 체인 내보내기 중 오류가 발생했습니다.');
+  const getFlowById = (flowId: string): FlowChainItem | null => {
+    if (!flowChainIds.length || !flowId) return null;
+    for (const chainId of flowChainIds) {
+      const chain = flowChainMap[chainId];
+      if (chain && chain.flowMap[flowId]) {
+        const flow = chain.flowMap[flowId];
+        return {
+          id: flow.id,
+          chainId: flow.chainId,
+          name: flow.name,
+          flowJson: flow.flowJson,
+          inputs: flow.inputs || [],
+          status: flow.status
+        };
+      }
     }
+    return null;
+  };
+
+  const getFlowResultById = (flowId: string): FlowResult | null => {
+    if (!flowChainIds.length || !flowId) return null;
+    for (const chainId of flowChainIds) {
+      const chain = flowChainMap[chainId];
+      if (chain && chain.flowMap[flowId]) {
+        const flow = chain.flowMap[flowId];
+        if (!flow.lastResults) return null;
+        return {
+          status: flow.status,
+          outputs: flow.lastResults,
+          error: flow.error,
+          flowId: flowId
+        };
+      }
+    }
+    return null;
   };
 
   /**
@@ -195,39 +107,153 @@ export const useFlowExecutor = () => {
       setError('실행할 Flow를 선택해주세요.');
       return;
     }
-    
     const flow = getFlowById(flowId);
     if (!flow) {
       setError('선택한 Flow를 찾을 수 없습니다.');
       return;
     }
-    
     setIsExecuting(true);
-    setStage('executing');
+    store.setStage('executing');
     setError(null);
-
     try {
       const response = await executeFlowExecutor({
-        flowId: flow.id,
+        flowChainId: flow.id,
         flowJson: flow.flowJson,
-        inputs: flow.inputData || [],
-        onComplete: (result) => {
-          // 결과 저장 및 상태 업데이트
-          setFlowResult(flow.id, result);
+        inputs: flow.inputs || [],
+        flowChainId: flow.chainId,
+        onComplete: (result: any) => {
+          if (flowChainIds.length > 0) {
+            store.setFlowResult(flowChainIds[0], flow.id, result || []);
+          }
           setIsExecuting(false);
-          setStage('result');
+          store.setStage('result');
         }
       });
-
       if (response.status === 'error') {
         setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
         setIsExecuting(false);
       }
     } catch (err) {
       setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('실행 오류:', err);
       setIsExecuting(false);
-      setStage('result');
+      store.setStage('result');
+    }
+  };
+
+  /**
+   * Flow Chain 가져오기
+   */
+  const handleImportFlowChain = () => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json';
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const json = event.target?.result as string;
+            let importData;
+            try {
+              importData = JSON.parse(json);
+            } catch (parseError) {
+              alert('JSON 파일 형식이 올바르지 않습니다.');
+              return;
+            }
+            if (!importData || typeof importData !== 'object') {
+              throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
+            }
+            if (!importData.version) {
+              // 버전 없이 계속 진행
+            }
+            if (!Array.isArray(importData.flowChain)) {
+              importData = {
+                version: '1.0',
+                flowChain: [{
+                  id: `flow-${Date.now()}`,
+                  name: file.name.replace(/\.json$/, '') || '가져온 Flow',
+                  flowJson: importData,
+                  inputs: []
+                }]
+              };
+            }
+            if (!flowChainIds.length) {
+              alert('Flow Chain이 없습니다. 먼저 체인을 생성하세요.');
+              return;
+            }
+            importData.flowChain.forEach((flow: any) => {
+              try {
+                if (!flow.flowJson || typeof flow.flowJson !== 'object') {
+                  return;
+                }
+                const flowName = flow.name || flow.flowJson.name || '가져온-flow';
+                const timestamp = Date.now();
+                const random = Math.floor(Math.random() * 1000);
+                const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
+                const flowId = flow.id || `${namePart}-${timestamp}-${random}`;
+                const flowToAdd = {
+                  ...flow.flowJson,
+                  id: flowId
+                };
+                store.addFlowToChain(flowChainIds[0], flowToAdd);
+                if (flow.inputs && flow.inputs.length > 0) {
+                  store.setFlowInputData(flowChainIds[0], flowId, flow.inputs);
+                }
+              } catch (flowError) {
+                // 이 Flow는 건너뛰고 계속 진행
+              }
+            });
+          } catch (error) {
+            alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    } catch (error) {
+      alert('Flow 체인 가져오기 중 오류가 발생했습니다.');
+    }
+  };
+
+  /**
+   * Flow Chain 내보내기
+   */
+  const handleExportFlowChain = (filename: string, includeData: boolean) => {
+    try {
+      // Export all flows from all chains
+      const exportFlows = flowChainIds.flatMap(chainId => {
+        const chain = flowChainMap[chainId];
+        if (!chain) return [];
+        return chain.flowIds.map(flowId => {
+          const flow = chain.flowMap[flowId];
+          const result = includeData ? getFlowResultById(flow.id) : null;
+          return {
+            id: flow.id,
+            name: flow.name,
+            flowJson: flow.flowJson,
+            inputs: flow.inputs || [],
+            result: result
+          };
+        });
+      });
+      const exportData = {
+        version: '1.0',
+        flowChain: exportFlows
+      };
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      alert('Flow 체인 내보내기 중 오류가 발생했습니다.');
     }
   };
 
@@ -239,55 +265,36 @@ export const useFlowExecutor = () => {
       setError('실행할 Flow가 없습니다. 먼저 Flow를 추가해주세요.');
       return;
     }
-    
     setIsExecuting(true);
-    setStage('executing');
+    store.setStage('executing');
     setError(null);
-    
-    // 이전 결과 초기화
-    resetResults();
-    
+    store.resetResults();
     try {
-      // 체인 실행을 위한 Flow 항목 준비
-      const flowItems = flowChain.map(flow => ({
-        id: flow.id,
-        flowJson: flow.flowJson,
-        inputData: flow.inputData || []
-      }));
-      
-      // Flow 그래프 초기화 (필요한 경우)
-      flowChain.forEach(flow => {
-        if (!getFlowGraph(flow.id)) {
-          setFlowGraph(flow.id, flow.flowJson);
-        }
-      });
-      
-      // 체인 실행
+      // 첫 Flow의 inputs만 inputs로 전달
+      const firstFlowInput = (flowChain[0] && Array.isArray(flowChain[0].inputs)) ? flowChain[0].inputs : [];
       await executeChain({
-        flowItems,
+        flowChainId: flowChainIds[0],
+        inputs: firstFlowInput,
         onFlowComplete: (flowId, result) => {
-          console.log(`Flow ${flowId} completed with result:`, result);
-          setFlowResult(flowId, result);
-          
+          if (flowChainIds.length > 0) {
+            store.setFlowResult(flowChainIds[0], flowId, (Array.isArray(result) ? result : []));
+          }
           // 마지막 Flow인 경우 실행 완료 처리
-          const isLastFlow = flowId === flowItems[flowItems.length - 1].id;
-          if (isLastFlow) {
+          if (flowId === flowChain[flowChain.length - 1].id) {
             setIsExecuting(false);
-            setStage('result');
+            store.setStage('result');
           }
         },
         onError: (flowId, errorMsg) => {
-          console.error(`Error executing flow ${flowId}:`, errorMsg);
-          setError(`Flow "${getFlowById(flowId)?.name || flowId}" 실행 중 오류: ${errorMsg}`);
+          setError(errorMsg);
           setIsExecuting(false);
-          setStage('result');
-        }
+          store.setStage('input');
+        },
       });
-    } catch (err) {
-      setError('Flow 체인 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
-      console.error('체인 실행 오류:', err);
+    } catch (err: any) {
+      setError(err?.message || '실행 중 오류가 발생했습니다.');
       setIsExecuting(false);
-      setStage('result');
+      store.setStage('input');
     }
   };
 
@@ -295,16 +302,15 @@ export const useFlowExecutor = () => {
    * 모든 Flow 초기화
    */
   const handleClearAll = () => {
-    if (window.confirm('모든 내용을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      // 스토어 초기화
-      resetState();
-      resetFlowGraphs();
-      
-      // 상태 초기화
-      setStage('upload');
-      setError(null);
-      setIsExecuting(false);
-    }
+    store.setStage('upload');
+    setError(null);
+    setIsExecuting(false);
+    localStorage.removeItem('executor-state-store');
+    localStorage.removeItem('executor-graph-storage');
+    store.resetState();
+    store.resetFlowGraphs();
+    alert('모든 Flow 내용이 초기화되었습니다. 페이지가 새로고침됩니다.');
+    window.location.reload();
   };
 
   return {
@@ -318,8 +324,8 @@ export const useFlowExecutor = () => {
     handleClearAll,
     flowChain,
     stage,
-    setStage,
-    getActiveFlow,
+    setStage: store.setStage,
+    getFocusedFlow,
     getFlowById,
     getFlowResultById
   };

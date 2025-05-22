@@ -3,6 +3,9 @@ import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { NodeContent } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
 import { NodeFactory } from './NodeFactory';
+import { Node } from './Node';
+import { FlowData } from '../utils/data/importExportUtils';
+import { useExecutorStateStore } from '../store/useExecutorStateStore';
 
 /**
  * Implementation of the ExecutionContext interface for flow execution
@@ -49,6 +52,11 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   iterationItem?: any;
 
+  /**
+   * Initial inputs for this execution
+   */
+  private inputs: any[] = [];
+
   /** Map of node outputs (node ID -> array of outputs) */
   private outputs: Map<string, any[]> = new Map();
 
@@ -87,6 +95,11 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   public readonly nodeFactory: NodeFactory;
 
+  // Executor 컨텍스트를 위한 추가 속성
+  private readonly isExecutorCtx: boolean = false;
+  private readonly currentChainId?: string;
+  private readonly currentFlowId?: string;
+
   /**
    * Create a new flow execution context
    * @param executionId Unique ID for this execution
@@ -94,20 +107,119 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param nodes Full list of nodes in the flow
    * @param edges Full list of edges in the flow
    * @param nodeFactory Node factory for creating node instances
+   * @param isExecutorContext Executor context flag
+   * @param chainId Chain ID
+   * @param flowId Flow ID
    */
   constructor(
     executionId: string,
     getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
     nodes: FlowNode[],
     edges: Edge[],
-    nodeFactory: NodeFactory
+    nodeFactory?: NodeFactory,
+    isExecutorContext: boolean = false,
+    chainId?: string,
+    flowId?: string
   ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
     this.getNodeContentFunc = getNodeContentFunc;
     this.nodes = nodes;
     this.edges = edges;
-    this.nodeFactory = nodeFactory;
+    this.nodeFactory = nodeFactory || new NodeFactory();
+
+    this.isExecutorCtx = isExecutorContext;
+    if (this.isExecutorCtx) {
+      if (!chainId || !flowId) {
+        throw new Error('chainId and flowId are required for Executor context');
+      }
+      this.currentChainId = chainId;
+      this.currentFlowId = flowId;
+    }
+  }
+
+  /**
+   * 에디터용 실행 컨텍스트 생성 팩토리 메서드
+   * @param executionId 실행 ID
+   * @param flowData Flow 데이터
+   * @returns 새로운 FlowExecutionContext 인스턴스
+   */
+  static createForEditor(executionId: string, flowData: FlowData): FlowExecutionContext {
+    return new FlowExecutionContext(
+      executionId,
+      (nodeId) => {
+        const node = flowData.nodes.find(n => n.id === nodeId);
+        return node?.data || {};
+      },
+      flowData.nodes,
+      flowData.edges,
+      new NodeFactory(), // 에디터 전용 팩토리 인스턴스 생성
+      false // isExecutorContext 플래그
+    );
+  }
+
+  /**
+   * 실행기용 실행 컨텍스트 생성 팩토리 메서드
+   * @param executionId 실행 ID
+   * @param flowData Flow 데이터
+   * @param nodeFactory 기존 NodeFactory 인스턴스 (옵션)
+   * @param chainId Chain ID
+   * @param flowId Flow ID
+   * @returns 새로운 FlowExecutionContext 인스턴스
+   */
+  static createForExecutor(executionId: string, flowData: FlowData, nodeFactory?: NodeFactory, chainId?: string, flowId?: string): FlowExecutionContext {
+    if (!chainId || !flowId) {
+      // 프로덕션에서는 이 오류가 발생해서는 안되지만, 개발 중 안전장치로 추가
+      console.error('Executor context creation requires chainId and flowId.');
+      throw new Error('chainId and flowId are required for Executor context at creation.');
+    }
+    return new FlowExecutionContext(
+      executionId,
+      (nodeId) => {
+        const node = flowData.nodes.find(n => n.id === nodeId);
+        return node?.data || {}; // TODO: flowData.contents[nodeId] 와 같은 형태로 변경될 수 있음
+      },
+      flowData.nodes,
+      flowData.edges,
+      nodeFactory || new NodeFactory(), // 실행기 전용 팩토리 인스턴스 생성 또는 기존 인스턴스 재사용
+      true, // isExecutorContext 플래그
+      chainId,
+      flowId
+    );
+  }
+
+  /**
+   * 실행의 초기 입력 설정
+   * @param inputs 입력 배열
+   */
+  setInputs(inputs: any[]): void {
+    this.inputs = Array.isArray(inputs) ? [...inputs] : [inputs];
+    this.log(`설정된 입력: ${this.inputs.length}개 항목`);
+  }
+
+  /**
+   * 초기 입력 값 가져오기
+   * @returns 입력 배열
+   */
+  getInputs(): any[] {
+    return this.inputs;
+  }
+
+  /**
+   * 노드 인스턴스 생성
+   * @param nodeId 노드 ID
+   * @param nodeType 노드 유형
+   * @param nodeData 노드 데이터
+   * @returns 생성된 노드 인스턴스 또는 null
+   */
+  createNodeInstance(nodeId: string, nodeType: string, nodeData: any): Node | null {
+    try {
+      return this.nodeFactory.create(nodeId, nodeType, nodeData, this);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log(`Error creating node instance ${nodeId}: ${errorMessage}`);
+      return null;
+    }
   }
 
   /**
@@ -168,15 +280,21 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeRunning(nodeId: string) {
     this.log(`Marking node ${nodeId} as running`);
-    setNodeState(nodeId, {
-      status: 'running',
-      result: undefined,
-      error: undefined,
-      executionId: this.executionId,
-      lastTriggerNodeId: this.triggerNodeId || nodeId,
-      activeOutputHandle: undefined,
-      conditionResult: undefined
-    });
+    if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
+      useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
+        status: 'running'
+      });
+    } else {
+      setNodeState(nodeId, {
+        status: 'running',
+        result: undefined,
+        error: undefined,
+        executionId: this.executionId,
+        lastTriggerNodeId: this.triggerNodeId || nodeId,
+        activeOutputHandle: undefined,
+        conditionResult: undefined
+      });
+    }
   }
 
   /**
@@ -186,25 +304,26 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param nodeId ID of the node
    * @param result The *latest* result to store for status display
    */
-  markNodeSuccess(nodeId: string, result: any) {
-    this.log(`Marking node ${nodeId} as successful`);
-    
-    // 현재 노드 상태 확인
-    const currentState = getNodeState(nodeId) || {};
-    
-    // 새 결과가 undefined일 경우 현재 결과를 유지
-    const finalResult = result !== undefined ? result : currentState.result;
-    
-    setNodeState(nodeId, {
-      ...currentState,
-      status: 'success',
-      result: finalResult,
-      error: undefined,
-      executionId: this.executionId,
-      // Include iteration metadata in node state
-      iterationIndex: this.iterationIndex,
-      iterationTotal: this.iterationTotal
-    });
+  markNodeSuccess(nodeId: string, result: any, activeOutputHandle?: string, conditionResult?: boolean) {
+    this.log(`Marking node ${nodeId} as success`);
+    if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
+      useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
+        status: 'success',
+        result: result // deepClone은 setFlowNodeState 내부에서 처리
+      });
+    } else {
+      setNodeState(nodeId, {
+        status: 'success',
+        result,
+        executionId: this.executionId,
+        lastTriggerNodeId: this.triggerNodeId || nodeId,
+        activeOutputHandle,
+        conditionResult,
+        // Include iteration metadata in node state
+        iterationIndex: this.iterationIndex,
+        iterationTotal: this.iterationTotal
+      });
+    }
   }
 
   /**
@@ -214,14 +333,21 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeError(nodeId: string, error: string) {
     this.log(`Marking node ${nodeId} as failed: ${error}`);
-    setNodeState(nodeId, { 
-      status: 'error', 
-      error,
-      executionId: this.executionId,
-      // Include iteration metadata in node state
-      iterationIndex: this.iterationIndex,
-      iterationTotal: this.iterationTotal
-    });
+    if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
+      useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
+        status: 'error',
+        error: error
+      });
+    } else {
+      setNodeState(nodeId, { 
+        status: 'error', 
+        error,
+        executionId: this.executionId,
+        // Include iteration metadata in node state
+        iterationIndex: this.iterationIndex,
+        iterationTotal: this.iterationTotal
+      });
+    }
   }
 
   /**
@@ -241,6 +367,9 @@ export class FlowExecutionContext implements ExecutionContext {
       this.outputs.set(nodeId, outputArray);
     }
     outputArray.push(output);
+
+    // 항상 nodeOutputs에도 저장 (대표값)
+    this.nodeOutputs.set(nodeId, output);
     
     if (process.env.NODE_ENV === 'development') {
       this.log(`Appended output for node ${nodeId}. Total outputs: ${outputArray.length}`);

@@ -1,17 +1,17 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { useNodeContent, useNodeContentStore } from '../store/useNodeContentStore';
-import { HTMLParserNodeContent, ExtractionRule } from '../store/useNodeContentStore';
-import NodeErrorBoundary from './nodes/NodeErrorBoundary';
-import { getNodeState } from '../store/useNodeStateStore';
+import { useNodeContent, useNodeContentStore } from '../../store/useNodeContentStore';
+import { HTMLParserNodeContent, ExtractionRule } from '../../types/nodes';
+import NodeErrorBoundary from './NodeErrorBoundary';
+import { getNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
-import { EditableNodeLabel } from './nodes/shared/EditableNodeLabel';
-import { useFlowStructureStore, setNodes } from '../store/useFlowStructureStore';
+import { EditableNodeLabel } from './shared/EditableNodeLabel';
+import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
 
 /**
  * HTML Parser 노드의 UI 컴포넌트
  */
-export function HTMLParserNode({ id, selected, data }: NodeProps) {
+const HTMLParserNode: React.FC<NodeProps> = ({ id, selected, data }) => {
   const { content } = useNodeContent<HTMLParserNodeContent>(id);
   const extractionRules = content?.extractionRules;
   const label = content?.label;
@@ -160,6 +160,6 @@ export function HTMLParserNode({ id, selected, data }: NodeProps) {
       </div>
     </NodeErrorBoundary>
   );
-}
+};
 
 export default HTMLParserNode; 

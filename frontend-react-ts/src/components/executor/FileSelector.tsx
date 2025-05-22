@@ -80,13 +80,14 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   };
   
   return (
-    <>
+    <div className="file-selector">
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
         accept={accept}
         className="hidden"
+        style={{ display: 'none' }}
       />
       <button
         onClick={openFileSelector}
@@ -98,7 +99,7 @@ const FileSelector: React.FC<FileSelectorProps> = ({
         </svg>
         {buttonText}
       </button>
-    </>
+    </div>
   );
 };
 

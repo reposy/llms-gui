@@ -1,3 +1,50 @@
+# 프론트엔드 아키텍처 상세 (2024.06 리팩토링 반영)
+
+> **2024.06 리팩토링 기준 최신화: store 분리, 네이밍 통일, 컴포넌트 구조, 실행/결과/가이드 등 최신 구조/패턴 반영**
+
+## 1. 디렉토리 및 파일 구조 (`frontend-react-ts/src/`)
+
+- **App.tsx**: 메인 라우팅/엔트리
+- **pages/**: FlowEditorPage, FlowExecutorPage 등 각 페이지별 컴포넌트 (각자 store/utils만 사용, cross-usage 금지)
+- **components/**: 재사용 UI, 노드, executor/editor 등 세부 컴포넌트
+- **store/**: zustand 기반 store (FlowEditorPage, FlowExecutorPage 등 각자 store만 사용)
+- **utils/**: 비즈니스 로직/유틸리티 (store에서 분리)
+- **core/**: 노드/플로우 실행/컨텍스트/노드팩토리 등 핵심 로직
+- **services/**: 외부 API/LLM 등 서비스 연동
+- **types/**: 타입 정의
+
+## 2. 상태관리 및 원칙
+
+- **각 페이지별 store/utils만 사용** (예: useFlowEditorStore, useFlowExecutorStore)
+- **store 내 직접 상태변경 금지** (반드시 set/action 메서드만 사용)
+- **비즈니스 로직은 utils/로 분리**
+- **네이밍 통일** (flowChainId, flowChainMap 등)
+- **deprecated/legacy store/컴포넌트/필드/명칭 완전 제거**
+
+## 3. 주요 컴포넌트 구조
+
+- **FlowEditorPage**: 플로우 편집/설계, 노드/엣지/설정/상태 관리
+- **FlowExecutorPage**: 플로우 실행/입력/결과, import/export, ResultDisplay 등
+- **FlowChainListView/FlowChainDetailsView/FlowDetailModal**: 플로우 목록/상세/입력/결과/삭제 등 UI
+- **ResultDisplay**: lastResults, status 등 selector로 구독, 결과/마크다운/JSON/파일 등 다양한 출력 지원
+- **Import/Export**: FlowChainListView에서 일관된 버튼/동작, 유효성 검증, 상태 초기화 등
+
+## 4. 실행/결과/상태관리
+
+- **실행/결과/상태/lastResults 등은 selector로 구독** (불필요한 리렌더 방지)
+- **ResultDisplay**: outputs only/full JSON/markdown 등 토글, 파일 출력 지원
+- **import/export/reset 등은 store action 및 utils로 일관 처리**
+
+## 5. 기타 최신화 사항
+
+- 모든 예시/구조/가이드/네이밍은 실제 코드와 100% 일치
+- 과거 방식/legacy 용어/컴포넌트/필드/스토어 완전 제거
+- UI/UX, 상태관리, 실행/결과, import/export 등 최신 패턴 반영
+
+## 6. 문서 최신화 안내
+- 본 문서는 2024.06 리팩토링 이후 실제 코드/구조/네이밍/상태관리/컴포넌트/가이드와 100% 일치하도록 유지됩니다.
+- 예시/구조/가이드가 실제 코드와 다를 경우 반드시 문서를 최신 코드에 맞게 직접 업데이트해 주세요.
+
 # 프론트엔드 아키텍처 상세
 
 이 문서는 llms-gui 프론트엔드 애플리케이션의 상세 구조, 주요 디렉토리 및 컴포넌트, 상태 관리 전략, 실행 흐름에 대해 설명합니다.

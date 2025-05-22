@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { NodeResult } from '../../core/outputCollector';
-import { FlowExecutionResult } from '../../store/useExecutorStateStore';
+import { ExecutionStatus } from '../../store/useExecutorStateStore';
 import ReactMarkdown from 'react-markdown';
 import './markdown-style.css';
+
+// FlowExecutionResult 인터페이스 직접 정의
+interface FlowExecutionResult {
+  status: ExecutionStatus;
+  outputs: any[];
+  error?: string;
+  flowId?: string;
+}
 
 interface ResultDisplayProps {
   result: FlowExecutionResult | null;
   flowId: string;
   flowName: string;
+  outputFormat?: 'text' | 'markdown';
 }
 
 // 문자열이 마크다운 형식인지 대략 확인하는 함수
@@ -27,7 +36,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName }) => {
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text' }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -67,17 +76,52 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
   };
 
   // 개별 노드 결과 렌더링
-  const renderNodeResult = (nodeResult: NodeResult, index: number) => {
-    const { nodeId, nodeName, nodeType, result: nodeOutput } = nodeResult;
+  const renderNodeResult = (nodeResult: Record<string, any>, index: number) => {
+    // 두 가지 형태의 결과 객체 처리
+    // 1. flowExecutionService.ts의 NodeResult 형태: { nodeId, outputs }
+    // 2. outputCollector.ts의 NodeResult 형태: { nodeId, nodeName, nodeType, result }
+    
+    console.log(`[ResultDisplay] 결과 항목 ${index} 렌더링 시작:`, nodeResult);
+    
+    let nodeId, nodeName, nodeType, nodeOutput;
+    
+    if ('outputs' in nodeResult) {
+      // flowExecutionService.ts 형태
+      nodeId = nodeResult.nodeId;
+      nodeName = nodeResult.nodeName || nodeId.split('-')[0] || 'Node';  // ID에서 간단한 이름 추출
+      nodeType = nodeResult.nodeType || 'unknown';
+      
+      // outputs 배열에서 첫 번째 항목을 사용하거나, result 값이 있으면 그것을 사용
+      if (nodeResult.result !== undefined) {
+        nodeOutput = nodeResult.result;
+        console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용:`, nodeOutput);
+      } else if (nodeResult.outputs && nodeResult.outputs.length > 0) {
+        nodeOutput = nodeResult.outputs[0];
+        console.log(`[ResultDisplay] 노드 ${nodeId}의 outputs[0] 값 사용:`, nodeOutput);
+      } else {
+        nodeOutput = undefined;
+        console.log(`[ResultDisplay] 노드 ${nodeId}에 출력 값 없음`);
+      }
+    } else {
+      // outputCollector.ts 형태
+      nodeId = nodeResult.nodeId;
+      nodeName = nodeResult.nodeName || nodeId.split('-')[0] || 'Node';
+      nodeType = nodeResult.nodeType || 'unknown';
+      nodeOutput = nodeResult.result;
+      console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용 (outputCollector 형태):`, nodeOutput);
+    }
     
     // 결과 데이터를 문자열로 변환
     let resultText;
-    if (nodeOutput === undefined) {
-      resultText = ''; // undefined인 경우 빈 문자열로 처리
+    if (nodeOutput === undefined || nodeOutput === null) {
+      resultText = ''; // undefined/null인 경우 빈 문자열로 처리
+      console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: 빈 값`);
     } else if (typeof nodeOutput === 'object') {
       resultText = JSON.stringify(nodeOutput, null, 2);
+      console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: 객체를 JSON으로 변환`);
     } else {
       resultText = String(nodeOutput);
+      console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: ${resultText.substring(0, 50)}${resultText.length > 50 ? '...' : ''}`);
     }
     
     // 초기 표시 모드 설정 (이미 설정된 모드가 없으면)
@@ -143,7 +187,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
           <pre className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto whitespace-pre-wrap text-sm">
             {JSON.stringify(nodeOutput, null, 2)}
           </pre>
-        ) : nodeOutput === undefined ? (
+        ) : nodeOutput === undefined || nodeOutput === null ? (
           <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto">
             <p className="text-gray-500 italic">결과 없음</p>
           </div>
@@ -182,8 +226,8 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName 
       );
     }
 
-    const outputsToRender = result.outputs as NodeResult[];
-    console.log(`[ResultDisplay] Rendering ${outputsToRender.length} results for flow ${flowId}`);
+    const outputsToRender = result.outputs;
+    console.log(`[ResultDisplay] Rendering ${outputsToRender.length} results for flow ${flowId}`, outputsToRender);
 
     return (
       <div className="space-y-3">

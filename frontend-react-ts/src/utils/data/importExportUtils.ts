@@ -1,8 +1,16 @@
 import { Node, Edge } from '@xyflow/react';
 import { cloneDeep } from 'lodash';
 import { NodeData, NodeType } from '../../types/nodes';
-import { loadFromImportedContents, NodeContent, getAllNodeContents } from '../../store/useNodeContentStore';
+import { loadFromImportedContents, getAllNodeContents } from '../../store/useNodeContentStore';
 import { setNodes, setEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useExecutorStateStore } from '../../store/useExecutorStateStore';
+
+// NodeContent 타입 정의
+export interface NodeContent {
+  content?: any;
+  responseContent?: any;
+  [key: string]: any;
+}
 
 export interface FlowData {
   name?: string;
@@ -97,7 +105,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
     if (!importedNode.data) {
       console.warn(`[importFlowFromJson] Node ${importedNode.id} is missing data. Initializing empty data object.`);
       // Create a basic data object with just the type
-      importedNode.data = { type: importedNode.type } as NodeData;
+      importedNode.data = { type: importedNode.type || 'output' } as NodeData;
     }
     
     // Set default data properties based on node type if missing
@@ -250,4 +258,173 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
   });
 
   return flowData;
+};
+
+/**
+ * Flow Chain 데이터를 JSON 형식으로 내보냅니다.
+ * @param chainId 내보낼 Flow Chain의 ID
+ * @param includeExecutionData 실행 데이터 포함 여부
+ * @returns 내보낼 Flow Chain 데이터 객체
+ */
+export interface FlowChainData {
+  id: string;
+  name: string;
+  createdAt: string;
+  flowIds: string[];
+  flowMap: Record<string, FlowData>;
+  selectedFlowId: string | null;
+}
+
+export const exportFlowChainAsJson = (chainId: string, includeExecutionData: boolean = false): FlowChainData | null => {
+  const storeState = useExecutorStateStore.getState();
+  const chain = storeState.getFlowChain(chainId);
+  
+  if (!chain) {
+    console.error(`[exportFlowChainAsJson] Chain with ID ${chainId} not found`);
+    return null;
+  }
+  
+  // Flow 데이터 준비
+  const flowMap: Record<string, FlowData> = {};
+  
+  for (const flowId of chain.flowIds) {
+    const flow = chain.flowMap[flowId];
+    if (!flow) continue;
+    
+    // nodes 변환 시 타입 정의
+    const nodes: Node<NodeData>[] = Object.values(flow.nodes || {}).map(node => ({
+      id: node.id,
+      type: node.type,
+      data: {
+        ...node.data,
+        ...(node.type === 'llm' && !node.data?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
+      },
+      position: node.position,
+      parentId: node.parentNodeId || undefined // null 대신 undefined 사용
+    }));
+    
+    // edges 변환
+    const edges: Edge[] = Object.keys(flow.graph || {}).flatMap(nodeId => {
+      const relation = flow.graph[nodeId];
+      return relation.childs.map(childId => ({
+        id: `edge-${nodeId}-${childId}`,
+        source: nodeId,
+        target: childId
+      }));
+    });
+    
+    const flowData: FlowData = {
+      name: flow.name,
+      createdAt: new Date().toISOString(), // 현재 시간으로 설정
+      nodes,
+      edges
+    };
+    
+    flowMap[flowId] = flowData;
+  }
+  
+  const chainData: FlowChainData = {
+    id: chain.id,
+    name: chain.name,
+    createdAt: new Date().toISOString(), // 현재 시간으로 설정
+    flowIds: chain.flowIds,
+    flowMap: flowMap,
+    selectedFlowId: chain.selectedFlowId
+  };
+  
+  return chainData;
+};
+
+/**
+ * Flow Chain 데이터를 JSON 파일로 내보냅니다.
+ * @param chainId 내보낼 Flow Chain의 ID
+ * @param includeExecutionData 실행 데이터 포함 여부
+ */
+export const downloadFlowChainAsJson = (chainId: string, includeExecutionData: boolean = false): void => {
+  const chainData = exportFlowChainAsJson(chainId, includeExecutionData);
+  
+  if (!chainData) {
+    console.error('[downloadFlowChainAsJson] Failed to export chain data');
+    return;
+  }
+  
+  // Chain 이름 가져오기
+  const chainName = chainData.name || 'flow-chain';
+  
+  // 다운로드할 파일 이름 생성
+  const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+  const fileName = `${chainName.replace(/\s+/g, '-').toLowerCase()}-${timestamp}.json`;
+  
+  // JSON 변환 및 데이터 URL 생성
+  const jsonString = JSON.stringify(chainData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  // 다운로드 링크 생성 및 클릭
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  
+  // 리소스 정리
+  setTimeout(() => {
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 100);
+};
+
+// Flow Chain 데이터를 가져오는 함수
+export const importFlowChainFromJson = (chainData: FlowChainData): string | null => {
+  try {
+    const storeState = useExecutorStateStore.getState();
+    
+    // 새 Chain 생성
+    const newChainId = storeState.addFlowChain(chainData.name);
+    
+    console.log(`[importFlowChainFromJson] Created new chain: ${newChainId}`);
+    
+    // Flow들을 순차적으로 가져오기
+    // nodeFactory 오류 회피를 위해 setTimeout으로 비동기 처리
+    setTimeout(() => {
+      try {
+        // Flow들을 Chain에 추가
+        for (const flowId of chainData.flowIds) {
+          const flowData = chainData.flowMap[flowId];
+          if (!flowData) continue;
+          
+          // 노드 데이터 정리를 통해 타입 문제 회피
+          const cleanedFlowData = {
+            ...flowData,
+            nodes: flowData.nodes.map(node => ({
+              id: node.id,
+              type: node.type,
+              position: node.position,
+              data: {
+                ...node.data,
+                ...(node.type === 'llm' && !node.data?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
+              }
+            }))
+          } as FlowData;
+          
+          // Flow Chain에 추가
+          storeState.addFlowToChain(newChainId, cleanedFlowData);
+        }
+        
+        // 선택된 Flow 설정
+        if (chainData.selectedFlowId) {
+          storeState.setSelectedFlow(newChainId, chainData.selectedFlowId);
+        }
+        
+        console.log(`[importFlowChainFromJson] Added ${chainData.flowIds.length} flows to chain ${newChainId}`);
+      } catch (error) {
+        console.error('[importFlowChainFromJson] Error adding flows to chain:', error);
+      }
+    }, 100);
+    
+    return newChainId;
+  } catch (error) {
+    console.error('[importFlowChainFromJson] Error importing flow chain:', error);
+    return null;
+  }
 }; 

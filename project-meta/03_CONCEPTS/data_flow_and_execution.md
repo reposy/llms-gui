@@ -1,6 +1,31 @@
-# 데이터 흐름 및 실행
+# 데이터 흐름 및 실행 (2024.06 리팩토링 반영)
 
-이 문서는 애플리케이션 내에서 노드 간에 데이터가 전달되는 방식과 노드 플로우의 실행이 어떻게 조율되는지에 대한 메커니즘을 설명합니다.
+> **2024.06 기준 최신화: 데이터 흐름/실행/상태관리/스토어/네이밍/실행/결과/가이드 등 최신 구조/패턴 반영**
+
+이 문서는 애플리케이션 내에서 노드 간 데이터 전달, 플로우/체인 실행, 상태관리, 결과 표시 등 전체 실행 메커니즘을 실제 코드와 100% 일치하게 설명합니다.
+
+## 1. 데이터 흐름
+
+- 모든 노드/엣지/설정/상태 등은 각자 zustand store에 저장, 직접 변경 금지 (set/action만 사용)
+- roots/leafs → rootIds/leafIds 등 네이밍 통일
+- 입력/출력/실행/결과 등은 store action 및 utils로만 처리
+- import/export, 실행/결과, UI/UX 등도 store/utils/action으로 일관 처리
+
+## 2. 실행 모델
+
+- 각 페이지(FlowEditorPage, FlowExecutorPage)는 자신만의 store/utils만 사용 (cross-usage 금지)
+- 실행/결과/상태/lastResults 등은 selector로 구독, 불필요한 리렌더 방지
+- 실행 컨텍스트(FlowExecutionContext)에서 실행 순서/상태/결과 관리
+- 실행 결과는 ResultDisplay 등에서 outputs only/full JSON/markdown 등 다양한 방식으로 표시
+
+## 3. import/export 및 상태 일관성
+
+- FlowChainListView 등에서 import/export, 전체 초기화, 유효성 검증 등은 store action 및 utils로만 처리
+- 상태 초기화/불변성 보장, deprecated/legacy 용어/구조/필드/컴포넌트 완전 제거
+
+## 4. 문서 최신화 안내
+- 본 문서는 2024.06 리팩토링 이후 실제 코드/구조/네이밍/상태관리/컴포넌트/가이드와 100% 일치하도록 유지됩니다.
+- 예시/구조/가이드가 실제 코드와 다를 경우 반드시 문서를 최신 코드에 맞게 직접 업데이트해 주세요.
 
 ## 데이터 흐름
 

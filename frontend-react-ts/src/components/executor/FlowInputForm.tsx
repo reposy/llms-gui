@@ -1,462 +1,231 @@
-import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
-import { NodeResult } from '../../core/outputCollector';
-import ReactMarkdown from 'react-markdown';
+import React, { useState, useEffect, useRef } from 'react';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 
 interface FlowInputFormProps {
   flowId: string;
+  inputs?: any[];
+  onInputChange?: (inputs: any[]) => void;
+  isChainInput?: boolean;
 }
 
-type InputItem = {
-  type: 'text' | 'file' | 'flow-result';
-  value: string | File;
-  sourceFlowId?: string; // Flow 결과 참조 시 원본 Flow ID
-};
+type InputType = 'text' | 'file' | 'flow-result';
 
-const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId }) => {
-  const [inputItems, setInputItems] = useState<InputItem[]>([{ type: 'text', value: '' }]);
-  const [confirmed, setConfirmed] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const { 
-    flowChain,
-    getFlowById, 
-    setFlowInputData, 
-    getFlowResultById
-  } = useExecutorStateStore();
-  
-  const flow = getFlowById(flowId);
-  
-  // 이전 Flow IDs (참조용)
-  const previousFlows = flowChain
-    .filter(f => f.id !== flowId)
-    .map(f => ({
-      id: f.id, 
-      name: f.name,
-      hasResult: getFlowResultById(f.id) !== null
-    }));
-  
-  // 입력 값 초기화
+interface InputRow {
+  type: InputType;
+  value: string | File | null;
+  sourceFlowId?: string;
+}
+
+const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
+  const store = useFlowExecutorStore();
+  const focusedFlowChainId = store.focusedFlowChainId;
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = store.flowChainIds;
+  const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
+  const flow = chain && flowId ? chain.flowMap[flowId] : undefined;
+  const prevFlows = chain ? chain.flowIds.filter(id => id !== flowId && chain.flowIds.indexOf(id) < chain.flowIds.indexOf(flowId)) : [];
+
+  // store의 값을 직접 구독 (propInputs가 없으면)
+  const initialRows = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
+  const [rows, setRows] = useState<InputRow[]>(initialRows);
+  const [editMode, setEditMode] = useState(false);
+  const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
+
   useEffect(() => {
-    if (flow) {
-      if (flow.inputData && flow.inputData.length > 0) {
-        // 기존 입력 데이터가 있으면 변환해서 사용
-        const initialInputs: InputItem[] = flow.inputData.map(input => {
-          // Flow 결과 참조 여부 확인 (${result-flow-ID} 형식)
-          if (typeof input === 'string' && input.match(/\$\{result-flow-([^}]+)\}/)) {
-            const match = input.match(/\$\{result-flow-([^}]+)\}/);
-            const refFlowId = match ? match[1] : '';
-            return { 
-              type: 'flow-result', 
-              value: input,
-              sourceFlowId: refFlowId
-            };
-          }
-          
-          // 그 외에는 텍스트로 간주
-          return { type: 'text', value: input };
-        });
-        
-        setInputItems(initialInputs);
-        setConfirmed(true); // 이미 있는 데이터는 확정된 것으로 간주
-      } else {
-        // 기본 입력 데이터 설정 및 자동 확정
-        const defaultInput = { type: 'text', value: '' };
-        setInputItems([defaultInput]);
-        setFlowInputData(flowId, [defaultInput.value]); // 기본 입력 데이터 저장
-        setConfirmed(true); // 자동으로 확정 상태로 설정
-      }
+    if (propInputs) setRows(propInputs);
+    else if (flow && flow.inputs) setRows(flow.inputs);
+  }, [propInputs, flow]);
+
+  useEffect(() => {
+    setDraftInputs(rows);
+  }, [rows]);
+
+  // 입력 변경 핸들러
+  const updateRows = (newRows: InputRow[]) => {
+    setRows(newRows);
+    if (onInputChange) onInputChange(newRows);
+    if (focusedFlowChainId && flowId) {
+      store.setFlowInputData(focusedFlowChainId, flowId, newRows);
     }
-  }, [flow, flowId]);
-  
-  if (!flow) {
-    return <div className="text-red-500">Flow를 찾을 수 없습니다.</div>;
-  }
-  
-  // 입력 필드 변경 처리
-  const handleInputChange = (index: number, value: string) => {
-    const newInputItems = [...inputItems];
-    newInputItems[index] = { ...newInputItems[index], value };
-    setInputItems(newInputItems);
-    setConfirmed(false);
-  };
-  
-  // 입력 타입 변경 처리
-  const handleInputTypeChange = (index: number, type: 'text' | 'file' | 'flow-result') => {
-    const newInputItems = [...inputItems];
-    
-    // 타입에 따라 초기화
-    if (type === 'text') {
-      newInputItems[index] = { type, value: '' };
-    } 
-    else if (type === 'file') {
-      fileInputRef.current?.click();
-    }
-    else if (type === 'flow-result') {
-      newInputItems[index] = { type, value: '', sourceFlowId: '' };
-    }
-    
-    setInputItems(newInputItems);
-    setConfirmed(false);
-  };
-  
-  // 파일 선택 처리
-  const handleFileSelect = (index: number, files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    
-    // 선택한 첫 번째 파일을 현재 입력 항목에 설정
-    const file = files[0];
-    let newInputItems = [...inputItems];
-    newInputItems[index] = { type: 'file', value: file };
-    
-    // 추가 파일이 있다면 새 입력 항목으로 추가
-    if (files.length > 1) {
-      for (let i = 1; i < files.length; i++) {
-        newInputItems.push({ type: 'file', value: files[i] });
-      }
-    }
-    
-    setInputItems(newInputItems);
-    setConfirmed(false);
-  };
-  
-  // 입력 필드 추가
-  const handleAddInput = (type: 'text' | 'file' | 'flow-result' = 'text') => {
-    if (type === 'text') {
-      setInputItems([...inputItems, { type: 'text', value: '' }]);
-    } 
-    else if (type === 'file') {
-      fileInputRef.current?.click();
-    }
-    else if (type === 'flow-result') {
-      setInputItems([...inputItems, { type: 'flow-result', value: '', sourceFlowId: '' }]);
-    }
-    setConfirmed(false);
   };
 
-  // 특정 위치 다음에 새 텍스트 입력 추가
-  const handleAddTextInputAfter = (index: number) => {
-    const newInputItems = [...inputItems];
-    // index 다음에 새 텍스트 입력 삽입
-    newInputItems.splice(index + 1, 0, { type: 'text', value: '' });
-    setInputItems(newInputItems);
-    setConfirmed(false);
-    
-    // 새로 추가된 입력 필드로 포커스 이동 (약간의 지연 추가)
-    setTimeout(() => {
-      const textareas = document.querySelectorAll('textarea');
-      if (textareas.length > index + 1) {
-        textareas[index + 1].focus();
-      }
-    }, 0);
+  // Row 추가
+  const addRow = (row?: InputRow) => {
+    updateRows([...rows, row || { type: 'text', value: '' }]);
   };
 
-  // 키보드 이벤트 처리 (텍스트 입력)
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, index: number) => {
-    // 확정 상태일 때는 키 이벤트를 처리하지 않음
-    if (confirmed) return;
-    
-    // Shift+Enter: 새 텍스트 입력 추가
+  // Row 삭제
+  const removeRow = (idx: number) => {
+    if (rows.length === 1) return;
+    updateRows(rows.filter((_, i) => i !== idx));
+  };
+
+  // Row 이동
+  const moveRow = (idx: number, dir: 'up' | 'down') => {
+    const newRows = [...rows];
+    if (dir === 'up' && idx > 0) {
+      [newRows[idx - 1], newRows[idx]] = [newRows[idx], newRows[idx - 1]];
+    } else if (dir === 'down' && idx < newRows.length - 1) {
+      [newRows[idx], newRows[idx + 1]] = [newRows[idx + 1], newRows[idx]];
+    }
+    updateRows(newRows);
+  };
+
+  // 타입 전환
+  const setType = (idx: number, type: InputType) => {
+    const newRows = [...rows];
+    if (type === 'file') newRows[idx] = { type, value: null };
+    else if (type === 'flow-result') newRows[idx] = { type, value: '', sourceFlowId: prevFlows[0] || '' };
+    else newRows[idx] = { type, value: '' };
+    updateRows(newRows);
+  };
+
+  // 파일 선택
+  const handleFileChange = (idx: number, file: File | null) => {
+    const newRows = [...rows];
+    newRows[idx] = { type: 'file', value: file };
+    updateRows(newRows);
+  };
+
+  // Flow Result 선택
+  const handleFlowResultChange = (idx: number, flowId: string) => {
+    const newRows = [...rows];
+    newRows[idx] = { type: 'flow-result', value: flowId, sourceFlowId: flowId };
+    updateRows(newRows);
+  };
+
+  // 텍스트 입력
+  const handleTextChange = (idx: number, value: string) => {
+    const newRows = [...rows];
+    newRows[idx] = { type: 'text', value };
+    updateRows(newRows);
+  };
+
+  // Shift+Enter로 Row 추가
+  const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
     if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault(); // 기본 동작 방지 (개행 방지)
-      handleAddTextInputAfter(index);
+      e.preventDefault();
+      addRow();
     }
-    // 일반 Enter는 기본 동작(개행) 허용
   };
-  
-  // 입력 필드 제거
-  const handleRemoveInput = (index: number) => {
-    const newInputItems = inputItems.filter((_, i) => i !== index);
-    setInputItems(newInputItems);
-    setConfirmed(false);
-  };
-  
-  // Flow 결과 참조 추가
-  const handleFlowResultSelect = (index: number, refFlowId: string) => {
-    if (!refFlowId) return;
 
-    const refFlow = getFlowById(refFlowId);
-    if (!refFlow) return;
-    
-    const refVariable = `\${result-flow-${refFlowId}}`;
-    const newInputItems = [...inputItems];
-    newInputItems[index] = { 
-      type: 'flow-result', 
-      value: refVariable,
-      sourceFlowId: refFlowId
-    };
-    
-    setInputItems(newInputItems);
-    setConfirmed(false);
+  // 파일 드래그&드롭 지원
+  const handleDrop = (idx: number, e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      const newRows = [...rows];
+      files.forEach((file, i) => {
+        if (i === 0) newRows[idx] = { type: 'file', value: file };
+        else newRows.push({ type: 'file', value: file });
+      });
+      updateRows(newRows);
+    }
   };
-  
-  // 입력 확정
-  const handleConfirmInputs = () => {
-    // 입력 데이터를 Flow 상태에 저장
-    const inputData = inputItems.map(item => {
-      if (item.type === 'text' || item.type === 'flow-result') {
-        return item.value as string;
-      } else {
-        return `[File: ${(item.value as File).name}]`;
-      }
-    });
-    
-    setFlowInputData(flowId, inputData);
-    setConfirmed(true);
+
+  // 저장 버튼 클릭 시 store에 반영
+  const handleSave = () => {
+    setEditMode(false);
+    if (focusedFlowChainId && flowId) {
+      store.setFlowInputData(focusedFlowChainId, flowId, draftInputs);
+    }
+    if (onInputChange) onInputChange(draftInputs);
   };
-  
-  // Flow 결과 참조 상태 텍스트 생성
-  const getFlowReferenceText = (sourceFlowId: string) => {
-    const refFlow = getFlowById(sourceFlowId);
-    if (!refFlow) return '알 수 없는 Flow';
-    
-    const hasResult = getFlowResultById(sourceFlowId) !== null;
-    return `${refFlow.name} ${hasResult ? '(결과 있음)' : '(결과 없음)'}`;
+
+  const handleCancel = () => {
+    setEditMode(false);
+    setDraftInputs(rows);
   };
-  
-  // 최근 실행 결과 가져오기
-  const lastResult = getFlowResultById(flowId);
-  
+
+  // SVG 아이콘 (프로젝트 내 선언된 것 사용 예시)
+  const TrashIcon = (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+  );
+  const UpIcon = (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" /></svg>
+  );
+  const DownIcon = (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+  );
+
   return (
-    <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
-      <div className="p-4 bg-gray-50 border-b border-gray-300 flex justify-between items-center">
-        <div>
-          <h2 className="font-medium text-lg">{flow.name}</h2>
-          <p className="text-sm text-gray-500">입력 데이터를 입력하고 확정하세요</p>
-        </div>
-        
-        {/* 확정/수정 버튼 */}
-        <div>
-          {!confirmed ? (
-            <button
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex items-center"
-              onClick={handleConfirmInputs}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              입력 확정
-            </button>
+    <div className="mb-6 p-3 border border-gray-200 rounded-lg bg-white relative">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-medium">Input Data</h2>
+        <div className="flex gap-2 items-center">
+          {editMode ? (
+            <>
+              <button className="px-3 py-1 bg-green-500 text-white rounded" onClick={handleSave}>저장</button>
+              <button className="px-3 py-1 bg-gray-300 text-gray-700 rounded" onClick={handleCancel}>취소</button>
+            </>
           ) : (
-            <button
-              className="px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors flex items-center"
-              onClick={() => setConfirmed(false)}
+            <button className="px-3 py-1 bg-blue-500 text-white rounded" onClick={() => setEditMode(true)}>수정</button>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mb-4">
+        <div className="text-gray-400 text-sm flex-1">입력값을 추가하세요</div>
+        {editMode && (
+          <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRow()}>+ 입력 추가</button>
+        )}
+      </div>
+      {rows.map((row, idx) => (
+        <div key={idx} className="flex items-center gap-2 mb-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
+          {/* 타입 토글 */}
+          <div className="flex gap-1">
+            <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
+            <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'file')} disabled={!editMode}>File</button>
+            <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+          </div>
+          {/* 입력 UI */}
+          {row.type === 'text' && (
+            <input
+              className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white"
+              type="text"
+              value={typeof row.value === 'string' ? row.value : ''}
+              onChange={e => editMode && handleTextChange(idx, e.target.value)}
+              onKeyDown={e => editMode && handleKeyDown(e, idx)}
+              placeholder="입력값을 입력하세요"
+              readOnly={!editMode}
+            />
+          )}
+          {row.type === 'file' && (
+            <div className="flex-1 flex items-center gap-2">
+              <input
+                type="file"
+                className="hidden"
+                id={`file-input-${idx}`}
+                onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                disabled={!editMode}
+              />
+              <label htmlFor={`file-input-${idx}`} className={`px-2 py-1 border rounded cursor-pointer bg-white hover:bg-gray-100 ${!editMode ? 'opacity-50 cursor-not-allowed' : ''}`}>파일 선택</label>
+              {row.value && typeof row.value !== 'string' && (
+                <span className="text-sm text-gray-700">{(row.value as File).name}</span>
+              )}
+              {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
+            </div>
+          )}
+          {row.type === 'flow-result' && (
+            <select
+              className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white"
+              value={row.sourceFlowId || ''}
+              onChange={e => editMode && handleFlowResultChange(idx, e.target.value)}
+              disabled={!editMode || prevFlows.length === 0}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-              수정하기
-            </button>
+              {prevFlows.length === 0 && <option value="">선택 가능한 이전 Flow가 없습니다</option>}
+              {prevFlows.map(fid => (
+                <option key={fid} value={fid}>{chain?.flowMap[fid]?.name || fid}</option>
+              ))}
+            </select>
           )}
-        </div>
-      </div>
-      
-      <div className="p-4">
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-medium text-gray-700">입력 데이터</h3>
-            {confirmed && (
-              <span className="text-green-600 bg-green-50 px-3 py-1 rounded-full text-xs font-medium flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                확정됨
-              </span>
-            )}
-          </div>
-          
-          {inputItems.map((item, index) => (
-            <div key={index} className="mb-4 bg-white">
-              <div className="flex items-center mb-1">
-                <span className="text-sm text-gray-600 mr-2">입력 {index + 1}</span>
-                <div className="flex space-x-2">
-                  <button
-                    className={`px-2 py-1 text-xs rounded ${item.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
-                    onClick={() => handleInputTypeChange(index, 'text')}
-                    disabled={confirmed}
-                  >
-                    텍스트
-                  </button>
-                  <button
-                    className={`px-2 py-1 text-xs rounded ${item.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
-                    onClick={() => handleInputTypeChange(index, 'file')}
-                    disabled={confirmed}
-                  >
-                    파일
-                  </button>
-                  <button
-                    className={`px-2 py-1 text-xs rounded ${item.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
-                    onClick={() => handleInputTypeChange(index, 'flow-result')}
-                    disabled={confirmed || previousFlows.length === 0}
-                    title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
-                  >
-                    Flow 결과
-                  </button>
-                </div>
-                {inputItems.length > 1 && !confirmed && (
-                  <button 
-                    onClick={() => handleRemoveInput(index)}
-                    className="ml-auto p-1 text-red-500 hover:text-red-700"
-                    title="이 입력 제거"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-
-              {item.type === 'text' && (
-                <div className="flex">
-                  <textarea
-                    rows={3}
-                    className={`flex-1 p-2 border rounded-l bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}
-                    value={item.value as string}
-                    onChange={(e) => handleInputChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, index)}
-                    placeholder={`예: "오늘 날씨 어때?"`}
-                    readOnly={confirmed}
-                  />
-                  {!confirmed && (
-                    <button
-                      onClick={() => handleAddTextInputAfter(index)}
-                      className="px-3 border border-l-0 rounded-r border-gray-300 bg-gray-50 hover:bg-gray-100 text-gray-700"
-                      title="이 입력 아래에 새 행 추가"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              )}
-              {item.type === 'file' && (
-                <div className={`w-full p-2 border rounded flex items-center justify-between bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}>
-                  <div className="flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span>{item.value instanceof File ? item.value.name : '파일 선택됨'}</span>
-                  </div>
-                  {!confirmed && (
-                    <button 
-                      className="text-xs text-blue-500 hover:underline"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      변경
-                    </button>
-                  )}
-                </div>
-              )}
-              {item.type === 'flow-result' && (
-                <select
-                  className={`w-full p-2 border rounded bg-white ${confirmed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-300 text-gray-900'}`}
-                  value={item.sourceFlowId || ''}
-                  onChange={(e) => handleFlowResultSelect(index, e.target.value)}
-                  disabled={confirmed}
-                >
-                  <option value="">-- Flow 결과 선택 --</option>
-                  {previousFlows.map(prevFlow => (
-                    <option key={prevFlow.id} value={prevFlow.id} disabled={!prevFlow.hasResult}>
-                      {getFlowReferenceText(prevFlow.id)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              
-              {!confirmed && item.type === 'text' && (
-                <div className="mt-1 text-xs text-gray-500 flex justify-end">
-                  <span>
-                    Shift+Enter를 눌러 새 행 추가
-                  </span>
-                </div>
-              )}
-            </div>
-          ))}
-          
-          {/* 입력 필드 추가 버튼들 */}
-          {!confirmed && (
-            <div className="mt-4 flex space-x-2">
-              <button 
-                onClick={() => handleAddInput('text')}
-                className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Add Row
-              </button>
-              <button 
-                onClick={() => handleAddInput('file')}
-                className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Add Files
-              </button>
-              <button 
-                onClick={() => handleAddInput('flow-result')}
-                className="px-3 py-1.5 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors flex items-center"
-                disabled={previousFlows.length === 0}
-                title={previousFlows.length === 0 ? '사용 가능한 이전 Flow가 없습니다' : '이전 Flow의 결과를 사용합니다'}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                  />
-                </svg>
-                Add Flow Result
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* 파일 입력을 위한 숨겨진 input 요소 */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        onChange={(e) => handleFileSelect(inputItems.length - 1, e.target.files)}
-        multiple
-      />
-      
-      {/* 최근 실행 결과 표시 */}
-      {lastResult && (
-        <div className="mt-4 p-4 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-700">최근 실행 결과</h3>
-            <span className={`px-2 py-1 text-xs rounded-full ${
-              lastResult.status === 'success' ? 'bg-green-100 text-green-800' :
-              lastResult.status === 'error' ? 'bg-red-100 text-red-800' :
-              'bg-blue-100 text-blue-800'
-            }`}>
-              {lastResult.status === 'success' ? '성공' :
-               lastResult.status === 'error' ? '오류' : '실행 중'}
-            </span>
-          </div>
-          
-          <div className="bg-gray-50 rounded p-3 text-sm text-gray-700 max-h-48 overflow-y-auto">
-            {lastResult.outputs?.map((output: NodeResult, index: number) => (
-              <div key={index} className="mb-2">
-                <div className="font-medium text-xs text-gray-500 mb-1">
-                  {output.nodeId} - {output.nodeType}
-                </div>
-                {typeof output.result === 'string' ? (
-                  <ReactMarkdown className="prose prose-sm max-w-none">
-                    {output.result}
-                  </ReactMarkdown>
-                ) : (
-                  <pre className="text-xs">
-                    {JSON.stringify(output.result, null, 2)}
-                  </pre>
-                )}
-              </div>
-            ))}
+          {/* 위/아래/삭제 */}
+          <div className="flex gap-1 ml-2">
+            <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
+            <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
+            <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 };

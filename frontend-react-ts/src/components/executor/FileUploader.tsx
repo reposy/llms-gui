@@ -1,139 +1,189 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FlowData } from '../../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import FileSelector from './FileSelector';
+import { PlusIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 
 interface FileUploaderProps {
-  onFileUpload?: (jsonData: FlowData) => void;
+  onFileUpload?: (flowData: FlowData, chainId?: string, flowId?: string) => void;
   externalFileInputRef?: React.RefObject<HTMLInputElement>;
   className?: string;
+  buttonStyle?: boolean;
+  buttonText?: string;
 }
 
-const FileUploader: React.FC<FileUploaderProps> = ({ onFileUpload, externalFileInputRef, className = '' }) => {
+const FileUploader: React.FC<FileUploaderProps> = ({ 
+  onFileUpload, 
+  externalFileInputRef, 
+  className = '',
+  buttonStyle = false,
+  buttonText = 'Import Flow'
+}) => {
   const [fileName, setFileName] = useState<string>('');
   const [error, setError] = useState<string>('');
-  const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
+  const [isDropping, setIsDropping] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const addFlow = useExecutorStateStore(state => state.addFlow);
-  const flowChain = useExecutorStateStore(state => state.flowChain);
-  const setStage = useExecutorStateStore(state => state.setStage);
+  const { addFlowToChain, activeChainId } = useExecutorStateStore(state => ({
+    addFlowToChain: state.addFlowToChain,
+    activeChainId: state.activeChainId
+  }));
   
-  // 외부 파일 입력 참조가 변경 이벤트를 수신하도록 설정
   useEffect(() => {
+    // 외부 ref가 제공된 경우 이벤트 리스너 등록
     if (externalFileInputRef?.current) {
-      const inputElement = externalFileInputRef.current;
+      const fileInput = externalFileInputRef.current;
+      fileInput.addEventListener('change', handleFileChange);
       
-      // 파일 변경 이벤트 핸들러 등록
-      const fileChangeHandler = (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        if (target.files && target.files[0]) {
-          handleFileSelected(target.files[0]);
-        }
-      };
-      
-      // 이벤트 리스너 등록
-      inputElement.addEventListener('change', fileChangeHandler);
-      
-      // 컴포넌트 언마운트 시 이벤트 리스너 제거
       return () => {
-        inputElement.removeEventListener('change', fileChangeHandler);
+        fileInput.removeEventListener('change', handleFileChange);
       };
     }
   }, [externalFileInputRef]);
-
-  // 파일 처리 로직
-  const handleFileSelected = (file: File) => {
+  
+  // 파일 변경 핸들러
+  const handleFileChange = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    
+    const file = input.files[0];
     setFileName(file.name);
-    setError('');
-
+    
+    // 파일 읽기
+    readFile(file);
+  };
+  
+  // 파일 업로드 핸들러 (드래그 앤 드롭)
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDropping(false);
+    
+    if (!event.dataTransfer.files?.length) return;
+    
+    const file = event.dataTransfer.files[0];
+    setFileName(file.name);
+    
+    // 파일 읽기
+    readFile(file);
+  };
+  
+  // 파일 선택 핸들러
+  const handleClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+  
+  // 파일 읽기 및 처리
+  const readFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    
+    reader.onload = (event) => {
       try {
-        const json = e.target?.result as string;
-        let flowData;
+        if (!event.target?.result) throw new Error('파일 내용을 읽을 수 없습니다.');
         
-        try {
-          flowData = JSON.parse(json);
-        } catch (parseError) {
-          console.error(`[FileUploader] JSON 파싱 오류:`, parseError);
-          setError('JSON 파일 형식이 올바르지 않습니다.');
+        // JSON 파싱
+        const fileContent = event.target.result as string;
+        const flowData = JSON.parse(fileContent) as FlowData;
+        
+        // Flow Data 유효성 검사
+        if (!flowData || !flowData.nodes || !Array.isArray(flowData.nodes)) {
+          throw new Error('유효하지 않은 Flow 데이터 형식입니다.');
+        }
+        
+        // 노드 수 확인
+        if (flowData.nodes.length === 0) {
+          setError('Flow에 노드가 없습니다. 유효한 Flow를 업로드해주세요.');
           return;
         }
         
-        // 기본 유효성 검사
-        if (!flowData || typeof flowData !== 'object') {
-          throw new Error('유효하지 않은 Flow 파일 형식입니다.');
-          return;
+        // 에러 초기화
+        setError('');
+        
+        // Flow를 체인에 등록
+        if (activeChainId) {
+          const flowId = addFlowToChain(activeChainId, flowData);
+          console.log(`[FileUploader] Added flow to chain: chainId=${activeChainId}, flowId=${flowId}`);
+          
+          // 콜백 호출
+          if (onFileUpload) {
+            onFileUpload(flowData, activeChainId, flowId);
+          }
+        } else {
+          console.warn('[FileUploader] No active chain selected');
+          setError('Flow를 추가할 Chain이 선택되지 않았습니다.');
         }
-        
-        // 파일명에서 특수문자 제거하고 소문자로 변환하여 ID 생성
-        const flowName = file.name.replace(/\.json$/, '') || '가져온 Flow';
-        const timestamp = Date.now();
-        const random = Math.floor(Math.random() * 1000);
-        const namePart = flowName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 20);
-        const flowId = `${namePart}-${timestamp}-${random}`;
-        
-        const flowToAdd = {
-          ...flowData,
-          id: flowId,
-          name: flowName
-        };
-        
-        // Flow 추가
-        addFlow(flowToAdd);
-        
-        // 다음 단계로 이동
-        if (flowChain.length === 0) {
-          setStage('input');
-        }
-        
-        // 외부 콜백이 있으면 호출
-        if (onFileUpload) {
-          onFileUpload(flowToAdd);
-        }
-        
-        console.log(`[FileUploader] Flow imported successfully: ${flowId}`);
       } catch (err) {
-        console.error('Flow 파일 처리 오류:', err);
-        setError('유효하지 않은 Flow 파일입니다. 올바른 Flow JSON 파일을 업로드해주세요.');
+        console.error('[FileUploader] Error processing file:', err);
+        setError(err instanceof Error ? err.message : String(err));
       }
     };
+    
     reader.onerror = () => {
-      setError('파일 읽기 오류가 발생했습니다.');
+      setError('파일을 읽는 중 오류가 발생했습니다.');
     };
+    
     reader.readAsText(file);
   };
+  
+  // 드래그 오버 핸들러
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDropping(true);
+  };
+  
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDropping(false);
+  };
 
-  return (
-    <div className={`p-4 border border-gray-300 rounded-lg bg-white ${className}`}>
-      <h2 className="text-lg font-medium mb-3">
-        {flowChain.length === 0 ? 'Flow 업로드하기' : 'Flow 추가하기'}
-      </h2>
-      <div className="flex flex-col space-y-4">
-        <div className="flex flex-wrap gap-3">
-          <FileSelector 
-            onFileSelected={handleFileSelected}
-            accept=".json"
-            buttonText="파일에서 가져오기"
-            fileSelectorRef={fileSelectorRef}
-          />
-          
-          {fileName && (
-            <div className="px-3 py-2 bg-gray-100 rounded flex-1 flex items-center">
-              <span className="text-gray-600 truncate">
-                {fileName}
-              </span>
-            </div>
-          )}
+  if (buttonStyle) {
+    return (
+      <>
+        <div
+          onClick={handleClick}
+          className="flex items-center gap-1"
+        >
+          <DocumentArrowUpIcon className="h-5 w-5 text-white" />
+          <span>{buttonText}</span>
         </div>
-        
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <p className="text-sm text-gray-500">
-          {flowChain.length === 0 
-            ? 'Flow 파일(.json)을 선택하여 실행할 Flow를 추가하세요.'
-            : '추가 Flow 파일(.json)을 선택하여 체인에 추가하세요. Flow의 실행 순서는 나중에 조정할 수 있습니다.'}
-        </p>
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept=".json"
+          onChange={(e) => handleFileChange(e.nativeEvent)}
+        />
+      </>
+    );
+  }
+  
+  return (
+    <div className={`flow-uploader ${className}`}>
+      <div
+        className={`upload-area p-4 border-2 border-dashed rounded-lg ${
+          isDropping ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+        } transition-colors duration-150 cursor-pointer flex flex-col items-center justify-center text-center`}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={handleClick}
+      >
+        <DocumentArrowUpIcon className="h-8 w-8 text-gray-400 mb-2" />
+        <p className="text-sm text-gray-600">Flow JSON 파일을 드래그하거나 클릭하여 업로드하세요</p>
+        {fileName && <p className="text-xs mt-1 text-gray-500">선택된 파일: {fileName}</p>}
+        {error && <p className="text-xs mt-1 text-red-500">{error}</p>}
       </div>
+      
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept=".json"
+        onChange={(e) => handleFileChange(e.nativeEvent)}
+      />
     </div>
   );
 };
