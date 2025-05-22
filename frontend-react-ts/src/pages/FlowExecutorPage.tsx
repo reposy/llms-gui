@@ -14,27 +14,20 @@ const FlowExecutorPage: React.FC = () => {
   const flowChainIds = store.flowChainIds;
   const flowChainMap = store.flowChainMap;
   const focusedFlowChainId = store.focusedFlowChainId;
-  const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   const [isFlowModalOpen, setIsFlowModalOpen] = useState<boolean>(false);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
   useEffect(() => {
-    if (focusedFlowChainId) {
-      setSelectedChainId(focusedFlowChainId);
-    } else if (flowChainIds.length > 0) {
-      setSelectedChainId(flowChainIds[0]);
+    if (!focusedFlowChainId && flowChainIds.length > 0) {
       store.setFocusedFlowChainId(flowChainIds[0]);
-    } else {
-      setSelectedChainId(null);
     }
   }, [focusedFlowChainId, flowChainIds.length]);
 
   const handleChainSelect = (chainId: string) => {
-    setSelectedChainId(chainId);
-    setSelectedFlowId(null);
     store.setFocusedFlowChainId(chainId);
+    setSelectedFlowId(null);
   };
 
   const handleFlowSelect = (flowId: string) => {
@@ -47,7 +40,7 @@ const FlowExecutorPage: React.FC = () => {
   };
 
   const handleImportFlow = () => {
-    if (!selectedChainId) return;
+    if (!focusedFlowChainId) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/json';
@@ -59,7 +52,7 @@ const FlowExecutorPage: React.FC = () => {
         try {
           const json = event.target?.result as string;
           const flowData = JSON.parse(json);
-          importFlowJsonToStore(selectedChainId, flowData);
+          importFlowJsonToStore(focusedFlowChainId, flowData);
         } catch (error) {
           console.error('Flow 가져오기 오류:', error);
           alert('Flow 파일을 처리하는 중 오류가 발생했습니다.');
@@ -73,7 +66,6 @@ const FlowExecutorPage: React.FC = () => {
   const handleClearAll = () => {
     if (window.confirm('모든 Flow Chain과 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
       store.resetState();
-      setSelectedChainId(null);
       setSelectedFlowId(null);
     }
   };
@@ -83,7 +75,7 @@ const FlowExecutorPage: React.FC = () => {
   };
 
   // 현재 선택된 체인
-  const selectedChain = selectedChainId ? flowChainMap[selectedChainId] : null;
+  const selectedChain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : null;
 
   // 결과를 볼 수 있는지 확인
   const canViewResults = useMemo(() => {
@@ -191,9 +183,9 @@ const FlowExecutorPage: React.FC = () => {
           </div>
           {/* Right Panel */}
           <div className="w-2/3 bg-white shadow rounded-lg p-4 h-full overflow-y-auto">
-            {selectedChainId ? (
+            {focusedFlowChainId ? (
               <FlowChainDetailsView
-                chainId={selectedChainId}
+                flowChainId={focusedFlowChainId}
                 onFlowSelect={handleFlowSelect}
                 onImportFlow={handleImportFlow}
               />
@@ -212,11 +204,11 @@ const FlowExecutorPage: React.FC = () => {
         defaultFilename="flows-export.json"
       />
       {/* Flow 상세 모달 */}
-      {selectedChainId && selectedFlowId && isFlowModalOpen && (
+      {focusedFlowChainId && selectedFlowId && isFlowModalOpen && (
         <FlowChainModal
           isOpen={isFlowModalOpen}
           onClose={handleCloseFlowModal}
-          flowChainId={selectedChainId}
+          flowChainId={focusedFlowChainId}
           flowId={selectedFlowId}
         />
       )}
