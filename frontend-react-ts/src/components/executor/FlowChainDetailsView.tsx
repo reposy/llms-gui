@@ -5,7 +5,6 @@ import { executeChain, executeFlowExecutor } from '../../services/flowExecutionS
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import FileUploader from './FileUploader';
-import FlowInputForm from './FlowInputForm';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -21,7 +20,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
 
-  if (!flowChainMap[flowChainId]) {
+  if (!flowChainMap[flowChainId]) { 
     return (
       <div className="w-full h-full flex items-center justify-center p-4">
         <p className="text-gray-500">Select or Create a Flow Chain from the left panel.</p>
