@@ -1,7 +1,7 @@
 import { FlowData } from '../data/importExportUtils';
 import { useFlowChainStore } from '../../store/useFlowChainStore';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import { useExecutorGraphStore } from '../../store/useExecutorGraphStore';
+import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { deepClone } from '../helpers';
 
 /**
@@ -30,7 +30,7 @@ export const synchronizeFlowData = (
   }
   
   // 2. ExecutorGraphStore 동기화
-  const graphStore = useExecutorGraphStore.getState();
+  const graphStore = useFlowExecutorStore.getState();
   const existingGraph = graphStore.getFlowGraph(flowId);
   
   if (!existingGraph) {

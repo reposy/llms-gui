@@ -4,7 +4,6 @@ import { NodeFactory } from './NodeFactory';
 import { registerAllNodeTypes } from './NodeRegistry';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getNodeContent } from '../store/useNodeContentStore';
-import { buildExecutionGraphFromFlow, getExecutionGraph } from '../store/useExecutionGraphStore';
 import { Node } from './Node'; // Import Node base class for type hinting
 import { LLMNodeContent } from '../types/nodes'; // For specific node data handling
 
@@ -66,8 +65,7 @@ const _startExecutionProcess = async (
 
   // Build execution graph (might be redundant if context creation implies this)
   // Consider if this needs to be done here or within context prep
-  buildExecutionGraphFromFlow(context.nodes, context.edges);
-  const executionGraph = getExecutionGraph(); // Can get from context if added there too
+  // Consider if this needs to be done here or within context prep
   
   for (const nodeId of startNodeIds) {
      // Skip if node has already been executed in this context 
@@ -290,8 +288,7 @@ const _executeWithInput = async (
   context.setTriggerNode(triggerNodeId);
 
   // Build execution graph
-  buildExecutionGraphFromFlow(context.nodes, context.edges);
-  const executionGraph = getExecutionGraph();
+  // Consider if this needs to be done here or within context prep
   
   for (const nodeId of startNodeIds) {
     if (context.hasExecutedNode(nodeId)) {

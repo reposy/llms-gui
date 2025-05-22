@@ -3,7 +3,7 @@ import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
 import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
-import { useExecutorStateStore, FlowChain, Flow, ExecutionStatus } from '../store/useExecutorStateStore';
+import { useExecutorStateStore, ExecutionStatus } from '../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 
 // 출력 결과 타입 정의
