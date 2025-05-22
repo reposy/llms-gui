@@ -216,6 +216,7 @@ const FlowExecutorPage: React.FC = () => {
         <FlowChainModal
           isOpen={isFlowModalOpen}
           onClose={handleCloseFlowModal}
+          flowChainId={selectedChainId}
           flowId={selectedFlowId}
         />
       )}
