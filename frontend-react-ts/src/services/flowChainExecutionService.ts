@@ -1,4 +1,4 @@
-import { useExecutorStateStore } from '../store/useExecutorStateStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import { executeFlowExecutor } from './flowExecutionService';
 import { deepClone } from '../utils/helpers';
 
@@ -21,7 +21,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
   
   try {
     // 실행기 스토어 가져오기
-    const executorStore = useExecutorStateStore.getState();
+    const executorStore = useFlowExecutorStore.getState();
     
     // Chain 정보 가져오기
     const chain = executorStore.getFlowChain(flowChainId);
@@ -142,7 +142,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     }
     
     // ExecutorStateStore 호환성 유지 (전체 에러)
-    const executorStore = useExecutorStateStore.getState();
+    const executorStore = useFlowExecutorStore.getState();
     executorStore.setFlowChainStatus(flowChainId, 'error');
     
     throw chainError;
