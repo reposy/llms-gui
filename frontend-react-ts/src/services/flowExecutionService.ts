@@ -255,8 +255,8 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
       // 출력 엣지가 없는 노드 중에서 그룹 노드에 속하지 않은 노드만 leaf로 간주
       leafNodeIds = context.nodes
         .filter(node => {
-          // 그룹에 속하지 않음 (parentNodeId 또는 parentId가 없음)
-          const notInGroup = !node.parentNodeId && !node.parentId;
+          // 그룹에 속하지 않음 (parentId가 없음)
+          const notInGroup = !node.parentId;
           // 출력 엣지가 없음 (source로 사용되지 않음)
           const hasNoOutputEdge = !context.edges.some(edge => edge.source === node.id);
           return notInGroup && hasNoOutputEdge;
@@ -265,7 +265,7 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
     } else {
       // edges가 없으면 모든 노드 중 그룹에 속하지 않은 노드를 leaf로 간주
       leafNodeIds = context.nodes
-        .filter(node => !node.parentNodeId && !node.parentId)
+        .filter(node => !node.parentId)
         .map(n => n.id);
     }
     
@@ -304,25 +304,19 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
       const node = context.nodes.find(n => n.id === nodeId);
       const nodeOutputs = context.getOutput(nodeId);
       const nodeType = node?.type || '';
-      const nodeName = node?.data?.label || nodeType || nodeId;
-      
-      // nodeOutputs: outputs array
-      // nodeOutput: single output (from nodeOutputs map, if available)
-      let nodeOutput = undefined;
-      if ('nodeOutputs' in context && context.nodeOutputs instanceof Map) {
-        nodeOutput = context.nodeOutputs.get(nodeId);
-      } else if ('nodeOutputs' in context && typeof context.nodeOutputs === 'object') {
-        nodeOutput = context.nodeOutputs[nodeId];
-      }
-      if (typeof nodeOutput === 'undefined') {
-        console.warn(`[getAllOutputs] nodeOutputs에 ${nodeId} 결과 없음. (outputs:`, nodeOutputs, ")");
+      // nodeName: string (label > type > id)
+      let nodeName: string = nodeId;
+      if (node?.data?.label && typeof node.data.label === 'string') {
+        nodeName = node.data.label;
+      } else if (nodeType) {
+        nodeName = nodeType;
       }
       results.push({
         nodeId,
         nodeName,
         nodeType,
         outputs: nodeOutputs,
-        result: nodeOutput
+        result: nodeOutputs && nodeOutputs.length === 1 ? nodeOutputs[0] : nodeOutputs
       });
     } catch (error) {
       console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);
@@ -338,10 +332,13 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
         const node = context.nodes.find(n => n.id === nodeId);
         const nodeOutputs = context.getOutput(nodeId);
         const nodeType = node?.type || '';
-        const nodeName = node?.data?.label || nodeType || nodeId;
-        
+        let nodeName: string = nodeId;
+        if (node?.data?.label && typeof node.data.label === 'string') {
+          nodeName = node.data.label;
+        } else if (nodeType) {
+          nodeName = nodeType;
+        }
         if (nodeOutputs && nodeOutputs.length > 0) {
-          console.log(`[getAllOutputs] 비-leaf 노드 ${nodeId} (${nodeName})에서 ${nodeOutputs.length}개 출력 발견`);
           for (const output of nodeOutputs) {
             // 파일 객체인 경우 파일명/경로만 남김
             if (output && typeof output === 'object' && (output.name || output.path)) {
@@ -445,7 +442,7 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     useFlowExecutorStore.getState().setFlowResult(params.chainId, params.flowId, safeOutputs);
     
     // 저장 후 결과 확인 (UI 디버깅용)
-    const storedResults = useFlowExecutorStore.getState().chains[params.chainId]?.flowMap[params.flowId]?.lastResults;
+    const storedResults = useFlowExecutorStore.getState().flowChainMap[params.chainId]?.flowMap[params.flowId]?.lastResults;
     console.log(`[executeFlowExecutor] ${params.chainId}/${params.flowId} 저장된 lastResults:`, 
                 storedResults ? `${storedResults.length}개 항목` : '없음');
   } else {
@@ -526,12 +523,12 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
   const store = useExecutorStateStore.getState();
 
   onChainStart?.(flowChainId);
-  store.setChainStatus(flowChainId, 'running');
+  store.setFlowChainStatus(flowChainId, 'running');
 
-  const chain = store.getChain(flowChainId);
+  const chain = store.getFlowChain(flowChainId);
   if (!chain) {
     const errorMsg = `FlowChain not found: ${flowChainId}`;
-    store.setChainStatus(flowChainId, 'error', errorMsg);
+    store.setFlowChainStatus(flowChainId, 'error', errorMsg);
     onError?.(flowChainId, '', errorMsg);
     onChainComplete?.(flowChainId, []);
     return;
@@ -609,7 +606,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
   }
 
   // 체인 실행 완료 후 최종 상태 설정
-  store.setChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
+  store.setFlowChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
   
   // 체인의 최종 결과는 selectedFlowId에 해당하는 Flow의 lastResults로 결정
   const finalChainResultFlow = chain.selectedFlowId ? store.getFlow(flowChainId, chain.selectedFlowId) : null;
