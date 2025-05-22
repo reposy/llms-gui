@@ -31,12 +31,11 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   const focusedFlowChainId = store.focusedFlowChainId;
   const { 
     flowChainMap, 
-    setStage,
-    getFlowChain 
+    setStage
   } = useFlowExecutorStore();
   
   // 활성 체인의 Flow 개수 계산 (안전하게 접근)
-  const focusedChain = getFlowChain();
+  const focusedChain = focusedFlowChainId ? store.getChain(focusedFlowChainId) : undefined;
   const hasFlows = focusedChain && focusedChain.flowIds.length > 0;
   const flowChainIds = Object.keys(flowChainMap);
 
@@ -88,7 +87,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         const addFlowToChain = store.addFlowToChain;
         const setFlowInputData = store.setFlowInputData;
         const setStage = store.setStage;
-        const focusedChain = store.getFlowChain();
+        const focusedChain = focusedFlowChainId ? store.getChain(focusedFlowChainId) : undefined;
         const flowChainId = focusedChain?.id || '';
         
         importData.flowChain.forEach((flow: any) => {
