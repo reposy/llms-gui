@@ -64,13 +64,13 @@ export function buildGraphStructure(
       }
     }
   });
-  const roots = Object.keys(graphRelations).filter(nodeId =>
+  const rootIds = Object.keys(graphRelations).filter(nodeId =>
     !nodesInGroups.has(nodeId) && graphRelations[nodeId].parents.length === 0
   );
-  const leafs = Object.keys(graphRelations).filter(nodeId =>
+  const leafIds = Object.keys(graphRelations).filter(nodeId =>
     !nodesInGroups.has(nodeId) && graphRelations[nodeId].childs.length === 0
   );
-  return { nodeMap, graphRelations, nodeInstances, roots, leafs };
+  return { nodeMap, graphRelations, nodeInstances, rootIds, leafIds };
 }
 
 // Flow JSON을 store에 import하는 함수
@@ -78,7 +78,7 @@ export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
   const store = useFlowExecutorStore.getState();
   const nodeFactory = store.nodeFactory;
   const flowId: string = uuidv4();
-  const { nodeMap, graphRelations, nodeInstances, roots, leafs } = buildGraphStructure(
+  const { nodeMap, graphRelations, nodeInstances, rootIds, leafIds } = buildGraphStructure(
     flowJson.nodes,
     flowJson.edges,
     nodeFactory
@@ -96,8 +96,8 @@ export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
     nodeMap,
     graphMap: graphRelations,
     nodeInstances,
-    roots,
-    leafs,
+    rootIds,
+    leafIds,
     nodeStates: {},
   });
   return flowId;

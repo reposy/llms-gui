@@ -8,7 +8,7 @@ interface FlowChainGraphViewProps {
 }
 
 const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, flowChainId, className = '' }) => {
-  const [tab, setTab] = useState<'graph' | 'roots' | 'leafs'>('graph');
+  const [tab, setTab] = useState<'graph' | 'rootIds' | 'leafIds'>('graph');
   
   // 활성화된 체인 가져오기
   const focusedFlowChainId = useFlowExecutorStore(state => state.focusedFlowChainId);
@@ -55,16 +55,16 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, flowCha
             그래프 구조
           </button>
           <button
-            className={`px-4 py-2 font-medium text-sm ${tab === 'roots' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            onClick={() => setTab('roots')}
+            className={`px-4 py-2 font-medium text-sm ${tab === 'rootIds' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            onClick={() => setTab('rootIds')}
           >
-            루트 노드 ({flowStructure.roots.length})
+            루트 노드 ({flowStructure.rootIds.length})
           </button>
           <button
-            className={`px-4 py-2 font-medium text-sm ${tab === 'leafs' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            onClick={() => setTab('leafs')}
+            className={`px-4 py-2 font-medium text-sm ${tab === 'leafIds' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            onClick={() => setTab('leafIds')}
           >
-            리프 노드 ({flowStructure.leafs.length})
+            리프 노드 ({flowStructure.leafIds.length})
           </button>
         </div>
       </div>
@@ -122,12 +122,12 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, flowCha
           </div>
         )}
         
-        {tab === 'roots' && (
+        {tab === 'rootIds' && (
           <div className="bg-gray-50 p-3 rounded border border-gray-200">
             <h4 className="font-medium mb-2">루트 노드 목록 (시작점)</h4>
-            {flowStructure.roots.length > 0 ? (
+            {flowStructure.rootIds.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {flowStructure.roots.map((nodeId: string) => {
+                {flowStructure.rootIds.map((nodeId: string) => {
                   const node = flowStructure.nodeMap[nodeId];
                   return (
                     <div key={nodeId} className="flex items-center p-2 border rounded border-gray-200 bg-white">
@@ -146,12 +146,12 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, flowCha
           </div>
         )}
         
-        {tab === 'leafs' && (
+        {tab === 'leafIds' && (
           <div className="bg-gray-50 p-3 rounded border border-gray-200">
             <h4 className="font-medium mb-2">리프 노드 목록 (종료점)</h4>
-            {flowStructure.leafs.length > 0 ? (
+            {flowStructure.leafIds.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {flowStructure.leafs.map((nodeId: string) => {
+                {flowStructure.leafIds.map((nodeId: string) => {
                   const node = flowStructure.nodeMap[nodeId];
                   return (
                     <div key={nodeId} className="flex items-center p-2 border rounded border-gray-200 bg-white">

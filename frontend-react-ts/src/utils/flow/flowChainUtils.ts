@@ -81,8 +81,8 @@ export const buildFlowStructureFromJson = (
     flowId: newFlowId,
     name: flowStructure.name,
     nodeCount: Object.keys(flowStructure.nodes).length,
-    rootsCount: flowStructure.roots.length,
-    leafsCount: flowStructure.leafs.length
+    rootsCount: flowStructure.rootIds.length,
+    leafsCount: flowStructure.leafIds.length
   });
   
   return newFlowId;
@@ -107,12 +107,12 @@ export const validateFlowGraph = (flowId: string): {
   }
   
   // 루트 노드 확인
-  if (flowStructure.roots.length === 0) {
+  if (flowStructure.rootIds.length === 0) {
     errors.push('Flow has no root nodes (nodes without parents)');
   }
   
   // 리프 노드 확인
-  if (flowStructure.leafs.length === 0) {
+  if (flowStructure.leafIds.length === 0) {
     errors.push('Flow has no leaf nodes (nodes without children)');
   }
   

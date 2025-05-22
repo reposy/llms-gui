@@ -31,7 +31,11 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [resultTab, setResultTab] = useState<'node' | 'output'>('node');
   const [outputFormat, setOutputFormat] = useState<'text' | 'markdown'>('text');
-  const flow = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[flowId]);
+  const lastResults = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[flowId]?.lastResults);
+  const flowStatus = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[flowId]?.status);
+  const flowError = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[flowId]?.error);
+  const flowName = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[flowId]?.name);
+  const flowJson = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[flowId]?.flowJson);
 
   // 모달이 닫힐 때 입력 탭으로 초기화
   useEffect(() => {
@@ -42,16 +46,16 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
 
   // flow.lastResults 변경 감지 및 탭 전환
   useEffect(() => {
-    if (flow?.lastResults) {
+    if (lastResults) {
       // 결과가 있으면 결과 탭으로 전환
-      if (flow.lastResults.length > 0) {
-        console.log(`[FlowChainModal] 결과 감지: ${flow.lastResults.length}개 항목, 결과 탭으로 전환`);
+      if (lastResults.length > 0) {
+        console.log(`[FlowChainModal] 결과 감지: ${lastResults.length}개 항목, 결과 탭으로 전환`);
         setActiveTab('result');
       }
     }
-  }, [flow?.lastResults]);
+  }, [lastResults]);
 
-  if (!isOpen || !flow) return null;
+  if (!isOpen || !lastResults) return null;
 
   const handleExecuteFlow = async () => {
     if (isExecuting) return;
@@ -59,7 +63,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
     useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, 'running');
     try {
       // 입력 전처리
-      let execInputs = flow.inputs;
+      let execInputs = lastResults;
       if (Array.isArray(execInputs) && execInputs.length > 0 && typeof execInputs[0] === 'object' && 'value' in execInputs[0]) {
         execInputs = execInputs.map((row: any) => row.value);
       }
@@ -69,7 +73,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
       const result = await executeFlowExecutor({
         flowId: flowId,
         flowChainId: flowChainId,
-        flowJson: flow.flowJson,
+        flowJson: flowJson,
         inputs: execInputs
       });
       
@@ -93,27 +97,27 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   };
 
   // lastResults 유무에 따른 렌더링
-  const hasResults = flow.lastResults && Array.isArray(flow.lastResults) && flow.lastResults.length > 0;
+  const hasResults = lastResults && Array.isArray(lastResults) && lastResults.length > 0;
   // 타입 안전을 위해 항상 빈 배열이라도 제공
-  const safeResults = flow.lastResults && Array.isArray(flow.lastResults) ? [...flow.lastResults] : [];
+  const safeResults = lastResults && Array.isArray(lastResults) ? [...lastResults] : [];
 
   // ResultDisplay에 전달할 result 객체 생성
   const flowResult: FlowExecutionResult | null = hasResults ? {
-    status: flow.status,
+    status: flowStatus,
     outputs: safeResults,
-    error: flow.error,
-    flowId: flow.id
+    error: flowError,
+    flowId: flowId
   } : null;
 
   // 개발 모드에서 디버깅을 위한 로깅
   useEffect(() => {
-    if (flow.lastResults) {
-      console.log(`[FlowChainModal] lastResults 구조 확인:`, flow.lastResults);
-      if (Array.isArray(flow.lastResults) && flow.lastResults.length > 0) {
-        console.log(`[FlowChainModal] 첫 번째 결과 항목 확인:`, flow.lastResults[0]);
+    if (lastResults) {
+      console.log(`[FlowChainModal] lastResults 구조 확인:`, lastResults);
+      if (Array.isArray(lastResults) && lastResults.length > 0) {
+        console.log(`[FlowChainModal] 첫 번째 결과 항목 확인:`, lastResults[0]);
       }
     }
-  }, [flow.lastResults]);
+  }, [lastResults]);
 
   return (
     <div className={`fixed inset-0 z-50 overflow-y-auto ${isOpen ? 'block' : 'hidden'}`}>
@@ -128,17 +132,17 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
           <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
             <div className="flex items-center">
               <h3 className="text-lg font-medium text-gray-900">
-                {flow.name}
+                {flowName}
               </h3>
               <span className={`ml-2 px-2 py-1 text-xs rounded-full ${
-                flow.status === 'idle' ? 'bg-gray-100 text-gray-600' :
-                flow.status === 'running' ? 'bg-blue-100 text-blue-600' :
-                flow.status === 'success' ? 'bg-green-100 text-green-600' :
+                flowStatus === 'idle' ? 'bg-gray-100 text-gray-600' :
+                flowStatus === 'running' ? 'bg-blue-100 text-blue-600' :
+                flowStatus === 'success' ? 'bg-green-100 text-green-600' :
                 'bg-red-100 text-red-600'
               }`}>
-                {flow.status === 'idle' ? '준비' :
-                flow.status === 'running' ? '실행 중' :
-                flow.status === 'success' ? '완료' : '오류'}
+                {flowStatus === 'idle' ? '준비' :
+                flowStatus === 'running' ? '실행 중' :
+                flowStatus === 'success' ? '완료' : '오류'}
               </span>
             </div>
             <button
@@ -215,8 +219,8 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
               ) : (
                 <ResultDisplay
                   result={flowResult}
-                  flowId={flow.id}
-                  flowName={flow.name}
+                  flowId={flowId}
+                  flowName={flowName}
                   outputFormat={outputFormat}
                 />
               )}

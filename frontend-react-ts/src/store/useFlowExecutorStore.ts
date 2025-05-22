@@ -50,8 +50,8 @@ export interface Flow {
   nodeMap: Record<string, GraphNode>;
   graphMap: Record<string, NodeRelation>;
   nodeInstances: Record<string, BaseNode>;
-  roots: string[];
-  leafs: string[];
+  rootIds: string[];
+  leafIds: string[];
   nodeStates: Record<string, FlowNodeExecutionState>; // Executor에서 실행 시 각 노드의 상태
 }
 
@@ -341,8 +341,9 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       setFlowResult: (chainId, flowId, results) => {
         set((state) => {
           if (!state.flowChainMap[chainId] || !state.flowChainMap[chainId].flowMap[flowId]) return state;
-          
-          return {
+          // 항상 배열로 정규화
+          const normalizedResults = Array.isArray(results) ? results : [results];
+          const newState = {
             flowChainMap: {
               ...state.flowChainMap,
               [chainId]: {
@@ -351,13 +352,15 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
                   ...state.flowChainMap[chainId].flowMap,
                   [flowId]: {
                     ...state.flowChainMap[chainId].flowMap[flowId],
-                    lastResults: results,
-                    status: 'success' // 결과 설정 시 상태를 success로 변경
+                    lastResults: normalizedResults,
+                    status: 'success' as ExecutionStatus // 타입 단언 추가
                   }
                 }
               }
             }
           };
+          console.log('[setFlowResult] 저장 직후:', newState.flowChainMap[chainId].flowMap[flowId].lastResults);
+          return newState;
         });
       },
       
@@ -431,13 +434,13 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       getRootNodes: (chainId, flowId) => {
         const chain = get().flowChainMap[chainId];
         if (!chain || !chain.flowMap[flowId]) return [];
-        return chain.flowMap[flowId].roots;
+        return chain.flowMap[flowId].rootIds;
       },
       
       getLeafNodes: (chainId, flowId) => {
         const chain = get().flowChainMap[chainId];
         if (!chain || !chain.flowMap[flowId]) return [];
-        return chain.flowMap[flowId].leafs;
+        return chain.flowMap[flowId].leafIds;
       },
       
       getNodeInstance: (chainId, flowId, nodeId) => {
@@ -501,7 +504,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
           Object.keys(newChains2).forEach(chainId => {
             Object.keys(newChains2[chainId].flowMap).forEach(flowId => {
               const flow = newChains2[chainId].flowMap[flowId];
-              const { nodeMap, graphRelations, nodeInstances, roots, leafs } = buildGraphStructure(
+              const { nodeMap, graphRelations, nodeInstances, rootIds, leafIds } = buildGraphStructure(
                 flow.flowJson.nodes,
                 flow.flowJson.edges,
                 state.nodeFactory
@@ -512,8 +515,8 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
                 nodeMap,
                 graphMap: graphRelations,
                 nodeInstances,
-                roots,
-                leafs
+                rootIds,
+                leafIds
               };
             });
           });

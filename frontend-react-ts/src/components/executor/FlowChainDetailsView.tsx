@@ -94,7 +94,11 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     }
   };
 
-  const selectedFlow = flowChain.selectedFlowId ? flowMap[flowChain.selectedFlowId] : null;
+  const selectedFlowId = flowChain.selectedFlowId;
+  const lastResults = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.lastResults);
+  const flowStatus = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.status);
+  const flowError = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.error);
+  const flowName = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.name);
 
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
@@ -222,19 +226,19 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
             })}
           </ul>
           {/* 선택된 Flow의 실행 결과 표시 */}
-          {flowChain.selectedFlowId && selectedFlow && (
+          {flowChain.selectedFlowId && (
             <div className="border-t border-gray-200 p-4 bg-gray-50">
               <div className="mb-2 flex items-center">
                 <h3 className="text-sm font-semibold text-gray-700">Selected Flow Result</h3>
                 <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
-                  {selectedFlow.name}
+                  {flowName}
                 </span>
               </div>
               <div className="bg-white rounded-md border border-gray-200 p-3 max-h-40 overflow-y-auto">
-                {selectedFlow.lastResults ? (
-                  Array.isArray(selectedFlow.lastResults) && selectedFlow.lastResults.length > 0 ? (
+                {lastResults ? (
+                  Array.isArray(lastResults) && lastResults.length > 0 ? (
                     <pre className="text-xs whitespace-pre-wrap text-gray-700">
-                      {JSON.stringify(selectedFlow.lastResults, null, 2)}
+                      {JSON.stringify(lastResults, null, 2)}
                     </pre>
                   ) : (
                     <p className="text-xs text-gray-500">실행은 완료되었지만 결과가 없거나 비어 있습니다.</p>

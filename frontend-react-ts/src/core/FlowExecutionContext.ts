@@ -306,7 +306,6 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeSuccess(nodeId: string, result: any, activeOutputHandle?: string, conditionResult?: boolean) {
     this.log(`Marking node ${nodeId} as success`);
-    this.outputs.set(nodeId, Array.isArray(result) ? result : [result]);
     if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
       useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
         status: 'success',
