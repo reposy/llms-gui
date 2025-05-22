@@ -222,9 +222,12 @@ export const useFlowExecutor = () => {
    */
   const handleExportFlowChain = (filename: string, includeData: boolean) => {
     try {
-      const exportData = {
-        version: '1.0',
-        flowChain: flowChain.map(flow => {
+      // Export all flows from all chains
+      const exportFlows = flowChainIds.flatMap(chainId => {
+        const chain = flowChainMap[chainId];
+        if (!chain) return [];
+        return chain.flowIds.map(flowId => {
+          const flow = chain.flowMap[flowId];
           const result = includeData ? getFlowResultById(flow.id) : null;
           return {
             id: flow.id,
@@ -233,7 +236,11 @@ export const useFlowExecutor = () => {
             inputs: flow.inputs || [],
             result: result
           };
-        })
+        });
+      });
+      const exportData = {
+        version: '1.0',
+        flowChain: exportFlows
       };
       const json = JSON.stringify(exportData, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
