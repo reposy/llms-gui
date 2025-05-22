@@ -86,7 +86,7 @@ interface FlowExecutorState {
   setFocusedFlowChainId: (id: string | null) => void;
   
   // Flow 관련 액션
-  addFlowToChain: (chainId: string, flowData: FlowData) => string; // 생성된 flow-id 반환
+  addFlowToChain: (chainId: string, flow: Flow) => string; // 생성된 flow-id 반환
   removeFlowFromChain: (chainId: string, flowId: string) => void;
   setFlowStatus: (chainId: string, flowId: string, status: ExecutionStatus, error?: string) => void;
   setFlowInputData: (chainId: string, flowId: string, inputs: any[]) => void;
@@ -116,104 +116,6 @@ interface FlowExecutorState {
   getChain: (chainId: string) => FlowChain | undefined;
   getFocusedChain: () => FlowChain | undefined;
 }
-
-/**
- * 그래프 구조 분석 함수 - 부모/자식 관계 및 루트/리프 노드 식별
- */
-const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFactory): {
-  nodeMap: Record<string, GraphNode>;
-  graphRelations: Record<string, NodeRelation>;
-  nodeInstances: Record<string, BaseNode>;
-  roots: string[];
-  leafs: string[];
-} => {
-  // 1. 노드 맵 생성
-  const nodeMap: Record<string, GraphNode> = {};
-  nodes.forEach(node => {
-    nodeMap[node.id] = {
-      id: node.id,
-      type: node.type || '',
-      data: node.data || {},
-      position: node.position || { x: 0, y: 0 },
-      parentId: node.parentId || null,
-      isGroupNode: node.type === 'group'
-    };
-  });
-  
-  // 2. 그래프 관계 구조 초기화
-  const graphRelations: Record<string, NodeRelation> = {};
-  const nodeInstances: Record<string, BaseNode> = {};
-  
-  // 모든 노드에 대해 관계 구조 생성
-  nodes.forEach(node => {
-    graphRelations[node.id] = {
-      parents: [],
-      childs: []
-    };
-    
-    // 노드 인스턴스 생성
-    try {
-      const nodeInstance = nodeFactory.create(
-        node.id,
-        node.type || '',
-        node.data || {},
-        undefined // 컨텍스트는 실행 시점에 주입
-      );
-      
-      nodeInstances[node.id] = nodeInstance;
-      nodeMap[node.id].nodeInstance = nodeInstance;
-    } catch (error) {
-      console.error(`[FlowExecutorStore] Failed to create node instance for ${node.id}:`, error);
-    }
-  });
-  
-  // 3. 그룹 노드 및 내부 노드 관계 설정
-  const nodesInGroups = new Set<string>();
-  nodes.forEach(node => {
-    if (node.type === 'group' && Array.isArray(node.data?.nodeIds)) {
-      node.data.nodeIds.forEach((childId: string) => {
-        if (graphRelations[childId]) {
-          graphRelations[node.id].childs.push(childId);
-          graphRelations[childId].parents.push(node.id);
-          nodesInGroups.add(childId);
-        }
-      });
-    }
-  });
-  
-  // 4. 엣지 기반 부모-자식 관계 설정
-  edges.forEach(edge => {
-    if (edge.source && edge.target) {
-      // 소스 노드에 자식 추가
-      if (graphRelations[edge.source]) {
-        graphRelations[edge.source].childs.push(edge.target);
-      }
-      
-      // 타겟 노드에 부모 추가
-      if (graphRelations[edge.target]) {
-        graphRelations[edge.target].parents.push(edge.source);
-      }
-    }
-  });
-  
-  // 5. 루트 노드 식별 (부모가 없는 노드)
-  const roots = Object.keys(graphRelations).filter(nodeId => 
-    !nodesInGroups.has(nodeId) && graphRelations[nodeId].parents.length === 0
-  );
-  
-  // 6. 리프 노드 식별 (자식이 없는 노드)
-  const leafs = Object.keys(graphRelations).filter(nodeId => 
-    !nodesInGroups.has(nodeId) && graphRelations[nodeId].childs.length === 0
-  );
-  
-  return {
-    nodeMap,
-    graphRelations,
-    nodeInstances,
-    roots,
-    leafs
-  };
-};
 
 // 초기 상태
 const initialState = {
@@ -339,56 +241,27 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       },
       
       // Flow 관련 액션
-      addFlowToChain: (chainId, flowData) => {
-        const flowId = `flow-${uuidv4()}`;
-        
+      addFlowToChain: (chainId, flow) => {
         set((state) => {
           if (!state.flowChainMap[chainId]) return state;
-          
-          // 이전 선택된 Flow ID 백업
           const selectedFlowId = state.flowChainMap[chainId].selectedFlowId;
-          
-          // 체인의 flowIds 업데이트
-          const chainFlowIds = [...state.flowChainMap[chainId].flowIds, flowId];
-          
-          // Flow의 노드와 엣지 분석
-          const { nodeMap, graphRelations, nodeInstances, roots, leafs } = buildGraphStructure(
-            flowData.nodes,
-            flowData.edges,
-            state.nodeFactory
-          );
-          
+          const chainFlowIds = [...state.flowChainMap[chainId].flowIds, flow.id];
           return {
             flowChainMap: {
               ...state.flowChainMap,
               [chainId]: {
                 ...state.flowChainMap[chainId],
                 flowIds: chainFlowIds,
-                selectedFlowId: selectedFlowId || flowId, // 선택된 Flow가 없으면 새 Flow 선택
+                selectedFlowId: selectedFlowId || flow.id,
                 flowMap: {
                   ...state.flowChainMap[chainId].flowMap,
-                  [flowId]: {
-                    id: flowId,
-                    chainId,
-                    name: flowData.name || `Flow-${uuidv4().slice(0, 8)}`,
-                    flowJson: deepClone(flowData),
-                    inputs: [],
-                    lastResults: null,
-                    status: 'idle',
-                    nodeMap,
-                    graphMap: graphRelations,
-                    nodeInstances,
-                    roots,
-                    leafs,
-                    nodeStates: {}
-                  }
+                  [flow.id]: flow
                 }
               }
             }
           };
         });
-        
-        return flowId;
+        return flow.id;
       },
       
       removeFlowFromChain: (chainId, flowId) => {
@@ -688,7 +561,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
 export const addChain = (name: string) => useFlowExecutorStore.getState().addChain(name);
 export const removeChain = (chainId: string) => useFlowExecutorStore.getState().removeChain(chainId);
 export const setFocusedFlowChainId = (id: string | null) => useFlowExecutorStore.getState().setFocusedFlowChainId(id);
-export const addFlowToChain = (chainId: string, flowData: FlowData) => useFlowExecutorStore.getState().addFlowToChain(chainId, flowData);
+export const addFlowToChain = (chainId: string, flow: Flow) => useFlowExecutorStore.getState().addFlowToChain(chainId, flow);
 export const resetState = () => useFlowExecutorStore.getState().resetState();
 export const resetResults = () => useFlowExecutorStore.getState().resetResults();
 export const resetFlowGraphs = () => useFlowExecutorStore.getState().resetFlowGraphs();
