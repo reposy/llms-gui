@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { TrashIcon } from '@heroicons/react/20/solid';
 
 interface FlowChainListViewProps {
   onChainSelect: (chainId: string) => void;
@@ -13,6 +14,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
   const flowChainMap = store.flowChainMap;
   const flowChainIds = store.flowChainIds;
   const focusedFlowChainId = store.focusedFlowChainId;
+  const setStore = useFlowExecutorStore.setState;
 
   const handleAddChain = () => {
     const name = newChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;
@@ -84,9 +86,11 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
           newName = `${json.name} (복사본)`;
         }
         const newChain = { ...json, id: newId, name: newName };
-        store.flowChainMap[newId] = newChain;
-        store.flowChainIds.push(newId);
-        store.setFocusedFlowChainId(newId);
+        setStore(state => ({
+          flowChainMap: { ...state.flowChainMap, [newId]: newChain },
+          flowChainIds: [...state.flowChainIds, newId],
+          focusedFlowChainId: newId
+        }));
         onChainSelect(newId);
         alert('Flow Chain이 성공적으로 import되었습니다.');
       } catch (err) {
@@ -167,30 +171,14 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
                   onClick={() => handleChainClick(chainId)}
                 >
                   <div className="flex justify-between items-center">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-medium">{chain.name}</span>
-                      <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
-                        chain.status === 'idle' ? 'bg-gray-100 text-gray-600' :
-                        chain.status === 'running' ? 'bg-blue-100 text-blue-600' :
-                        chain.status === 'success' ? 'bg-green-100 text-green-600' :
-                        'bg-red-100 text-red-600'
-                      }`}>
-                        {chain.status === 'idle' ? '준비' :
-                         chain.status === 'running' ? '실행 중' :
-                         chain.status === 'success' ? '완료' : '오류'}
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <button
-                        onClick={(e) => handleRemoveChain(e, chainId)}
-                        className="p-1 rounded-full hover:bg-red-100 hover:text-red-500"
-                        title="체인 삭제"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
+                    <span className="font-medium">{chain.name}</span>
+                    <button
+                      onClick={e => handleRemoveChain(e, chainId)}
+                      className="p-1 rounded-full hover:bg-red-100 hover:text-red-500"
+                      title="체인 삭제"
+                    >
+                      <TrashIcon className="h-4 w-4 text-gray-600" />
+                    </button>
                   </div>
                   <div className="mt-2 flex text-xs text-gray-500">
                     <div className="mr-3">
@@ -217,4 +205,4 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
   );
 };
 
-export default FlowChainListView; 
+export default FlowChainListView;
