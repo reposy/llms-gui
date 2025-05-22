@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
@@ -8,6 +8,7 @@ interface FlowChainListViewProps {
 
 const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) => {
   const [newChainName, setNewChainName] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const store = useFlowExecutorStore();
   const flowChainMap = store.flowChainMap;
   const flowChainIds = store.flowChainIds;
@@ -35,12 +36,66 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
     store.setFocusedFlowChainId(chainId);
   };
 
-  const handleImportChain = () => {
-    // Implementation for importing a chain
+  const handleExportChain = () => {
+    if (!focusedFlowChainId) {
+      alert('내보낼 체인을 먼저 선택하세요.');
+      return;
+    }
+    const chain = flowChainMap[focusedFlowChainId];
+    if (!chain) {
+      alert('선택된 체인 정보를 찾을 수 없습니다.');
+      return;
+    }
+    const dataStr = JSON.stringify(chain, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${chain.name || 'flow-chain'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
   };
 
-  const handleExportChain = () => {
-    // Implementation for exporting a chain
+  const handleImportChain = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (!json.id || !json.name || !Array.isArray(json.flowIds) || typeof json.flowMap !== 'object') {
+          alert('유효하지 않은 Flow Chain 데이터입니다.');
+          return;
+        }
+        let newId = json.id;
+        if (flowChainMap[newId]) {
+          newId = `${json.id}-copy-${Date.now()}`;
+        }
+        let newName = json.name;
+        if (Object.values(flowChainMap).some(c => c.name === newName)) {
+          newName = `${json.name} (복사본)`;
+        }
+        const newChain = { ...json, id: newId, name: newName };
+        store.flowChainMap[newId] = newChain;
+        store.flowChainIds.push(newId);
+        store.setFocusedFlowChainId(newId);
+        onChainSelect(newId);
+        alert('Flow Chain이 성공적으로 import되었습니다.');
+      } catch (err) {
+        alert('Flow Chain import 중 오류 발생: ' + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -55,6 +110,13 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
             <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
             Import
           </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="application/json"
+            className="hidden"
+            onChange={handleFileChange}
+          />
           <button
             onClick={handleExportChain}
             className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
@@ -69,7 +131,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
       </div>
 
       <div className="p-4">
-        {/* 새 체인 추가 */}
         <div className="mb-4 flex">
           <input
             type="text"
@@ -86,7 +147,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
           </button>
         </div>
 
-        {/* 체인 목록 */}
         {flowChainIds.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <p>등록된 Flow 체인이 없습니다.</p>
@@ -132,7 +192,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
                       </button>
                     </div>
                   </div>
-                  {/* Flow 통계 정보 */}
                   <div className="mt-2 flex text-xs text-gray-500">
                     <div className="mr-3">
                       <span className="font-medium">Flow 수:</span> {chain.flowIds.length}
