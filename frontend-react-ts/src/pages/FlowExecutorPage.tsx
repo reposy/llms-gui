@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // import { Link } from 'react-router-dom'; // Not used currently
-import { FlowChainList } from '../components/FlowExecutor/FlowChainList';
-import { FlowChainDetail } from '../components/FlowExecutor/FlowChainDetail';
+import FlowChainListView from '../components/executor/FlowChainListView';
+import FlowChainDetailsView from '../components/executor/FlowChainDetailsView';
 import FlowChainModal from '../components/executor/FlowChainModal';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
-import FlowChainListView from '../components/executor/FlowChainListView';
-import FlowChainDetailsView from '../components/executor/FlowChainDetailsView';
 import { importFlowJsonToStore } from '../utils/flow/flowExecutorUtils';
 
 const FlowExecutorPage: React.FC = () => {
