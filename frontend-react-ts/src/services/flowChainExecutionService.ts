@@ -24,7 +24,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     const executorStore = useFlowExecutorStore.getState();
     
     // Chain 정보 가져오기
-    const chain = executorStore.getFlowChain(flowChainId);
+    const chain = executorStore.getChain(flowChainId);
     
     if (!chain) {
       throw new Error(`Flow Chain not found: ${flowChainId}`);
@@ -36,7 +36,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     }
     
     // Chain 상태 업데이트
-    executorStore.setFlowChainStatus(flowChainId, 'running');
+    executorStore.setChainStatus(flowChainId, 'running');
     
     console.log(`[FlowChainExecution] Starting chain execution: ${flowChainId} (${chain.flowIds.length} flows)`);
     
@@ -109,7 +109,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
         
         // 상태 업데이트
         executorStore.setFlowStatus(flowChainId, flowId, 'error', errorMessage);
-        executorStore.setFlowChainStatus(flowChainId, 'error', `Flow ${flow.name} 실행 중 오류: ${errorMessage}`);
+        executorStore.setChainStatus(flowChainId, 'error', `Flow ${flow.name} 실행 중 오류: ${errorMessage}`);
         
         // 에러 콜백
         if (onError) {
@@ -125,7 +125,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     console.log(`[FlowChainExecution] Chain ${flowChainId} completed successfully`);
     
     // Chain 상태 업데이트
-    executorStore.setFlowChainStatus(flowChainId, 'success');
+    executorStore.setChainStatus(flowChainId, 'success');
     
     // Chain 완료 알림
     if (onChainComplete) {
@@ -143,7 +143,7 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
     
     // ExecutorStateStore 호환성 유지 (전체 에러)
     const executorStore = useFlowExecutorStore.getState();
-    executorStore.setFlowChainStatus(flowChainId, 'error');
+    executorStore.setChainStatus(flowChainId, 'error');
     
     throw chainError;
   }

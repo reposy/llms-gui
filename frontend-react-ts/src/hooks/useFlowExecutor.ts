@@ -34,8 +34,8 @@ export const useFlowExecutor = () => {
   const getFocusedFlow = (): FlowChainItem | null => {
     if (!flowChainIds.length || !flowChainMap[flowChainIds[0]]) return null;
     const focusedChain = flowChainMap[flowChainIds[0]];
-    if (focusedChain.selectedFlowId && flowChainMap[focusedChain.selectedFlowId]) {
-      const flow = flowChainMap[focusedChain.selectedFlowId];
+    if (focusedChain.selectedFlowId && focusedChain.flowMap[focusedChain.selectedFlowId]) {
+      const flow = focusedChain.flowMap[focusedChain.selectedFlowId];
       return {
         id: flow.id,
         chainId: flow.chainId,
@@ -47,7 +47,7 @@ export const useFlowExecutor = () => {
     }
     if (focusedChain.flowIds.length > 0) {
       const firstFlowId = focusedChain.flowIds[0];
-      const flow = flowChainMap[firstFlowId];
+      const flow = focusedChain.flowMap[firstFlowId];
       if (flow) {
         return {
           id: flow.id,
@@ -63,28 +63,40 @@ export const useFlowExecutor = () => {
   };
 
   const getFlowById = (flowId: string): FlowChainItem | null => {
-    if (!flowChainIds.length || !flowId || !flowChainMap[flowId]) return null;
-    const flow = flowChainMap[flowId];
-    return {
-      id: flow.id,
-      chainId: flow.chainId,
-      name: flow.name,
-      flowJson: flow.flowJson,
-      inputs: flow.inputs || [],
-      status: flow.status
-    };
+    if (!flowChainIds.length || !flowId) return null;
+    for (const chainId of flowChainIds) {
+      const chain = flowChainMap[chainId];
+      if (chain && chain.flowMap[flowId]) {
+        const flow = chain.flowMap[flowId];
+        return {
+          id: flow.id,
+          chainId: flow.chainId,
+          name: flow.name,
+          flowJson: flow.flowJson,
+          inputs: flow.inputs || [],
+          status: flow.status
+        };
+      }
+    }
+    return null;
   };
 
   const getFlowResultById = (flowId: string): FlowResult | null => {
-    if (!flowChainIds.length || !flowId || !flowChainMap[flowId]) return null;
-    const flow = flowChainMap[flowId];
-    if (!flow.lastResults) return null;
-    return {
-      status: flow.status,
-      outputs: flow.lastResults,
-      error: flow.error,
-      flowId: flowId
-    };
+    if (!flowChainIds.length || !flowId) return null;
+    for (const chainId of flowChainIds) {
+      const chain = flowChainMap[chainId];
+      if (chain && chain.flowMap[flowId]) {
+        const flow = chain.flowMap[flowId];
+        if (!flow.lastResults) return null;
+        return {
+          status: flow.status,
+          outputs: flow.lastResults,
+          error: flow.error,
+          flowId: flowId
+        };
+      }
+    }
+    return null;
   };
 
   /**

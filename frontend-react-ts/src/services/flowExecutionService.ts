@@ -526,12 +526,12 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
   const store = useExecutorStateStore.getState();
 
   onChainStart?.(flowChainId);
-  store.setFlowChainStatus(flowChainId, 'running');
+  store.setChainStatus(flowChainId, 'running');
 
-  const chain = store.getFlowChain(flowChainId);
+  const chain = store.getChain(flowChainId);
   if (!chain) {
     const errorMsg = `FlowChain not found: ${flowChainId}`;
-    store.setFlowChainStatus(flowChainId, 'error', errorMsg);
+    store.setChainStatus(flowChainId, 'error', errorMsg);
     onError?.(flowChainId, '', errorMsg);
     onChainComplete?.(flowChainId, []);
     return;
@@ -609,7 +609,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
   }
 
   // 체인 실행 완료 후 최종 상태 설정
-  store.setFlowChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
+  store.setChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
   
   // 체인의 최종 결과는 selectedFlowId에 해당하는 Flow의 lastResults로 결정
   const finalChainResultFlow = chain.selectedFlowId ? store.getFlow(flowChainId, chain.selectedFlowId) : null;
