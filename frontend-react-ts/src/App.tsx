@@ -4,7 +4,7 @@ import { registerAllNodeTypes } from './core/NodeRegistry';
 import { NodeFactory } from './core/NodeFactory';
 import { useFlowStructureStore } from './store/useFlowStructureStore';
 import FlowEditorPage from './pages/FlowEditorPage';
-import ExecutorPage from './pages/ExecutorPage';
+import FlowExecutorPage from './pages/FlowExecutorPage';
 // import ExecutorPageRefactored from './pages/ExecutorPageRefactored';
 // import FlowChainPage from './components/executor/FlowChainPage';
 
@@ -50,8 +50,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<FlowEditorPage />} />
         <Route path="/editor" element={<FlowEditorPage />} />
-        <Route path="/executor" element={<ExecutorPage />} />
-        {/* <Route path="/executor-legacy" element={<ExecutorPage />} /> */}
+        <Route path="/executor" element={<FlowExecutorPage />} />
+        <Route path="/executor-legacy" element={<FlowExecutorPage />} />
         {/* <Route path="/flow-chain" element={<FlowChainPage />} /> */}
       </Routes>
     </BrowserRouter>

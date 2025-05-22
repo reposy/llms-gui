@@ -10,7 +10,7 @@ import StageNavigationBar from '../components/executor/stages/StageNavigationBar
 import FlowChainListView from '../components/executor/FlowChainListView';
 import FlowChainDetailsView from '../components/executor/FlowChainDetailsView';
 
-const ExecutorPage: React.FC = () => {
+const FlowExecutorPage: React.FC = () => {
   const store = useFlowExecutorStore();
   const chainIds = store.chainIds;
   const chains = store.chains;
@@ -22,7 +22,7 @@ const ExecutorPage: React.FC = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
   // 활성 체인 ID가 변경되면 선택된 체인 ID 업데이트
-  useEffect(() => {
+useEffect(() => {
     if (focusedFlowChainId) {
       setSelectedChainId(focusedFlowChainId);
     } else if (chainIds.length > 0) {
@@ -226,4 +226,4 @@ const ExecutorPage: React.FC = () => {
   );
 };
 
-export default ExecutorPage; 
+export default FlowExecutorPage; 
