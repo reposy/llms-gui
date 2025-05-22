@@ -8,8 +8,8 @@ import FileUploader from './FileUploader';
 
 const FlowChainPage: React.FC = () => {
   const store = useFlowExecutorStore();
-  const chainIds = store.chainIds;
-  const chains = store.chains;
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = store.flowChainIds;
   const focusedFlowChainId = store.focusedFlowChainId;
   const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
@@ -20,13 +20,13 @@ const FlowChainPage: React.FC = () => {
   useEffect(() => {
     if (focusedFlowChainId) {
       setSelectedChainId(focusedFlowChainId);
-    } else if (chainIds.length > 0) {
-      setSelectedChainId(chainIds[0]);
-      store.setFocusedFlowChainId(chainIds[0]);
+    } else if (flowChainIds.length > 0) {
+      setSelectedChainId(flowChainIds[0]);
+      store.setFocusedFlowChainId(flowChainIds[0]);
     } else {
       setSelectedChainId(null);
     }
-  }, [focusedFlowChainId, chainIds.length]);
+  }, [focusedFlowChainId, flowChainIds.length]);
 
   const handleChainSelect = (chainId: string) => {
     setSelectedChainId(chainId);
@@ -86,7 +86,7 @@ const FlowChainPage: React.FC = () => {
   };
 
   // 현재 선택된 체인
-  const selectedChain = selectedChainId ? chains[selectedChainId] : null;
+  const selectedChain = selectedChainId ? flowChainMap[selectedChainId] : null;
 
   // 결과를 볼 수 있는지 확인
   const canViewResults = useMemo(() => selectedChain?.flowIds.some(flowId => {
@@ -163,7 +163,7 @@ const FlowChainPage: React.FC = () => {
         <FlowChainModal
           isOpen={isFlowModalOpen}
           onClose={handleCloseFlowModal}
-          chainId={selectedChainId}
+          flowChainId={selectedChainId}
           flowId={selectedFlowId}
         />
       )}

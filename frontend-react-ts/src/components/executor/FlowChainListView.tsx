@@ -8,12 +8,12 @@ interface FlowChainListViewProps {
 const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) => {
   const [newChainName, setNewChainName] = useState<string>('');
   const store = useFlowExecutorStore();
-  const chainIds = store.chainIds;
-  const chains = store.chains;
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = store.flowChainIds;
   const focusedFlowChainId = store.focusedFlowChainId;
 
   const handleAddChain = () => {
-    const name = newChainName.trim() || `새 Flow 체인 ${chainIds.length + 1}`;
+    const name = newChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;
     const newChainId = store.addChain(name);
     setNewChainName('');
     if (newChainId) {
@@ -39,7 +39,7 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
         <h2 className="text-lg font-medium text-gray-700">Flow 체인 목록</h2>
         <div className="text-sm text-gray-500">
-          {chainIds.length}개의 체인
+          {flowChainIds.length}개의 체인
         </div>
       </div>
 
@@ -62,15 +62,15 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
         </div>
 
         {/* 체인 목록 */}
-        {chainIds.length === 0 ? (
+        {flowChainIds.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <p>등록된 Flow 체인이 없습니다.</p>
             <p className="text-sm mt-2">위의 "체인 추가" 버튼을 클릭하여 새 체인을 만드세요.</p>
           </div>
         ) : (
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-            {chainIds.map((chainId) => {
-              const chain = chains[chainId];
+            {flowChainIds.map((chainId: string) => {
+              const chain = flowChainMap[chainId];
               if (!chain) return null;
 
               return (

@@ -56,8 +56,8 @@ interface FlowChain {
 // 스토어 상태 인터페이스
 interface ExecutorGraphState {
   // Flow Chain 관리
-  flowChains: Record<string, FlowChain>;
-  chainIds: string[];
+  flowChainMap: Record<string, FlowChain>;
+  flowChainIds: string[];
   activeChainId: string | null;
   nodeFactory: NodeFactory;
   
@@ -194,8 +194,8 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[], nodeFactory: NodeFact
 
 // 초기 상태
 const initialState = {
-  flowChains: {},
-  chainIds: [],
+  flowChainMap: {},
+  flowChainIds: [],
   activeChainId: null,
   nodeFactory: new NodeFactory()
 };
@@ -212,7 +212,7 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
         
         set(state => {
           const newChains = {
-            ...state.flowChains,
+            ...state.flowChainMap,
             [chainId]: {
               id: chainId,
               name,
@@ -224,18 +224,18 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
           };
           
           console.log(`[ExecutorGraphStore] Adding new chain: ${chainId}, name: ${name}`);
-          console.log(`[ExecutorGraphStore] Current chains before update:`, Object.keys(state.flowChains));
+          console.log(`[ExecutorGraphStore] Current chains before update:`, Object.keys(state.flowChainMap));
           
           return {
-            flowChains: newChains,
-            chainIds: [...state.chainIds, chainId],
+            flowChainMap: newChains,
+            flowChainIds: [...state.flowChainIds, chainId],
             activeChainId: state.activeChainId || chainId
           };
         });
         
         // 상태 업데이트 확인
         const updatedState = useExecutorGraphStore.getState();
-        const chain = updatedState.flowChains[chainId];
+        const chain = updatedState.flowChainMap[chainId];
         
         if (!chain) {
           console.warn(`[ExecutorGraphStore] Chain ${chainId} was not immediately available after creation`);
@@ -248,8 +248,8 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       removeChain: (chainId) => {
         set(state => {
-          const { [chainId]: removed, ...remainingChains } = state.flowChains;
-          const newChainIds = state.chainIds.filter(id => id !== chainId);
+          const { [chainId]: removed, ...remainingChains } = state.flowChainMap;
+          const newChainIds = state.flowChainIds.filter(id => id !== chainId);
           
           // activeChainId 조정
           let newActiveChainId = state.activeChainId;
@@ -258,8 +258,8 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
           }
           
           return {
-            flowChains: remainingChains,
-            chainIds: newChainIds,
+            flowChainMap: remainingChains,
+            flowChainIds: newChainIds,
             activeChainId: newActiveChainId
           };
         });
@@ -267,12 +267,12 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       setChainName: (chainId, name) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 name
@@ -284,12 +284,12 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       setChainStatus: (chainId, status, error) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 status,
@@ -302,12 +302,12 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       setSelectedFlow: (chainId, flowId) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 selectedFlowId: flowId
@@ -323,14 +323,14 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       getChain: (chainId) => {
         const state = get();
-        if (!chainId || !state.flowChains) {
-          console.warn(`[ExecutorGraphStore] Invalid chainId or flowChains not initialized`);
+        if (!chainId || !state.flowChainMap) {
+          console.warn(`[ExecutorGraphStore] Invalid chainId or flowChainMap not initialized`);
           return null;
         }
         
-        const chain = state.flowChains[chainId];
+        const chain = state.flowChainMap[chainId];
         if (!chain) {
-          console.warn(`[ExecutorGraphStore] Chain ${chainId} not found in flowChains`);
+          console.warn(`[ExecutorGraphStore] Chain ${chainId} not found in flowChainMap`);
         }
         
         return chain || null;
@@ -342,14 +342,14 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
         
         // 현재 상태 확인
         const currentState = useExecutorGraphStore.getState();
-        const existingChain = currentState.flowChains[chainId];
+        const existingChain = currentState.flowChainMap[chainId];
         
         if (!existingChain) {
           console.warn(`[ExecutorGraphStore] addFlowToChain: Chain ${chainId} not found before update`);
         }
         
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) {
             console.error(`[ExecutorGraphStore] addFlowToChain: Chain ${chainId} not found, cannot add flow`);
             return state;
@@ -390,8 +390,8 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
           console.log(`[ExecutorGraphStore] Chain ${chainId} now has ${updatedChain.flowIds.length} flows:`, updatedChain.flowIds);
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: updatedChain
             }
           };
@@ -399,7 +399,7 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
         
         // 상태 업데이트 확인
         const updatedState = useExecutorGraphStore.getState();
-        const updatedChain = updatedState.flowChains[chainId];
+        const updatedChain = updatedState.flowChainMap[chainId];
         
         if (!updatedChain) {
           console.warn(`[ExecutorGraphStore] Chain ${chainId} not available after flow addition`);
@@ -420,14 +420,14 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       removeFlowFromChain: (chainId, flowId) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           const { [flowId]: removed, ...remainingFlows } = chain.flows;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flows: remainingFlows,
@@ -441,15 +441,15 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       setFlowName: (chainId, flowId, name) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           const flow = chain.flows[flowId];
           if (!flow) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flows: {
@@ -467,15 +467,15 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       setFlowStatus: (chainId, flowId, status, error) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           const flow = chain.flows[flowId];
           if (!flow) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flows: {
@@ -494,15 +494,15 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       setFlowInputs: (chainId, flowId, inputs) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           const flow = chain.flows[flowId];
           if (!flow) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flows: {
@@ -520,7 +520,7 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       getFlow: (chainId, flowId) => {
         const state = get();
-        const chain = state.flowChains[chainId];
+        const chain = state.flowChainMap[chainId];
         if (!chain) {
           console.log(`[ExecutorGraphStore] getFlow: Chain not found: ${chainId}`);
           return null;
@@ -539,7 +539,7 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       
       moveFlow: (chainId, flowId, direction) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           const currentIndex = chain.flowIds.indexOf(flowId);
@@ -561,8 +561,8 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
           }
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flowIds: newFlowIds
@@ -591,15 +591,15 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       // 결과 관리
       setFlowResult: (chainId, flowId, result) => {
         set(state => {
-          const chain = state.flowChains[chainId];
+          const chain = state.flowChainMap[chainId];
           if (!chain) return state;
           
           const flow = chain.flows[flowId];
           if (!flow) return state;
           
           return {
-            flowChains: {
-              ...state.flowChains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flows: {
@@ -623,8 +623,8 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       // 초기화
       resetState: () => {
         set({
-          flowChains: {},
-          chainIds: [],
+          flowChainMap: {},
+          flowChainIds: [],
           activeChainId: null
         });
       },
@@ -632,20 +632,20 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
       // resetState와 동일한 기능을 수행하는 별칭 함수
       resetFlowGraphs: () => {
         set({
-          flowChains: {},
-          chainIds: [],
+          flowChainMap: {},
+          flowChainIds: [],
           activeChainId: null
         });
       },
       
       // 모든 플로우의 결과 초기화
       resetResults: () => set(state => {
-        // 복사된 flowChains 객체 생성
-        const updatedFlowChains = { ...state.flowChains };
+        // 복사된 flowChainMap 객체 생성
+        const updatedFlowChainMap = { ...state.flowChainMap };
         
         // 각 체인의 각 플로우에 대해 결과 및 상태 초기화
-        Object.keys(updatedFlowChains).forEach(chainId => {
-          const chain = updatedFlowChains[chainId];
+        Object.keys(updatedFlowChainMap).forEach(chainId => {
+          const chain = updatedFlowChainMap[chainId];
           const updatedFlows = { ...chain.flows };
           
           Object.keys(updatedFlows).forEach(flowId => {
@@ -657,7 +657,7 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
             };
           });
           
-          updatedFlowChains[chainId] = {
+          updatedFlowChainMap[chainId] = {
             ...chain,
             flows: updatedFlows,
             status: 'idle',
@@ -668,7 +668,7 @@ export const useExecutorGraphStore = create<ExecutorGraphState>()(
         console.log('[useExecutorGraphStore] 모든 플로우 결과 초기화 완료');
         
         return {
-          flowChains: updatedFlowChains
+          flowChainMap: updatedFlowChainMap
         };
       })
     }),

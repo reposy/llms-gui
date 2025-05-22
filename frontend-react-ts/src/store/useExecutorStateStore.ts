@@ -70,11 +70,11 @@ export interface FlowChain {
 // 정규화된 스토어 상태
 interface ExecutorState {
   // 엔티티 컬렉션 (정규화된 데이터)
-  chains: Record<string, FlowChain>;
+  flowChainMap: Record<string, FlowChain>;
   flows: Record<string, Flow>;
   
   // 순서 및 참조 데이터
-  chainIds: string[];  // Chain 순서 유지
+  flowChainIds: string[];  // Chain 순서 유지
   activeChainId: string | null;
   stage: ExecutorStage;
   error: string | null;
@@ -197,9 +197,9 @@ const buildGraphStructure = (nodes: Node[], edges: Edge[]): {
 };
 
 const initialState = {
-  chains: {},
+  flowChainMap: {},
   flows: {},
-  chainIds: [],
+  flowChainIds: [],
   activeChainId: null,
   stage: 'upload' as ExecutorStage,
   error: null,
@@ -217,8 +217,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
         const id = `chain-${uuidv4()}`;
         set((state) => {
           return {
-            chains: {
-              ...state.chains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [id]: {
                 id,
                 name,
@@ -229,7 +229,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
                 inputs: [] // inputs 초기화 (추가)
               }
             },
-            chainIds: [...state.chainIds, id],
+            flowChainIds: [...state.flowChainIds, id],
             activeChainId: state.activeChainId || id
           };
         });
@@ -237,40 +237,40 @@ export const useExecutorStateStore = create<ExecutorState>()(
       },
 
       removeFlowChain: (id) => set((state) => {
-        const { [id]: removed, ...remainingChains } = state.chains;
+        const { [id]: removed, ...remainingChains } = state.flowChainMap;
         
         // Chain에 속한 Flow들도 제거
-        const flowsToRemove = state.chains[id]?.flowIds || [];
+        const flowsToRemove = state.flowChainMap[id]?.flowIds || [];
         const newFlows = { ...state.flows };
         
         flowsToRemove.forEach(flowId => {
           delete newFlows[flowId];
         });
         
-        // chainIds 업데이트
-        const newChainIds = state.chainIds.filter(chainId => chainId !== id);
+        // flowChainIds 업데이트
+        const newFlowChainIds = state.flowChainIds.filter(chainId => chainId !== id);
         
         // activeChainId 조정
         let newActiveChainId = state.activeChainId;
         if (newActiveChainId === id) {
-          newActiveChainId = newChainIds.length > 0 ? newChainIds[0] : null;
+          newActiveChainId = newFlowChainIds.length > 0 ? newFlowChainIds[0] : null;
         }
         
         return {
-          chains: remainingChains,
+          flowChainMap: remainingChains,
           flows: newFlows,
-          chainIds: newChainIds,
+          flowChainIds: newFlowChainIds,
           activeChainId: newActiveChainId
         };
       }),
 
       setFlowChainName: (id, name) => set((state) => {
-        const chain = state.chains[id];
+        const chain = state.flowChainMap[id];
         if (!chain) return state;
         
         return {
-          chains: {
-            ...state.chains,
+          flowChainMap: {
+            ...state.flowChainMap,
             [id]: { ...chain, name }
           }
         };
@@ -287,9 +287,9 @@ export const useExecutorStateStore = create<ExecutorState>()(
         
         set((state) => {
           // Chain이 없으면 상태 변경 없음
-          if (!state.chains[chainId]) return state;
+          if (!state.flowChainMap[chainId]) return state;
           
-          const chain = state.chains[chainId];
+          const chain = state.flowChainMap[chainId];
           
           // 새로운 Flow 생성
           const newFlow: Flow = {
@@ -313,8 +313,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
               ...state.flows,
               [flowId]: newFlow
             },
-            chains: {
-              ...state.chains,
+            flowChainMap: {
+              ...state.flowChainMap,
               [chainId]: {
                 ...chain,
                 flowIds: [...chain.flowIds, flowId],
@@ -329,9 +329,9 @@ export const useExecutorStateStore = create<ExecutorState>()(
 
       removeFlowFromChain: (chainId, flowId) => set((state) => {
         // Chain이 없으면 상태 변경 없음
-        if (!state.chains[chainId]) return state;
+        if (!state.flowChainMap[chainId]) return state;
         
-        const chain = state.chains[chainId];
+        const chain = state.flowChainMap[chainId];
         
         // flowIds에서 제거
         const newFlowIds = chain.flowIds.filter(id => id !== flowId);
@@ -347,8 +347,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
         
         return {
           flows: remainingFlows,
-          chains: {
-            ...state.chains,
+          flowChainMap: {
+            ...state.flowChainMap,
             [chainId]: {
               ...chain,
               flowIds: newFlowIds,
@@ -359,12 +359,12 @@ export const useExecutorStateStore = create<ExecutorState>()(
       }),
 
       setFlowChainStatus: (chainId, status, error) => set((state) => {
-        const chain = state.chains[chainId];
+        const chain = state.flowChainMap[chainId];
         if (!chain) return state;
         
         return {
-          chains: {
-            ...state.chains,
+          flowChainMap: {
+            ...state.flowChainMap,
             [chainId]: { 
               ...chain, 
               status,
@@ -391,12 +391,12 @@ export const useExecutorStateStore = create<ExecutorState>()(
       }),
 
       setSelectedFlow: (chainId, flowId) => set((state) => {
-        const chain = state.chains[chainId];
+        const chain = state.flowChainMap[chainId];
         if (!chain) return state;
         
         return {
-          chains: {
-            ...state.chains,
+          flowChainMap: {
+            ...state.flowChainMap,
             [chainId]: {
               ...chain,
               selectedFlowId: flowId
@@ -406,7 +406,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
       }),
 
       moveFlow: (chainId, flowId, direction) => set((state) => {
-        const chain = state.chains[chainId];
+        const chain = state.flowChainMap[chainId];
         if (!chain) return state;
         
         const currentIndex = chain.flowIds.indexOf(flowId);
@@ -419,8 +419,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
         [newFlowIds[currentIndex], newFlowIds[newIndex]] = [newFlowIds[newIndex], newFlowIds[currentIndex]];
         
         return {
-          chains: {
-            ...state.chains,
+          flowChainMap: {
+            ...state.flowChainMap,
             [chainId]: {
               ...chain,
               flowIds: newFlowIds
@@ -445,12 +445,12 @@ export const useExecutorStateStore = create<ExecutorState>()(
       }),
 
       setFlowChainInputs: (chainId, inputs) => set((state) => { // 액션 구현 (추가)
-        const chain = state.chains[chainId];
+        const chain = state.flowChainMap[chainId];
         if (!chain) return state;
 
         return {
-          chains: {
-            ...state.chains,
+          flowChainMap: {
+            ...state.flowChainMap,
             [chainId]: {
               ...chain,
               inputs: deepClone(inputs)
@@ -565,10 +565,10 @@ export const useExecutorStateStore = create<ExecutorState>()(
         });
         
         // 모든 체인의 상태도 초기화
-        const updatedChains = { ...state.chains };
-        Object.keys(updatedChains).forEach(chainId => {
-          updatedChains[chainId] = {
-            ...updatedChains[chainId],
+        const updatedFlowChainMap = { ...state.flowChainMap };
+        Object.keys(updatedFlowChainMap).forEach(chainId => {
+          updatedFlowChainMap[chainId] = {
+            ...updatedFlowChainMap[chainId],
             status: 'idle',
             error: undefined
           };
@@ -578,7 +578,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
         
         return {
           flows: updatedFlows,
-          chains: updatedChains
+          flowChainMap: updatedFlowChainMap
         };
       }),
       
@@ -588,13 +588,13 @@ export const useExecutorStateStore = create<ExecutorState>()(
       },
       
       getFlowChain: (chainId) => {
-        return get().chains[chainId];
+        return get().flowChainMap[chainId];
       },
       
       getActiveFlowChain: () => {
-        const { activeChainId, chains } = get();
+        const { activeChainId, flowChainMap } = get();
         if (!activeChainId) return undefined;
-        return chains[activeChainId];
+        return flowChainMap[activeChainId];
       },
       
       // 그래프 데이터 접근 함수
@@ -633,9 +633,9 @@ export const useExecutorStateStore = create<ExecutorState>()(
     {
       name: 'executor-state-store',
       partialize: (state) => ({
-        chains: state.chains,
+        flowChainMap: state.flowChainMap,
         flows: state.flows,
-        chainIds: state.chainIds,
+        flowChainIds: state.flowChainIds,
         activeChainId: state.activeChainId,
         stage: state.stage,
         // nodeFactory는 직렬화할 수 없으므로 제외

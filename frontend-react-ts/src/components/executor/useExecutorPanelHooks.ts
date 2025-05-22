@@ -11,10 +11,10 @@ export const useExecutorPanelHooks = () => {
   const [error, setError] = useState<string | null>(null);
 
   const store = useFlowExecutorStore();
-  const chainIds = store.chainIds;
-  const chains = store.chains;
+  const flowChainIds = store.flowChainIds;
+  const flowChainMap = store.flowChainMap;
   const focusedFlowChainId = store.focusedFlowChainId;
-  const focusedChain = focusedFlowChainId ? chains[focusedFlowChainId] : undefined;
+  const focusedChain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flowIds = focusedChain ? focusedChain.flowIds : [];
   const flowMap = focusedChain ? focusedChain.flowMap : {};
 

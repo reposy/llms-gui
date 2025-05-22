@@ -54,8 +54,8 @@ interface FlowChainExport {
 
 const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handleImportFlowChain }) => {
   const store = useFlowExecutorStore();
-  const chainIds = store.chainIds;
-  const chains = store.chains;
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = store.flowChainIds;
   const focusedFlowChainId = store.focusedFlowChainId;
   const [flowAnalysisCache, setFlowAnalysisCache] = useState<Record<string, FlowAnalysis>>({});
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -66,7 +66,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   const [editingName, setEditingName] = useState<string>('');
   
   // 현재 활성 체인
-  const chain = focusedFlowChainId ? chains[focusedFlowChainId] : undefined;
+  const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flowIds = chain ? chain.flowIds : [];
   const flowMap = chain ? chain.flowMap : {};
   const activeFlowIndex = chain ? chain.selectedFlowId ? flowIds.indexOf(chain.selectedFlowId) : 0 : 0;

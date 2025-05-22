@@ -15,13 +15,13 @@ interface FlowChainDetailsViewProps {
 
 const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, onFlowSelect, onImportFlow }) => {
   const store = useFlowExecutorStore();
-  const chain = store.chains[chainId];
-  const flowIds = chain ? chain.flowIds : [];
-  const flowMap = chain ? chain.flowMap : {};
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = flowChainMap[chainId]?.flowIds || [];
+  const flowMap = flowChainMap[chainId]?.flowMap || {};
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
 
-  if (!chain) {
+  if (!flowChainMap[chainId]) {
     return (
       <div className="w-full h-full flex items-center justify-center p-4">
         <p className="text-gray-500">Select or Create a Flow Chain from the left panel.</p>
@@ -31,24 +31,24 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
 
   const handleRemoveFlow = (flowId: string) => {
     if (window.confirm('이 Flow를 체인에서 삭제하시겠습니까?')) {
-      store.removeFlowFromChain(chain.id, flowId);
+      store.removeFlowFromChain(chainId, flowId);
     }
   };
 
   const handleMoveFlow = (flowId: string, direction: 'up' | 'down') => {
-    store.moveFlow(chain.id, flowId, direction);
+    store.moveFlow(chainId, flowId, direction);
   };
 
   const handleSetSelectedFlow = (flowId: string) => {
-    store.setSelectedFlow(chain.id, flowId);
+    store.setSelectedFlow(chainId, flowId);
   };
 
   const handleExecuteChain = async () => {
-    if (!chain) return;
+    if (!flowChainMap[chainId]) return;
     try {
       setIsExecuting(true);
       await executeChain({
-        flowChainId: chain.id,
+        flowChainId: chainId,
         onFlowStart: (chainId, flowId) => {
           store.setFlowStatus(chainId, flowId, 'running');
         },
@@ -62,7 +62,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
       });
     } catch (error) {
       console.error('Chain execution error in Detail:', error);
-      store.setChainStatus(chain.id, 'error');
+      store.setChainStatus(chainId, 'error');
     } finally {
       setIsExecuting(false);
     }
@@ -77,32 +77,33 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
     const flow = flowMap[flowId];
     if (!flow) return;
     setExecutingFlowId(flowId);
-    store.setFlowStatus(chain.id, flowId, 'running');
+    const storeInputs = flowChainMap[chainId]?.flowMap[flowId]?.inputs;
+    const execInputs = storeInputs && Array.isArray(storeInputs) ? storeInputs : [];
+    store.setFlowStatus(chainId, flowId, 'running');
     try {
-      const execInputs = flow.inputs || [];
       const result = await executeFlowExecutor({
         flowId,
-        chainId: chain.id,
+        chainId,
         flowJson: flow.flowJson,
         inputs: execInputs
       });
-      store.setFlowResult(chain.id, flowId, result.outputs || []);
-      store.setFlowStatus(chain.id, flowId, result.status === 'success' ? 'success' : 'error', result.error);
+      store.setFlowResult(chainId, flowId, result.outputs || []);
+      store.setFlowStatus(chainId, flowId, result.status === 'success' ? 'success' : 'error', result.error);
     } catch (error) {
-      store.setFlowStatus(chain.id, flowId, 'error', error instanceof Error ? error.message : String(error));
+      store.setFlowStatus(chainId, flowId, 'error', error instanceof Error ? error.message : String(error));
     } finally {
       setExecutingFlowId(null);
     }
   };
 
-  const selectedFlow = chain.selectedFlowId ? flowMap[chain.selectedFlowId] : null;
+  const selectedFlow = flowChainMap[chainId]?.selectedFlowId ? flowMap[flowChainMap[chainId]?.selectedFlowId] : null;
 
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
       <div className="p-3 border-b border-gray-200 flex justify-between items-center">
         <div className="flex items-center min-w-0">
-          <NodeStatusIndicator status={chain.status} className="mr-2 flex-shrink-0" />
-          <h2 className="text-lg font-semibold text-gray-800 truncate" title={chain.name}>{chain.name}</h2>
+          <NodeStatusIndicator status={flowChainMap[chainId]?.status} className="mr-2 flex-shrink-0" />
+          <h2 className="text-lg font-semibold text-gray-800 truncate" title={flowChainMap[chainId]?.name}>{flowChainMap[chainId]?.name}</h2>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -123,10 +124,10 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
           <button
             id="flow-chain-detail-execute-button"
             onClick={handleExecuteChain}
-            disabled={chain.status === 'running' || flowIds.length === 0 || isExecuting}
+            disabled={flowChainMap[chainId]?.status === 'running' || flowChainIds.length === 0 || isExecuting}
             className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
-            {chain.status === 'running' || isExecuting ? (
+            {flowChainMap[chainId]?.status === 'running' || isExecuting ? (
               <>
                 <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -143,14 +144,14 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
           </button>
         </div>
       </div>
-      {flowIds.length === 0 ? (
+      {flowChainIds.length === 0 ? (
         <div className="flex-grow flex items-center justify-center p-4">
           <p className="text-gray-500 text-center">No Flows in this chain.<br/>Click the Import Flow button above to add one.</p>
         </div>
       ) : (
         <div className="flex-grow flex flex-col">
           <ul className="overflow-y-auto divide-y divide-gray-200 flex-grow">
-            {flowIds.map((flowId, index) => {
+            {flowChainIds.map((flowId, index) => {
               const flow = flowMap[flowId];
               if (!flow) return null;
               return (
@@ -170,10 +171,10 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
                   <div className="ml-2 flex-shrink-0 flex items-center space-x-1 opacity-100 transition-opacity duration-150">
                     <button
                       onClick={e => { e.stopPropagation(); handleSetSelectedFlow(flowId); }}
-                      className={`p-1.5 rounded-md transition-colors duration-150 ${chain.selectedFlowId === flowId ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-100'}`}
+                      className={`p-1.5 rounded-md transition-colors duration-150 ${flowChainMap[chainId]?.selectedFlowId === flowId ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-100'}`}
                       title="Set as chain output"
                     >
-                      {chain.selectedFlowId === flowId ? (
+                      {flowChainMap[chainId]?.selectedFlowId === flowId ? (
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="currentColor" /></svg>
                       ) : (
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="white" /></svg>
@@ -204,7 +205,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
                     </button>
                     <button
                       onClick={e => { e.stopPropagation(); handleMoveFlow(flowId, 'down'); }}
-                      disabled={index === flowIds.length - 1}
+                      disabled={index === flowChainIds.length - 1}
                       className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Move Down"
                     >
@@ -223,7 +224,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ chainId, on
             })}
           </ul>
           {/* 선택된 Flow의 실행 결과 표시 */}
-          {chain.selectedFlowId && selectedFlow && (
+          {flowChainMap[chainId]?.selectedFlowId && selectedFlow && (
             <div className="border-t border-gray-200 p-4 bg-gray-50">
               <div className="mb-2 flex items-center">
                 <h3 className="text-sm font-semibold text-gray-700">Selected Flow Result</h3>

@@ -30,7 +30,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
   const { 
-    chains, 
+    flowChainMap, 
     setStage,
     getFocusedChain 
   } = useFlowExecutorStore();
@@ -38,7 +38,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   // 활성 체인의 Flow 개수 계산 (안전하게 접근)
   const focusedChain = getFocusedChain();
   const hasFlows = focusedChain && focusedChain.flowIds.length > 0;
-  const chainCount = Object.keys(chains).length;
+  const flowChainIds = Object.keys(flowChainMap);
 
   // Flow Chain 파일 선택 처리
   const handleFlowChainFileSelected = (file: File) => {
@@ -127,7 +127,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         });
         
         // 스테이지 업데이트
-        if (chainCount === 0) {
+        if (flowChainIds.length === 0) {
           setStage('input');
         }
         
@@ -179,8 +179,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             onClick={() => {
               onExportFlowChain(`flow-chain-${new Date().toISOString().slice(0, 10)}.json`, false);
             }}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${chainCount === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={chainCount === 0}
+            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChainIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={flowChainIds.length === 0}
             title="Flow 체인을 데이터 없이 내보냅니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -191,8 +191,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
 
           <button
             onClick={() => setExportModalOpen(true)}
-            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${chainCount === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={chainCount === 0}
+            className={`px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center ${flowChainIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={flowChainIds.length === 0}
             title="Flow 체인을 데이터 포함하여 내보냅니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -214,7 +214,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
           <button
             className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium flex items-center"
             onClick={onExecuteFlow}
-            disabled={isExecuting || chainCount === 0}
+            disabled={isExecuting || flowChainIds.length === 0}
           >
             {isExecuting ? (
               <div className="flex items-center">

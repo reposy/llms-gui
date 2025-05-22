@@ -17,14 +17,14 @@ interface FlowExecutionResult {
 interface FlowChainModalProps {
   isOpen: boolean;
   onClose: () => void;
-  chainId: string;
+  flowChainId: string;
   flowId: string;
 }
 
 const FlowChainModal: React.FC<FlowChainModalProps> = ({
   isOpen,
   onClose,
-  chainId,
+  flowChainId,
   flowId
 }) => {
   const [activeTab, setActiveTab] = useState<'input' | 'result'>('input');
@@ -32,8 +32,8 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   const [resultTab, setResultTab] = useState<'node' | 'output'>('node');
   const [outputFormat, setOutputFormat] = useState<'text' | 'markdown'>('text');
   const store = useFlowExecutorStore();
-  const chain = store.chains[chainId];
-  const flow = chain?.flowMap[flowId];
+  const flowChainMap = store.flowChainMap;
+  const flow = flowChainMap[flowChainId]?.flowMap[flowId];
 
   // 모달이 닫힐 때 입력 탭으로 초기화
   useEffect(() => {
@@ -58,7 +58,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
   const handleExecuteFlow = async () => {
     if (isExecuting) return;
     setIsExecuting(true);
-    store.setFlowStatus(chainId, flowId, 'running');
+    store.setFlowStatus(flowChainId, flowId, 'running');
     try {
       // 입력 전처리
       let execInputs = flow.inputs;
@@ -70,7 +70,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
       console.log(`[FlowChainModal] Flow ${flowId} 실행 시작`);
       const result = await executeFlowExecutor({
         flowId,
-        chainId,
+        chainId: flowChainId,
         flowJson: flow.flowJson,
         inputs: execInputs
       });
@@ -78,14 +78,14 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
       // 결과 처리
       if (result.status === 'error') {
         console.error(`[FlowChainModal] 실행 오류:`, result.error);
-        store.setFlowStatus(chainId, flowId, 'error', result.error);
+        store.setFlowStatus(flowChainId, flowId, 'error', result.error);
       } else {
         const outputs = result.outputs || [];
         console.log(`[FlowChainModal] 실행 성공, 결과 ${outputs.length}개 항목 저장`);
         
         // 결과 저장
-        store.setFlowResult(chainId, flowId, outputs);
-        store.setFlowStatus(chainId, flowId, 'success');
+        store.setFlowResult(flowChainId, flowId, outputs);
+        store.setFlowStatus(flowChainId, flowId, 'success');
         
         // 결과 탭으로 전환
         setActiveTab('result');
@@ -93,7 +93,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[FlowChainModal] 실행 오류:', error);
-      store.setFlowStatus(chainId, flowId, 'error', errorMessage);
+      store.setFlowStatus(flowChainId, flowId, 'error', errorMessage);
     } finally {
       setIsExecuting(false);
     }

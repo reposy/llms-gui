@@ -13,7 +13,9 @@ interface FlowDetailModalProps {
 
 const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onClose }) => {
   const store = useFlowExecutorStore();
-  const chain = store.chains[chainId];
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = store.flowChainIds;
+  const chain = flowChainMap[chainId];
   const flow = chain?.flowMap[flowId];
 
   if (!flow) return null;

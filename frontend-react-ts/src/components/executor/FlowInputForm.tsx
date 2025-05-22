@@ -19,7 +19,9 @@ interface InputRow {
 const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
-  const chain = focusedFlowChainId ? store.chains[focusedFlowChainId] : undefined;
+  const flowChainMap = store.flowChainMap;
+  const flowChainIds = store.flowChainIds;
+  const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flow = chain && flowId ? chain.flowMap[flowId] : undefined;
   const prevFlows = chain ? chain.flowIds.filter(id => id !== flowId && chain.flowIds.indexOf(id) < chain.flowIds.indexOf(flowId)) : [];
 
