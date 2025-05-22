@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 interface FlowChainListViewProps {
   onChainSelect: (chainId: string) => void;
@@ -34,11 +35,35 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
     store.setFocusedFlowChainId(chainId);
   };
 
+  const handleImportChain = () => {
+    // Implementation for importing a chain
+  };
+
+  const handleExportChain = () => {
+    // Implementation for exporting a chain
+  };
+
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
         <h2 className="text-lg font-medium text-gray-700">Flow 체인 목록</h2>
-        <div className="text-sm text-gray-500">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleImportChain}
+            className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm font-medium flex items-center transition-colors duration-150"
+          >
+            <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+            Import
+          </button>
+          <button
+            onClick={handleExportChain}
+            className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
+          >
+            <ArrowDownTrayIcon className="h-5 w-5 mr-1.5" />
+            Export
+          </button>
+        </div>
+        <div className="text-sm text-gray-500 ml-4">
           {flowChainIds.length}개의 체인
         </div>
       </div>

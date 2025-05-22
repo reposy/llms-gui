@@ -3,7 +3,7 @@ import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
-import { PlayIcon as PlayIconSolid, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -65,11 +65,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     }
   };
 
-  const handleExportChain = () => {
-    // TODO: implement export logic if needed
-    alert('Export 기능은 별도 구현 필요');
-  };
-
   const handleExecuteFlow = async (flowId: string) => {
     const flow = flowMap[flowId];
     if (!flow) return;
@@ -114,14 +109,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
           >
             <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
             Import Flow
-          </button>
-          <button
-            title="Export Chain"
-            onClick={handleExportChain}
-            className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
-          >
-            <ArrowDownTrayIcon className="h-5 w-5 mr-1.5" />
-            Export
           </button>
           <button
             id="flow-chain-detail-execute-button"
