@@ -27,8 +27,8 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onCl
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,
         inputs: flow.inputs,
-        flowId: flow.id,
-        chainId: chainId,
+        flowChainId: flow.id,
+        flowChainId: chainId,
         onComplete: (outputs) => {
           // 결과 핸들링 필요시 구현
         }

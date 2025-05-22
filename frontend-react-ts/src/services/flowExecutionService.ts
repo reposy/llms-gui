@@ -20,7 +20,7 @@ export interface ExecuteFlowParams {
   flowJson: FlowData;
   inputs: any[];
   flowId: string;
-  chainId?: string;
+  flowChainId?: string;
   onComplete?: (outputs: any) => void;
   onNodeStateChange?: (nodeId: string, status: string, result?: any, error?: string) => void;
 }
@@ -52,7 +52,7 @@ class FlowExecutor {
    * @returns 실행 응답
    */
   async execute(params: ExecuteFlowParams): Promise<ExecutionResponse> {
-    const { flowJson, inputs, flowId, chainId } = params;
+    const { flowJson, inputs, flowId, flowChainId: chainId } = params;
     const executionId = `exec-${uuidv4()}`;
     
     try {
@@ -423,7 +423,7 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
  * @returns 실행 응답
  */
 export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  if (!params.chainId || !params.flowId) {
+  if (!params.flowChainId || !params.flowId) {
     console.warn('[flowExecutionService.executeFlowExecutor] chainId or flowId is missing. Context might be for editor.');
     return editorFlowExecutor.execute(params);
   }
@@ -439,11 +439,11 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     const safeOutputs = response.outputs || [];
     
     // 결과 저장
-    useFlowExecutorStore.getState().setFlowResult(params.chainId, params.flowId, safeOutputs);
+    useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
     
     // 저장 후 결과 확인 (UI 디버깅용)
-    const storedResults = useFlowExecutorStore.getState().flowChainMap[params.chainId]?.flowMap[params.flowId]?.lastResults;
-    console.log(`[executeFlowExecutor] ${params.chainId}/${params.flowId} 저장된 lastResults:`, 
+    const storedResults = useFlowExecutorStore.getState().flowChainMap[params.flowChainId]?.flowMap[params.flowId]?.lastResults;
+    console.log(`[executeFlowExecutor] ${params.flowChainId}/${params.flowId} 저장된 lastResults:`, 
                 storedResults ? `${storedResults.length}개 항목` : '없음');
   } else {
     console.warn(`[executeFlowExecutor] ${params.flowId} 실행 실패:`, response.error);
@@ -573,7 +573,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         flowJson: flow.flowJson,
         inputs: currentFlowInputs, 
         flowId: flow.id,
-        chainId: flowChainId, // chainId 전달
+        flowChainId: flowChainId, // chainId 전달
         onComplete: (outputs) => {
           // 여기에서 정규화된 형식으로 결과 저장
           store.setFlowResults(flowChainId, flowId, outputs);

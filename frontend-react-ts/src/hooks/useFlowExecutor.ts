@@ -117,10 +117,10 @@ export const useFlowExecutor = () => {
     setError(null);
     try {
       const response = await executeFlowExecutor({
-        flowId: flow.id,
+        flowChainId: flow.id,
         flowJson: flow.flowJson,
         inputs: flow.inputs || [],
-        chainId: flow.chainId,
+        flowChainId: flow.chainId,
         onComplete: (result: any) => {
           if (flowChainIds.length > 0) {
             store.setFlowResult(flowChainIds[0], flow.id, result || []);

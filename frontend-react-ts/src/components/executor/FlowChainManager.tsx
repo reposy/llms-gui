@@ -305,18 +305,18 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     try {
       await executeChain({
         flowChainId: focusedFlowChainId!,
-        onFlowStart: (chainId, flowId) => {
-          store.setFlowResult(chainId, flowId, []); // set to empty array to indicate running
-          store.setFlowStatus(chainId, flowId, 'running');
+        onFlowStart: (flowChainId, flowId) => {
+          store.setFlowResult(flowChainId, flowId, []); // set to empty array to indicate running
+          store.setFlowStatus(flowChainId, flowId, 'running');
         },
-        onFlowComplete: (chainId, flowId, results) => {
+        onFlowComplete: (flowChainId, flowId, results) => {
           console.log(`[FlowChainManager] Flow ${flowId} completed with result:`, results);
-          store.setFlowResult(chainId, flowId, results);
+          store.setFlowResult(flowChainId, flowId, results);
         },
-        onError: (chainId, flowId, error) => {
+        onError: (flowChainId, flowId, error) => {
           console.error(`[FlowChainManager] Error executing flow ${flowId}:`, error);
           const errorMessage = typeof error === 'string' ? error : error.message;
-          store.setFlowStatus(chainId, flowId, 'error', errorMessage);
+          store.setFlowStatus(flowChainId, flowId, 'error', errorMessage);
         }
       });
 
@@ -376,10 +376,10 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
       console.log(`[FlowChainManager] 최종 입력 데이터:`, inputs);
       
       const resultResponse = await executeFlowExecutor({
-        flowId: flowId,
+        flowChainId: flowId,
         flowJson: flow.flowJson,
         inputs: inputs,
-        chainId: focusedFlowChainId!
+        flowChainId: focusedFlowChainId!
       });
       
       console.log(`[FlowChainManager] Flow execution completed:`, resultResponse);

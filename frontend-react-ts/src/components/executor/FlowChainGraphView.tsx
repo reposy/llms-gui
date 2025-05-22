@@ -3,21 +3,21 @@ import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 
 interface FlowChainGraphViewProps {
   flowId: string;
-  chainId?: string;
+  flowChainId?: string;
   className?: string;
 }
 
-const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId, className = '' }) => {
+const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, flowChainId, className = '' }) => {
   const [tab, setTab] = useState<'graph' | 'roots' | 'leafs'>('graph');
   
   // 활성화된 체인 가져오기
   const focusedFlowChainId = useFlowExecutorStore(state => state.focusedFlowChainId);
-  // 실제 사용할 체인 ID 결정 (props의 chainId 또는 활성 체인 ID)
-  const effectiveChainId = chainId || focusedFlowChainId;
+  // 실제 사용할 체인 ID 결정 (props의 flowChainId 또는 활성 체인 ID)
+  const effectiveFlowChainId = flowChainId || focusedFlowChainId;
   
   // Flow 구조 가져오기
   const flowStructure = useFlowExecutorStore(state => 
-    effectiveChainId ? state.getFlow(effectiveChainId, flowId) : null
+    effectiveFlowChainId ? state.getFlow(effectiveFlowChainId, flowId) : null
   );
   
   const nodeCount = useMemo(() => {
@@ -39,7 +39,7 @@ const FlowChainGraphView: React.FC<FlowChainGraphViewProps> = ({ flowId, chainId
     return (
       <div className={`bg-white rounded-lg shadow p-4 ${className}`}>
         <p className="text-gray-500">Flow를 찾을 수 없습니다: {flowId}</p>
-        {!effectiveChainId && <p className="text-red-500 text-xs mt-1">체인 ID가 지정되지 않았습니다</p>}
+        {!effectiveFlowChainId && <p className="text-red-500 text-xs mt-1">체인 ID가 지정되지 않았습니다</p>}
       </div>
     );
   }

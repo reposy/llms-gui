@@ -74,16 +74,16 @@ export const executeFlowChain = async (params: ExecuteFlowChainParams): Promise<
           flowId,
           flowChainId,
           flowJson: {
-            nodes: Object.values(flow.nodes).map(node => ({
+            nodes: Object.values(flow.nodeMap).map((node: any) => ({
               id: node.id,
               type: node.type,
               data: node.data,
               position: node.position,
-              parentId: node.parentNodeId
+              parentId: node.parentId
             })),
-            edges: Object.keys(flow.graph).flatMap(nodeId => {
-              const relation = flow.graph[nodeId];
-              return relation.childs.map(childId => ({
+            edges: Object.keys(flow.graphMap).flatMap(nodeId => {
+              const relation = flow.graphMap[nodeId] as { childs: string[] };
+              return relation.childs.map((childId: string) => ({
                 id: `edge-${nodeId}-${childId}`,
                 source: nodeId,
                 target: childId

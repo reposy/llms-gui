@@ -1,11 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { Node, Edge } from '@xyflow/react';
-import { deepClone } from '../utils/helpers';
 import { type FlowData } from '../utils/data/importExportUtils';
 import { NodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
+import { buildGraphStructure } from '../utils/flow/flowExecutorUtils';
 
 // 실행 상태 타입
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error';
@@ -430,24 +429,21 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       // 그래프 데이터 접근 함수
       getRootNodes: (chainId, flowId) => {
-        const flow = get().flowChainMap[flowId];
-        if (!flow) return [];
-        
-        return flow.roots;
+        const chain = get().flowChainMap[chainId];
+        if (!chain || !chain.flowMap[flowId]) return [];
+        return chain.flowMap[flowId].roots;
       },
       
       getLeafNodes: (chainId, flowId) => {
-        const flow = get().flowChainMap[flowId];
-        if (!flow) return [];
-        
-        return flow.leafs;
+        const chain = get().flowChainMap[chainId];
+        if (!chain || !chain.flowMap[flowId]) return [];
+        return chain.flowMap[flowId].leafs;
       },
       
       getNodeInstance: (chainId, flowId, nodeId) => {
-        const flow = get().flowChainMap[flowId];
-        if (!flow || !flow.nodeInstances[nodeId]) return null;
-        
-        return flow.nodeInstances[nodeId];
+        const chain = get().flowChainMap[chainId];
+        if (!chain || !chain.flowMap[flowId] || !chain.flowMap[flowId].nodeInstances[nodeId]) return null;
+        return chain.flowMap[flowId].nodeInstances[nodeId];
       },
       
       // 상태 관리
@@ -530,7 +526,9 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       // 편의 함수
       getFlow: (chainId, flowId) => {
-        return get().flowChainMap[flowId];
+        const chain = get().flowChainMap[chainId];
+        if (!chain) return undefined;
+        return chain.flowMap[flowId];
       },
       
       getChain: (chainId) => {
