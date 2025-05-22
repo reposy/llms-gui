@@ -2,12 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 // import { Link } from 'react-router-dom'; // Not used currently
 import FlowChainListView from '../components/executor/FlowChainListView';
 import FlowChainDetailsView from '../components/executor/FlowChainDetailsView';
-import FlowChainModal from '../components/executor/FlowChainModal';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
 import { importFlowJsonToStore } from '../utils/flow/flowExecutorUtils';
+import FlowDetailModal from '../components/executor/FlowDetailModal';
 
 const FlowExecutorPage: React.FC = () => {
   const store = useFlowExecutorStore();
@@ -15,7 +15,6 @@ const FlowExecutorPage: React.FC = () => {
   const flowChainMap = store.flowChainMap;
   const focusedFlowChainId = store.focusedFlowChainId;
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
-  const [isFlowModalOpen, setIsFlowModalOpen] = useState<boolean>(false);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
@@ -32,11 +31,10 @@ const FlowExecutorPage: React.FC = () => {
 
   const handleFlowSelect = (flowId: string) => {
     setSelectedFlowId(flowId);
-    setIsFlowModalOpen(true);
   };
 
   const handleCloseFlowModal = () => {
-    setIsFlowModalOpen(false);
+    setSelectedFlowId(null);
   };
 
   const handleImportFlow = () => {
@@ -204,12 +202,11 @@ const FlowExecutorPage: React.FC = () => {
         defaultFilename="flows-export.json"
       />
       {/* Flow 상세 모달 */}
-      {focusedFlowChainId && selectedFlowId && isFlowModalOpen && (
-        <FlowChainModal
-          isOpen={isFlowModalOpen}
-          onClose={handleCloseFlowModal}
+      {focusedFlowChainId && selectedFlowId && (
+        <FlowDetailModal
           flowChainId={focusedFlowChainId}
           flowId={selectedFlowId}
+          onClose={handleCloseFlowModal}
         />
       )}
     </div>

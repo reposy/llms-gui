@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowInputForm from './FlowInputForm';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
@@ -6,48 +6,65 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import ReactMarkdown from 'react-markdown';
 
 interface FlowDetailModalProps {
-  chainId: string;
+  flowChainId: string;
   flowId: string;
   onClose: () => void;
 }
 
-const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onClose }) => {
+const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, onClose }) => {
   const store = useFlowExecutorStore();
   const flowChainMap = store.flowChainMap;
   const flowChainIds = store.flowChainIds;
-  const chain = flowChainMap[chainId];
+  const chain = flowChainMap[flowChainId];
   const flow = chain?.flowMap[flowId];
+  const [viewMode, setViewMode] = useState<'outputs' | 'raw' | 'markdown'>('outputs');
 
   if (!flow) return null;
 
   const handleExecuteFlow = async () => {
     if (!flow) return;
     try {
-      store.setFlowStatus(chainId, flowId, 'running');
+      store.setFlowStatus(flowChainId, flowId, 'running');
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,
         inputs: flow.inputs,
         flowId: flow.id,
-        flowChainId: chainId,
+        flowChainId: flowChainId,
         onComplete: (outputs) => {
           // 결과 핸들링 필요시 구현
         }
       });
       if (response.status === 'success') {
-        store.setFlowStatus(chainId, flowId, 'success');
-        store.setFlowResult(chainId, flowId, response.outputs);
+        store.setFlowStatus(flowChainId, flowId, 'success');
+        store.setFlowResult(flowChainId, flowId, response.outputs);
       } else {
-        store.setFlowStatus(chainId, flowId, 'error', response.error);
+        store.setFlowStatus(flowChainId, flowId, 'error', response.error);
       }
     } catch (error) {
       console.error(`[FlowDetailModal] Error executing flow ${flowId}:`, error);
-      store.setFlowStatus(chainId, flowId, 'error', String(error));
+      store.setFlowStatus(flowChainId, flowId, 'error', String(error));
     }
   };
 
   const handleInputChange = (inputs: any[]) => {
-    store.setFlowInputData(chainId, flowId, inputs);
+    store.setFlowInputData(flowChainId, flowId, inputs);
   };
+
+  // outputs만 추출 및 가공
+  const outputsArr = Array.isArray(flow.lastResults)
+    ? flow.lastResults.flatMap(item => {
+        if (Array.isArray(item.outputs)) {
+          return item.outputs.map((out: any) => {
+            if (out && typeof out === 'object' && out.type === 'file') {
+              return `[파일] ${out.path || out.name || 'unknown file'}`;
+            }
+            return out;
+          });
+        }
+        return [];
+      })
+    : [];
+  const outputsText = outputsArr.join('\n\n');
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -102,41 +119,33 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ chainId, flowId, onCl
               />
             </div>
             {/* Flow 실행 결과 */}
-            {flow.lastResults && (
-              <div className="col-span-1 mt-4">
-                <div className="border border-gray-300 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 p-4 border-b border-gray-300">
-                    <h3 className="text-lg font-medium text-gray-800">Flow 실행 결과</h3>
-                  </div>
-                  <div className="p-4 bg-white max-h-96 overflow-y-auto">
-                    {Array.isArray(flow.lastResults) && flow.lastResults.length > 0 ? (
-                      flow.lastResults.map((result: any, index: number) => (
-                        <div key={index} className="mb-4 pb-4 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
-                          <div className="font-medium text-sm text-gray-600 mb-2">
-                            {result?.nodeType || 'Node'} - {result?.nodeId || `결과 ${index + 1}`}
-                          </div>
-                          {result && typeof result.result === 'string' ? (
-                            <ReactMarkdown className="prose prose-sm max-w-none">
-                              {result.result}
-                            </ReactMarkdown>
-                          ) : (
-                            <pre className="bg-gray-50 p-2 rounded text-xs text-gray-700 overflow-x-auto">
-                              {JSON.stringify(result?.result || result, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-gray-500">
-                        {flow.lastResults.length === 0 
-                          ? "실행은 완료되었지만 결과가 없습니다."
-                          : "결과 데이터를 표시할 수 없습니다."}
-                      </div>
-                    )}
+            <div className="col-span-1 mt-4">
+              <div className="border border-gray-300 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 p-4 border-b border-gray-300 flex items-center gap-4">
+                  <h3 className="text-lg font-medium text-gray-800">Flow 실행 결과</h3>
+                  <div className="ml-auto flex gap-2">
+                    <button onClick={() => setViewMode('outputs')} className={`px-2 py-1 rounded border ${viewMode === 'outputs' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}>outputs만</button>
+                    <button onClick={() => setViewMode('markdown')} className={`px-2 py-1 rounded border ${viewMode === 'markdown' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}>Markdown</button>
+                    <button onClick={() => setViewMode('raw')} className={`px-2 py-1 rounded border ${viewMode === 'raw' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}>JSON 전체</button>
                   </div>
                 </div>
+                <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                  {viewMode === 'outputs' ? (
+                    <pre className="text-xs whitespace-pre-wrap text-gray-700">
+                      {outputsText || '출력 결과가 없습니다.'}
+                    </pre>
+                  ) : viewMode === 'markdown' ? (
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>{outputsText || '출력 결과가 없습니다.'}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <pre className="text-xs whitespace-pre-wrap text-gray-700">
+                      {JSON.stringify(flow.lastResults, null, 2)}
+                    </pre>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
