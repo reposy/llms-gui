@@ -4,7 +4,6 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import FileUploader from './FileUploader';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -113,7 +112,8 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
             onClick={onImportFlow}
             className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
           >
-            <FileUploader buttonStyle={true} className="import-flow-button" />
+            <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+            Import Flow
           </button>
           <button
             title="Export Chain"
