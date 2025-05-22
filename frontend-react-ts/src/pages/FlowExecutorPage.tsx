@@ -11,8 +11,8 @@ import { importFlowJsonToStore } from '../utils/flow/flowExecutorUtils';
 
 const FlowExecutorPage: React.FC = () => {
   const store = useFlowExecutorStore();
-  const chainIds = store.chainIds;
-  const chains = store.chains;
+  const flowChainIds = store.flowChainIds;
+  const flowChainMap = store.flowChainMap;
   const focusedFlowChainId = store.focusedFlowChainId;
   const [selectedChainId, setSelectedChainId] = useState<string | null>(null);
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
@@ -20,17 +20,16 @@ const FlowExecutorPage: React.FC = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
-  // 활성 체인 ID가 변경되면 선택된 체인 ID 업데이트
-useEffect(() => {
+  useEffect(() => {
     if (focusedFlowChainId) {
       setSelectedChainId(focusedFlowChainId);
-    } else if (chainIds.length > 0) {
-      setSelectedChainId(chainIds[0]);
-      store.setFocusedFlowChainId(chainIds[0]);
+    } else if (flowChainIds.length > 0) {
+      setSelectedChainId(flowChainIds[0]);
+      store.setFocusedFlowChainId(flowChainIds[0]);
     } else {
       setSelectedChainId(null);
     }
-  }, [focusedFlowChainId, chainIds.length]);
+  }, [focusedFlowChainId, flowChainIds.length]);
 
   const handleChainSelect = (chainId: string) => {
     setSelectedChainId(chainId);
@@ -84,12 +83,12 @@ useEffect(() => {
   };
 
   // 현재 선택된 체인
-  const selectedChain = selectedChainId ? chains[selectedChainId] : null;
+  const selectedChain = selectedChainId ? flowChainMap[selectedChainId] : null;
 
   // 결과를 볼 수 있는지 확인
   const canViewResults = useMemo(() => {
     if (!selectedChain) return false;
-    return selectedChain.flowIds?.some(flowId => {
+    return selectedChain.flowIds?.some((flowId: string) => {
       const flow = selectedChain.flowMap?.[flowId];
       return flow && flow.lastResults && flow.lastResults.length > 0;
     }) || false;
@@ -102,7 +101,7 @@ useEffect(() => {
     try {
       const exportData = {
         version: '1.1',
-        chains,
+        chains: flowChainMap,
         flows: selectedChain?.flowMap || {}
       };
       
@@ -217,7 +216,6 @@ useEffect(() => {
         <FlowChainModal
           isOpen={isFlowModalOpen}
           onClose={handleCloseFlowModal}
-          chainId={selectedChainId}
           flowId={selectedFlowId}
         />
       )}
