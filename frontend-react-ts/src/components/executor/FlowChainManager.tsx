@@ -376,7 +376,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
       console.log(`[FlowChainManager] 최종 입력 데이터:`, inputs);
       
       const resultResponse = await executeFlowExecutor({
-        flowChainId: flowId,
+        flowId: flowId,
         flowJson: flow.flowJson,
         inputs: inputs,
         flowChainId: focusedFlowChainId!

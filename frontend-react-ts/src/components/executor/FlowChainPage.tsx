@@ -137,7 +137,7 @@ const FlowChainPage: React.FC = () => {
             <div className="col-span-8">
               {selectedChainId ? (
                 <FlowChainDetailsView
-                  chainId={selectedChainId}
+                  flowChainId={selectedChainId}
                   onFlowSelect={handleFlowSelect}
                   onImportFlow={handleImportFlow}
                 />

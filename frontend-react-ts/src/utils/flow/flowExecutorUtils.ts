@@ -77,7 +77,7 @@ export function buildGraphStructure(
 export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
   const store = useFlowExecutorStore.getState();
   const nodeFactory = store.nodeFactory;
-  const flowId = flowJson.id || uuidv4();
+  const flowId: string = uuidv4();
   const { nodeMap, graphRelations, nodeInstances, roots, leafs } = buildGraphStructure(
     flowJson.nodes,
     flowJson.edges,
@@ -85,15 +85,19 @@ export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
   );
   // store 액션을 통해 flow 추가
   store.addFlowToChain(chainId, {
-    ...flowJson,
     id: flowId,
+    chainId,
+    name: flowJson.name || `Flow-${flowId}`,
+    flowJson,
+    inputs: [],
+    lastResults: null,
+    status: 'idle',
+    error: undefined,
     nodeMap,
     graphMap: graphRelations,
     nodeInstances,
     roots,
     leafs,
-    status: 'idle',
-    lastResults: null,
     nodeStates: {},
   });
   return flowId;

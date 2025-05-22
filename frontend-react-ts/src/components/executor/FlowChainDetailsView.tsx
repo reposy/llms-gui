@@ -82,7 +82,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     store.setFlowStatus(flowChainId, flowId, 'running');
     try {
       const result = await executeFlowExecutor({
-        flowChainId: flowId,
+        flowId: flowId,
         flowChainId: flowChainId,
         flowJson: flow.flowJson,
         inputs: execInputs

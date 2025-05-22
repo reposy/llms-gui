@@ -69,7 +69,7 @@ const FlowChainModal: React.FC<FlowChainModalProps> = ({
       // Flow 실행
       console.log(`[FlowChainModal] Flow ${flowId} 실행 시작`);
       const result = await executeFlowExecutor({
-        flowChainId: flowId,
+        flowId: flowId,
         flowChainId: flowChainId,
         flowJson: flow.flowJson,
         inputs: execInputs
