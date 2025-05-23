@@ -3,7 +3,7 @@ import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
 import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
-import { useExecutorStateStore, ExecutionStatus } from '../store/useExecutorStateStore';
+import { ExecutionStatus } from '../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 
 // 출력 결과 타입 정의
@@ -520,21 +520,22 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
  */
 export const executeChain = async (params: ExecuteChainParams): Promise<void> => {
   const { flowChainId, inputs: chainInputs, onChainStart, onChainComplete, onFlowStart, onFlowComplete, onError } = params;
-  const store = useExecutorStateStore.getState();
+  const store = useFlowExecutorStore.getState();
 
+  // 디버깅용 로그 모두 제거
   onChainStart?.(flowChainId);
-  store.setFlowChainStatus(flowChainId, 'running');
+  store.setChainStatus(flowChainId, 'running');
 
-  const chain = store.getFlowChain(flowChainId);
+  const chain = store.getChain(flowChainId);
   if (!chain) {
     const errorMsg = `FlowChain not found: ${flowChainId}`;
-    store.setFlowChainStatus(flowChainId, 'error', errorMsg);
+    store.setChainStatus(flowChainId, 'error', errorMsg);
     onError?.(flowChainId, '', errorMsg);
     onChainComplete?.(flowChainId, []);
     return;
   }
 
-  const chainResults: any[] = []; // 체인의 최종 결과 (selectedFlowId의 결과만 담을 수도 있음)
+  const chainResults: any[] = [];
   let chainOverallStatus: ExecutionStatus = 'success';
 
   for (const flowId of chain.flowIds) {
@@ -544,74 +545,59 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
       store.setFlowStatus(flowChainId, flowId, 'error', errorMsg);
       onError?.(flowChainId, flowId, errorMsg);
       chainOverallStatus = 'error';
-      break; // 현재 플로우를 찾지 못하면 체인 실행 중단
+      break;
     }
 
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
 
-    let currentFlowInputs = [...flow.inputs]; // 각 Flow에 저장된 기본 입력
-
-    // 현재 Flow가 체인의 첫 번째 Flow이고, 체인 전체 입력(chainInputs)이 제공된 경우,
-    // 해당 Flow의 입력을 체인 전체 입력으로 설정한다.
+    let currentFlowInputs = [...flow.inputs];
     if (chain.flowIds.indexOf(flowId) === 0 && chainInputs !== undefined) {
       currentFlowInputs = deepClone(chainInputs);
-      // 스토어의 Flow 개별 입력도 업데이트 (선택적, UI 반영을 위함이라면 필요)
-      store.setFlowInputs(flowChainId, flowId, currentFlowInputs); 
-    } else if (chain.flowIds.indexOf(flowId) > 0) { 
-      // 첫 번째 Flow가 아니고, 이전 Flow가 있는 경우 (기존 로직)
+      store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
+    } else if (chain.flowIds.indexOf(flowId) > 0) {
       const previousFlowId = chain.flowIds[chain.flowIds.indexOf(flowId) - 1];
       const previousFlow = store.getFlow(flowChainId, previousFlowId);
       if (previousFlow?.lastResults) {
         currentFlowInputs = deepClone(previousFlow.lastResults);
-        store.setFlowInputs(flowChainId, flowId, currentFlowInputs);
+        store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
       }
     }
 
     try {
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: currentFlowInputs, 
+        inputs: currentFlowInputs,
         flowId: flow.id,
-        flowChainId: flowChainId, // chainId 전달
+        flowChainId: flowChainId,
         onComplete: (outputs) => {
-          // 여기에서 정규화된 형식으로 결과 저장
-          store.setFlowResults(flowChainId, flowId, outputs);
-          // 로그로 결과 확인
-          console.log(`[executeChain] Flow ${flowId} completed, outputs:`, outputs);
-          chainResults.push({ flowId, outputs }); // 개별 플로우 결과 저장 (필요시)
+          store.setFlowResult(flowChainId, flowId, outputs);
+          chainResults.push({ flowId, outputs });
         },
       });
 
       if (flowExecutionResult.status === 'success') {
         store.setFlowStatus(flowChainId, flowId, 'success');
         onFlowComplete?.(flowChainId, flowId, flowExecutionResult.outputs);
-        // 체인의 selectedFlowId에 해당하는 결과만 최종 결과로 사용할 경우 여기서 처리
-        if (flowId === chain.selectedFlowId) {
-          // chainResults = flowExecutionResult.outputs; // 이런 식으로 덮어쓰거나 할 수 있음
-        }
       } else {
         store.setFlowStatus(flowChainId, flowId, 'error', flowExecutionResult.error);
         onError?.(flowChainId, flowId, flowExecutionResult.error || 'Unknown error in flow');
         chainOverallStatus = 'error';
-        break; // 플로우 실행 실패 시 체인 실행 중단
+        break;
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       store.setFlowStatus(flowChainId, flowId, 'error', errorMsg);
       onError?.(flowChainId, flowId, errorMsg);
       chainOverallStatus = 'error';
-      break; // 예외 발생 시 체인 실행 중단
+      break;
     }
   }
 
-  // 체인 실행 완료 후 최종 상태 설정
-  store.setFlowChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
-  
-  // 체인의 최종 결과는 selectedFlowId에 해당하는 Flow의 lastResults로 결정
+  store.setChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
+
   const finalChainResultFlow = chain.selectedFlowId ? store.getFlow(flowChainId, chain.selectedFlowId) : null;
   const finalOutputs = finalChainResultFlow?.lastResults || [];
-  
+
   onChainComplete?.(flowChainId, finalOutputs);
-  console.log(`[flowExecutionService] executeChain 완료: ${flowChainId}, 최종 결과:`, finalOutputs);
 }; 

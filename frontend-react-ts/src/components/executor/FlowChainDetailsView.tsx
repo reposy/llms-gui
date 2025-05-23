@@ -42,8 +42,8 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
 
   const handleExecuteChain = async () => {
     if (!flowChain) return;
+    setIsExecuting(true);
     try {
-      setIsExecuting(true);
       await executeChain({
         flowChainId: flowChainId,
         onFlowStart: (flowChainId, flowId) => {

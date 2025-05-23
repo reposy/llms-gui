@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TrashIcon } from '@heroicons/react/20/solid';
+import { PlayIcon } from '../Icons';
+import { executeChain } from '../../services/flowExecutionService';
 
 interface FlowChainListViewProps {
   onChainSelect: (chainId: string) => void;
@@ -172,13 +174,27 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onChainSelect }) 
                 >
                   <div className="flex justify-between items-center">
                     <span className="font-medium">{chain.name}</span>
-                    <button
-                      onClick={e => handleRemoveChain(e, chainId)}
-                      className="p-1 rounded-full hover:bg-red-100 hover:text-red-500"
-                      title="체인 삭제"
-                    >
-                      <TrashIcon className="h-4 w-4 text-gray-600" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={async e => {
+                          e.stopPropagation();
+                          if (chain.status === 'running') return;
+                          await executeChain({ flowChainId: chainId });
+                        }}
+                        className={`p-1 rounded-full hover:bg-green-100 hover:text-green-600 transition-colors ${chain.status === 'running' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title="체인 실행"
+                        disabled={chain.status === 'running'}
+                      >
+                        <PlayIcon size={18} />
+                      </button>
+                      <button
+                        onClick={e => handleRemoveChain(e, chainId)}
+                        className="p-1 rounded-full hover:bg-red-100 hover:text-red-500"
+                        title="체인 삭제"
+                      >
+                        <TrashIcon className="h-4 w-4 text-gray-600" />
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-2 flex text-xs text-gray-500">
                     <div className="mr-3">
