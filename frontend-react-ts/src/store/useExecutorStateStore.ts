@@ -7,7 +7,7 @@ import { type FlowData } from '../utils/data/importExportUtils';
 export type { FlowData } from '../utils/data/importExportUtils';
 import { deepClone } from '../utils/helpers';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeFactory } from '../core/NodeFactory';
+import { globalNodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
@@ -78,7 +78,7 @@ interface ExecutorState {
   activeChainId: string | null;
   stage: ExecutorStage;
   error: string | null;
-  nodeFactory: NodeFactory; // 그래프 노드 생성 팩토리
+  nodeFactory: typeof globalNodeFactory; // 그래프 노드 생성 팩토리
 
   // Flow Chain 관련 액션
   addFlowChain: (name: string) => string; // 생성된 chain-id 반환
@@ -203,7 +203,7 @@ const initialState = {
   activeChainId: null,
   stage: 'upload' as ExecutorStage,
   error: null,
-  nodeFactory: new NodeFactory()
+  nodeFactory: globalNodeFactory
 };
 
 export const useExecutorStateStore = create<ExecutorState>()(
