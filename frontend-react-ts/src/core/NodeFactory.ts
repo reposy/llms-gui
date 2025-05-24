@@ -116,7 +116,3 @@ export class NodeFactory {
 
 // 싱글턴 인스턴스 export
 export const globalNodeFactory = new NodeFactory();
-
-// 앱 시작 시점에 반드시 노드 타입 등록 (중복 등록 안전)
-import { registerAllNodeTypes } from './NodeRegistry';
-registerAllNodeTypes(globalNodeFactory);
