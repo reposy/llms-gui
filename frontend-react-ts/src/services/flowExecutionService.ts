@@ -414,8 +414,18 @@ export const executeNode = async (
  * @returns 실행 응답
  */
 export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  return editorFlowExecutor.execute(params);
+  // 항상 value만 추출해서 넘김 (InputRow[] → value[] 변환)
+  const normalizedInputs = extractInputValues(params.inputs);
+  return editorFlowExecutor.execute({ ...params, inputs: normalizedInputs });
 };
+
+// InputRow[] → value[] 변환 유틸
+function extractInputValues(inputs: any[]): any[] {
+  if (!Array.isArray(inputs)) return [];
+  // InputRow 타입: { type: 'text'|'file'|'flow-result', value: ... }
+  // value만 추출
+  return inputs.map(row => (row && typeof row === 'object' && 'value' in row ? row.value : row));
+}
 
 /**
  * Flow Executor를 위한 Flow 실행 함수
@@ -425,11 +435,11 @@ export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionR
 export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   if (!params.flowChainId || !params.flowId) {
     console.warn('[flowExecutionService.executeFlowExecutor] chainId or flowId is missing. Context might be for editor.');
-    return editorFlowExecutor.execute(params);
+    return editorFlowExecutor.execute({ ...params, inputs: extractInputValues(params.inputs) });
   }
   
   // 응답 결과 받기
-  const response = await executorFlowExecutor.execute(params);
+  const response = await executorFlowExecutor.execute({ ...params, inputs: extractInputValues(params.inputs) });
 
   // leaf node 결과를 flow에 저장 (lastResults)
   if (response.status === 'success') {
@@ -551,11 +561,9 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
 
-    let currentFlowInputs = [...flow.inputs];
-    if (chain.flowIds.indexOf(flowId) === 0 && chainInputs !== undefined) {
-      currentFlowInputs = deepClone(chainInputs);
-      store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
-    } else if (chain.flowIds.indexOf(flowId) > 0) {
+    // 항상 value만 추출해서 넘김
+    let currentFlowInputs = flow.inputs;
+    if ((!currentFlowInputs || currentFlowInputs.length === 0) && chain.flowIds.indexOf(flowId) > 0) {
       const previousFlowId = chain.flowIds[chain.flowIds.indexOf(flowId) - 1];
       const previousFlow = store.getFlow(flowChainId, previousFlowId);
       if (previousFlow?.lastResults) {
@@ -563,11 +571,13 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
       }
     }
+    // value만 추출
+    const execInputs = extractInputValues(currentFlowInputs);
 
     try {
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: currentFlowInputs,
+        inputs: execInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
         onComplete: (outputs) => {

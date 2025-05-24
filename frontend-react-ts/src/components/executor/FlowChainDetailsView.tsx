@@ -13,7 +13,7 @@ interface FlowChainDetailsViewProps {
 
 const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId, onFlowSelect, onImportFlow }) => {
   const flowChain = useFlowExecutorStore(state => state.flowChainMap[flowChainId]);
-  const flowChainIds = flowChain?.flowIds || [];
+  const flowIds = flowChain?.flowIds || [];
   const flowMap = flowChain?.flowMap || {};
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
@@ -66,11 +66,10 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
   };
 
   const handleExecuteFlow = async (flowId: string) => {
-    const flow = flowMap[flowId];
+    const flow = useFlowExecutorStore.getState().flowChainMap[flowChainId]?.flowMap[flowId];
     if (!flow) return;
     setExecutingFlowId(flowId);
-    const storeInputs = flowChain.flowMap[flowId]?.inputs;
-    const execInputs = storeInputs && Array.isArray(storeInputs) ? storeInputs : [];
+    const execInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
     useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, 'running');
     try {
       const result = await executeFlowExecutor({
@@ -113,7 +112,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
           <button
             id="flow-chain-detail-execute-button"
             onClick={handleExecuteChain}
-            disabled={flowChain.status === 'running' || flowChainIds.length === 0 || isExecuting}
+            disabled={flowChain.status === 'running' || flowIds.length === 0 || isExecuting}
             className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             {flowChain.status === 'running' || isExecuting ? (
@@ -133,14 +132,14 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
           </button>
         </div>
       </div>
-      {flowChainIds.length === 0 ? (
+      {flowIds.length === 0 ? (
         <div className="flex-grow flex items-center justify-center p-4">
           <p className="text-gray-500 text-center">No Flows in this chain.<br/>Click the Import Flow button above to add one.</p>
         </div>
       ) : (
         <div className="flex-grow flex flex-col">
           <ul className="overflow-y-auto divide-y divide-gray-200 flex-grow">
-            {flowChainIds.map((flowId, index) => {
+            {flowIds.map((flowId, index) => {
               const flow = flowMap[flowId];
               if (!flow) return null;
               return (
@@ -194,7 +193,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                     </button>
                     <button
                       onClick={e => { e.stopPropagation(); handleMoveFlow(flowId, 'down'); }}
-                      disabled={index === flowChainIds.length - 1}
+                      disabled={index === flowIds.length - 1}
                       className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Move Down"
                     >

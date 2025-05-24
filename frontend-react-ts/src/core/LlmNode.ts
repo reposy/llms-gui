@@ -24,11 +24,9 @@ export class LlmNode extends Node {
    * Replace template variables in the prompt with actual values
    */
   private resolvePrompt(input: any): string {
-    let prompt = this.property.prompt || '';
-    // const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as LLMNodeContent;
-    // if (nodeContent.prompt) {
-    //   prompt = nodeContent.prompt;
-    // }
+    // 항상 최신 nodeContent에서 prompt를 읽음
+    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as LLMNodeContent;
+    let prompt = nodeContent?.prompt ?? this.property.prompt ?? '';
     
     // 파일 또는 파일 메타데이터인 경우 파일명을 사용
     if (input instanceof File) {

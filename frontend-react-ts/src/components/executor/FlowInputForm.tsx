@@ -127,7 +127,13 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const handleSave = () => {
     setEditMode(false);
     if (focusedFlowChainId && flowId) {
+      console.log('[FlowInputForm] 저장 시점:', { chainId: focusedFlowChainId, flowId, draftInputs });
       store.setFlowInputData(focusedFlowChainId, flowId, draftInputs);
+      // 저장 직후 상태 확인
+      setTimeout(() => {
+        const updated = store.flowChainMap[focusedFlowChainId]?.flowMap[flowId]?.inputs;
+        console.log('[FlowInputForm] 저장 후 store 상태:', updated);
+      }, 100);
     }
     if (onInputChange) onInputChange(draftInputs);
   };

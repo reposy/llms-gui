@@ -74,7 +74,7 @@ export function buildGraphStructure(
 }
 
 // Flow JSON을 store에 import하는 함수
-export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
+export function importFlowJsonToStore(flowChainId: string, flowJson: FlowData) {
   const store = useFlowExecutorStore.getState();
   const nodeFactory = store.nodeFactory;
   const flowId: string = uuidv4();
@@ -84,9 +84,9 @@ export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
     nodeFactory
   );
   // store 액션을 통해 flow 추가
-  store.addFlowToChain(chainId, {
+  store.addFlowToFlowChain(flowChainId, {
     id: flowId,
-    chainId,
+    flowChainId,
     name: flowJson.name || `Flow-${flowId}`,
     flowJson,
     inputs: [],
@@ -101,4 +101,74 @@ export function importFlowJsonToStore(chainId: string, flowJson: FlowData) {
     nodeStates: {},
   });
   return flowId;
+}
+
+// FlowChain 전체를 Executor에 import (새 flowChainId, 새 flowId)
+export function importFlowChainToExecutor(flowChainData: any) {
+  const store = useFlowExecutorStore.getState();
+  const newFlowChainId = `flowChain-${uuidv4()}`;
+  const flowChainName = flowChainData.name || `FlowChain-${Date.now()}`;
+  store.addFlowChain(flowChainName);
+
+  (flowChainData.flowIds as string[]).forEach((oldFlowId: string) => {
+    const flowData: FlowData = flowChainData.flowMap[oldFlowId];
+    if (!flowData) return;
+    const newFlowId = `flow-${uuidv4()}`;
+    const nodeMap: Record<string, any> = {};
+    (flowData.nodes || []).forEach((node: any) => {
+      nodeMap[node.id] = {
+        ...node,
+        ...(flowChainData.contents?.[node.id] || {})
+      };
+    });
+    const flowName = flowData.name || `Flow-${newFlowId}`;
+    store.addFlowToFlowChain(newFlowChainId, {
+      id: newFlowId,
+      flowChainId: newFlowChainId,
+      name: flowName,
+      flowJson: flowData,
+      nodeMap,
+      inputs: [],
+      lastResults: null,
+      status: 'idle',
+      error: undefined,
+      graphMap: {},
+      nodeInstances: {},
+      rootIds: [],
+      leafIds: [],
+      nodeStates: {},
+    });
+  });
+  return newFlowChainId;
+}
+
+// 단일 Flow를 Executor에 import (새 flowId)
+export function importFlowToFlowChain(flowChainId: string, flowData: FlowData) {
+  const store = useFlowExecutorStore.getState();
+  const newFlowId = `flow-${uuidv4()}`;
+  const nodeMap: Record<string, any> = {};
+  (flowData.nodes || []).forEach((node: any) => {
+    nodeMap[node.id] = {
+      ...node,
+      ...(flowData.contents?.[node.id] || {})
+    };
+  });
+  const flowName = flowData.name || `Flow-${newFlowId}`;
+  store.addFlowToFlowChain(flowChainId, {
+    id: newFlowId,
+    flowChainId,
+    name: flowName,
+    flowJson: flowData,
+    nodeMap,
+    inputs: [],
+    lastResults: null,
+    status: 'idle',
+    error: undefined,
+    graphMap: {},
+    nodeInstances: {},
+    rootIds: [],
+    leafIds: [],
+    nodeStates: {},
+  });
+  return newFlowId;
 } 
