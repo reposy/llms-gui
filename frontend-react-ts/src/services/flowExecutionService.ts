@@ -534,12 +534,12 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
 
   // 디버깅용 로그 모두 제거
   onChainStart?.(flowChainId);
-  store.setChainStatus(flowChainId, 'running');
+  store.setFlowChainStatus(flowChainId, 'running');
 
-  const chain = store.getChain(flowChainId);
-  if (!chain) {
+  const flowChain = store.getFlowChain(flowChainId);
+  if (!flowChain) {
     const errorMsg = `FlowChain not found: ${flowChainId}`;
-    store.setChainStatus(flowChainId, 'error', errorMsg);
+    store.setFlowChainStatus(flowChainId, 'error', errorMsg);
     onError?.(flowChainId, '', errorMsg);
     onChainComplete?.(flowChainId, []);
     return;
@@ -548,7 +548,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
   const chainResults: any[] = [];
   let chainOverallStatus: ExecutionStatus = 'success';
 
-  for (const flowId of chain.flowIds) {
+  for (const flowId of flowChain.flowIds) {
     const flow = store.getFlow(flowChainId, flowId);
     if (!flow) {
       const errorMsg = `Flow not found: ${flowId} in chain: ${flowChainId}`;
@@ -563,8 +563,8 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
 
     // 항상 value만 추출해서 넘김
     let currentFlowInputs = flow.inputs;
-    if ((!currentFlowInputs || currentFlowInputs.length === 0) && chain.flowIds.indexOf(flowId) > 0) {
-      const previousFlowId = chain.flowIds[chain.flowIds.indexOf(flowId) - 1];
+    if ((!currentFlowInputs || currentFlowInputs.length === 0) && flowChain.flowIds.indexOf(flowId) > 0) {
+      const previousFlowId = flowChain.flowIds[flowChain.flowIds.indexOf(flowId) - 1];
       const previousFlow = store.getFlow(flowChainId, previousFlowId);
       if (previousFlow?.lastResults) {
         currentFlowInputs = deepClone(previousFlow.lastResults);
@@ -604,9 +604,9 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
     }
   }
 
-  store.setChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
+  store.setFlowChainStatus(flowChainId, chainOverallStatus, chainOverallStatus === 'error' ? 'Chain failed' : undefined);
 
-  const finalChainResultFlow = chain.selectedFlowId ? store.getFlow(flowChainId, chain.selectedFlowId) : null;
+  const finalChainResultFlow = flowChain.selectedFlowId ? store.getFlow(flowChainId, flowChain.selectedFlowId) : null;
   const finalOutputs = finalChainResultFlow?.lastResults || [];
 
   onChainComplete?.(flowChainId, finalOutputs);

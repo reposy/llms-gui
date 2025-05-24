@@ -84,7 +84,7 @@ interface ExecutorState {
   addFlowChain: (name: string) => string; // 생성된 chain-id 반환
   removeFlowChain: (id: string) => void;
   setFlowChainName: (id: string, name: string) => void;
-  addFlowToChain: (chainId: string, flowJson: FlowData) => string; // 생성된 flow-id 반환
+  addFlowToFlowChain: (chainId: string, flowJson: FlowData) => string; // 생성된 flow-id 반환
   removeFlowFromChain: (chainId: string, flowId: string) => void;
   setFlowChainStatus: (chainId: string, status: ExecutionStatus, error?: string) => void;
   setFlowStatus: (chainId: string, flowId: string, status: ExecutionStatus, error?: string) => void;
@@ -276,7 +276,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
         };
       }),
 
-      addFlowToChain: (chainId, flowJson) => {
+      addFlowToFlowChain: (chainId, flowJson) => {
         const flowId = (flowJson as any).id || `flow-${uuidv4()}`;
         
         // 그래프 구조 분석

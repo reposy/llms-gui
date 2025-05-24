@@ -408,7 +408,7 @@ export const importFlowChainFromJson = (chainData: FlowChainData): string | null
           } as FlowData;
           
           // Flow Chain에 추가
-          storeState.addFlowToChain(newChainId, cleanedFlowData);
+          storeState.addFlowToFlowChain(newChainId, cleanedFlowData);
         }
         
         // 선택된 Flow 설정

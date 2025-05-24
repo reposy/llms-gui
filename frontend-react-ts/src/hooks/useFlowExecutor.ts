@@ -197,7 +197,7 @@ export const useFlowExecutor = () => {
                   ...flow.flowJson,
                   id: flowId
                 };
-                store.addFlowToChain(flowChainIds[0], flowToAdd);
+                store.addFlowToFlowChain(flowChainIds[0], flowToAdd);
                 if (flow.inputs && flow.inputs.length > 0) {
                   store.setFlowInputData(flowChainIds[0], flowId, flow.inputs);
                 }

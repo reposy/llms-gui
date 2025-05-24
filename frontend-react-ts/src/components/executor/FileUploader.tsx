@@ -23,8 +23,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   const [isDropping, setIsDropping] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const { addFlowToChain, activeChainId } = useExecutorStateStore(state => ({
-    addFlowToChain: state.addFlowToChain,
+  const { addFlowToFlowChain, activeChainId } = useExecutorStateStore(state => ({
+    addFlowToFlowChain: state.addFlowToFlowChain,
     activeChainId: state.activeChainId
   }));
   
@@ -102,7 +102,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         
         // Flow를 체인에 등록
         if (activeChainId) {
-          const flowId = addFlowToChain(activeChainId, flowData);
+          const flowId = addFlowToFlowChain(activeChainId, flowData);
           console.log(`[FileUploader] Added flow to chain: chainId=${activeChainId}, flowId=${flowId}`);
           
           // 콜백 호출
