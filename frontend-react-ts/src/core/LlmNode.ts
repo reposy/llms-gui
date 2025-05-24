@@ -1,6 +1,5 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { LLMNodeContent } from '../types/nodes.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
@@ -24,11 +23,19 @@ export class LlmNode extends Node {
    * Replace template variables in the prompt with actual values
    */
   private resolvePrompt(input: any): string {
-    let prompt = this.property.prompt || '';
-    // const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as LLMNodeContent;
-    // if (nodeContent.prompt) {
-    //   prompt = nodeContent.prompt;
-    // }
+    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
+    let prompt = '';
+    let nodeContent: LLMNodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as LLMNodeContent;
+      console.log('[LLMNode] resolvePrompt - context.getNodeContentFunc:', nodeContent);
+      console.log('[LLMNode] resolvePrompt - this.property.prompt:', this.property.prompt);
+      prompt = nodeContent?.prompt ?? this.property.prompt ?? '';
+    } else {
+      prompt = this.property.prompt ?? '';
+      console.log('[LLMNode] resolvePrompt - no context, this.property.prompt:', this.property.prompt);
+    }
+    console.log('[LLMNode] resolvePrompt - final prompt:', prompt);
     
     // 파일 또는 파일 메타데이터인 경우 파일명을 사용
     if (input instanceof File) {

@@ -199,7 +199,9 @@ export type NodeData =
   | ConditionalNodeData
   | MergerNodeData
   | WebCrawlerNodeData
-  | HTMLParserNodeData;
+  | HTMLParserNodeData
+  // property 필드 추가 (실제 노드 객체 구조 반영)
+  & { property?: any };
 
 // =========== 노드 컨텐츠 타입 정의 (상태 관리) ===========
 

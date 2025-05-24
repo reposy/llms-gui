@@ -6,7 +6,7 @@ export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
 
 interface FlowChainItem {
   id: string;
-  chainId: string;
+  flowChainId: string;
   name: string;
   flowJson: any;
   inputs: any[];
@@ -38,7 +38,7 @@ export const useFlowExecutor = () => {
       const flow = focusedChain.flowMap[focusedChain.selectedFlowId];
       return {
         id: flow.id,
-        chainId: flow.chainId,
+        flowChainId: flow.flowChainId,
         name: flow.name,
         flowJson: flow.flowJson,
         inputs: flow.inputs || [],
@@ -51,7 +51,7 @@ export const useFlowExecutor = () => {
       if (flow) {
         return {
           id: flow.id,
-          chainId: flow.chainId,
+          flowChainId: flow.flowChainId,
           name: flow.name,
           flowJson: flow.flowJson,
           inputs: flow.inputs || [],
@@ -70,7 +70,7 @@ export const useFlowExecutor = () => {
         const flow = chain.flowMap[flowId];
         return {
           id: flow.id,
-          chainId: flow.chainId,
+          flowChainId: flow.flowChainId,
           name: flow.name,
           flowJson: flow.flowJson,
           inputs: flow.inputs || [],
@@ -117,10 +117,10 @@ export const useFlowExecutor = () => {
     setError(null);
     try {
       const response = await executeFlowExecutor({
-        flowChainId: flow.id,
+        flowId: flow.id,
+        flowChainId: flow.flowChainId,
         flowJson: flow.flowJson,
         inputs: flow.inputs || [],
-        flowChainId: flow.chainId,
         onComplete: (result: any) => {
           if (flowChainIds.length > 0) {
             store.setFlowResult(flowChainIds[0], flow.id, result || []);
@@ -197,7 +197,7 @@ export const useFlowExecutor = () => {
                   ...flow.flowJson,
                   id: flowId
                 };
-                store.addFlowToChain(flowChainIds[0], flowToAdd);
+                store.addFlowToFlowChain(flowChainIds[0], flowToAdd);
                 if (flow.inputs && flow.inputs.length > 0) {
                   store.setFlowInputData(flowChainIds[0], flowId, flow.inputs);
                 }

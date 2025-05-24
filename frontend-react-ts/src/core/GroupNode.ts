@@ -1,7 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { Node as FlowNode } from '@xyflow/react'; // Edge 타입은 직접 사용 안 할 수 있지만, FlowNode는 필요
-import { useNodeContentStore } from '../store/useNodeContentStore';
 import { GroupNodeContent } from '../types/nodes';
 
 interface GroupNodeProperty {
@@ -154,15 +153,7 @@ export class GroupNode extends Node {
    * GroupNodeContent의 items 속성을 업데이트합니다.
    */
   private _updateContentItems(items: any[]): void {
-    try {
-      const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, 'group') as GroupNodeContent;
-      useNodeContentStore.getState().setNodeContent(this.id, {
-        ...nodeContent,
-        items: items && items.length > 0 ? items : []
-      });
-    } catch (error) {
-      this._log(`Error updating content items: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    // zustand store 제거: core에서는 store 업데이트하지 않음. 필요시 context에서 처리.
   }
 
   async execute(input: any): Promise<any> {

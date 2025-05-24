@@ -214,7 +214,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
           };
           
           // Flow 추가
-          store.addFlowToChain(focusedFlowChainId!, flowToAdd);
+          store.addFlowToFlowChain(focusedFlowChainId!, flowToAdd);
           console.log(`[FlowChainManager] Flow 추가 완료:`, flowToAdd);
           
           // 선택 처리
@@ -418,8 +418,8 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
 
   const handleNameInputBlur = () => {
     if (editingFlowId && editingName.trim()) {
-      if (store.setChainName) {
-        store.setChainName(focusedFlowChainId!, editingName.trim());
+      if (store.setFlowChainName) {
+        store.setFlowChainName(focusedFlowChainId!, editingName.trim());
       }
     }
     setEditingFlowId(null);
@@ -433,16 +433,16 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     }
   };
 
-  // Flow 추가 (예시, 실제 구현 필요시 store.addFlowToChain 사용)
+  // Flow 추가 (예시, 실제 구현 필요시 store.addFlowToFlowChain 사용)
   const handleAddFlow = (flowData: any) => {
     if (!focusedFlowChainId) return;
-    store.addFlowToChain(focusedFlowChainId, flowData);
+    store.addFlowToFlowChain(focusedFlowChainId, flowData);
   };
 
   // Flow 삭제
   const handleRemoveFlow = (flowId: string) => {
     if (!focusedFlowChainId) return;
-    store.removeFlowFromChain(focusedFlowChainId, flowId);
+    store.removeFlowFromFlowChain(focusedFlowChainId, flowId);
   };
 
   // Flow 이동

@@ -101,17 +101,14 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
       importedNode.position = { x: 100, y: 100 };
     }
 
-    // Ensure data object exists
-    if (!importedNode.data) {
-      console.warn(`[importFlowFromJson] Node ${importedNode.id} is missing data. Initializing empty data object.`);
-      // Create a basic data object with just the type
-      importedNode.data = { type: importedNode.type || 'output' } as NodeData;
-    }
+    // Ensure property object exists and includes all data
+    importedNode.property = { ...(importedNode.data || {}), ...importedNode };
+    delete importedNode.data;
     
     // Set default data properties based on node type if missing
     if (importedNode.type === 'llm') {
       // Cast to the correct type and set defaults only if it is an LLM node
-      const llmData = importedNode.data as any;
+      const llmData = importedNode.property as any;
       if (!llmData.model) {
         llmData.model = 'llama3';
       }
@@ -221,17 +218,17 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
 
     // Filter node data within nodes array
     finalNodes = nodesFromStructureStore.map(node => {
-      const { data, ...restNode } = node;
-      const dataToSave = { ...data };
-      if ('responseContent' in dataToSave) {
-        delete dataToSave.responseContent;
+      const { property, ...restNode } = node;
+      const propertyToSave = { ...property };
+      if ('responseContent' in propertyToSave) {
+        delete propertyToSave.responseContent;
       }
-      if ('content' in dataToSave) {
-        delete dataToSave.content;
+      if ('content' in propertyToSave) {
+        delete propertyToSave.content;
       }
       return {
         ...restNode,
-        data: dataToSave, 
+        property: propertyToSave, 
       };
     });
   }
@@ -295,9 +292,9 @@ export const exportFlowChainAsJson = (chainId: string, includeExecutionData: boo
     const nodes: Node<NodeData>[] = Object.values(flow.nodes || {}).map(node => ({
       id: node.id,
       type: node.type,
-      data: {
-        ...node.data,
-        ...(node.type === 'llm' && !node.data?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
+      property: {
+        ...node.property,
+        ...(node.type === 'llm' && !node.property?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
       },
       position: node.position,
       parentId: node.parentNodeId || undefined // null 대신 undefined 사용
@@ -400,15 +397,15 @@ export const importFlowChainFromJson = (chainData: FlowChainData): string | null
               id: node.id,
               type: node.type,
               position: node.position,
-              data: {
-                ...node.data,
-                ...(node.type === 'llm' && !node.data?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
+              property: {
+                ...node.property,
+                ...(node.type === 'llm' && !node.property?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
               }
             }))
           } as FlowData;
           
           // Flow Chain에 추가
-          storeState.addFlowToChain(newChainId, cleanedFlowData);
+          storeState.addFlowToFlowChain(newChainId, cleanedFlowData);
         }
         
         // 선택된 Flow 설정

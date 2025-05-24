@@ -7,7 +7,7 @@ import { type FlowData } from '../utils/data/importExportUtils';
 export type { FlowData } from '../utils/data/importExportUtils';
 import { deepClone } from '../utils/helpers';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeFactory } from '../core/NodeFactory';
+import { globalNodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
 
 export type ExecutorStage = 'upload' | 'input' | 'executing' | 'result';
@@ -78,14 +78,14 @@ interface ExecutorState {
   activeChainId: string | null;
   stage: ExecutorStage;
   error: string | null;
-  nodeFactory: NodeFactory; // 그래프 노드 생성 팩토리
+  nodeFactory: typeof globalNodeFactory; // 그래프 노드 생성 팩토리
 
   // Flow Chain 관련 액션
   addFlowChain: (name: string) => string; // 생성된 chain-id 반환
   removeFlowChain: (id: string) => void;
   setFlowChainName: (id: string, name: string) => void;
-  addFlowToChain: (chainId: string, flowJson: FlowData) => string; // 생성된 flow-id 반환
-  removeFlowFromChain: (chainId: string, flowId: string) => void;
+  addFlowToFlowChain: (chainId: string, flowJson: FlowData) => string; // 생성된 flow-id 반환
+  removeFlowFromFlowChain: (chainId: string, flowId: string) => void;
   setFlowChainStatus: (chainId: string, status: ExecutionStatus, error?: string) => void;
   setFlowStatus: (chainId: string, flowId: string, status: ExecutionStatus, error?: string) => void;
   setSelectedFlow: (chainId: string, flowId: string | null) => void;
@@ -203,7 +203,7 @@ const initialState = {
   activeChainId: null,
   stage: 'upload' as ExecutorStage,
   error: null,
-  nodeFactory: new NodeFactory()
+  nodeFactory: globalNodeFactory
 };
 
 export const useExecutorStateStore = create<ExecutorState>()(
@@ -276,7 +276,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
         };
       }),
 
-      addFlowToChain: (chainId, flowJson) => {
+      addFlowToFlowChain: (chainId, flowJson) => {
         const flowId = (flowJson as any).id || `flow-${uuidv4()}`;
         
         // 그래프 구조 분석
@@ -327,7 +327,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
         return flowId;
       },
 
-      removeFlowFromChain: (chainId, flowId) => set((state) => {
+      removeFlowFromFlowChain: (chainId, flowId) => set((state) => {
         // Chain이 없으면 상태 변경 없음
         if (!state.flowChainMap[chainId]) return state;
         

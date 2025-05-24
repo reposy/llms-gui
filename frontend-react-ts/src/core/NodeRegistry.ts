@@ -9,6 +9,7 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { WebCrawlerNode } from './WebCrawlerNode';
 import { MergerNode } from './MergerNode';
 import { HTMLParserNode } from './HTMLParserNode';
+import { NodeFactory } from './NodeFactory';
 
 // Factory function that creates node objects based on type
 type NodeFactoryFn = (id: string, property: Record<string, any>, context?: FlowExecutionContext) => any;
@@ -31,11 +32,11 @@ export function getNodeFactory(type: string): NodeFactoryFn | undefined {
 }
 
 /**
- * Register all default node types
+ * NodeFactory 인스턴스에 모든 노드 타입을 등록
  */
-export function registerAllNodeTypes() {
+export function registerAllNodeTypes(factory: NodeFactory) {
   // Register factory functions for node types
-  registerNodeType('input', (id, property, context) => {
+  factory.register('input', (id, property, context) => {
     // Ensure required input node properties exist with defaults
     const inputProperty = {
       items: Array.isArray(property.items) ? property.items : [],
@@ -48,7 +49,7 @@ export function registerAllNodeTypes() {
     return new InputNode(id, inputProperty);
   });
 
-  registerNodeType('llm', (id, property, context) => {
+  factory.register('llm', (id, property, context) => {
     // Ensure required LLM node properties exist with defaults
     const llmProperty = {
       // Set required defaults
@@ -68,7 +69,7 @@ export function registerAllNodeTypes() {
     return new LlmNode(id, llmProperty);
   });
   
-  registerNodeType('api', (id, property, context) => {
+  factory.register('api', (id, property, context) => {
     // Ensure required API node properties exist with defaults
     const apiProperty = {
       method: property.method || 'GET',
@@ -82,7 +83,7 @@ export function registerAllNodeTypes() {
     return new ApiNode(id, apiProperty);
   });
   
-  registerNodeType('output', (id, property, context) => {
+  factory.register('output', (id, property, context) => {
     // Ensure required output node properties exist with defaults
     const outputProperty = {
       format: property.format || 'text',
@@ -96,7 +97,7 @@ export function registerAllNodeTypes() {
   });
 
   // Register merger node type
-  registerNodeType('merger', (id, property, context) => {
+  factory.register('merger', (id, property, context) => {
     // Ensure required merger node properties exist with defaults
     const mergerProperty = {
       strategy: property.strategy || 'array',
@@ -110,7 +111,7 @@ export function registerAllNodeTypes() {
   });
 
   // Register HTML Parser node type
-  registerNodeType('html-parser', (id, property, context) => {
+  factory.register('html-parser', (id, property, context) => {
     // Ensure required HTML Parser properties exist with defaults
     const htmlParserProperty = {
       extractionRules: property.extractionRules || [],
@@ -124,28 +125,28 @@ export function registerAllNodeTypes() {
 
   // ConditionalNode, GroupNode, JsonExtractorNode, WebCrawlerNode
   // don't need special property handling so we pass property directly
-  registerNodeType('conditional', (id, property, context) => {
+  factory.register('conditional', (id, property, context) => {
     if (context) {
       return new ConditionalNode(id, property, context);
     }
     return new ConditionalNode(id, property);
   });
 
-  registerNodeType('group', (id, property, context) => {
+  factory.register('group', (id, property, context) => {
     if (context) {
       return new GroupNode(id, property, context);
     }
     return new GroupNode(id, property);
   });
 
-  registerNodeType('json-extractor', (id, property, context) => {
+  factory.register('json-extractor', (id, property, context) => {
     if (context) {
       return new JsonExtractorNode(id, property, context);
     }
     return new JsonExtractorNode(id, property);
   });
 
-  registerNodeType('web-crawler', (id, property, context) => {
+  factory.register('web-crawler', (id, property, context) => {
     if (context) {
       return new WebCrawlerNode(id, property, context);
     }

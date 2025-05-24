@@ -18,7 +18,7 @@ export abstract class Node {
   /**
    * Node properties (configuration) - to be overridden by subclasses
    */
-  public property: Record<string, any> = {};
+  public property: Record<string, any>;
 
   /**
    * Execution context for the node
@@ -32,9 +32,9 @@ export abstract class Node {
    * @param property Node properties
    */
   constructor(
-    id: string, 
-    type: string, 
-    property: Record<string, any> = {}
+    id: string,
+    type: string,
+    property: Record<string, any>
   ) {
     this.id = id;
     this.type = type;

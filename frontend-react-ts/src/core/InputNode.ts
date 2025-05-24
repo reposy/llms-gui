@@ -1,8 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { InputNodeContent } from '../types/nodes';
-import { createDefaultNodeContent } from '../store/useNodeContentStore.ts';
-import { useNodeContentStore } from '../store/useNodeContentStore';
 
 /**
  * Input node properties
@@ -28,7 +26,7 @@ export class InputNode extends Node {
    */
   constructor(
     id: string, 
-    property: InputNodeContent = createDefaultNodeContent('input', id) as InputNodeContent,
+    property: InputNodeContent = { items: [], iterateEachRow: false } as InputNodeContent,
     context?: FlowExecutionContext
   ) {
     super(id, 'input', property);
@@ -96,10 +94,6 @@ export class InputNode extends Node {
       }
 
       if (updatePerformed) {
-        useNodeContentStore.getState().setNodeContent(this.id, {
-          items: newItems,
-          commonItems: newCommonItems,
-        });
         this._log(`Updated node content with items: ${newItems.length}, commonItems: ${newCommonItems.length}`);
       }
     } else if (input !== undefined) {
@@ -231,8 +225,7 @@ export class InputNode extends Node {
     const currentContext = this.context;
     if (!currentContext || !currentContext.getNodeContentFunc) {
       console.error(`[InputNode:${this.id}] Critical: Execution context or getNodeContentFunc is missing. Cannot proceed robustly.`);
-      const fallbackContent = useNodeContentStore.getState().getNodeContent(this.id, 'input') as InputNodeContent;
-      return fallbackContent?.items || []; 
+      return (this.property as InputNodeContent)?.items || [];
     }
 
     const nodeContent = currentContext.getNodeContentFunc(this.id, 'input') as InputNodeContent;
@@ -258,20 +251,6 @@ export class InputNode extends Node {
       output = this._executeBatchMode(currentItems, currentCommonItems, currentContext);
     }
     
-    // Store the final state of items (especially important for Batch mode if inputs were processed)
-    // For ForEach, items might have been used but not directly outputted by `execute`
-    // This ensures UI consistency with the data state after execution.
-    if (updatePerformed || executionMode === 'batch') {
-        // If newItems or newCommonItems were updated by _processChainedInput,
-        // they are already stored. Otherwise, store the latest nodeContent derived items.
-        if (!updatePerformed) { // Only store if _processChainedInput didn't already.
-            useNodeContentStore.getState().setNodeContent(this.id, {
-                items: currentItems,
-                commonItems: currentCommonItems,
-            });
-            this._log(`Final items state stored. Items: ${currentItems.length}, CommonItems: ${currentCommonItems.length}`);
-        }
-    }
     return output;
   }
 

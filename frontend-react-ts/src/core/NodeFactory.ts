@@ -1,5 +1,4 @@
 import { Node } from './Node';
-import { getNodeFactory, getAllNodeTypes } from './NodeRegistry';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts';
 
@@ -10,6 +9,7 @@ import { getNodeContent, createDefaultNodeContent } from '../store/useNodeConten
 export class NodeFactory {
   private nodes: Map<string, Node>;
   private readonly typeDefaults: Record<string, any> = {};
+  private nodeTypes: Record<string, (id: string, property: Record<string, any>, context?: FlowExecutionContext) => Node> = {};
 
   constructor() {
     this.nodes = new Map<string, Node>();
@@ -22,6 +22,16 @@ export class NodeFactory {
    */
   registerTypeDefaults(type: string, defaults: any): void {
     this.typeDefaults[type] = defaults;
+  }
+
+  /**
+   * 노드 타입을 인스턴스에 등록
+   */
+  register(type: string, factoryFn: (id: string, property: Record<string, any>, context?: FlowExecutionContext) => Node): void {
+    this.typeDefaults[type] = this.typeDefaults[type] || {};
+    this.nodeTypes = this.nodeTypes || {};
+    if (!this.nodeTypes) this.nodeTypes = {};
+    this.nodeTypes[type] = factoryFn;
   }
 
   /**
@@ -39,9 +49,9 @@ export class NodeFactory {
     context?: FlowExecutionContext
   ): Node {
     // 1. 노드 팩토리 함수 가져오기
-    const factoryFn = getNodeFactory(type);
+    const factoryFn = this.nodeTypes[type];
     if (!factoryFn) {
-      const registeredTypes = getAllNodeTypes();
+      const registeredTypes = Object.keys(this.nodeTypes);
       console.error(`Node type "${type}" not found. Registered types: ${registeredTypes.join(', ')}`);
       throw new Error(`Unknown node type: ${type}. Check console for registered types.`);
     }
@@ -64,6 +74,12 @@ export class NodeFactory {
     if (!nodeContent.label) {
       nodeContent.label = props.label || `${type.charAt(0).toUpperCase() + type.slice(1)} Node`;
     }
+    
+    // [로그 추가] 생성 시점에 property 전체를 출력
+    console.log(`[NodeFactory] Creating node:`, { id, type, property: nodeContent });
+    
+    console.log(`[NodeFactory] LLMNode property.prompt:`, nodeContent.prompt);
+    
     
     // 5. 노드 인스턴스 생성
     let node: Node;
@@ -101,4 +117,14 @@ export class NodeFactory {
   clear(): void {
     this.nodes.clear();
   }
+
+  /**
+   * 현재 등록된 노드 타입 목록 반환 (디버깅용)
+   */
+  getRegisteredTypes(): string[] {
+    return Object.keys(this.nodeTypes);
+  }
 }
+
+// 싱글턴 인스턴스 export
+export const globalNodeFactory = new NodeFactory();

@@ -176,7 +176,7 @@ const FlowExecutorPage: React.FC = () => {
           {/* Left Panel */}
           <div className="w-1/3 flex flex-col space-y-4 h-full">
             <div className="bg-white shadow rounded-lg p-4 flex-grow overflow-y-auto">
-              <FlowChainListView onChainSelect={handleChainSelect} />
+              <FlowChainListView onFlowChainSelect={handleChainSelect} />
             </div>
           </div>
           {/* Right Panel */}

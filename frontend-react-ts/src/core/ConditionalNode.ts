@@ -1,6 +1,5 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { ConditionalNodeContent } from '../types/nodes.ts';
 import { evaluateCondition } from '../utils/flow/executionUtils.ts';
 
@@ -53,7 +52,12 @@ export class ConditionalNode extends Node {
   async execute(input: any): Promise<any> {
     this._log('Executing'); // Will use inherited _log
 
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as ConditionalNodeContent;
+    let nodeContent: ConditionalNodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as ConditionalNodeContent;
+    } else {
+      nodeContent = this.property as ConditionalNodeContent;
+    }
     
     const { 
       conditionType = 'contains', 

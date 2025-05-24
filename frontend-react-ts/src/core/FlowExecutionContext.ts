@@ -2,7 +2,7 @@ import { ExecutionContext } from '../types/execution';
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { NodeContent } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
-import { NodeFactory } from './NodeFactory';
+import { NodeFactory, globalNodeFactory } from './NodeFactory';
 import { Node } from './Node';
 import { FlowData } from '../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../store/useExecutorStateStore';
@@ -126,7 +126,7 @@ export class FlowExecutionContext implements ExecutionContext {
     this.getNodeContentFunc = getNodeContentFunc;
     this.nodes = nodes;
     this.edges = edges;
-    this.nodeFactory = nodeFactory || new NodeFactory();
+    this.nodeFactory = nodeFactory || globalNodeFactory;
 
     this.isExecutorCtx = isExecutorContext;
     if (this.isExecutorCtx) {
@@ -153,13 +153,16 @@ export class FlowExecutionContext implements ExecutionContext {
       },
       flowData.nodes,
       flowData.edges,
-      new NodeFactory(), // 에디터 전용 팩토리 인스턴스 생성
+      globalNodeFactory, // 항상 싱글턴 사용
       false // isExecutorContext 플래그
     );
   }
 
   /**
    * 실행기용 실행 컨텍스트 생성 팩토리 메서드
+   * @note 이 컨텍스트는 nodeMap, rootIds, leafIds 기반으로만 동작하며,
+   *       Editor store/NodeContent 등은 절대 참조하지 않는다.
+   *       Editor store 접근 시도시 에러를 throw한다.
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
    * @param nodeFactory 기존 NodeFactory 인스턴스 (옵션)
@@ -176,12 +179,13 @@ export class FlowExecutionContext implements ExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
+        // nodeMap 기반 데이터만 허용 (property만 반환)
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.data || {}; // TODO: flowData.contents[nodeId] 와 같은 형태로 변경될 수 있음
+        return node?.property || {};
       },
       flowData.nodes,
       flowData.edges,
-      nodeFactory || new NodeFactory(), // 실행기 전용 팩토리 인스턴스 생성 또는 기존 인스턴스 재사용
+      nodeFactory || globalNodeFactory, // 항상 싱글턴 사용
       true, // isExecutorContext 플래그
       chainId,
       flowId
@@ -382,25 +386,24 @@ export class FlowExecutionContext implements ExecutionContext {
         const existingContent = getNodeContent(nodeId);
         const currentNode = this.nodes.find(n => n.id === nodeId); // 현재 노드 정보 가져오기
 
+        // 실행 결과만 저장, 입력 필드(prompt 등)는 건드리지 않음
         const contentUpdates: Record<string, any> = {
-          ...existingContent,
           outputTimestamp: Date.now()
         };
         
         if (typeof output !== 'undefined') {
           contentUpdates.responseContent = output;
-          
+          // OutputNode의 경우에만 content 필드 저장
           if (existingContent && 'format' in existingContent) { // OutputNode
             contentUpdates.content = output;
           }
-          
-          // 현재 노드가 GroupNode가 아니고, items 속성이 있으며, output이 배열인 경우에만 items 업데이트
+          // GroupNode가 아니고, items 속성이 있으며, output이 배열인 경우에만 items 업데이트
           if (currentNode?.type !== 'group' && existingContent && 'items' in existingContent && Array.isArray(output)) {
             contentUpdates.items = output;
           }
         }
-        
-        setNodeContent(nodeId, contentUpdates);
+        // 기존 입력 필드(prompt 등)는 유지
+        setNodeContent(nodeId, { ...existingContent, ...contentUpdates } as Partial<NodeContent>);
         if (process.env.NODE_ENV === 'development') {
           this.log(`Updated node content store for node ${nodeId}`);
         }

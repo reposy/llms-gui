@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { registerAllNodeTypes } from './core/NodeRegistry';
-import { NodeFactory } from './core/NodeFactory';
+import { globalNodeFactory } from './core/NodeFactory';
 import { useFlowStructureStore } from './store/useFlowStructureStore';
 import FlowEditorPage from './pages/FlowEditorPage';
 import FlowExecutorPage from './pages/FlowExecutorPage';
+import { registerAllNodeTypes } from './core/NodeRegistry';
 // import ExecutorPageRefactored from './pages/ExecutorPageRefactored';
 // import FlowChainPage from './components/executor/FlowChainPage';
 
@@ -13,6 +13,8 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    registerAllNodeTypes(globalNodeFactory);
+    console.log('[App] Registered node types:', globalNodeFactory.getRegisteredTypes());
     console.log('[App] Checking hydration status...');
     if (useFlowStructureStore.persist.hasHydrated()) {
       console.log('[App] Zustand already hydrated.');
@@ -29,13 +31,6 @@ export default function App() {
         unsub();
       };
     }
-  }, []);
-
-  // Initialize node types on application startup
-  useEffect(() => {
-    console.log('[App] Initializing node types at application startup');
-    const nodeFactory = new NodeFactory();
-    registerAllNodeTypes();
   }, []);
 
   // Show loading screen while not hydrated

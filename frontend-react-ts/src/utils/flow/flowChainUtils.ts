@@ -41,7 +41,7 @@ export const synchronizeFlowData = (
   // 3. Flow Chain ID가 제공된 경우 ExecutorStateStore 동기화
   if (flowChainId) {
     const executorStore = useExecutorStateStore.getState();
-    const flowChain = executorStore.getChain(flowChainId);
+    const flowChain = executorStore.getFlowChain(flowChainId);
     
     if (flowChain) {
       // 체인 내에 해당 Flow가 존재하는지 확인
@@ -49,7 +49,7 @@ export const synchronizeFlowData = (
       
       if (!flowExists) {
         console.log(`[flowChainUtils] Adding flow to flow chain in ExecutorStateStore: ${flowId} to flow chain ${flowChainId}`);
-        executorStore.addFlowToChain(flowChainId, flowDataClone);
+        executorStore.addFlowToFlowChain(flowChainId, flowDataClone);
       }
     }
   }

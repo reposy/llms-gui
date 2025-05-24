@@ -1,7 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { callApi } from '../services/apiService.ts';
-import { useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { HTTPMethod, APINodeContent } from '../types/nodes.ts';
 
 /**
@@ -42,21 +41,25 @@ export class ApiNode extends Node {
   async execute(input: any): Promise<any> {
     this._log('Executing');
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as APINodeContent;
+    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
+    let nodeContent: APINodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as APINodeContent;
+    } else {
+      nodeContent = this.property as APINodeContent;
+    }
     
     const { 
       url,
       method = 'GET', // Default method
-      headers = {},
-      bodyFormat = 'raw', // Default body format
-      body: rawBody, // Renamed from body to avoid conflict with constructed body
-      bodyParams,
+      requestHeaders = {},
+      requestBodyType = 'raw', // Default body format
+      requestBody,
       queryParams = {},
       useInputAsBody = false,
       contentType = 'application/json' // Default content type
     } = nodeContent;
-
+    
     // Determine the actual URL to use
     let targetUrl = url;
     if (!targetUrl && typeof input === 'string' && input.startsWith('http')) {
@@ -69,42 +72,38 @@ export class ApiNode extends Node {
     }
     
     // Determine the request body
-    let requestBody: any = null;
+    let requestBodyToSend: any = null;
     if (useInputAsBody) {
-      requestBody = input;
+      requestBodyToSend = input;
       this._log('Using input as request body.');
     } else if (method !== 'GET' && method !== 'DELETE') { // Only consider body for relevant methods
-      if (bodyFormat === 'key-value' && Array.isArray(bodyParams)) {
-        requestBody = bodyParams
-          .filter(param => param.enabled && param.key)
-          .reduce((obj, param) => {
+      if ((requestBodyType as string) === 'key-value' && Array.isArray((nodeContent as any).bodyParams)) {
+        requestBodyToSend = ((nodeContent as any).bodyParams as Array<{ key: string; value: string; enabled: boolean }>)
+          .filter((param: { key: string; value: string; enabled: boolean }) => param.enabled && param.key)
+          .reduce((obj: Record<string, string>, param: { key: string; value: string; enabled: boolean }) => {
             obj[param.key] = param.value;
             return obj;
-          }, {} as Record<string, string>);
+          }, {});
         this._log('Using key-value body format.');
       } else { // Default to raw body
-        requestBody = rawBody;
+        requestBodyToSend = requestBody;
         this._log('Using raw body format.');
       }
     }
-
     // Prepare headers, ensuring Content-Type is set if there's a body
-    const finalHeaders = { ...headers };
-    if (requestBody && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
+    const finalHeaders = { ...requestHeaders };
+    if (requestBodyToSend && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
       finalHeaders['Content-Type'] = contentType;
       this._log(`Setting Content-Type header to ${contentType}`);
     }
-
     this._log(`Calling API: ${method} ${targetUrl}`);
-
     const result = await callApi({
       url: targetUrl,
       method: method as HTTPMethod,
       headers: finalHeaders,
-      body: requestBody,
+      body: requestBodyToSend,
       queryParams
     });
-    
     this._log(`API call successful, result type: ${typeof result}`);
     return result;
   }

@@ -35,8 +35,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   } = useFlowExecutorStore();
   
   // 활성 체인의 Flow 개수 계산 (안전하게 접근)
-  const focusedChain = focusedFlowChainId ? store.getChain(focusedFlowChainId) : undefined;
-  const hasFlows = focusedChain && focusedChain.flowIds.length > 0;
+  const focusedFlowChain = focusedFlowChainId ? store.getFlowChain(focusedFlowChainId) : undefined;
+  const hasFlows = focusedFlowChain && focusedFlowChain.flowIds.length > 0;
   const flowChainIds = Object.keys(flowChainMap);
 
   // Flow Chain 파일 선택 처리
@@ -84,11 +84,11 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         }
         
         // 각 Flow 추가
-        const addFlowToChain = store.addFlowToChain;
+        const addFlowToFlowChain = store.addFlowToFlowChain;
         const setFlowInputData = store.setFlowInputData;
         const setStage = store.setStage;
-        const focusedChain = focusedFlowChainId ? store.getChain(focusedFlowChainId) : undefined;
-        const flowChainId = focusedChain?.id || '';
+        const focusedFlowChain = focusedFlowChainId ? store.getFlowChain(focusedFlowChainId) : undefined;
+        const flowChainId = focusedFlowChain?.id || '';
         
         importData.flowChain.forEach((flow: any) => {
           try {
@@ -103,10 +103,10 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             
             // Flow 추가 (원본 ID 보존)
             if (flowChainId) {
-              addFlowToChain(flowChainId, flow.flowJson);
+              addFlowToFlowChain(flowChainId, flow.flowJson);
               
               // 새로 추가된 Flow ID 얻기
-              const updatedChain = store.getChain(flowChainId);
+              const updatedChain = store.getFlowChain(flowChainId);
               if (updatedChain) {
                 const flowId = updatedChain.flowIds[updatedChain.flowIds.length - 1];
                 
@@ -142,7 +142,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
 
   const handleAddFlow = (flow: any) => {
     if (focusedFlowChainId) {
-      store.addFlowToChain(focusedFlowChainId, flow.flowJson);
+      store.addFlowToFlowChain(focusedFlowChainId, flow.flowJson);
     }
   };
 
