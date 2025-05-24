@@ -77,7 +77,7 @@ export class ApiNode extends Node {
       requestBodyToSend = input;
       this._log('Using input as request body.');
     } else if (method !== 'GET' && method !== 'DELETE') { // Only consider body for relevant methods
-      if (requestBodyType === 'key-value' && Array.isArray((nodeContent as any).bodyParams)) {
+      if ((requestBodyType as string) === 'key-value' && Array.isArray((nodeContent as any).bodyParams)) {
         requestBodyToSend = ((nodeContent as any).bodyParams as Array<{ key: string; value: string; enabled: boolean }>)
           .filter((param: { key: string; value: string; enabled: boolean }) => param.enabled && param.key)
           .reduce((obj: Record<string, string>, param: { key: string; value: string; enabled: boolean }) => {
