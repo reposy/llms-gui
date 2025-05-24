@@ -43,6 +43,7 @@ llms-gui는 **React+TypeScript 기반 프론트엔드**와 **FastAPI 기반 백�
 2. 모든 상태/입력/결과는 **useFlowExecutorStore**에서 관리
 3. 실행/결과/상태/lastResults 등은 selector로 구독, UI에 실시간 반영
 4. import/export, 전체 초기화, 결과 표시 등은 store action 및 utils로 일관 처리
+- Flow 실행 시 입력 매핑(InputRow[] → value[])은 오직 실행 서비스에서만 처리, 모든 실행 경로에서 일관성 보장
 
 ## 4. 주요 기술 스택 (Key Technology Stack)
 
