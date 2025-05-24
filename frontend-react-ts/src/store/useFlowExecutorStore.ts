@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { type FlowData } from '../utils/data/importExportUtils';
-import { NodeFactory } from '../core/NodeFactory';
+import { NodeFactory, globalNodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
 import { buildGraphStructure } from '../utils/flow/flowExecutorUtils';
 import { deepClone } from '../utils/helpers';
@@ -124,7 +124,7 @@ const initialState = {
   focusedFlowChainId: null,
   stage: 'upload' as ExecutorStage,
   error: null,
-  nodeFactory: new NodeFactory()
+  nodeFactory: globalNodeFactory
 };
 
 // Flow Executor 스토어 생성
