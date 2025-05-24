@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { registerAllNodeTypes } from './core/NodeRegistry';
 import { globalNodeFactory } from './core/NodeFactory';
 import { useFlowStructureStore } from './store/useFlowStructureStore';
 import FlowEditorPage from './pages/FlowEditorPage';
@@ -29,13 +28,6 @@ export default function App() {
         unsub();
       };
     }
-  }, []);
-
-  // Initialize node types on application startup
-  useEffect(() => {
-    console.log('[App] Initializing node types at application startup');
-    registerAllNodeTypes(globalNodeFactory);
-    // TODO: nodeFactory를 context/provider로 하위에 전달하거나, 필요한 곳에서 import해서 사용하도록 구조화
   }, []);
 
   // Show loading screen while not hydrated
