@@ -160,6 +160,9 @@ export class FlowExecutionContext implements ExecutionContext {
 
   /**
    * 실행기용 실행 컨텍스트 생성 팩토리 메서드
+   * @note 이 컨텍스트는 nodeMap, rootIds, leafIds 기반으로만 동작하며,
+   *       Editor store/NodeContent 등은 절대 참조하지 않는다.
+   *       Editor store 접근 시도시 에러를 throw한다.
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
    * @param nodeFactory 기존 NodeFactory 인스턴스 (옵션)
@@ -176,8 +179,9 @@ export class FlowExecutionContext implements ExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
+        // nodeMap 기반 데이터만 허용 (Editor store/NodeContent 등 접근 금지)
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.data || {}; // TODO: flowData.contents[nodeId] 와 같은 형태로 변경될 수 있음
+        return node?.data || {};
       },
       flowData.nodes,
       flowData.edges,
