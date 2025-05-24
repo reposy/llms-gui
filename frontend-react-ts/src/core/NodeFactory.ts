@@ -1,5 +1,4 @@
 import { Node } from './Node';
-import { getNodeFactory, getAllNodeTypes } from './NodeRegistry';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts';
 
@@ -111,6 +110,13 @@ export class NodeFactory {
    */
   clear(): void {
     this.nodes.clear();
+  }
+
+  /**
+   * 현재 등록된 노드 타입 목록 반환 (디버깅용)
+   */
+  getRegisteredTypes(): string[] {
+    return Object.keys(this.nodeTypes);
   }
 }
 

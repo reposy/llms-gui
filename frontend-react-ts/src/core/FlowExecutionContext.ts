@@ -2,7 +2,7 @@ import { ExecutionContext } from '../types/execution';
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
 import { NodeContent } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
-import { NodeFactory } from './NodeFactory';
+import { NodeFactory, globalNodeFactory } from './NodeFactory';
 import { Node } from './Node';
 import { FlowData } from '../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../store/useExecutorStateStore';
@@ -126,7 +126,7 @@ export class FlowExecutionContext implements ExecutionContext {
     this.getNodeContentFunc = getNodeContentFunc;
     this.nodes = nodes;
     this.edges = edges;
-    this.nodeFactory = nodeFactory || new NodeFactory();
+    this.nodeFactory = nodeFactory || globalNodeFactory;
 
     this.isExecutorCtx = isExecutorContext;
     if (this.isExecutorCtx) {
@@ -153,7 +153,7 @@ export class FlowExecutionContext implements ExecutionContext {
       },
       flowData.nodes,
       flowData.edges,
-      new NodeFactory(), // 에디터 전용 팩토리 인스턴스 생성
+      globalNodeFactory, // 항상 싱글턴 사용
       false // isExecutorContext 플래그
     );
   }
@@ -185,7 +185,7 @@ export class FlowExecutionContext implements ExecutionContext {
       },
       flowData.nodes,
       flowData.edges,
-      nodeFactory || new NodeFactory(), // 실행기 전용 팩토리 인스턴스 생성 또는 기존 인스턴스 재사용
+      nodeFactory || globalNodeFactory, // 항상 싱글턴 사용
       true, // isExecutorContext 플래그
       chainId,
       flowId

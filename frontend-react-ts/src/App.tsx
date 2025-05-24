@@ -14,6 +14,7 @@ export default function App() {
 
   useEffect(() => {
     registerAllNodeTypes(globalNodeFactory);
+    console.log('[App] Registered node types:', globalNodeFactory.getRegisteredTypes());
     console.log('[App] Checking hydration status...');
     if (useFlowStructureStore.persist.hasHydrated()) {
       console.log('[App] Zustand already hydrated.');
