@@ -75,6 +75,12 @@ export class NodeFactory {
       nodeContent.label = props.label || `${type.charAt(0).toUpperCase() + type.slice(1)} Node`;
     }
     
+    // [로그 추가] 생성 시점에 property 전체를 출력
+    console.log(`[NodeFactory] Creating node:`, { id, type, property: nodeContent });
+    
+    console.log(`[NodeFactory] LLMNode property.prompt:`, nodeContent.prompt);
+    
+    
     // 5. 노드 인스턴스 생성
     let node: Node;
     

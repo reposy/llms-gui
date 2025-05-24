@@ -309,31 +309,14 @@ export const useNodeContentStore = create<NodeContentStore>()(
       // Load content from imported flow
       loadFromImportedContents: (contents) => {
         console.log('[NodeContentStore] Loading imported contents:', contents);
-        
-        set(state => {
-          // Sanitize all content during import
-          Object.entries(contents).forEach(([nodeId, content]) => {
-            // Skip entries with no valid content
-            if (!content || typeof content !== 'object') {
-              console.warn(`[NodeContentStore] Skipping invalid content for ${nodeId}:`, content);
-              return;
-            }
-            
-            // Validate node type consistency if possible
-            const existingType = resolveNodeType(nodeId);
-            const contentType = resolveNodeType(nodeId, content);
-            
-            if (existingType && contentType && existingType !== contentType) {
-              console.warn(`[NodeContentStore] Type mismatch for ${nodeId}:`, {
-                existingType,
-                importedType: contentType
-              });
-            }
-            
-            // Store the sanitized content
-            state.nodeContents[nodeId] = sanitizeNodeContent(content);
-          });
-        });
+        set(state => ({
+          contents: {
+            ...state.nodeContents,
+            ...Object.fromEntries(
+              Object.entries(contents).map(([nodeId, content]) => [nodeId, sanitizeNodeContent(content)])
+            )
+          }
+        }));
       },
       
       // Clean up content for deleted nodes

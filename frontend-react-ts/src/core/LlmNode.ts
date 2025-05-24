@@ -28,10 +28,14 @@ export class LlmNode extends Node {
     let nodeContent: LLMNodeContent | undefined = undefined;
     if (this.context && typeof this.context.getNodeContentFunc === 'function') {
       nodeContent = this.context.getNodeContentFunc(this.id, this.type) as LLMNodeContent;
+      console.log('[LLMNode] resolvePrompt - context.getNodeContentFunc:', nodeContent);
+      console.log('[LLMNode] resolvePrompt - this.property.prompt:', this.property.prompt);
       prompt = nodeContent?.prompt ?? this.property.prompt ?? '';
     } else {
       prompt = this.property.prompt ?? '';
+      console.log('[LLMNode] resolvePrompt - no context, this.property.prompt:', this.property.prompt);
     }
+    console.log('[LLMNode] resolvePrompt - final prompt:', prompt);
     
     // 파일 또는 파일 메타데이터인 경우 파일명을 사용
     if (input instanceof File) {

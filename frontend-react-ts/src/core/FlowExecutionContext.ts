@@ -179,9 +179,9 @@ export class FlowExecutionContext implements ExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
-        // nodeMap 기반 데이터만 허용 (Editor store/NodeContent 등 접근 금지)
+        // nodeMap 기반 데이터만 허용 (property만 반환)
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.data || {};
+        return node?.property || {};
       },
       flowData.nodes,
       flowData.edges,
