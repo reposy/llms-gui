@@ -1,6 +1,5 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { useNodeContentStore } from '../store/useNodeContentStore';
 import { HTMLParserNodeContent } from '../types/nodes';
 
 /**
@@ -127,7 +126,12 @@ export class HTMLParserNode extends Node {
     }
 
     // 최신 노드 설정 가져오기
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as HTMLParserNodeContent;
+    let nodeContent: HTMLParserNodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as HTMLParserNodeContent;
+    } else {
+      nodeContent = this.property as HTMLParserNodeContent;
+    }
     const extractionRules = nodeContent.extractionRules || [];
 
     // If no rules, maybe return the HTML itself or null?

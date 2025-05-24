@@ -1,7 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { extractValue } from '../utils/flow/executionUtils.ts';
-import { useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { JSONExtractorNodeContent } from '../types/nodes.ts';
 
 /**
@@ -51,8 +50,13 @@ export class JsonExtractorNode extends Node {
       return null;
     }
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as JSONExtractorNodeContent;
+    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
+    let nodeContent: JSONExtractorNodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as JSONExtractorNodeContent;
+    } else {
+      nodeContent = this.property as JSONExtractorNodeContent;
+    }
     
     const path = nodeContent.path;
     const defaultValue = nodeContent.defaultValue;

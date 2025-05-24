@@ -1,7 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { callApi } from '../services/apiService.ts';
-import { useNodeContentStore } from '../store/useNodeContentStore.ts';
 import { HTTPMethod, APINodeContent } from '../types/nodes.ts';
 
 /**
@@ -42,8 +41,13 @@ export class ApiNode extends Node {
   async execute(input: any): Promise<any> {
     this._log('Executing');
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as APINodeContent;
+    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
+    let nodeContent: APINodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as APINodeContent;
+    } else {
+      nodeContent = this.property as APINodeContent;
+    }
     
     const { 
       url,

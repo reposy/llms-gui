@@ -1,6 +1,5 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { useNodeContentStore } from '../store/useNodeContentStore';
 import { OutputNodeContent } from '../types/nodes';
 
 /**
@@ -73,8 +72,13 @@ export class OutputNode extends Node {
   async execute(input: any): Promise<any> {
     this._log('Executing');
 
-    // Get the latest content directly from the store within execute
-    const nodeContent = useNodeContentStore.getState().getNodeContent(this.id, this.type) as OutputNodeContent;
+    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
+    let nodeContent: OutputNodeContent | undefined = undefined;
+    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
+      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as OutputNodeContent;
+    } else {
+      nodeContent = this.property as OutputNodeContent;
+    }
     const format = nodeContent.format || 'text'; // Default to text if not set
 
     let outputData = input;
@@ -95,10 +99,6 @@ export class OutputNode extends Node {
       this._log(`Using string representation (format: ${format})`);
     }
 
-    // Store the formatted output in the node's content in the store
-    useNodeContentStore.getState().setNodeContent(this.id, { content: outputData });
-    this._log('Stored output in node content');
-    
     // OutputNode는 형식화된 결과를 반환합니다.
     return outputData;
   }
