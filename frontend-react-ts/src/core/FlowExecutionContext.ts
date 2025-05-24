@@ -386,25 +386,24 @@ export class FlowExecutionContext implements ExecutionContext {
         const existingContent = getNodeContent(nodeId);
         const currentNode = this.nodes.find(n => n.id === nodeId); // 현재 노드 정보 가져오기
 
+        // 실행 결과만 저장, 입력 필드(prompt 등)는 건드리지 않음
         const contentUpdates: Record<string, any> = {
-          ...existingContent,
           outputTimestamp: Date.now()
         };
         
         if (typeof output !== 'undefined') {
           contentUpdates.responseContent = output;
-          
+          // OutputNode의 경우에만 content 필드 저장
           if (existingContent && 'format' in existingContent) { // OutputNode
             contentUpdates.content = output;
           }
-          
-          // 현재 노드가 GroupNode가 아니고, items 속성이 있으며, output이 배열인 경우에만 items 업데이트
+          // GroupNode가 아니고, items 속성이 있으며, output이 배열인 경우에만 items 업데이트
           if (currentNode?.type !== 'group' && existingContent && 'items' in existingContent && Array.isArray(output)) {
             contentUpdates.items = output;
           }
         }
-        
-        setNodeContent(nodeId, contentUpdates);
+        // 기존 입력 필드(prompt 등)는 유지
+        setNodeContent(nodeId, { ...existingContent, ...contentUpdates } as Partial<NodeContent>);
         if (process.env.NODE_ENV === 'development') {
           this.log(`Updated node content store for node ${nodeId}`);
         }

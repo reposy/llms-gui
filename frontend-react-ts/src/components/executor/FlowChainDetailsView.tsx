@@ -28,7 +28,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
 
   const handleRemoveFlow = (flowId: string) => {
     if (window.confirm('이 Flow를 체인에서 삭제하시겠습니까?')) {
-      useFlowExecutorStore.getState().removeFlowFromChain(flowChainId, flowId);
+      useFlowExecutorStore.getState().removeFlowFromFlowChain(flowChainId, flowId);
     }
   };
 

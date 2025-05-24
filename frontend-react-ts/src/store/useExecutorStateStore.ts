@@ -85,7 +85,7 @@ interface ExecutorState {
   removeFlowChain: (id: string) => void;
   setFlowChainName: (id: string, name: string) => void;
   addFlowToFlowChain: (chainId: string, flowJson: FlowData) => string; // 생성된 flow-id 반환
-  removeFlowFromChain: (chainId: string, flowId: string) => void;
+  removeFlowFromFlowChain: (chainId: string, flowId: string) => void;
   setFlowChainStatus: (chainId: string, status: ExecutionStatus, error?: string) => void;
   setFlowStatus: (chainId: string, flowId: string, status: ExecutionStatus, error?: string) => void;
   setSelectedFlow: (chainId: string, flowId: string | null) => void;
@@ -327,7 +327,7 @@ export const useExecutorStateStore = create<ExecutorState>()(
         return flowId;
       },
 
-      removeFlowFromChain: (chainId, flowId) => set((state) => {
+      removeFlowFromFlowChain: (chainId, flowId) => set((state) => {
         // Chain이 없으면 상태 변경 없음
         if (!state.flowChainMap[chainId]) return state;
         
