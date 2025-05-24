@@ -52,15 +52,14 @@ export class ApiNode extends Node {
     const { 
       url,
       method = 'GET', // Default method
-      headers = {},
-      bodyFormat = 'raw', // Default body format
-      body: rawBody, // Renamed from body to avoid conflict with constructed body
-      bodyParams,
+      requestHeaders = {},
+      requestBodyType = 'raw', // Default body format
+      requestBody,
       queryParams = {},
       useInputAsBody = false,
       contentType = 'application/json' // Default content type
     } = nodeContent;
-
+    
     // Determine the actual URL to use
     let targetUrl = url;
     if (!targetUrl && typeof input === 'string' && input.startsWith('http')) {
@@ -73,42 +72,38 @@ export class ApiNode extends Node {
     }
     
     // Determine the request body
-    let requestBody: any = null;
+    let requestBodyToSend: any = null;
     if (useInputAsBody) {
-      requestBody = input;
+      requestBodyToSend = input;
       this._log('Using input as request body.');
     } else if (method !== 'GET' && method !== 'DELETE') { // Only consider body for relevant methods
-      if (bodyFormat === 'key-value' && Array.isArray(bodyParams)) {
-        requestBody = bodyParams
-          .filter(param => param.enabled && param.key)
-          .reduce((obj, param) => {
+      if (requestBodyType === 'key-value' && Array.isArray((nodeContent as any).bodyParams)) {
+        requestBodyToSend = ((nodeContent as any).bodyParams as Array<{ key: string; value: string; enabled: boolean }>)
+          .filter((param: { key: string; value: string; enabled: boolean }) => param.enabled && param.key)
+          .reduce((obj: Record<string, string>, param: { key: string; value: string; enabled: boolean }) => {
             obj[param.key] = param.value;
             return obj;
-          }, {} as Record<string, string>);
+          }, {});
         this._log('Using key-value body format.');
       } else { // Default to raw body
-        requestBody = rawBody;
+        requestBodyToSend = requestBody;
         this._log('Using raw body format.');
       }
     }
-
     // Prepare headers, ensuring Content-Type is set if there's a body
-    const finalHeaders = { ...headers };
-    if (requestBody && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
+    const finalHeaders = { ...requestHeaders };
+    if (requestBodyToSend && !finalHeaders['Content-Type'] && !finalHeaders['content-type']) {
       finalHeaders['Content-Type'] = contentType;
       this._log(`Setting Content-Type header to ${contentType}`);
     }
-
     this._log(`Calling API: ${method} ${targetUrl}`);
-
     const result = await callApi({
       url: targetUrl,
       method: method as HTTPMethod,
       headers: finalHeaders,
-      body: requestBody,
+      body: requestBodyToSend,
       queryParams
     });
-    
     this._log(`API call successful, result type: ${typeof result}`);
     return result;
   }
