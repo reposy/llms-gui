@@ -1,18 +1,14 @@
 // src/components/nodes/OutputNode.tsx
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { OutputNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { downloadFile } from '../../utils/data/downloadUtils';
 import { useNodeContent } from '../../store/useNodeContentStore';
-import { isEqual } from 'lodash';
-import { NodeProps } from 'reactflow';
+import { NodeProps } from '@xyflow/react';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
-import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
-import { NodeHeader } from './shared/NodeHeader';
-import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
+
 import { OutputNodeContent } from '../../types/nodes';
 
 interface Props extends NodeProps {}

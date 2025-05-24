@@ -113,3 +113,6 @@ export class NodeFactory {
     this.nodes.clear();
   }
 }
+
+// 싱글턴 인스턴스 export
+export const globalNodeFactory = new NodeFactory();

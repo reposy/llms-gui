@@ -42,9 +42,6 @@ export class OutputNode extends Node {
    */
   declare property: OutputNodeProperty;
   
-  // Debounced version of setNodeContent to prevent rapid updates
-  private debouncedSetContent: (nodeId: string, content: OutputNodeContent) => void;
-  
   /**
    * Constructor for OutputNode
    */
@@ -54,14 +51,11 @@ export class OutputNode extends Node {
     context?: FlowExecutionContext
   ) {
     super(id, 'output', property);
-    
     // 생성자에서 context를 명시적으로 설정
     if (context) {
       this.context = context;
     }
-    
-    // Initialize debounced content setter
-    this.debouncedSetContent = debounce(useNodeContentStore.getState().setNodeContent, 100);
+    // debouncedSetContent 등 zustand 관련 코드 완전 제거
   }
   /**
    * Execute the node's specific logic
