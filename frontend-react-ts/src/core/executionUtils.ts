@@ -30,7 +30,7 @@ const prepareExecutionContext = (): FlowExecutionContext => {
 
   // Create and configure NodeFactory
   const nodeFactory = new NodeFactory();
-  registerAllNodeTypes();
+  registerAllNodeTypes(nodeFactory);
 
   // Create the context
   const context = new FlowExecutionContext(
@@ -85,14 +85,14 @@ const _startExecutionProcess = async (
     try {
       // --- Special Data Preparation (Example for LLM) ---
       // TODO: Generalize this if other nodes need special data merging
-      let combinedNodeData = { ...nodeStructure.data };
+      let combinedNodeProperty = { ...(nodeStructure as any).property };
       if (nodeStructure.type === 'llm') {
          const nodeContent = context.getNodeContentFunc(nodeId, 'llm') as LLMNodeContent;
          if (nodeContent) {
-            combinedNodeData = { ...combinedNodeData, ...nodeContent };
-            context.log(`Combined data for LLM node ${nodeId}`);
+            combinedNodeProperty = { ...combinedNodeProperty, ...nodeContent };
+            context.log(`Combined property for LLM node ${nodeId}`);
          } else {
-             context.log(`LLM node content for ${nodeId} not found, using structure data only.`);
+             context.log(`LLM node content for ${nodeId} not found, using structure property only.`);
          }
       }
       // --- End Special Data Preparation ---
@@ -100,7 +100,7 @@ const _startExecutionProcess = async (
       const nodeInstance: Node = context.nodeFactory.create(
         nodeId,
         nodeStructure.type,
-        combinedNodeData, // Use potentially combined data
+        combinedNodeProperty, // Use property only
         context
       );
 
@@ -265,21 +265,21 @@ const _executeWithInput = async (
 
     try {
       // Special Data Preparation (similar to _startExecutionProcess)
-      let combinedNodeData = { ...nodeStructure.data };
+      let combinedNodeProperty = { ...(nodeStructure as any).property };
       if (nodeStructure.type === 'llm') {
          const nodeContent = context.getNodeContentFunc(nodeId, 'llm') as any;
          if (nodeContent) {
-            combinedNodeData = { ...combinedNodeData, ...nodeContent };
-            context.log(`Combined data for LLM node ${nodeId}`);
+            combinedNodeProperty = { ...combinedNodeProperty, ...nodeContent };
+            context.log(`Combined property for LLM node ${nodeId}`);
          } else {
-             context.log(`LLM node content for ${nodeId} not found, using structure data only.`);
+             context.log(`LLM node content for ${nodeId} not found, using structure property only.`);
          }
       }
 
       const nodeInstance = context.nodeFactory.create(
         nodeId,
         nodeStructure.type,
-        combinedNodeData,
+        combinedNodeProperty,
         context
       );
 
