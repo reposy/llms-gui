@@ -6,6 +6,7 @@ import { Node, Edge } from '@xyflow/react';
 import { deepClone } from '../../utils/helpers';
 import { findLeafNodes, findRootNodes } from '../../core/outputCollector';
 import ExportModal from './ExportModal';
+import type { FlowChain } from '../../store/useFlowExecutorStore';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
@@ -50,6 +51,37 @@ interface FlowChainExport {
     flowJson: any;
     inputs: any[];
   }[];
+}
+
+// Flow 실행 시 입력값 변환 함수 추가
+interface InputRow {
+  type: 'text' | 'file' | 'flow-result';
+  value: string | File | null;
+  sourceFlowId?: string;
+}
+export function resolveInputRowsToValues(inputRows: InputRow[], flowChainId: string): (string | File)[] {
+  const store = useFlowExecutorStore.getState();
+  const flowChain = store.flowChainMap[flowChainId];
+  return inputRows.reduce<(string | File)[]>((acc, row) => {
+    if (row.type === 'flow-result' && row.sourceFlowId) {
+      const prevFlow = flowChain.flowMap[row.sourceFlowId];
+      if (!prevFlow) {
+        console.error(`[resolveInputRowsToValues] ERROR: prevFlow is undefined for sourceFlowId:`, row.sourceFlowId);
+        return acc;
+      }
+      if (Array.isArray(prevFlow?.lastResults) && prevFlow.lastResults.length > 0) {
+        const stringified = prevFlow.lastResults.map((item) => {
+          return typeof item === 'string' ? item : typeof item === 'object' ? JSON.stringify(item) : String(item);
+        });
+        return [...acc, ...stringified];
+      }
+      return acc;
+    }
+    if (row.type === 'file') {
+      return [...acc, row.value as File];
+    }
+    return [...acc, row.value ?? ''];
+  }, []);
 }
 
 const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handleImportFlowChain }) => {
@@ -333,72 +365,50 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   const handleExecuteFlow = async (flowId: string) => {
     const flow = flowMap[flowId];
     if (!flow) return;
-
-    // 실행 시작 시 'running' 상태로 설정
+    // flow2 실행 직전, flow.inputs 전체를 JSON.stringify로 출력
+    console.log('[handleExecuteFlow] flowId:', flowId, 'inputs:', JSON.stringify(flow.inputs));
+    if (flowIds.length > 0) {
+      const firstFlowId = flowIds[0];
+      console.log('[handleExecuteFlow] flow1 id:', firstFlowId, 'lastResults:', flowMap[firstFlowId]?.lastResults);
+    }
+    // 전체 store 상태 출력
+    console.log('[handleExecuteFlow] STORE BEFORE setFlowResult:', JSON.stringify(store.flowChainMap, null, 2));
     store.setFlowResult(focusedFlowChainId!, flowId, []);
     store.setFlowStatus(focusedFlowChainId!, flowId, 'running');
-
     const flowElement = document.getElementById(`flow-item-${flowId}`);
     if (flowElement) {
-      // animate-pulse는 상태 아이콘으로 대체 가능하므로 제거하거나 유지할 수 있습니다.
-      // 여기서는 유지하되, 상태 아이콘이 명확하므로 제거를 고려할 수 있습니다.
       flowElement.classList.add('animate-pulse');
     }
-
     try {
       console.log(`[FlowChainManager] Executing flow: ${flowId}`);
-      
-      const flowIndex = flowIds.indexOf(flowId);
-      let inputs = [...(flow.inputs || [])];
-
-      if (inputs.length > 0 && typeof inputs[0] === 'string' && inputs[0].includes('${result-flow-')) {
-        console.log(`[FlowChainManager] 이전 Flow 결과 참조 발견:`, inputs[0]);
-        if (flowIndex > 0) {
-          const prevFlowId = flowIds[flowIndex - 1];
-          const prevFlow = flowMap[prevFlowId];
-          const prevResult = prevFlow?.lastResults;
-          console.log(`[FlowChainManager] 이전 Flow(${prevFlowId})의 결과:`, prevResult);
-          if (prevResult && Array.isArray(prevResult) && prevResult.length > 0) {
-            if (typeof prevResult[0] === 'object' && prevResult[0] !== null && 'result' in prevResult[0]) {
-              inputs = [prevResult[0].result];
-              console.log(`[FlowChainManager] 사용할 입력 데이터 (노드 결과):`, inputs[0]);
-            } else {
-              inputs = [prevResult[0]];
-              console.log(`[FlowChainManager] 사용할 입력 데이터 (배열 요소):`, inputs[0]);
-            }
-          } else if (prevResult) {
-            inputs = [prevResult];
-            console.log(`[FlowChainManager] 사용할 입력 데이터 (단일 값):`, inputs[0]);
-          }
-        }
-      }
-      
-      console.log(`[FlowChainManager] 최종 입력 데이터:`, inputs);
-      
+      // 1. resolve inputs and update store
+      const resolvedInputs = resolveInputRowsToValues(flow.inputs || [], focusedFlowChainId!);
+      store.setFlowInputData(focusedFlowChainId!, flowId, resolvedInputs);
+      // 2. execute with value[]
       const resultResponse = await executeFlowExecutor({
         flowId: flowId,
         flowJson: flow.flowJson,
-        inputs: inputs,
+        inputs: resolvedInputs,
         flowChainId: focusedFlowChainId!
       });
-      
       console.log(`[FlowChainManager] Flow execution completed:`, resultResponse);
+      // setFlowResult 후 전체 store 상태 출력
+      console.log('[handleExecuteFlow] STORE AFTER setFlowResult:', JSON.stringify(store.flowChainMap, null, 2));
       store.setFlowResult(focusedFlowChainId!, flowId, resultResponse.outputs);
       store.setFlowStatus(focusedFlowChainId!, flowId, resultResponse.status === 'success' ? 'success' : 'error', resultResponse.error);
-
       if (onSelectFlow) {
         onSelectFlow(flowId);
       }
       if (resultResponse.status === 'error') {
         alert(`Flow 실행 중 오류가 발생했습니다: ${resultResponse.error || '알 수 없는 오류'}`);
       }
-
     } catch (error: any) {
       console.error(`[FlowChainManager] Error executing flow:`, error);
       const errorMessage = error.message || '알 수 없는 오류가 발생했습니다.';
       store.setFlowStatus(focusedFlowChainId!, flowId, 'error', errorMessage);
       alert(`Flow 실행 중 예외가 발생했습니다: ${errorMessage}`);
     } finally {
+      const flowElement = document.getElementById(`flow-item-${flowId}`);
       if (flowElement) {
         flowElement.classList.remove('animate-pulse');
       }

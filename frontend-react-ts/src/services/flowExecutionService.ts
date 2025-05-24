@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
 import { ExecutionStatus } from '../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
+import { resolveInputRowsToValues } from '../components/executor/FlowChainManager';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -433,33 +434,21 @@ function extractInputValues(inputs: any[]): any[] {
  * @returns 실행 응답
  */
 export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  let resolvedInputs = params.inputs;
+  if (Array.isArray(params.inputs) && params.inputs.length > 0 && typeof params.inputs[0] === 'object' && 'type' in params.inputs[0]) {
+    if (!params.flowChainId) {
+      throw new Error('flowChainId is required for input mapping');
+    }
+    resolvedInputs = resolveInputRowsToValues(params.inputs, params.flowChainId);
+  }
   if (!params.flowChainId || !params.flowId) {
-    console.warn('[flowExecutionService.executeFlowExecutor] chainId or flowId is missing. Context might be for editor.');
-    return editorFlowExecutor.execute({ ...params, inputs: extractInputValues(params.inputs) });
+    return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
   }
-  
-  // 응답 결과 받기
-  const response = await executorFlowExecutor.execute({ ...params, inputs: extractInputValues(params.inputs) });
-
-  // leaf node 결과를 flow에 저장 (lastResults)
+  const response = await executorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
   if (response.status === 'success') {
-    console.log(`[executeFlowExecutor] ${params.flowId} 실행 성공, 결과 항목 수: ${response.outputs?.length || 0}`);
-    
-    // outputs이 null/undefined인 경우 빈 배열로 처리
     const safeOutputs = response.outputs || [];
-    
-    // 결과 저장
     useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
-    
-    // 저장 후 결과 확인 (UI 디버깅용)
-    const storedResults = useFlowExecutorStore.getState().flowChainMap[params.flowChainId]?.flowMap[params.flowId]?.lastResults;
-    console.log(`[executeFlowExecutor] ${params.flowChainId}/${params.flowId} 저장된 lastResults:`, 
-                storedResults ? `${storedResults.length}개 항목` : '없음');
-  } else {
-    console.warn(`[executeFlowExecutor] ${params.flowId} 실행 실패:`, response.error);
   }
-  
-  // onComplete 콜백이 제공된 경우, 결과를 올바른 형식으로 변환하여 전달
   if (params.onComplete && response.status === 'success') {
     params.onComplete(response.outputs);
     notifyResultCallbacks(params.flowId, {
@@ -469,7 +458,6 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
       flowId: params.flowId
     });
   }
-  
   return response;
 };
 
@@ -561,7 +549,6 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
 
-    // 항상 value만 추출해서 넘김
     let currentFlowInputs = flow.inputs;
     if ((!currentFlowInputs || currentFlowInputs.length === 0) && flowChain.flowIds.indexOf(flowId) > 0) {
       const previousFlowId = flowChain.flowIds[flowChain.flowIds.indexOf(flowId) - 1];
@@ -571,13 +558,11 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
         store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
       }
     }
-    // value만 추출
-    const execInputs = extractInputValues(currentFlowInputs);
-
+    // input mapping 제거, 그대로 전달
     try {
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: execInputs,
+        inputs: currentFlowInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
         onComplete: (outputs) => {
