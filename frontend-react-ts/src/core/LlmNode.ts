@@ -36,6 +36,7 @@ export class LlmNode extends Node {
       console.log('[LLMNode] resolvePrompt - no context, this.property.prompt:', this.property.prompt);
     }
     console.log('[LLMNode] resolvePrompt - final prompt:', prompt);
+    console.log('[LLMNode] resolvePrompt - input:', input);
     
     // 파일 또는 파일 메타데이터인 경우 파일명을 사용
     if (input instanceof File) {
@@ -48,10 +49,13 @@ export class LlmNode extends Node {
     }
     // 배열인 경우 텍스트 항목들을 결합
     else if (Array.isArray(input)) {
-      const textItems = input
-        .filter(item => typeof item === 'string')
-        .join('\n');
-      return prompt.replace(/\{\{input\}\}/g, textItems);
+      const textItems = input.filter(item => typeof item === 'string');
+      const joined = textItems.join('\n\n');
+      console.log('[LLMNode] resolvePrompt - prompt (raw):', JSON.stringify(prompt));
+      console.log('[LLMNode] resolvePrompt - joined (raw):', JSON.stringify(joined));
+      const replaced = prompt.replace(/\{\{input\}\}/g, joined);
+      console.log('[LLMNode] resolvePrompt - replaced (raw):', JSON.stringify(replaced));
+      return replaced;
     }
     // 문자열인 경우 그대로 사용
     else if (typeof input === 'string') {

@@ -143,13 +143,18 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
    * @returns 새로운 FlowExecutionContext 인스턴스
+   *
+   * [Editor 모드]
+   * - store 기반 node.data를 사용 (실시간 편집/상태 반영)
+   * - store 접근/변경 허용
    */
   static createForEditor(executionId: string, flowData: FlowData): FlowExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
+        // Editor 모드: data만 반환
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.data || {};
+        return node && (node as any).data ? (node as any).data : {};
       },
       flowData.nodes,
       flowData.edges,
@@ -166,28 +171,46 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
    * @param nodeFactory 기존 NodeFactory 인스턴스 (옵션)
-   * @param chainId Chain ID
+   * @param flowChainId Flow Chain ID (네이밍 통일)
    * @param flowId Flow ID
    * @returns 새로운 FlowExecutionContext 인스턴스
+   *
+   * [Executor 모드]
+   * - store 접근 시도: flowChainMap > flowMap > nodeMap > nodeId > property
+   * - 없으면 빈 객체 반환 (data로 fallback하지 않음)
    */
-  static createForExecutor(executionId: string, flowData: FlowData, nodeFactory?: NodeFactory, chainId?: string, flowId?: string): FlowExecutionContext {
-    if (!chainId || !flowId) {
-      // 프로덕션에서는 이 오류가 발생해서는 안되지만, 개발 중 안전장치로 추가
-      console.error('Executor context creation requires chainId and flowId.');
-      throw new Error('chainId and flowId are required for Executor context at creation.');
-    }
+  static createForExecutor(
+    executionId: string,
+    flowData: FlowData,
+    nodeFactory?: NodeFactory,
+    flowChainId?: string,
+    flowId?: string
+  ): FlowExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
-        // nodeMap 기반 데이터만 허용 (property만 반환)
+        // Executor 모드: property만 반환
+        try {
+          if (flowChainId && flowId) {
+            const { useFlowExecutorStore } = require('../store/useFlowExecutorStore');
+            const store = useFlowExecutorStore.getState();
+            const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
+            const storeProperty = nodeMap?.[nodeId]?.property;
+            if (storeProperty && typeof storeProperty === 'object' && 'prompt' in storeProperty) {
+              return storeProperty;
+            }
+          }
+        } catch (e) {}
+        // property가 없으면 빈 객체 반환 (data로 fallback하지 않음)
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.property || {};
+        if (node && (node as any).property && 'prompt' in (node as any).property) return (node as any).property;
+        return {};
       },
       flowData.nodes,
       flowData.edges,
       nodeFactory || globalNodeFactory, // 항상 싱글턴 사용
       true, // isExecutorContext 플래그
-      chainId,
+      flowChainId,
       flowId
     );
   }
