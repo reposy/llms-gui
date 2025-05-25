@@ -7,6 +7,7 @@ import { deepClone } from '../../utils/helpers';
 import { findLeafNodes, findRootNodes } from '../../core/outputCollector';
 import ExportModal from './ExportModal';
 import type { FlowChain } from '../../store/useFlowExecutorStore';
+import InputMappingRegistry from './InputMappingRegistry';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
@@ -60,27 +61,17 @@ interface InputRow {
   sourceFlowId?: string;
 }
 export function resolveInputRowsToValues(inputRows: InputRow[], flowChainId: string): (string | File)[] {
-  const store = useFlowExecutorStore.getState();
-  const flowChain = store.flowChainMap[flowChainId];
   return inputRows.reduce<(string | File)[]>((acc, row) => {
-    if (row.type === 'flow-result' && row.sourceFlowId) {
-      const prevFlow = flowChain.flowMap[row.sourceFlowId];
-      if (!prevFlow) {
-        console.error(`[resolveInputRowsToValues] ERROR: prevFlow is undefined for sourceFlowId:`, row.sourceFlowId);
-        return acc;
+    try {
+      const result = InputMappingRegistry.resolve(row, flowChainId);
+      if (Array.isArray(result)) {
+        return [...acc, ...result];
       }
-      if (Array.isArray(prevFlow?.lastResults) && prevFlow.lastResults.length > 0) {
-        const stringified = prevFlow.lastResults.map((item) => {
-          return typeof item === 'string' ? item : typeof item === 'object' ? JSON.stringify(item) : String(item);
-        });
-        return [...acc, ...stringified];
-      }
+      return [...acc, result];
+    } catch (e) {
+      console.error(`[resolveInputRowsToValues] ERROR:`, e);
       return acc;
     }
-    if (row.type === 'file') {
-      return [...acc, row.value as File];
-    }
-    return [...acc, row.value ?? ''];
   }, []);
 }
 
