@@ -4,7 +4,7 @@ import FlowInputForm from './FlowInputForm';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import ReactMarkdown from 'react-markdown';
-import ResultDisplay from './ResultDisplay';
+import ResultDisplay from './FlowResultDisplay';
 
 interface FlowDetailModalProps {
   flowChainId: string;

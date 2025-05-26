@@ -4,7 +4,7 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
-import ResultDisplay from './ResultDisplay';
+import ResultDisplay from './FlowResultDisplay';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;

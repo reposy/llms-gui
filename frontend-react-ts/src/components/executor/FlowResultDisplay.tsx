@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { NodeResult } from '../../core/outputCollector';
 import { ExecutionStatus } from '../../store/useExecutorStateStore';
 import ReactMarkdown from 'react-markdown';
 import './markdown-style.css';
@@ -36,7 +35,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text' }) => {
+const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text' }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -356,4 +355,4 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName,
   );
 };
 
-export default ResultDisplay; 
+export default FlowResultDisplay; 
