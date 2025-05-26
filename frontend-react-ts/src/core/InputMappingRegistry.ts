@@ -1,6 +1,6 @@
 // 입력 매핑 전략/플러그인 매니저
-import { InputRow } from './FlowChainManager';
-import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { InputRow } from '../components/executor/FlowChainManager';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 
 export type InputRowMapper = (row: InputRow, flowChainId: string) => any;
 
@@ -22,6 +22,7 @@ class InputMappingRegistry {
 InputMappingRegistry.register('text', (row) => row.value ?? '');
 InputMappingRegistry.register('file', (row) => row.value as File);
 InputMappingRegistry.register('flow-result', (row, flowChainId) => {
+  if (!row.sourceFlowId) return '';
   const store = useFlowExecutorStore.getState();
   const flowChain = store.flowChainMap[flowChainId];
   const prevFlow = flowChain?.flowMap?.[row.sourceFlowId];
@@ -30,7 +31,7 @@ InputMappingRegistry.register('flow-result', (row, flowChainId) => {
     return '';
   }
   if (Array.isArray(prevFlow?.lastResults) && prevFlow.lastResults.length > 0) {
-    return prevFlow.lastResults.map((item) =>
+    return prevFlow.lastResults.map((item: any) =>
       typeof item === 'string' ? item : typeof item === 'object' ? JSON.stringify(item) : String(item)
     );
   }

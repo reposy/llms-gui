@@ -7,7 +7,7 @@ import { deepClone } from '../../utils/helpers';
 import { findLeafNodes, findRootNodes } from '../../core/outputCollector';
 import ExportModal from './ExportModal';
 import type { FlowChain } from '../../store/useFlowExecutorStore';
-import InputMappingRegistry from './InputMappingRegistry';
+import InputMappingRegistry from '../../core/InputMappingRegistry';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
@@ -55,7 +55,7 @@ interface FlowChainExport {
 }
 
 // Flow 실행 시 입력값 변환 함수 추가
-interface InputRow {
+export interface InputRow {
   type: 'text' | 'file' | 'flow-result';
   value: string | File | null;
   sourceFlowId?: string;
@@ -92,7 +92,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
   const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flowIds = chain ? chain.flowIds : [];
   const flowMap = chain ? chain.flowMap : {};
-  const activeFlowIndex = chain ? chain.selectedFlowId ? flowIds.indexOf(chain.selectedFlowId) : 0 : 0;
+  const activeFlowIndex = chain && Array.isArray(chain.selectedFlowIds) && chain.selectedFlowIds.length > 0 ? flowIds.indexOf(chain.selectedFlowIds[0]) : 0;
 
   // Flow 선택 처리
   const handleSelectFlow = (index: number) => {
@@ -101,7 +101,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     if (flowId && onSelectFlow) {
       onSelectFlow(flowId);
     }
-    store.setSelectedFlow(focusedFlowChainId!, flowId);
+    store.setSelectedFlowIds(focusedFlowChainId!, [flowId]);
   };
   
   // 단일 Flow 가져오기 (Flow Editor에서 내보낸 Flow)
