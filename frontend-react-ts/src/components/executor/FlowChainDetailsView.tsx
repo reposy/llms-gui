@@ -4,6 +4,7 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
+import ResultDisplay from './ResultDisplay';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -59,7 +60,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
       });
     } catch (error) {
       console.error('Chain execution error in Detail:', error);
-      useFlowExecutorStore.getState().setChainStatus(flowChainId, 'error');
+      useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, 'error');
     } finally {
       setIsExecuting(false);
     }
@@ -220,19 +221,11 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                   {flowName}
                 </span>
               </div>
-              <div className="bg-white rounded-md border border-gray-200 p-3 max-h-40 overflow-y-auto">
-                {lastResults ? (
-                  Array.isArray(lastResults) && lastResults.length > 0 ? (
-                    <pre className="text-xs whitespace-pre-wrap text-gray-700">
-                      {JSON.stringify(lastResults, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="text-xs text-gray-500">실행은 완료되었지만 결과가 없거나 비어 있습니다.</p>
-                  )
-                ) : (
-                  <p className="text-xs text-gray-500">아직 실행 결과가 없습니다.</p>
-                )}
-              </div>
+              <ResultDisplay
+                result={lastResults ? { status: flowStatus, outputs: lastResults, error: flowError, flowId: selectedFlowId || '' } : null}
+                flowId={selectedFlowId || ''}
+                flowName={flowName || ''}
+              />
             </div>
           )}
         </div>

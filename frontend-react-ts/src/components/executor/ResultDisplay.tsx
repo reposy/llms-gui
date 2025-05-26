@@ -41,6 +41,12 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName,
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
   const [displayModes, setDisplayModes] = useState<{[nodeId: string]: 'text' | 'markdown'}>({});
+  // 전체 결과 표시 모드 (outputs | markdown | json)
+  const [viewMode, setViewMode] = useState<'outputs' | 'join' | 'raw'>('outputs');
+  // Per-node view mode for outputs: 'text' | 'markdown'
+  const [nodeViewModes, setNodeViewModes] = useState<{[nodeId: string]: 'text' | 'markdown'}>({});
+  // join 모드 text/markdown toggle
+  const [joinViewMode, setJoinViewMode] = useState<'text' | 'markdown'>('text');
   
   useEffect(() => {
     console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
@@ -74,6 +80,17 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName,
     // 마크다운으로 보이면 마크다운 모드, 아니면 텍스트 모드
     return isMarkdownLike(content) ? 'markdown' : 'text';
   };
+
+  // Per-node toggle handler
+  const toggleNodeViewMode = (nodeId: string) => {
+    setNodeViewModes(prev => ({
+      ...prev,
+      [nodeId]: prev[nodeId] === 'markdown' ? 'text' : 'markdown',
+    }));
+  };
+
+  // Helper to get per-node view mode (default 'text')
+  const getNodeViewMode = (nodeId: string) => nodeViewModes[nodeId] || 'text';
 
   // 개별 노드 결과 렌더링
   const renderNodeResult = (nodeResult: Record<string, any>, index: number) => {
@@ -151,15 +168,13 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName,
             </h3>
           </div>
           <div className="flex items-center space-x-2">
-            {typeof nodeOutput === 'string' && (
-              <button
-                onClick={() => toggleDisplayMode(nodeId)}
-                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm"
-                title={currentDisplayMode === 'markdown' ? '텍스트로 보기' : '마크다운으로 보기'}
-              >
-                {currentDisplayMode === 'markdown' ? '텍스트로 보기' : '마크다운으로 보기'}
-              </button>
-            )}
+            <button
+              onClick={() => toggleNodeViewMode(nodeId)}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm"
+              title={currentDisplayMode === 'markdown' ? '텍스트로 보기' : '마크다운으로 보기'}
+            >
+              {currentDisplayMode === 'markdown' ? 'text' : 'markdown'}
+            </button>
             <button
               onClick={() => copyToClipboard(resultText, nodeId)}
               className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
@@ -183,17 +198,9 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName,
           </div>
         </div>
         
-        {typeof nodeOutput === 'object' ? (
-          <pre className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto whitespace-pre-wrap text-sm">
-            {JSON.stringify(nodeOutput, null, 2)}
-          </pre>
-        ) : nodeOutput === undefined || nodeOutput === null ? (
-          <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto">
-            <p className="text-gray-500 italic">결과 없음</p>
-          </div>
-        ) : currentDisplayMode === 'markdown' ? (
+        {false ? (
           <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto markdown-content">
-            <ReactMarkdown>{nodeOutput}</ReactMarkdown>
+            <ReactMarkdown>{typeof nodeOutput === 'string' ? nodeOutput : JSON.stringify(nodeOutput, null, 2)}</ReactMarkdown>
           </div>
         ) : (
           <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto">
@@ -204,62 +211,147 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName,
     );
   };
 
-  // 전체 결과 렌더링
-  const renderAllResults = () => {
-    if (!result || !result.outputs || result.outputs.length === 0) {
-      console.log(`[ResultDisplay] No results or empty outputs for flow ${flowId}`, result);
-      let message = '아직 실행된 결과가 없습니다. Flow를 실행하세요.';
-      if (result && result.status === 'error') {
-        message = `오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`;
-      } else if (result && result.outputs && result.outputs.length === 0) {
-        message = '실행되었지만 반환된 결과가 없습니다.';
+  // join 모드: 모든 노드 output을 한데 모아 text/markdown으로 보여줌
+  const getJoinedOutputs = () => {
+    if (!result || !Array.isArray(result.outputs)) return '';
+    return result.outputs.map((nodeResult) => {
+      if (typeof nodeResult === 'string') return nodeResult;
+      if (typeof nodeResult === 'object' && nodeResult !== null) {
+        if (Array.isArray(nodeResult.outputs)) {
+          return nodeResult.outputs.map((out: any) => typeof out === 'string' ? out : JSON.stringify(out)).join('\n\n');
+        } else if (typeof nodeResult.result === 'string') {
+          return nodeResult.result;
+        } else {
+          return JSON.stringify(nodeResult);
+        }
       }
+      return '';
+    }).join('\n\n');
+  };
 
+  // 복사 핸들러 (outputs, join, raw 모두에서 사용)
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedNodeId('global');
+      setTimeout(() => setCopiedNodeId(null), 2000);
+    });
+  };
+
+  // 전체 결과 렌더링
+  const renderAllResults = (mode: 'outputs' | 'join' | 'raw') => {
+    if (!result || !result.outputs || result.outputs.length === 0) {
+      let message = '출력 결과가 없습니다.';
       return (
-        <div className="text-center py-8 text-gray-500">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-          <h3 className="text-lg font-medium mb-1">{flowName} 결과</h3>
-          <p>{message}</p>
-        </div>
+        <>
+          <h3 className="font-medium mb-2">{flowName} 결과</h3>
+          <div className="text-gray-500 text-sm p-4">{message}</div>
+        </>
       );
     }
-
-    const outputsToRender = result.outputs;
-    console.log(`[ResultDisplay] Rendering ${outputsToRender.length} results for flow ${flowId}`, outputsToRender);
-
+    if (mode === 'outputs') {
+      return (
+        <>
+          <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+          <div>
+            {result.outputs.map((nodeResult, idx) => renderNodeResult(nodeResult, idx))}
+          </div>
+        </>
+      );
+    }
+    if (mode === 'join') {
+      const joined = getJoinedOutputs();
+      return (
+        <>
+          <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => setJoinViewMode(joinViewMode === 'markdown' ? 'text' : 'markdown')}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm mr-2"
+            >
+              {joinViewMode === 'markdown' ? 'text' : 'markdown'}
+            </button>
+            <button
+              onClick={() => handleCopy(joined)}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
+            >
+              {copiedNodeId === 'global' ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  복사됨
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                  </svg>
+                  복사
+                </>
+              )}
+            </button>
+          </div>
+          <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-96 overflow-y-auto">
+            {joinViewMode === 'markdown' ? (
+              <div className="markdown-content"><ReactMarkdown>{joined}</ReactMarkdown></div>
+            ) : (
+              <pre className="whitespace-pre-wrap text-sm">{joined}</pre>
+            )}
+          </div>
+        </>
+      );
+    }
+    // raw
     return (
-      <div className="space-y-3">
-        <h3 className="font-medium">{flowName} 결과 ({outputsToRender.length} 항목)</h3>
-        <div>
-          {outputsToRender.map((nodeResult, index) => renderNodeResult(nodeResult, index))}
+      <>
+        <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => handleCopy(JSON.stringify(result, null, 2))}
+            className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
+          >
+            {copiedNodeId === 'global' ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                복사됨
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                </svg>
+                복사
+              </>
+            )}
+          </button>
         </div>
-      </div>
+        <pre className="p-3 bg-gray-50 rounded border border-gray-200 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </>
     );
   };
 
   return (
     <div className="p-3 border border-gray-300 rounded-lg bg-white">
-      {result && (result.status === 'success' || result.status === 'running') ? (
-        renderAllResults()
-      ) : result && result.status === 'error' ? (
-        <div className="text-center py-8 text-red-500">
-           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-red-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <h3 className="text-lg font-medium mb-1">{flowName} 실행 오류</h3>
-          <p>{result.error || '알 수 없는 오류가 발생했습니다.'}</p>
-        </div>
-      ) : (
-        <div className="text-center py-8 text-gray-500">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-          <h3 className="text-lg font-medium mb-1">{flowName} 결과</h3>
-          <p>표시할 결과가 없습니다. Flow를 선택하고 실행하세요.</p>
-        </div>
-      )}
+      {/* 글로벌 결과 표시 모드 토글 */}
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => setViewMode('outputs')}
+          className={`px-2 py-1 rounded border text-sm ${viewMode === 'outputs' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+        >outputs</button>
+        <button
+          onClick={() => setViewMode('join')}
+          className={`px-2 py-1 rounded border text-sm ${viewMode === 'join' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+        >join</button>
+        <button
+          onClick={() => setViewMode('raw')}
+          className={`px-2 py-1 rounded border text-sm ${viewMode === 'raw' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+        >raw</button>
+      </div>
+      {renderAllResults(viewMode)}
     </div>
   );
 };
