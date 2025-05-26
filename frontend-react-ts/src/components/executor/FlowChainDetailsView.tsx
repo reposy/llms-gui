@@ -5,6 +5,7 @@ import { executeChain, executeFlowExecutor } from '../../services/flowExecutionS
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 import ResultDisplay from './FlowResultDisplay';
+import FlowChainResultDisplay from './FlowChainResultDisplay';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -35,10 +36,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
 
   const handleMoveFlow = (flowId: string, direction: 'up' | 'down') => {
     useFlowExecutorStore.getState().moveFlow(flowChainId, flowId, direction);
-  };
-
-  const handleSetSelectedFlow = (flowId: string) => {
-    useFlowExecutorStore.getState().setSelectedFlow(flowChainId, flowId);
   };
 
   const handleExecuteChain = async () => {
@@ -88,11 +85,28 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     }
   };
 
-  const selectedFlowId = flowChain.selectedFlowId;
-  const lastResults = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.lastResults);
-  const flowStatus = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.status);
-  const flowError = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.error);
-  const flowName = useFlowExecutorStore(state => state.flowChainMap[flowChainId]?.flowMap[selectedFlowId || '']?.name);
+  const selectedFlowIds = flowChain.selectedFlowIds || [];
+  const setSelectedFlowIds = useFlowExecutorStore(state => state.setSelectedFlowIds);
+
+  // 체크박스 핸들러
+  const handleFlowCheckboxChange = (flowId: string, checked: boolean) => {
+    let newSelected = selectedFlowIds.slice();
+    if (checked) {
+      if (!newSelected.includes(flowId)) newSelected.push(flowId);
+    } else {
+      newSelected = newSelected.filter(id => id !== flowId);
+    }
+    setSelectedFlowIds(flowChainId, newSelected);
+  };
+
+  // 선택된 flows를 순서대로 추출
+  const selectedFlows = flowIds
+    .filter(id => selectedFlowIds.includes(id))
+    .map(id => {
+      const flow = flowMap[id];
+      return flow ? { flowId: id, flowName: flow.name, result: flow.lastResults } : undefined;
+    })
+    .filter((f): f is { flowId: string; flowName: string; result: any } => !!f);
 
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
@@ -143,12 +157,18 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
             {flowIds.map((flowId, index) => {
               const flow = flowMap[flowId];
               if (!flow) return null;
+              const checked = selectedFlowIds.includes(flowId);
               return (
                 <li
                   key={flowId}
-                  onClick={() => onFlowSelect(flowId)}
-                  className="p-3 flex items-center cursor-pointer hover:bg-gray-50 transition-colors duration-150 group"
+                  className={`p-3 flex items-center transition-colors duration-150 group ${checked ? 'bg-blue-50' : 'bg-white'}`}
                 >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={e => handleFlowCheckboxChange(flowId, e.target.checked)}
+                    className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
                   <NodeStatusIndicator status={flow.status} className="mr-2 flex-shrink-0" />
                   <div className="flex-grow min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate" title={flow.name}>{flow.name}</p>
@@ -158,17 +178,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                     </p>
                   </div>
                   <div className="ml-2 flex-shrink-0 flex items-center space-x-1 opacity-100 transition-opacity duration-150">
-                    <button
-                      onClick={e => { e.stopPropagation(); handleSetSelectedFlow(flowId); }}
-                      className={`p-1.5 rounded-md transition-colors duration-150 ${flowChain.selectedFlowId === flowId ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-100'}`}
-                      title="Set as chain output"
-                    >
-                      {flowChain.selectedFlowId === flowId ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="currentColor" /></svg>
-                      ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="white" /></svg>
-                      )}
-                    </button>
                     <button
                       onClick={e => { e.stopPropagation(); handleExecuteFlow(flowId); }}
                       className={`p-1.5 rounded-md transition-colors duration-150 ${executingFlowId === flowId ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-100'}`}
@@ -212,22 +221,10 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
               );
             })}
           </ul>
-          {/* 선택된 Flow의 실행 결과 표시 */}
-          {flowChain.selectedFlowId && (
-            <div className="border-t border-gray-200 p-4 bg-gray-50">
-              <div className="mb-2 flex items-center">
-                <h3 className="text-sm font-semibold text-gray-700">Selected Flow Result</h3>
-                <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
-                  {flowName}
-                </span>
-              </div>
-              <ResultDisplay
-                result={lastResults ? { status: flowStatus, outputs: lastResults, error: flowError, flowId: selectedFlowId || '' } : null}
-                flowId={selectedFlowId || ''}
-                flowName={flowName || ''}
-              />
-            </div>
-          )}
+          {/* 선택된 Flow들의 실행 결과 표시 */}
+          <div className="mt-6">
+            <FlowChainResultDisplay flowResults={selectedFlows} />
+          </div>
         </div>
       )}
     </div>
