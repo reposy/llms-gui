@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
@@ -6,12 +6,40 @@ import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/s
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 import ResultDisplay from './FlowResultDisplay';
 import FlowChainResultDisplay from './FlowChainResultDisplay';
+import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon } from '../Icons';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
   onFlowSelect: (flowId: string) => void;
   onImportFlow: () => void;
 }
+
+// Reusable, extensible large checkbox component using SVG
+const ExecutorCheckbox = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => {
+  const { checked, className, ...rest } = props;
+  return (
+    <label
+      style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+      className={className}
+      onClick={e => e.stopPropagation()}
+    >
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+        {...rest}
+      />
+      {checked ? (
+        <LargeCheckboxCheckedIcon size={32} />
+      ) : (
+        <LargeCheckboxUncheckedIcon size={32} />
+      )}
+    </label>
+  );
+});
+ExecutorCheckbox.displayName = 'ExecutorCheckbox';
 
 const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId, onFlowSelect, onImportFlow }) => {
   const flowChain = useFlowExecutorStore(state => state.flowChainMap[flowChainId]);
@@ -153,6 +181,21 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
         </div>
       ) : (
         <div className="flex-grow flex flex-col">
+          {/* Flow 리스트 헤더: 전체 선택 체크박스 */}
+          <div className="flex items-center px-3 py-2 border-b border-gray-200 bg-gray-50">
+            <ExecutorCheckbox
+              className="mr-3"
+              checked={selectedFlowIds.length === flowIds.length && flowIds.length > 0}
+              onChange={e => {
+                if (e.target.checked) {
+                  setSelectedFlowIds(flowChainId, flowIds.slice());
+                } else {
+                  setSelectedFlowIds(flowChainId, []);
+                }
+              }}
+            />
+            <span className="text-xs text-gray-500">전체 선택</span>
+          </div>
           <ul className="overflow-y-auto divide-y divide-gray-200 flex-grow">
             {flowIds.map((flowId, index) => {
               const flow = flowMap[flowId];
@@ -161,13 +204,14 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
               return (
                 <li
                   key={flowId}
-                  className={`p-3 flex items-center transition-colors duration-150 group ${checked ? 'bg-blue-50' : 'bg-white'}`}
+                  className="p-3 flex items-center transition-colors duration-150 group bg-white"
+                  onClick={() => onFlowSelect(flowId)}
+                  style={{ cursor: 'pointer' }}
                 >
-                  <input
-                    type="checkbox"
+                  <ExecutorCheckbox
+                    className="mr-3"
                     checked={checked}
                     onChange={e => handleFlowCheckboxChange(flowId, e.target.checked)}
-                    className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
                   <NodeStatusIndicator status={flow.status} className="mr-2 flex-shrink-0" />
                   <div className="flex-grow min-w-0">

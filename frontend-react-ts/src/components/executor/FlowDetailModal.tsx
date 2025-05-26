@@ -4,7 +4,7 @@ import FlowInputForm from './FlowInputForm';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import ReactMarkdown from 'react-markdown';
-import ResultDisplay from './FlowResultDisplay';
+import FlowResultDisplay from './FlowResultDisplay';
 
 interface FlowDetailModalProps {
   flowChainId: string;
@@ -109,7 +109,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
                   <h3 className="text-lg font-medium text-gray-800">Flow Result</h3>
                 </div>
                 <div className="p-4 bg-white max-h-96 overflow-y-auto">
-                  <ResultDisplay
+                  <FlowResultDisplay
                     result={flow.lastResults ? { status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id } : null}
                     flowId={flow.id}
                     flowName={flow.name}
