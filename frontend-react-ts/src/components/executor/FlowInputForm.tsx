@@ -29,7 +29,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   // store의 값을 직접 구독 (propInputs가 없으면)
   const initialRows = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
   const [rows, setRows] = useState<InputRow[]>(initialRows);
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(true);
   const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
 
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -42,6 +42,11 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   useEffect(() => {
     setDraftInputs(rows);
   }, [rows]);
+
+  // 모달이 열릴 때마다(즉, flowId, propInputs 등 주요 prop이 바뀔 때마다) editMode를 true로 리셋
+  useEffect(() => {
+    setEditMode(true);
+  }, [flowId, propInputs]);
 
   // 입력 변경 핸들러
   const updateRows = (newRows: InputRow[]) => {
