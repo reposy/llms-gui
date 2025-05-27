@@ -80,10 +80,14 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
       <div>
         {flowResults.map(fr => {
           const isOpen = openFlows[fr.flowId] ?? false;
+          const resultCount = Array.isArray(fr.result) ? fr.result.length : 0;
           return (
             <div key={fr.flowId} className="mb-6 border border-gray-200 rounded-lg bg-gray-50 p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-blue-700">{fr.flowName}</span>
+                <span className="font-semibold text-blue-700">
+                  {fr.flowName}
+                  <span className="ml-2 text-gray-500 text-sm">결과 ({resultCount}항목)</span>
+                </span>
                 <button
                   onClick={() => toggleFlow(fr.flowId)}
                   className="p-1 hover:text-gray-700"
@@ -100,6 +104,7 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
                   compact={true}
                   openNodes={openNodes[fr.flowId] || {}}
                   onToggleNode={nodeId => toggleNode(fr.flowId, nodeId)}
+                  hideHeader
                 />
               )}
             </div>

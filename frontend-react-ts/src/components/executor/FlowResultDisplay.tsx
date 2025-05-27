@@ -20,6 +20,7 @@ interface ResultDisplayProps {
   compact?: boolean;
   openNodes?: { [nodeId: string]: boolean };
   onToggleNode?: (nodeId: string) => void;
+  hideHeader?: boolean;
 }
 
 // 문자열이 마크다운 형식인지 대략 확인하는 함수
@@ -39,7 +40,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text', compact = true, openNodes = {}, onToggleNode }) => {
+const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text', compact = true, openNodes = {}, onToggleNode, hideHeader }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -164,12 +165,12 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       <>
         <div key={nodeId || index} className="flex items-center gap-2 py-1 border-b last:border-b-0 text-sm group hover:bg-gray-50 transition">
           <span className="font-semibold text-blue-700 mr-2">{nodeName}</span>
-          <button onClick={() => onToggleNode && onToggleNode(nodeId)} className="p-1 hover:text-gray-700" title={isExpanded ? '접기' : '상세 보기'}>
-            {isExpanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
-          </button>
           {!isExpanded && <span className="truncate flex-1" title={resultText}>{resultText}</span>}
           <button onClick={() => copyToClipboard(resultText, nodeId)} className="p-1 hover:text-blue-600" title="복사">
             <ClipboardIcon className="h-4 w-4" />
+          </button>
+          <button onClick={() => onToggleNode && onToggleNode(nodeId)} className="p-1 hover:text-gray-700" title={isExpanded ? '접기' : '상세 보기'}>
+            {isExpanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
           </button>
         </div>
         {isExpanded && (
@@ -221,18 +222,14 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   // 전체 결과 렌더링
   const renderAllResults = (mode: 'outputs' | 'join' | 'raw') => {
     if (!result || !result.outputs || result.outputs.length === 0) {
-      let message = '출력 결과가 없습니다.';
-      return (
-        <>
-          <h3 className="font-medium mb-2">{flowName} 결과</h3>
-          <div className="text-gray-500 text-sm p-4">{message}</div>
-        </>
-      );
+      return <div className="text-gray-500 text-sm p-4">출력 결과가 없습니다.</div>;
     }
     if (mode === 'outputs') {
       return (
         <>
-          <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+          {!hideHeader && (
+            <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+          )}
           <div>
             {result.outputs.map((nodeResult, idx) => renderNodeResult(nodeResult, idx))}
           </div>
