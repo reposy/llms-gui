@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
 import { ExecutionStatus } from '../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
-// import { resolveInputRowsToValues } from '../components/executor/FlowChainManager';
 
 // 출력 결과 타입 정의
 export interface NodeResult {

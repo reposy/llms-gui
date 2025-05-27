@@ -1,5 +1,4 @@
 // 입력 매핑 전략/플러그인 매니저
-import { InputRow } from '../components/executor/FlowChainManager';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 
 export type InputRowMapper = (row: InputRow, flowChainId: string) => any;
