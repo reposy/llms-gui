@@ -14,6 +14,7 @@ interface InputRow {
   type: InputType;
   value: string | File | null;
   sourceFlowId?: string;
+  flowChainId?: string;
 }
 
 const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
@@ -212,17 +213,71 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
             </div>
           )}
           {row.type === 'flow-result' && (
-            <select
-              className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white"
-              value={row.sourceFlowId || ''}
-              onChange={e => editMode && handleFlowResultChange(idx, e.target.value)}
-              disabled={!editMode || prevFlows.length === 0}
-            >
-              {prevFlows.length === 0 && <option value="">선택 가능한 이전 Flow가 없습니다</option>}
-              {prevFlows.map(fid => (
-                <option key={fid} value={fid}>{chain?.flowMap[fid]?.name || fid}</option>
-              ))}
-            </select>
+            <div className="flex-1 flex gap-2">
+              {/* 1단계: FlowChain 선택 */}
+              <select
+                className="border border-gray-300 rounded px-2 py-1 bg-white"
+                value={typeof row.flowChainId === 'string' ? row.flowChainId : ''}
+                onChange={e => {
+                  if (!editMode) return;
+                  const flowChainId = e.target.value;
+                  const newRows = [...rows];
+                  newRows[idx] = { ...row, flowChainId, sourceFlowId: '', value: '' };
+                  updateRows(newRows);
+                }}
+                disabled={!editMode || flowChainIds.length === 0}
+              >
+                <option value="">FlowChain 선택</option>
+                {flowChainIds
+                  .filter(id => id !== focusedFlowChainId && flowChainIds.indexOf(id) < flowChainIds.indexOf(focusedFlowChainId))
+                  .map(id => (
+                    <option key={id} value={id}>{flowChainMap[id]?.name || id}</option>
+                  ))}
+              </select>
+              {/* 2단계: Flow 선택 (해당 체인에 selectedFlowIds가 있으면) */}
+              {row.flowChainId && flowChainMap[String(row.flowChainId)] && (
+                flowChainMap[String(row.flowChainId)].selectedFlowIds.length === 0 ? (
+                  <span className="text-gray-400 text-sm">해당 flow chain에 선택된 flow가 없습니다</span>
+                ) : (
+                  <select
+                    className="border border-gray-300 rounded px-2 py-1 bg-white"
+                    value={String(row.sourceFlowId || '')}
+                    onChange={e => {
+                      if (!editMode) return;
+                      const sourceFlowId = e.target.value;
+                      const newRows = [...rows];
+                      newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
+                      updateRows(newRows);
+                    }}
+                    disabled={!editMode}
+                  >
+                    <option value="">[FlowChain] 전체 결과</option>
+                    {flowChainMap[String(row.flowChainId)].selectedFlowIds.map(fid => (
+                      <option key={fid} value={fid}>{flowChainMap[String(row.flowChainId)].flowMap[fid]?.name || fid}</option>
+                    ))}
+                  </select>
+                )
+              )}
+              {/* 결과 없음 안내 */}
+              {row.flowChainId && flowChainMap[String(row.flowChainId)] && flowChainMap[String(row.flowChainId)].selectedFlowIds.length > 0 && (
+                (() => {
+                  const chain = flowChainMap[String(row.flowChainId)];
+                  if (row.sourceFlowId) {
+                    const flow = chain.flowMap[String(row.sourceFlowId || '')];
+                    if (!flow || !Array.isArray(flow.lastResults) || flow.lastResults.length === 0) {
+                      return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
+                    }
+                  } else {
+                    // FlowChain 전체 결과
+                    const results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
+                    if (results.length === 0) {
+                      return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
+                    }
+                  }
+                  return null;
+                })()
+              )}
+            </div>
           )}
           {/* 위/아래/삭제 */}
           <div className="flex gap-1 ml-2">
