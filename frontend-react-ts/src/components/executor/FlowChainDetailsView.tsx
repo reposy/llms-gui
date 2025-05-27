@@ -6,7 +6,8 @@ import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/s
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 import ResultDisplay from './FlowResultDisplay';
 import FlowChainResultDisplay from './FlowChainResultDisplay';
-import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon } from '../Icons';
+import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
+import InlineEditInput from '../ui/InlineEditInput';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -47,6 +48,9 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
   const flowMap = flowChain?.flowMap || {};
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
+  const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
+  const [editFlowValue, setEditFlowValue] = useState('');
+  const [editFlowError, setEditFlowError] = useState<string | null>(null);
 
   if (!flowChain) { 
     return (
@@ -136,6 +140,21 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     })
     .filter((f): f is { flowId: string; flowName: string; result: any } => !!f);
 
+  function validateFlowName(newName: string, currentId: string) {
+    if (!newName.trim()) return '이름을 입력하세요.';
+    if (Object.values(flowMap).some(f => f.id !== currentId && f.name === newName.trim())) return '이미 존재하는 이름입니다.';
+    return null;
+  }
+
+  function handleSaveFlowName(flowId: string, newName: string) {
+    useFlowExecutorStore.getState().setFlowName(flowChainId, flowId, newName);
+    setEditingFlowId(null);
+  }
+
+  function handleCancelEdit() {
+    setEditingFlowId(null);
+  }
+
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
       <div className="p-3 border-b border-gray-200 flex justify-between items-center">
@@ -215,7 +234,35 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                   />
                   <NodeStatusIndicator status={flow.status} className="mr-2 flex-shrink-0" />
                   <div className="flex-grow min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate" title={flow.name}>{flow.name}</p>
+                    {editingFlowId === flowId ? (
+                      <InlineEditInput
+                        value={flow.name}
+                        onSave={newName => handleSaveFlowName(flowId, newName)}
+                        onCancel={handleCancelEdit}
+                        validate={v => validateFlowName(v, flowId)}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <p
+                          className="text-sm font-medium text-gray-800 truncate cursor-pointer"
+                          title={flow.name}
+                          onClick={e => { e.stopPropagation(); setEditingFlowId(flowId); }}
+                          tabIndex={0}
+                          aria-label="Flow 이름 편집"
+                          style={{ marginBottom: 0 }}
+                        >
+                          {flow.name}
+                        </p>
+                        <button
+                          className="ml-1 p-1 rounded hover:bg-gray-100"
+                          onClick={e => { e.stopPropagation(); setEditingFlowId(flowId); }}
+                          title="이름 편집"
+                          tabIndex={0}
+                        >
+                          <PenLineIcon size={16} />
+                        </button>
+                      </div>
+                    )}
                     <p className="text-xs text-gray-500 truncate">
                       {flow.status === 'error' && flow.error ? <span className="text-red-500">Error: {flow.error}</span> : 
                         (flow.lastResults ? `${Array.isArray(flow.lastResults) ? flow.lastResults.length : 1} result(s)` : 'No results')}

@@ -92,6 +92,7 @@ export interface FlowExecutorState {
   setFlowInputData: (flowChainId: string, flowId: string, inputs: any[]) => void;
   setFlowResult: (flowChainId: string, flowId: string, results: any[]) => void;
   moveFlow: (flowChainId: string, flowId: string, direction: 'up' | 'down') => void;
+  setFlowName: (flowChainId: string, flowId: string, name: string) => void;
   
   // 노드 상태 관련 액션
   setFlowNodeState: (flowChainId: string, flowId: string, nodeId: string, nodeState: FlowNodeExecutionState) => void;
@@ -324,6 +325,27 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
                   [flowId]: {
                     ...state.flowChainMap[flowChainId].flowMap[flowId],
                     inputs: deepClone(inputs)
+                  }
+                }
+              }
+            }
+          };
+        });
+      },
+      
+      setFlowName: (flowChainId, flowId, name) => {
+        set((state) => {
+          if (!state.flowChainMap[flowChainId] || !state.flowChainMap[flowChainId].flowMap[flowId]) return state;
+          return {
+            flowChainMap: {
+              ...state.flowChainMap,
+              [flowChainId]: {
+                ...state.flowChainMap[flowChainId],
+                flowMap: {
+                  ...state.flowChainMap[flowChainId].flowMap,
+                  [flowId]: {
+                    ...state.flowChainMap[flowChainId].flowMap[flowId],
+                    name
                   }
                 }
               }
