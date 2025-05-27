@@ -582,23 +582,47 @@ export const executeNode = async (
 };
 
 /**
+ * InputRow[] → value[] 변환 (flow-result row 치환 포함)
+ */
+function resolveInputRowsToValues(inputs: any[], flowChainMap?: any): any[] {
+  if (!Array.isArray(inputs)) return [];
+  let result: any[] = [];
+  for (let i = 0; i < inputs.length; i++) {
+    const row = inputs[i];
+    if (row && typeof row === 'object' && row.type === 'flow-result') {
+      // flowChainId, sourceFlowId로 결과값 추출
+      const chain = flowChainMap?.[row.flowChainId];
+      if (!chain) continue;
+      if (!row.sourceFlowId) {
+        // FlowChain 전체 결과 (selectedFlowIds의 모든 outputs)
+        const outputs = chain.selectedFlowIds.flatMap((fid: string) => chain.flowMap[fid]?.lastResults || []);
+        result.push(...outputs);
+      } else {
+        // 특정 Flow 결과만
+        const flow = chain.flowMap[row.sourceFlowId];
+        if (flow && Array.isArray(flow.lastResults)) {
+          result.push(...flow.lastResults);
+        }
+      }
+    } else {
+      // 일반 row는 value만 추출
+      result.push(row && typeof row === 'object' && 'value' in row ? row.value : row);
+    }
+  }
+  return result;
+}
+
+/**
  * [Flow Editor용] 단일 Flow 실행
  * @param params 실행 매개변수
  * @returns 실행 응답
  */
 export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  // 항상 value만 추출해서 넘김 (InputRow[] → value[] 변환)
-  const normalizedInputs = extractInputValues(params.inputs);
+  const store = useFlowExecutorStore.getState();
+  const flowChainMap = store.flowChainMap;
+  const normalizedInputs = resolveInputRowsToValues(params.inputs, flowChainMap);
   return editorFlowExecutor.execute({ ...params, inputs: normalizedInputs });
 };
-
-// InputRow[] → value[] 변환 유틸
-function extractInputValues(inputs: any[]): any[] {
-  if (!Array.isArray(inputs)) return [];
-  // InputRow 타입: { type: 'text'|'file'|'flow-result', value: ... }
-  // value만 추출
-  return inputs.map(row => (row && typeof row === 'object' && 'value' in row ? row.value : row));
-}
 
 /**
  * Flow Executor를 위한 Flow 실행 함수
@@ -608,10 +632,9 @@ function extractInputValues(inputs: any[]): any[] {
 export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
   let resolvedInputs = params.inputs;
   if (Array.isArray(params.inputs) && params.inputs.length > 0 && typeof params.inputs[0] === 'object' && 'type' in params.inputs[0]) {
-    if (!params.flowChainId) {
-      throw new Error('flowChainId is required for input mapping');
-    }
-    resolvedInputs = extractInputValues(params.inputs);
+    const store = useFlowExecutorStore.getState();
+    const flowChainMap = store.flowChainMap;
+    resolvedInputs = resolveInputRowsToValues(params.inputs, flowChainMap);
   }
   if (!params.flowChainId || !params.flowId) {
     return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
