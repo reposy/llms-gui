@@ -32,6 +32,8 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   const [editMode, setEditMode] = useState(false);
   const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
 
+  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   useEffect(() => {
     if (propInputs) setRows(propInputs);
     else if (flow && flow.inputs) setRows(flow.inputs);
@@ -202,10 +204,21 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                 type="file"
                 className="hidden"
                 id={`file-input-${idx}`}
+                ref={el => fileInputRefs.current[idx] = el}
                 onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
                 disabled={!editMode}
               />
-              <label htmlFor={`file-input-${idx}`} className={`px-2 py-1 border rounded cursor-pointer bg-white hover:bg-gray-100 ${!editMode ? 'opacity-50 cursor-not-allowed' : ''}`}>파일 선택</label>
+              <button
+                type="button"
+                className={`px-2 py-1 border rounded cursor-pointer bg-white hover:bg-gray-100 ${!editMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => {
+                  if (!editMode) return;
+                  fileInputRefs.current[idx]?.click();
+                }}
+                disabled={!editMode}
+              >
+                파일 선택
+              </button>
               {row.value && typeof row.value !== 'string' && (
                 <span className="text-sm text-gray-700">{(row.value as File).name}</span>
               )}
