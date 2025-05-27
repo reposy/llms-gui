@@ -87,7 +87,9 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
                 )}
               </button>
             </div>
-            <FlowResultDisplay result={fr.result} flowId={fr.flowId} flowName={fr.flowName} />
+            <FlowResultDisplay 
+              result={fr.result ? { status: 'success', outputs: fr.result, flowId: fr.flowId } : null} 
+              flowId={fr.flowId} flowName={fr.flowName} />
           </div>
         ))}
       </div>
