@@ -246,7 +246,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                 >
                   <option value="">FlowChain 선택</option>
                   {flowChainIds
-                    .filter(id => id !== focusedFlowChainId && flowChainIds.indexOf(id) <= flowChainIds.indexOf(focusedFlowChainId))
+                    .filter(id => flowChainIds.indexOf(id) <= flowChainIds.indexOf(focusedFlowChainId))
                     .map(id => (
                       <option key={id} value={id}>{flowChainMap[id]?.name || id}</option>
                     ))}
@@ -269,7 +269,10 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                       disabled={!editMode}
                     >
                       <option value="">[FlowChain] 전체 결과</option>
-                      {flowChainMap[String(row.flowChainId)].selectedFlowIds.map(fid => (
+                      {Array.from(new Set([
+                        ...flowChainMap[String(row.flowChainId)].selectedFlowIds,
+                        flowId // 자기 자신을 반드시 포함
+                      ])).map(fid => (
                         <option key={fid} value={fid}>
                           {flowChainMap[String(row.flowChainId)].flowMap[fid]?.name || fid}
                           {fid === flowId ? ' (현재)' : ''}
