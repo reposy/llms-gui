@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import FlowResultDisplay from './FlowResultDisplay';
 
 interface FlowInputFormProps {
   flowId: string;
@@ -162,6 +163,11 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
   );
 
+  // Flow 결과 가져오기 (store에서)
+  const flowResult = flow && Array.isArray(flow.lastResults)
+    ? { status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id }
+    : null;
+
   return (
     <div className="mb-6 p-3 border border-gray-200 rounded-lg bg-white relative">
       <div className="flex items-center justify-between mb-2">
@@ -179,132 +185,139 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
       </div>
       <div className="flex items-center gap-2 mb-4">
         <div className="text-gray-400 text-sm flex-1">입력값을 추가하세요</div>
-        {editMode && (
-          <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRow()}>+ 입력 추가</button>
-        )}
       </div>
-      {rows.map((row, idx) => (
-        <div key={idx} className="flex items-center gap-2 mb-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
-          {/* 타입 토글 */}
-          <div className="flex gap-1">
-            <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
-            <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'file')} disabled={!editMode}>File</button>
-            <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
-          </div>
-          {/* 입력 UI */}
-          {row.type === 'text' && (
-            <input
-              className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white"
-              type="text"
-              value={typeof row.value === 'string' ? row.value : ''}
-              onChange={e => editMode && handleTextChange(idx, e.target.value)}
-              onKeyDown={e => editMode && handleKeyDown(e, idx)}
-              placeholder="입력값을 입력하세요"
-              readOnly={!editMode}
-            />
-          )}
-          {row.type === 'file' && (
-            <div className="flex-1 flex items-center gap-2">
-              <input
-                type="file"
-                className="hidden"
-                id={`file-input-${idx}`}
-                ref={el => fileInputRefs.current[idx] = el}
-                onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
-                disabled={!editMode}
+      <div className="space-y-2 mb-4">
+        {rows.map((row, idx) => (
+          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
+            {/* 타입 토글 */}
+            <div className="flex gap-1">
+              <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
+              <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => {
+                if (!editMode) return;
+                setType(idx, 'file');
+                setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
+              }} disabled={!editMode}>File</button>
+              <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+            </div>
+            {/* 입력 UI */}
+            {row.type === 'text' && (
+              <textarea
+                className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white resize-none"
+                rows={2}
+                maxLength={500}
+                value={typeof row.value === 'string' ? row.value : ''}
+                onChange={e => editMode && handleTextChange(idx, e.target.value)}
+                onKeyDown={e => editMode && handleKeyDown(e, idx)}
+                placeholder="입력값을 입력하세요"
+                readOnly={!editMode}
+                style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
               />
-              <button
-                type="button"
-                className={`px-2 py-1 border rounded cursor-pointer bg-white hover:bg-gray-100 ${!editMode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onClick={() => {
-                  if (!editMode) return;
-                  fileInputRefs.current[idx]?.click();
-                }}
-                disabled={!editMode}
-              >
-                파일 선택
-              </button>
-              {row.value && typeof row.value !== 'string' && (
-                <span className="text-sm text-gray-700">{(row.value as File).name}</span>
-              )}
-              {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
-            </div>
-          )}
-          {row.type === 'flow-result' && (
-            <div className="flex-1 flex gap-2">
-              {/* 1단계: FlowChain 선택 */}
-              <select
-                className="border border-gray-300 rounded px-2 py-1 bg-white"
-                value={typeof row.flowChainId === 'string' ? row.flowChainId : ''}
-                onChange={e => {
-                  if (!editMode) return;
-                  const flowChainId = e.target.value;
-                  const newRows = [...rows];
-                  newRows[idx] = { ...row, flowChainId, sourceFlowId: '', value: '' };
-                  updateRows(newRows);
-                }}
-                disabled={!editMode || flowChainIds.length === 0}
-              >
-                <option value="">FlowChain 선택</option>
-                {flowChainIds
-                  .filter(id => id !== focusedFlowChainId && flowChainIds.indexOf(id) < flowChainIds.indexOf(focusedFlowChainId))
-                  .map(id => (
-                    <option key={id} value={id}>{flowChainMap[id]?.name || id}</option>
-                  ))}
-              </select>
-              {/* 2단계: Flow 선택 (해당 체인에 selectedFlowIds가 있으면) */}
-              {row.flowChainId && flowChainMap[String(row.flowChainId)] && (
-                flowChainMap[String(row.flowChainId)].selectedFlowIds.length === 0 ? (
-                  <span className="text-gray-400 text-sm">해당 flow chain에 선택된 flow가 없습니다</span>
-                ) : (
-                  <select
-                    className="border border-gray-300 rounded px-2 py-1 bg-white"
-                    value={String(row.sourceFlowId || '')}
-                    onChange={e => {
-                      if (!editMode) return;
-                      const sourceFlowId = e.target.value;
-                      const newRows = [...rows];
-                      newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
-                      updateRows(newRows);
-                    }}
-                    disabled={!editMode}
-                  >
-                    <option value="">[FlowChain] 전체 결과</option>
-                    {flowChainMap[String(row.flowChainId)].selectedFlowIds.map(fid => (
-                      <option key={fid} value={fid}>{flowChainMap[String(row.flowChainId)].flowMap[fid]?.name || fid}</option>
+            )}
+            {row.type === 'file' && (
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="file"
+                  className="hidden"
+                  id={`file-input-${idx}`}
+                  ref={el => fileInputRefs.current[idx] = el}
+                  onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                  disabled={!editMode}
+                />
+                {row.value && typeof row.value !== 'string' && (
+                  <span className="text-sm text-gray-700">{(row.value as File).name}</span>
+                )}
+                {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
+              </div>
+            )}
+            {row.type === 'flow-result' && (
+              <div className="flex-1 flex gap-2">
+                {/* 1단계: FlowChain 선택 */}
+                <select
+                  className="border border-gray-300 rounded px-2 py-1 bg-white"
+                  value={typeof row.flowChainId === 'string' ? row.flowChainId : ''}
+                  onChange={e => {
+                    if (!editMode) return;
+                    const flowChainId = e.target.value;
+                    const newRows = [...rows];
+                    newRows[idx] = { ...row, flowChainId, sourceFlowId: '', value: '' };
+                    updateRows(newRows);
+                  }}
+                  disabled={!editMode || flowChainIds.length === 0}
+                >
+                  <option value="">FlowChain 선택</option>
+                  {flowChainIds
+                    .filter(id => id !== focusedFlowChainId && flowChainIds.indexOf(id) <= flowChainIds.indexOf(focusedFlowChainId))
+                    .map(id => (
+                      <option key={id} value={id}>{flowChainMap[id]?.name || id}</option>
                     ))}
-                  </select>
-                )
-              )}
-              {/* 결과 없음 안내 */}
-              {row.flowChainId && flowChainMap[String(row.flowChainId)] && flowChainMap[String(row.flowChainId)].selectedFlowIds.length > 0 && (
-                (() => {
-                  const chain = flowChainMap[String(row.flowChainId)];
-                  if (row.sourceFlowId) {
-                    const flow = chain.flowMap[String(row.sourceFlowId || '')];
-                    if (!flow || !Array.isArray(flow.lastResults) || flow.lastResults.length === 0) {
-                      return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
+                </select>
+                {/* 2단계: Flow 선택 (해당 체인에 selectedFlowIds가 있으면) */}
+                {row.flowChainId && flowChainMap[String(row.flowChainId)] && (
+                  flowChainMap[String(row.flowChainId)].selectedFlowIds.length === 0 ? (
+                    <span className="text-gray-400 text-sm">해당 flow chain에 선택된 flow가 없습니다</span>
+                  ) : (
+                    <select
+                      className="border border-gray-300 rounded px-2 py-1 bg-white"
+                      value={String(row.sourceFlowId || '')}
+                      onChange={e => {
+                        if (!editMode) return;
+                        const sourceFlowId = e.target.value;
+                        const newRows = [...rows];
+                        newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
+                        updateRows(newRows);
+                      }}
+                      disabled={!editMode}
+                    >
+                      <option value="">[FlowChain] 전체 결과</option>
+                      {flowChainMap[String(row.flowChainId)].selectedFlowIds.map(fid => (
+                        <option key={fid} value={fid}>
+                          {flowChainMap[String(row.flowChainId)].flowMap[fid]?.name || fid}
+                          {fid === flowId ? ' (현재)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )
+                )}
+                {/* 결과 없음 안내 */}
+                {row.flowChainId && flowChainMap[String(row.flowChainId)] && flowChainMap[String(row.flowChainId)].selectedFlowIds.length > 0 && (
+                  (() => {
+                    const chain = flowChainMap[String(row.flowChainId)];
+                    if (row.sourceFlowId) {
+                      const flow = chain.flowMap[String(row.sourceFlowId || '')];
+                      if (!flow || !Array.isArray(flow.lastResults) || flow.lastResults.length === 0) {
+                        return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
+                      }
+                    } else {
+                      // FlowChain 전체 결과
+                      const results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
+                      if (results.length === 0) {
+                        return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
+                      }
                     }
-                  } else {
-                    // FlowChain 전체 결과
-                    const results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
-                    if (results.length === 0) {
-                      return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
-                    }
-                  }
-                  return null;
-                })()
-              )}
+                    return null;
+                  })()
+                )}
+              </div>
+            )}
+            {/* 위/아래/삭제 */}
+            <div className="flex gap-1 ml-2">
+              <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
+              <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
+              <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
             </div>
-          )}
-          {/* 위/아래/삭제 */}
-          <div className="flex gap-1 ml-2">
-            <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
-            <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
-            <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
           </div>
+        ))}
+      </div>
+      {/* 입력 추가 버튼: row 하단 우측 정렬 */}
+      {editMode && (
+        <div className="flex justify-end mb-2">
+          <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRow()}>+ 입력 추가</button>
         </div>
-      ))}
+      )}
+      {/* FlowResultDisplay 항상 표시 */}
+      <div className="mt-6">
+        <FlowResultDisplay result={flowResult} flowId={flowId} flowName={flow?.name || flowId} compact={true} />
+      </div>
     </div>
   );
 };
