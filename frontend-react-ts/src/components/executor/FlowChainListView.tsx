@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TrashIcon } from '@heroicons/react/20/solid';
-import { PlayIcon } from '../Icons';
+import { PlayIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
 import { executeChain } from '../../services/flowExecutionService';
 
 interface FlowChainListViewProps {
@@ -17,6 +17,9 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
   const flowChainIds = store.flowChainIds;
   const focusedFlowChainId = store.focusedFlowChainId;
   const setStore = useFlowExecutorStore.setState;
+  const [editingChainId, setEditingChainId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleAddFlowChain = () => {
     const name = newFlowChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;
@@ -104,6 +107,31 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
     reader.readAsText(file);
   };
 
+  function handleEditStart(chainId: string, name: string) {
+    setEditingChainId(chainId);
+    setEditValue(name);
+    setError(null);
+  }
+
+  function handleEditSave(chainId: string) {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setError('이름을 입력하세요.');
+      return;
+    }
+    if (Object.values(flowChainMap).some(c => c.id !== chainId && c.name === trimmed)) {
+      setError('이미 존재하는 이름입니다.');
+      return;
+    }
+    store.setFlowChainName(chainId, trimmed);
+    setEditingChainId(null);
+  }
+
+  function handleEditCancel() {
+    setEditingChainId(null);
+    setError(null);
+  }
+
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
@@ -173,7 +201,48 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                   onClick={() => handleFlowChainClick(flowChainId)}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="font-medium">{flowChain.name}</span>
+                    <span className="flex items-center gap-1">
+                      {editingChainId === flowChainId ? (
+                        <>
+                          <input
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onBlur={() => handleEditSave(flowChainId)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleEditSave(flowChainId);
+                              if (e.key === 'Escape') handleEditCancel();
+                            }}
+                            autoFocus
+                            className="border-b border-indigo-400 focus:outline-none px-1 py-0.5 text-sm bg-white rounded"
+                            style={{ minWidth: 60, maxWidth: 180 }}
+                            aria-label="체인 이름 입력"
+                          />
+                          <button onClick={() => handleEditSave(flowChainId)} className="ml-1 p-1 rounded hover:bg-green-100" title="저장"><CheckIcon size={16} /></button>
+                          <button onClick={handleEditCancel} className="ml-1 p-1 rounded hover:bg-red-100" title="취소"><XIcon size={16} /></button>
+                          {error && <span className="text-xs text-red-500 ml-2">{error}</span>}
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className="font-medium cursor-pointer"
+                            onClick={e => { e.stopPropagation(); handleEditStart(flowChainId, flowChain.name); }}
+                            tabIndex={0}
+                            onKeyDown={e => { if (e.key === 'Enter') handleEditStart(flowChainId, flowChain.name); }}
+                            aria-label="체인 이름 편집"
+                          >
+                            {flowChain.name}
+                          </span>
+                          <button
+                            className="ml-1 p-1 rounded hover:bg-gray-100"
+                            onClick={e => { e.stopPropagation(); handleEditStart(flowChainId, flowChain.name); }}
+                            title="이름 편집"
+                            tabIndex={0}
+                          >
+                            <PenLineIcon size={16} />
+                          </button>
+                        </>
+                      )}
+                    </span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={async e => {
