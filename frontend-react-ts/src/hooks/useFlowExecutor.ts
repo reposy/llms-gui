@@ -34,8 +34,8 @@ export const useFlowExecutor = () => {
   const getFocusedFlow = (): FlowChainItem | null => {
     if (!flowChainIds.length || !flowChainMap[flowChainIds[0]]) return null;
     const focusedChain = flowChainMap[flowChainIds[0]];
-    if (focusedChain.selectedFlowId && focusedChain.flowMap[focusedChain.selectedFlowId]) {
-      const flow = focusedChain.flowMap[focusedChain.selectedFlowId];
+    if (focusedChain.selectedFlowIds.length > 0) {
+      const flow = focusedChain.flowMap[focusedChain.selectedFlowIds[0]];
       return {
         id: flow.id,
         flowChainId: flow.flowChainId,

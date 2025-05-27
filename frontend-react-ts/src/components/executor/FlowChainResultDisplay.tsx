@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import FlowResultDisplay from './FlowResultDisplay';
 import ReactMarkdown from 'react-markdown';
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
@@ -97,15 +96,13 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
                 </button>
               </div>
               {isOpen && (
-                <FlowResultDisplay
-                  result={fr.result ? { status: 'success', outputs: fr.result, flowId: fr.flowId } : null}
-                  flowId={fr.flowId}
-                  flowName={fr.flowName}
-                  compact={true}
-                  openNodes={openNodes[fr.flowId] || {}}
-                  onToggleNode={nodeId => toggleNode(fr.flowId, nodeId)}
-                  hideHeader
-                />
+                <div className="p-3 bg-white rounded border border-gray-200 max-h-96 overflow-y-auto">
+                  {Array.isArray(fr.result) ? (
+                    <div className="markdown-content"><ReactMarkdown>{fr.result.map((nodeResult: any) => typeof nodeResult === 'string' ? nodeResult : JSON.stringify(nodeResult)).join('\n\n')}</ReactMarkdown></div>
+                  ) : (
+                    <pre className="whitespace-pre-wrap text-sm">{JSON.stringify(fr.result)}</pre>
+                  )}
+                </div>
               )}
             </div>
           );

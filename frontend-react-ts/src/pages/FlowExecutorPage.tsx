@@ -14,7 +14,7 @@ const FlowExecutorPage: React.FC = () => {
   const flowChainIds = store.flowChainIds;
   const flowChainMap = store.flowChainMap;
   const focusedFlowChainId = store.focusedFlowChainId;
-  const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  const [selectedFlowIds, setSelectedFlowIds] = useState<string[]>([]);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
@@ -26,15 +26,15 @@ const FlowExecutorPage: React.FC = () => {
 
   const handleChainSelect = (chainId: string) => {
     store.setFocusedFlowChainId(chainId);
-    setSelectedFlowId(null);
+    setSelectedFlowIds([]);
   };
 
   const handleFlowSelect = (flowId: string) => {
-    setSelectedFlowId(flowId);
+    setSelectedFlowIds([flowId]);
   };
 
   const handleCloseFlowModal = () => {
-    setSelectedFlowId(null);
+    setSelectedFlowIds([]);
   };
 
   const handleImportFlow = () => {
@@ -64,7 +64,7 @@ const FlowExecutorPage: React.FC = () => {
   const handleClearAll = () => {
     if (window.confirm('모든 Flow Chain과 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
       store.resetState();
-      setSelectedFlowId(null);
+      setSelectedFlowIds([]);
     }
   };
 
@@ -202,10 +202,10 @@ const FlowExecutorPage: React.FC = () => {
         defaultFilename="flows-export.json"
       />
       {/* Flow 상세 모달 */}
-      {focusedFlowChainId && selectedFlowId && (
+      {focusedFlowChainId && selectedFlowIds.length > 0 && selectedFlowIds[0] && (
         <FlowDetailModal
           flowChainId={focusedFlowChainId}
-          flowId={selectedFlowId}
+          flowId={selectedFlowIds[0]}
           onClose={handleCloseFlowModal}
         />
       )}

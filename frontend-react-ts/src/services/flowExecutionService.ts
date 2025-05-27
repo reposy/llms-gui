@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
 import { ExecutionStatus } from '../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
-import { resolveInputRowsToValues } from '../components/executor/FlowChainManager';
+// import { resolveInputRowsToValues } from '../components/executor/FlowChainManager';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -210,7 +210,7 @@ export const executeChain = async (params: ExecuteChainParams): Promise<void> =>
   // 상태/결과 처리
   const chainStatus = result?.chainOverallStatus || 'success';
   store.setFlowChainStatus(flowChainId, chainStatus, chainStatus === 'error' ? 'Chain failed' : undefined);
-  const finalChainResultFlow = flowChain.selectedFlowId ? store.getFlow(flowChainId, flowChain.selectedFlowId) : null;
+  const finalChainResultFlow = flowChain.selectedFlowIds.length > 0 ? store.getFlow(flowChainId, flowChain.selectedFlowIds[0]) : null;
   const finalOutputs = finalChainResultFlow?.lastResults || [];
   onChainComplete?.(flowChainId, finalOutputs);
 };
@@ -611,7 +611,7 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     if (!params.flowChainId) {
       throw new Error('flowChainId is required for input mapping');
     }
-    resolvedInputs = resolveInputRowsToValues(params.inputs, params.flowChainId);
+    resolvedInputs = extractInputValues(params.inputs);
   }
   if (!params.flowChainId || !params.flowId) {
     return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });

@@ -7,7 +7,6 @@ import { deepClone } from '../../utils/helpers';
 import { findLeafNodes, findRootNodes } from '../../core/outputCollector';
 import ExportModal from './ExportModal';
 import type { FlowChain } from '../../store/useFlowExecutorStore';
-import InputMappingRegistry from '../../core/InputMappingRegistry';
 
 interface FlowChainManagerProps {
   onSelectFlow?: (flowId: string) => void;
@@ -52,27 +51,6 @@ interface FlowChainExport {
     flowJson: any;
     inputs: any[];
   }[];
-}
-
-// Flow 실행 시 입력값 변환 함수 추가
-export interface InputRow {
-  type: 'text' | 'file' | 'flow-result';
-  value: string | File | null;
-  sourceFlowId?: string;
-}
-export function resolveInputRowsToValues(inputRows: InputRow[], flowChainId: string): (string | File)[] {
-  return inputRows.reduce<(string | File)[]>((acc, row) => {
-    try {
-      const result = InputMappingRegistry.resolve(row, flowChainId);
-      if (Array.isArray(result)) {
-        return [...acc, ...result];
-      }
-      return [...acc, result];
-    } catch (e) {
-      console.error(`[resolveInputRowsToValues] ERROR:`, e);
-      return acc;
-    }
-  }, []);
 }
 
 const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handleImportFlowChain }) => {
@@ -373,7 +351,7 @@ const FlowChainManager: React.FC<FlowChainManagerProps> = ({ onSelectFlow, handl
     try {
       console.log(`[FlowChainManager] Executing flow: ${flowId}`);
       // 1. resolve inputs and update store
-      const resolvedInputs = resolveInputRowsToValues(flow.inputs || [], focusedFlowChainId!);
+      const resolvedInputs = flow.inputs || [];
       store.setFlowInputData(focusedFlowChainId!, flowId, resolvedInputs);
       // 2. execute with value[]
       const resultResponse = await executeFlowExecutor({

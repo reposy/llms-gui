@@ -1,5 +1,4 @@
 import { FlowData } from '../data/importExportUtils';
-import { useFlowChainStore } from '../../store/useFlowChainStore';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { deepClone } from '../helpers';
@@ -18,7 +17,7 @@ export const synchronizeFlowData = (
   const flowDataClone = deepClone(flowData);
   
   // 1. FlowChainStore 동기화
-  const flowChainStore = useFlowChainStore.getState();
+  // const flowChainStore = useFlowChainStore.getState();
   let flowStructure = flowChainStore.getFlow(flowId);
   
   if (!flowStructure) {

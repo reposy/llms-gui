@@ -247,9 +247,9 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                     <div className="mr-3">
                       <span className="font-medium">Flow 수:</span> {flowChain.flowIds.length}
                     </div>
-                    {flowChain.selectedFlowId && (
+                    {flowChain.selectedFlowIds.length > 0 && (
                       <div>
-                        <span className="font-medium">선택된 Flow:</span> {flowChain.flowMap[flowChain.selectedFlowId]?.name || '없음'}
+                        <span className="font-medium">선택된 Flow:</span> {flowChain.flowMap[flowChain.selectedFlowIds[0]]?.name || '없음'}
                       </div>
                     )}
                     {flowChain.status === 'error' && flowChain.error && (

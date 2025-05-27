@@ -4,7 +4,6 @@ import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 import { executeChain, executeFlowExecutor } from '../../services/flowExecutionService';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
-import ResultDisplay from './FlowResultDisplay';
 import FlowChainResultDisplay from './FlowChainResultDisplay';
 import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
 import InlineEditInput from '../ui/InlineEditInput';
