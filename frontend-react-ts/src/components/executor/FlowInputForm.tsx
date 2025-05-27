@@ -333,7 +333,13 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
       )}
       {/* FlowResultDisplay 항상 표시 */}
       <div className="mt-6">
-        <FlowResultDisplay result={flowResult} flowId={flowId} flowName={flow?.name || flowId} compact={true} />
+        <FlowResultDisplay
+          result={flowResult}
+          flowId={typeof flowId === 'string' ? flowId : ''}
+          flowName={typeof flow?.name === 'string' ? flow.name : ''}
+          compact={true}
+          defaultExpand={true}
+        />
       </div>
     </div>
   );

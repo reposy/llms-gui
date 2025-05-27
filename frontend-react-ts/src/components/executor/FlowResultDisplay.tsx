@@ -21,6 +21,7 @@ interface ResultDisplayProps {
   openNodes?: { [nodeId: string]: boolean };
   onToggleNode?: (nodeId: string) => void;
   hideHeader?: boolean;
+  defaultExpand?: boolean;
 }
 
 // 문자열이 마크다운 형식인지 대략 확인하는 함수
@@ -40,7 +41,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text', compact = true, openNodes = {}, onToggleNode, hideHeader }) => {
+const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text', compact = true, openNodes = {}, onToggleNode, hideHeader, defaultExpand = false }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -51,10 +52,31 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   const [nodeViewModes, setNodeViewModes] = useState<{[nodeId: string]: 'text' | 'markdown'}>({});
   // join 모드 text/markdown toggle
   const [joinViewMode, setJoinViewMode] = useState<'text' | 'markdown'>('text');
+  const [localOpenNodes, setLocalOpenNodes] = useState<{ [nodeId: string]: boolean }>({});
   
   useEffect(() => {
     console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
   }, [flowId, result]);
+
+  // defaultExpand가 true이고 result.outputs가 바뀔 때마다 모든 노드를 펼침 상태로 초기화
+  useEffect(() => {
+    if (defaultExpand && result?.outputs) {
+      const allOpen: { [nodeId: string]: boolean } = {};
+      result.outputs.forEach((nodeResult: any) => {
+        const nodeId = nodeResult.nodeId;
+        if (nodeId) allOpen[nodeId] = true;
+      });
+      setLocalOpenNodes(allOpen);
+    } else if (!defaultExpand && result?.outputs) {
+      // 닫힘이 기본이면 모두 false로 초기화
+      const allClosed: { [nodeId: string]: boolean } = {};
+      result.outputs.forEach((nodeResult: any) => {
+        const nodeId = nodeResult.nodeId;
+        if (nodeId) allClosed[nodeId] = false;
+      });
+      setLocalOpenNodes(allClosed);
+    }
+  }, [defaultExpand, result]);
 
   // 결과 복사 함수
   const copyToClipboard = (text: string, nodeId: string) => {
@@ -95,6 +117,23 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
 
   // Helper to get per-node view mode (default 'text')
   const getNodeViewMode = (nodeId: string) => nodeViewModes[nodeId] || 'text';
+
+  // outputs 모드에서 defaultExpand가 true면 모든 노드가 펼쳐진 상태로 보장
+  const isExpanded = (nodeId: string) => {
+    if (defaultExpand) return true;
+    return openNodes && openNodes[nodeId] !== undefined
+      ? openNodes[nodeId]
+      : localOpenNodes[nodeId] || false;
+  };
+
+  // 노드 펼치기 토글 핸들러
+  const handleToggleNode = (nodeId: string) => {
+    if (onToggleNode) {
+      onToggleNode(nodeId);
+    } else {
+      setLocalOpenNodes(prev => ({ ...prev, [nodeId]: !prev[nodeId] }));
+    }
+  };
 
   // 개별 노드 결과 렌더링 (compact/expanded)
   const renderNodeResult = (nodeResult: Record<string, any>, index: number) => {
@@ -160,20 +199,20 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       ? (displayModes[nodeId] || getInitialDisplayMode(nodeId, nodeOutput)) 
       : 'text';
     
-    const isExpanded = openNodes[nodeId] || false;
+    const expanded = isExpanded(nodeId);
     return (
       <>
         <div key={nodeId || index} className="flex items-center gap-2 py-1 border-b last:border-b-0 text-sm group hover:bg-gray-50 transition">
           <span className="font-semibold text-blue-700 mr-2">{nodeName}</span>
-          {!isExpanded && <span className="truncate flex-1" title={resultText}>{resultText}</span>}
+          {!expanded && <span className="truncate flex-1" title={resultText}>{resultText}</span>}
           <button onClick={() => copyToClipboard(resultText, nodeId)} className="p-1 hover:text-blue-600" title="복사">
             <ClipboardIcon className="h-4 w-4" />
           </button>
-          <button onClick={() => onToggleNode && onToggleNode(nodeId)} className="p-1 hover:text-gray-700" title={isExpanded ? '접기' : '상세 보기'}>
-            {isExpanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+          <button onClick={() => handleToggleNode(nodeId)} className="p-1 hover:text-gray-700" title={expanded ? '접기' : '상세 보기'}>
+            {expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
           </button>
         </div>
-        {isExpanded && (
+        {expanded && (
           <div className="p-2 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto mt-1">
             <button
               onClick={() => toggleNodeViewMode(nodeId)}
