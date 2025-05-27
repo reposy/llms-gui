@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ExecutionStatus } from '../../store/useExecutorStateStore';
 import ReactMarkdown from 'react-markdown';
 import './markdown-style.css';
+import { ClipboardIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 // FlowExecutionResult 인터페이스 직접 정의
 interface FlowExecutionResult {
@@ -16,6 +17,9 @@ interface ResultDisplayProps {
   flowId: string;
   flowName: string;
   outputFormat?: 'text' | 'markdown';
+  compact?: boolean;
+  openNodes?: { [nodeId: string]: boolean };
+  onToggleNode?: (nodeId: string) => void;
 }
 
 // 문자열이 마크다운 형식인지 대략 확인하는 함수
@@ -35,7 +39,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text' }) => {
+const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text', compact = true, openNodes = {}, onToggleNode }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -91,7 +95,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   // Helper to get per-node view mode (default 'text')
   const getNodeViewMode = (nodeId: string) => nodeViewModes[nodeId] || 'text';
 
-  // 개별 노드 결과 렌더링
+  // 개별 노드 결과 렌더링 (compact/expanded)
   const renderNodeResult = (nodeResult: Record<string, any>, index: number) => {
     // 두 가지 형태의 결과 객체 처리
     // 1. flowExecutionService.ts의 NodeResult 형태: { nodeId, outputs }
@@ -155,58 +159,36 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       ? (displayModes[nodeId] || getInitialDisplayMode(nodeId, nodeOutput)) 
       : 'text';
     
+    const isExpanded = openNodes[nodeId] || false;
     return (
-      <div key={nodeId || index} className="p-4 bg-white rounded-lg border border-gray-300 mb-4 shadow-sm">
-        <div className="flex justify-between items-center mb-3">
-          <div>
-            <h3 className="font-medium text-blue-600">
-              {nodeName}
-              <span className="ml-2 text-xs text-gray-500">
-                {nodeType !== 'unknown' ? `(${nodeType})` : ''}
-              </span>
-            </h3>
-          </div>
-          <div className="flex items-center space-x-2">
+      <>
+        <div key={nodeId || index} className="flex items-center gap-2 py-1 border-b last:border-b-0 text-sm group hover:bg-gray-50 transition">
+          <span className="font-semibold text-blue-700 mr-2">{nodeName}</span>
+          <button onClick={() => onToggleNode && onToggleNode(nodeId)} className="p-1 hover:text-gray-700" title={isExpanded ? '접기' : '상세 보기'}>
+            {isExpanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+          </button>
+          {!isExpanded && <span className="truncate flex-1" title={resultText}>{resultText}</span>}
+          <button onClick={() => copyToClipboard(resultText, nodeId)} className="p-1 hover:text-blue-600" title="복사">
+            <ClipboardIcon className="h-4 w-4" />
+          </button>
+        </div>
+        {isExpanded && (
+          <div className="p-2 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto mt-1">
             <button
               onClick={() => toggleNodeViewMode(nodeId)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm"
-              title={currentDisplayMode === 'markdown' ? '텍스트로 보기' : '마크다운으로 보기'}
+              className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-xs mr-2"
+              title={getNodeViewMode(nodeId) === 'markdown' ? '텍스트로 보기' : '마크다운으로 보기'}
             >
-              {currentDisplayMode === 'markdown' ? 'text' : 'markdown'}
+              {getNodeViewMode(nodeId) === 'markdown' ? 'text' : 'markdown'}
             </button>
-            <button
-              onClick={() => copyToClipboard(resultText, nodeId)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
-            >
-              {copiedNodeId === nodeId ? (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  복사됨
-                </>
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                  </svg>
-                  복사
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-        
-        {false ? (
-          <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto markdown-content">
-            <ReactMarkdown>{typeof nodeOutput === 'string' ? nodeOutput : JSON.stringify(nodeOutput, null, 2)}</ReactMarkdown>
-          </div>
-        ) : (
-          <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto">
-            <p className="whitespace-pre-wrap">{resultText}</p>
+            {getNodeViewMode(nodeId) === 'markdown' ? (
+              <ReactMarkdown>{typeof nodeOutput === 'string' ? nodeOutput : JSON.stringify(nodeOutput, null, 2)}</ReactMarkdown>
+            ) : (
+              <p className="whitespace-pre-wrap">{resultText}</p>
+            )}
           </div>
         )}
-      </div>
+      </>
     );
   };
 
@@ -334,7 +316,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   };
 
   return (
-    <div className="p-3 border border-gray-300 rounded-lg bg-white">
+    <div className={compact ? "p-0 border-none bg-transparent" : "p-3 border border-gray-300 rounded-lg bg-white"}>
       {/* 글로벌 결과 표시 모드 토글 */}
       <div className="flex gap-2 mb-3">
         <button

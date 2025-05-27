@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import FlowResultDisplay from './FlowResultDisplay';
 import ReactMarkdown from 'react-markdown';
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 interface FlowResult {
   flowId: string;
@@ -16,6 +17,8 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
   const [viewMode, setViewMode] = useState<'outputs' | 'join' | 'raw'>('outputs');
   const [joinViewMode, setJoinViewMode] = useState<'text' | 'markdown'>('text');
   const [copied, setCopied] = useState(false);
+  const [openFlows, setOpenFlows] = useState<{[flowId: string]: boolean}>({});
+  const [openNodes, setOpenNodes] = useState<{[flowId: string]: {[nodeId: string]: boolean}}>({});
 
   // Helper for join mode
   const getJoinedOutputs = () => {
@@ -55,6 +58,19 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
     });
   };
 
+  function toggleFlow(flowId: string) {
+    setOpenFlows(prev => ({ ...prev, [flowId]: !prev[flowId] }));
+  }
+  function setNodeOpen(flowId: string, nodeId: string, open: boolean) {
+    setOpenNodes(prev => ({
+      ...prev,
+      [flowId]: { ...prev[flowId], [nodeId]: open }
+    }));
+  }
+  function toggleNode(flowId: string, nodeId: string) {
+    setNodeOpen(flowId, nodeId, !(openNodes[flowId]?.[nodeId]));
+  }
+
   if (flowResults.length === 0) {
     return <div className="text-gray-500 text-sm p-4">선택된 flow가 없습니다.</div>;
   }
@@ -62,36 +78,33 @@ const FlowChainResultDisplay: React.FC<FlowChainResultDisplayProps> = ({ flowRes
   if (viewMode === 'outputs') {
     return (
       <div>
-        {flowResults.map(fr => (
-          <div key={fr.flowId} className="mb-6 border border-gray-200 rounded-lg bg-gray-50 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-blue-700">{fr.flowName}</span>
-              <button
-                onClick={() => handleCopy(JSON.stringify(fr.result, null, 2))}
-                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
-              >
-                {copied ? (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    복사됨
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                    </svg>
-                    복사
-                  </>
-                )}
-              </button>
+        {flowResults.map(fr => {
+          const isOpen = openFlows[fr.flowId] ?? false;
+          return (
+            <div key={fr.flowId} className="mb-6 border border-gray-200 rounded-lg bg-gray-50 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-blue-700">{fr.flowName}</span>
+                <button
+                  onClick={() => toggleFlow(fr.flowId)}
+                  className="p-1 hover:text-gray-700"
+                  title={isOpen ? '접기' : '열기'}
+                >
+                  {isOpen ? <ChevronUpIcon className="h-5 w-5" /> : <ChevronDownIcon className="h-5 w-5" />}
+                </button>
+              </div>
+              {isOpen && (
+                <FlowResultDisplay
+                  result={fr.result ? { status: 'success', outputs: fr.result, flowId: fr.flowId } : null}
+                  flowId={fr.flowId}
+                  flowName={fr.flowName}
+                  compact={true}
+                  openNodes={openNodes[fr.flowId] || {}}
+                  onToggleNode={nodeId => toggleNode(fr.flowId, nodeId)}
+                />
+              )}
             </div>
-            <FlowResultDisplay 
-              result={fr.result ? { status: 'success', outputs: fr.result, flowId: fr.flowId } : null} 
-              flowId={fr.flowId} flowName={fr.flowName} />
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
