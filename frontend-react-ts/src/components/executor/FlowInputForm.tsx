@@ -1,21 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowResultDisplay from './FlowResultDisplay';
+import type { InputRow, InputType } from '../../types/flow';
 
 interface FlowInputFormProps {
   flowId: string;
   inputs?: any[];
   onInputChange?: (inputs: any[]) => void;
   isChainInput?: boolean;
-}
-
-type InputType = 'text' | 'file' | 'flow-result';
-
-interface InputRow {
-  type: InputType;
-  value: string | File | null;
-  sourceFlowId?: string | undefined;
-  flowChainId?: string | undefined;
 }
 
 const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
@@ -251,7 +243,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                 >
                   <option value="">FlowChain 선택</option>
                   {flowChainIds
-                    .filter(id => flowChainIds.indexOf(id) <= flowChainIds.indexOf(focusedFlowChainId))
+                    .filter(id => flowChainIds.indexOf(id) <= flowChainIds.indexOf(String(focusedFlowChainId)))
                     .map(id => {
                       const isCurrentChain = id === focusedFlowChainId;
                       const name = flowChainMap[String(id)]?.name || id;
