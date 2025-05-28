@@ -182,9 +182,12 @@ frontend-react-ts/src/
     *   `process()`는 `execute()`의 결과를 받아 `FlowExecutionContext`에 저장하고, 자식 노드들의 `process()`를 재귀적으로 호출하여 데이터 흐름을 이어갑니다.
 6.  **결과 및 상태 업데이트**: 실행 중 또는 완료 후, 노드의 상태와 결과는 `useNodeStateStore`에 업데이트되고, 이는 UI에 반영됩니다.
 
-### 4.1. `ExecutorPage.tsx` UI 렌더링
+### 플로우 실행 및 입력 매핑 구조
 
-`ExecutorPage.tsx`는 과거 `InputStageView`, `ExecutingStageView`, `ResultStageView`와 같은 별도의 스테이지 컴포넌트를 사용했지만, 최근 리팩토링을 통해 이러한 스테이지별 UI 로직이 `ExecutorPage.tsx` 내의 조건부 렌더링으로 통합되었습니다. 현재 `stage` 상태 (`useExecutorStateStore`에서 관리)에 따라 다른 UI 섹션 (파일 업로드, 입력 폼, 실행 중 표시, 결과 표시)을 직접 렌더링합니다. `StageNavigationBar.tsx`는 스테이지 간 이동을 위한 네비게이션 UI를 제공할 수 있습니다.
+- Flow 실행(수동/체인/자동)은 항상 executeFlowExecutor를 통해 이루어집니다.
+- 입력값(InputRow[] 또는 value[])은 변환 없이 그대로 전달하며, executeFlowExecutor가 InputRow[] 타입을 감지해 자동 변환합니다.
+- 이로써 입력 매핑 책임이 단일화되고, 실행 경로별 중복/누락/이중 변환 문제가 발생하지 않습니다.
+- 이 구조는 프로젝트의 단일 진입점/단일 책임 원칙을 엄격히 준수합니다.
 
 ## 5. 주요 컴포넌트 전략
 

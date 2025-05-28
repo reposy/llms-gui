@@ -100,6 +100,9 @@ export class FlowExecutionContext implements ExecutionContext {
   private readonly currentChainId?: string;
   private readonly currentFlowId?: string;
 
+  private onNodeStateChange?: (nodeId: string, status: 'init' | 'running' | 'success' | 'error', result?: any, error?: any) => void;
+  private onStoreOutput?: (nodeId: string, output: any) => void;
+
   /**
    * Create a new flow execution context
    * @param executionId Unique ID for this execution
@@ -110,6 +113,8 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param isExecutorContext Executor context flag
    * @param chainId Chain ID
    * @param flowId Flow ID
+   * @param onNodeStateChange Callback for node state changes
+   * @param onStoreOutput Callback for node output storage
    */
   constructor(
     executionId: string,
@@ -119,7 +124,9 @@ export class FlowExecutionContext implements ExecutionContext {
     nodeFactory?: NodeFactory,
     isExecutorContext: boolean = false,
     chainId?: string,
-    flowId?: string
+    flowId?: string,
+    onNodeStateChange?: (nodeId: string, status: 'init' | 'running' | 'success' | 'error', result?: any, error?: any) => void,
+    onStoreOutput?: (nodeId: string, output: any) => void
   ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
@@ -127,7 +134,6 @@ export class FlowExecutionContext implements ExecutionContext {
     this.nodes = nodes;
     this.edges = edges;
     this.nodeFactory = nodeFactory || globalNodeFactory;
-
     this.isExecutorCtx = isExecutorContext;
     if (this.isExecutorCtx) {
       if (!chainId || !flowId) {
@@ -136,6 +142,8 @@ export class FlowExecutionContext implements ExecutionContext {
       this.currentChainId = chainId;
       this.currentFlowId = flowId;
     }
+    this.onNodeStateChange = onNodeStateChange;
+    this.onStoreOutput = onStoreOutput;
   }
 
   /**
@@ -143,18 +151,27 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
    * @returns 새로운 FlowExecutionContext 인스턴스
+   *
+   * [Editor 모드]
+   * - store 기반 node.data를 사용 (실시간 편집/상태 반영)
+   * - store 접근/변경 허용
    */
   static createForEditor(executionId: string, flowData: FlowData): FlowExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
+        // Editor 모드: data만 반환
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.data || {};
+        return node && (node as any).data ? (node as any).data : {};
       },
       flowData.nodes,
       flowData.edges,
       globalNodeFactory, // 항상 싱글턴 사용
-      false // isExecutorContext 플래그
+      false, // isExecutorContext 플래그
+      undefined,
+      undefined,
+      undefined,
+      undefined
     );
   }
 
@@ -166,29 +183,49 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
    * @param nodeFactory 기존 NodeFactory 인스턴스 (옵션)
-   * @param chainId Chain ID
+   * @param flowChainId Flow Chain ID (네이밍 통일)
    * @param flowId Flow ID
    * @returns 새로운 FlowExecutionContext 인스턴스
+   *
+   * [Executor 모드]
+   * - store 접근 시도: flowChainMap > flowMap > nodeMap > nodeId > property
+   * - 없으면 빈 객체 반환 (data로 fallback하지 않음)
    */
-  static createForExecutor(executionId: string, flowData: FlowData, nodeFactory?: NodeFactory, chainId?: string, flowId?: string): FlowExecutionContext {
-    if (!chainId || !flowId) {
-      // 프로덕션에서는 이 오류가 발생해서는 안되지만, 개발 중 안전장치로 추가
-      console.error('Executor context creation requires chainId and flowId.');
-      throw new Error('chainId and flowId are required for Executor context at creation.');
-    }
+  static createForExecutor(
+    executionId: string,
+    flowData: FlowData,
+    nodeFactory?: NodeFactory,
+    flowChainId?: string,
+    flowId?: string
+  ): FlowExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
-        // nodeMap 기반 데이터만 허용 (property만 반환)
+        // Executor 모드: property만 반환
+        try {
+          if (flowChainId && flowId) {
+            const { useFlowExecutorStore } = require('../store/useFlowExecutorStore');
+            const store = useFlowExecutorStore.getState();
+            const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
+            const storeProperty = nodeMap?.[nodeId]?.property;
+            if (storeProperty && typeof storeProperty === 'object' && 'prompt' in storeProperty) {
+              return storeProperty;
+            }
+          }
+        } catch (e) {}
+        // property가 없으면 빈 객체 반환 (data로 fallback하지 않음)
         const node = flowData.nodes.find(n => n.id === nodeId);
-        return node?.property || {};
+        if (node && (node as any).property && 'prompt' in (node as any).property) return (node as any).property;
+        return {};
       },
       flowData.nodes,
       flowData.edges,
       nodeFactory || globalNodeFactory, // 항상 싱글턴 사용
       true, // isExecutorContext 플래그
-      chainId,
-      flowId
+      flowChainId,
+      flowId,
+      undefined,
+      undefined
     );
   }
 
@@ -284,21 +321,7 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeRunning(nodeId: string) {
     this.log(`Marking node ${nodeId} as running`);
-    if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
-      useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
-        status: 'running'
-      });
-    } else {
-      setNodeState(nodeId, {
-        status: 'running',
-        result: undefined,
-        error: undefined,
-        executionId: this.executionId,
-        lastTriggerNodeId: this.triggerNodeId || nodeId,
-        activeOutputHandle: undefined,
-        conditionResult: undefined
-      });
-    }
+    this.onNodeStateChange?.(nodeId, 'running');
   }
 
   /**
@@ -310,24 +333,7 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeSuccess(nodeId: string, result: any, activeOutputHandle?: string, conditionResult?: boolean) {
     this.log(`Marking node ${nodeId} as success`);
-    if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
-      useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
-        status: 'success',
-        result: result // deepClone은 setFlowNodeState 내부에서 처리
-      });
-    } else {
-      setNodeState(nodeId, {
-        status: 'success',
-        result,
-        executionId: this.executionId,
-        lastTriggerNodeId: this.triggerNodeId || nodeId,
-        activeOutputHandle,
-        conditionResult,
-        // Include iteration metadata in node state
-        iterationIndex: this.iterationIndex,
-        iterationTotal: this.iterationTotal
-      });
-    }
+    this.onNodeStateChange?.(nodeId, 'success', result, undefined);
   }
 
   /**
@@ -337,21 +343,7 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeError(nodeId: string, error: string) {
     this.log(`Marking node ${nodeId} as failed: ${error}`);
-    if (this.isExecutorCtx && this.currentChainId && this.currentFlowId) {
-      useExecutorStateStore.getState().setFlowNodeState(this.currentChainId, this.currentFlowId, nodeId, {
-        status: 'error',
-        error: error
-      });
-    } else {
-      setNodeState(nodeId, { 
-        status: 'error', 
-        error,
-        executionId: this.executionId,
-        // Include iteration metadata in node state
-        iterationIndex: this.iterationIndex,
-        iterationTotal: this.iterationTotal
-      });
-    }
+    this.onNodeStateChange?.(nodeId, 'error', undefined, error);
   }
 
   /**
@@ -360,59 +352,15 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param output The node output to append
    */
   storeOutput(nodeId: string, output: any): void {
-    // 개발 모드에서만 로그 출력
-    if (process.env.NODE_ENV === 'development') {
-      this.log(`Storing output for node ${nodeId}`);
-    }
-
+    this.onStoreOutput?.(nodeId, output);
+    // context 내부 outputs 맵은 테스트/임시용으로만 유지(필요시)
     let outputArray = this.outputs.get(nodeId);
     if (!outputArray) {
       outputArray = [];
       this.outputs.set(nodeId, outputArray);
     }
     outputArray.push(output);
-
-    // 항상 nodeOutputs에도 저장 (대표값)
     this.nodeOutputs.set(nodeId, output);
-    
-    if (process.env.NODE_ENV === 'development') {
-      this.log(`Appended output for node ${nodeId}. Total outputs: ${outputArray.length}`);
-    }
-
-    this.markNodeSuccess(nodeId, output);
-
-    try {
-      import('../store/useNodeContentStore').then(({ setNodeContent, getNodeContent }) => {
-        const existingContent = getNodeContent(nodeId);
-        const currentNode = this.nodes.find(n => n.id === nodeId); // 현재 노드 정보 가져오기
-
-        // 실행 결과만 저장, 입력 필드(prompt 등)는 건드리지 않음
-        const contentUpdates: Record<string, any> = {
-          outputTimestamp: Date.now()
-        };
-        
-        if (typeof output !== 'undefined') {
-          contentUpdates.responseContent = output;
-          // OutputNode의 경우에만 content 필드 저장
-          if (existingContent && 'format' in existingContent) { // OutputNode
-            contentUpdates.content = output;
-          }
-          // GroupNode가 아니고, items 속성이 있으며, output이 배열인 경우에만 items 업데이트
-          if (currentNode?.type !== 'group' && existingContent && 'items' in existingContent && Array.isArray(output)) {
-            contentUpdates.items = output;
-          }
-        }
-        // 기존 입력 필드(prompt 등)는 유지
-        setNodeContent(nodeId, { ...existingContent, ...contentUpdates } as Partial<NodeContent>);
-        if (process.env.NODE_ENV === 'development') {
-          this.log(`Updated node content store for node ${nodeId}`);
-        }
-      }).catch(err => {
-        console.error(`Failed to update node content store: ${err}`);
-      });
-    } catch (error) {
-      console.error(`Error updating node content store: ${error}`);
-    }
   }
 
   /**

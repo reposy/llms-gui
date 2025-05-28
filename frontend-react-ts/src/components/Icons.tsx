@@ -327,3 +327,40 @@ export const ArrowDownTrayIcon = (props: IconProps) => (
     <path d="M12 13V2" />
   </svg>
 ); 
+
+// 대형 체크박스 (체크됨)
+export const LargeCheckboxCheckedIcon = (props: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={props.size || 32}
+    height={props.size || 32}
+    viewBox="0 0 32 32"
+    fill="white"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="3" y="3" width="26" height="26" rx="6" fill="white" stroke="#2563eb" strokeWidth="3" />
+    <polyline points="9 17 15 23 23 11" fill="none" stroke="#2563eb" strokeWidth="3.5" />
+  </svg>
+);
+
+// 대형 체크박스 (체크 안됨)
+export const LargeCheckboxUncheckedIcon = (props: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={props.size || 32}
+    height={props.size || 32}
+    viewBox="0 0 32 32"
+    fill="white"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="3" y="3" width="26" height="26" rx="6" fill="white" stroke="#d1d5db" strokeWidth="3" />
+  </svg>
+); 

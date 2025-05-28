@@ -61,7 +61,7 @@ export interface FlowChain {
   id: string;
   name: string;
   status: ExecutionStatus;
-  selectedFlowId: string | null;  // 현재 선택된 Flow의 ID
+  selectedFlowIds: string[]; // 현재 선택된 Flow들의 ID (다중 선택)
   flowIds: string[];  // 실행 순서
   flowMap: Record<string, Flow>; // flowMap 추가
   error?: string;
@@ -82,7 +82,7 @@ export interface FlowExecutorState {
   removeFlowChain: (flowChainId: string) => void;
   setFlowChainName: (flowChainId: string, name: string) => void;
   setFlowChainStatus: (flowChainId: string, status: ExecutionStatus, error?: string) => void;
-  setSelectedFlow: (flowChainId: string, flowId: string | null) => void;
+  setSelectedFlowIds: (flowChainId: string, selectedFlowIds: string[]) => void;
   setFocusedFlowChainId: (id: string | null) => void;
   
   // Flow 관련 액션
@@ -92,6 +92,7 @@ export interface FlowExecutorState {
   setFlowInputData: (flowChainId: string, flowId: string, inputs: any[]) => void;
   setFlowResult: (flowChainId: string, flowId: string, results: any[]) => void;
   moveFlow: (flowChainId: string, flowId: string, direction: 'up' | 'down') => void;
+  setFlowName: (flowChainId: string, flowId: string, name: string) => void;
   
   // 노드 상태 관련 액션
   setFlowNodeState: (flowChainId: string, flowId: string, nodeId: string, nodeState: FlowNodeExecutionState) => void;
@@ -145,7 +146,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
                 id: flowChainId,
                 name: name || `Flow-Chain-${uuidv4().slice(0, 8)}`,
                 status: 'idle',
-                selectedFlowId: null,
+                selectedFlowIds: [],
                 flowIds: [],
                 flowMap: {},
                 inputs: []
@@ -220,16 +221,15 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
         });
       },
       
-      setSelectedFlow: (flowChainId, flowId) => {
+      setSelectedFlowIds: (flowChainId, selectedFlowIds) => {
         set((state) => {
           if (!state.flowChainMap[flowChainId]) return state;
-          
           return {
             flowChainMap: {
               ...state.flowChainMap,
               [flowChainId]: {
                 ...state.flowChainMap[flowChainId],
-                selectedFlowId: flowId
+                selectedFlowIds: selectedFlowIds
               }
             }
           };
@@ -244,7 +244,6 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       addFlowToFlowChain: (flowChainId, flow) => {
         set((state) => {
           if (!state.flowChainMap[flowChainId]) return state;
-          const selectedFlowId = state.flowChainMap[flowChainId].selectedFlowId;
           const flowChainFlowIds = [...state.flowChainMap[flowChainId].flowIds, flow.id];
           return {
             flowChainMap: {
@@ -252,7 +251,6 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
               [flowChainId]: {
                 ...state.flowChainMap[flowChainId],
                 flowIds: flowChainFlowIds,
-                selectedFlowId: selectedFlowId || flow.id,
                 flowMap: {
                   ...state.flowChainMap[flowChainId].flowMap,
                   [flow.id]: flow
@@ -271,11 +269,8 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
           // 체인의 flowIds에서 제거
           const newFlowIds = state.flowChainMap[flowChainId].flowIds.filter(id => id !== flowId);
           
-          // selectedFlowId 업데이트
-          let newSelectedFlowId = state.flowChainMap[flowChainId].selectedFlowId;
-          if (newSelectedFlowId === flowId) {
-            newSelectedFlowId = newFlowIds.length > 0 ? newFlowIds[0] : null;
-          }
+          // selectedFlowIds에서 제거
+          const newSelectedFlowIds = (state.flowChainMap[flowChainId].selectedFlowIds || []).filter(id => id !== flowId);
           
           // Flow 객체 제거
           const { [flowId]: removedFlow, ...remainingFlows } = state.flowChainMap[flowChainId].flowMap;
@@ -286,7 +281,7 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
               [flowChainId]: {
                 ...state.flowChainMap[flowChainId],
                 flowIds: newFlowIds,
-                selectedFlowId: newSelectedFlowId,
+                selectedFlowIds: newSelectedFlowIds,
                 flowMap: remainingFlows
               }
             }
@@ -330,6 +325,27 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
                   [flowId]: {
                     ...state.flowChainMap[flowChainId].flowMap[flowId],
                     inputs: deepClone(inputs)
+                  }
+                }
+              }
+            }
+          };
+        });
+      },
+      
+      setFlowName: (flowChainId, flowId, name) => {
+        set((state) => {
+          if (!state.flowChainMap[flowChainId] || !state.flowChainMap[flowChainId].flowMap[flowId]) return state;
+          return {
+            flowChainMap: {
+              ...state.flowChainMap,
+              [flowChainId]: {
+                ...state.flowChainMap[flowChainId],
+                flowMap: {
+                  ...state.flowChainMap[flowChainId].flowMap,
+                  [flowId]: {
+                    ...state.flowChainMap[flowChainId].flowMap[flowId],
+                    name
                   }
                 }
               }

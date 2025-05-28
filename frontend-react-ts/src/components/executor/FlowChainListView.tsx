@@ -2,8 +2,9 @@ import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TrashIcon } from '@heroicons/react/20/solid';
-import { PlayIcon } from '../Icons';
+import { PlayIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
 import { executeChain } from '../../services/flowExecutionService';
+import InlineEditInput from '../ui/InlineEditInput';
 
 interface FlowChainListViewProps {
   onFlowChainSelect: (flowChainId: string) => void;
@@ -17,6 +18,9 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
   const flowChainIds = store.flowChainIds;
   const focusedFlowChainId = store.focusedFlowChainId;
   const setStore = useFlowExecutorStore.setState;
+  const [editingChainId, setEditingChainId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleAddFlowChain = () => {
     const name = newFlowChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;
@@ -104,6 +108,21 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
     reader.readAsText(file);
   };
 
+  function validateChainName(newName: string, currentId: string) {
+    if (!newName.trim()) return '이름을 입력하세요.';
+    if (Object.values(flowChainMap).some(c => c.id !== currentId && c.name === newName.trim())) return '이미 존재하는 이름입니다.';
+    return null;
+  }
+
+  function handleSaveChainName(chainId: string, newName: string) {
+    store.setFlowChainName(chainId, newName);
+    setEditingChainId(null);
+  }
+
+  function handleCancelEdit() {
+    setEditingChainId(null);
+  }
+
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
@@ -173,7 +192,35 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                   onClick={() => handleFlowChainClick(flowChainId)}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="font-medium">{flowChain.name}</span>
+                    <span className="flex items-center gap-1">
+                      {editingChainId === flowChainId ? (
+                        <InlineEditInput
+                          value={flowChain.name}
+                          onSave={newName => handleSaveChainName(flowChainId, newName)}
+                          onCancel={handleCancelEdit}
+                          validate={v => validateChainName(v, flowChainId)}
+                        />
+                      ) : (
+                        <>
+                          <span
+                            className="font-medium cursor-pointer"
+                            onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
+                            tabIndex={0}
+                            aria-label="체인 이름 편집"
+                          >
+                            {flowChain.name}
+                          </span>
+                          <button
+                            className="ml-1 p-1 rounded hover:bg-gray-100"
+                            onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
+                            title="이름 편집"
+                            tabIndex={0}
+                          >
+                            <PenLineIcon size={16} />
+                          </button>
+                        </>
+                      )}
+                    </span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={async e => {
@@ -200,9 +247,9 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                     <div className="mr-3">
                       <span className="font-medium">Flow 수:</span> {flowChain.flowIds.length}
                     </div>
-                    {flowChain.selectedFlowId && (
+                    {flowChain.selectedFlowIds.length > 0 && (
                       <div>
-                        <span className="font-medium">선택된 Flow:</span> {flowChain.flowMap[flowChain.selectedFlowId]?.name || '없음'}
+                        <span className="font-medium">선택된 Flow:</span> {flowChain.flowMap[flowChain.selectedFlowIds[0]]?.name || '없음'}
                       </div>
                     )}
                     {flowChain.status === 'error' && flowChain.error && (
