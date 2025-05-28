@@ -74,7 +74,8 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
 
   // Process and validate nodes
   const importedNodes: Node<NodeData>[] = flowData.nodes.map(node => {
-    const importedNode = cloneDeep(node);
+    const { data, ...rest } = node as any;
+    const importedNode = { ...rest, property: data };
     
     // Validate node has a type
     if (!importedNode.type) {
@@ -101,13 +102,8 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
       importedNode.position = { x: 100, y: 100 };
     }
 
-    // Ensure property object exists and includes all data
-    importedNode.property = { ...(importedNode.data || {}), ...importedNode };
-    delete importedNode.data;
-    
     // Set default data properties based on node type if missing
-    if (importedNode.type === 'llm') {
-      // Cast to the correct type and set defaults only if it is an LLM node
+    if (importedNode.type === 'llm' && importedNode.property) {
       const llmData = importedNode.property as any;
       if (!llmData.model) {
         llmData.model = 'llama3';
@@ -118,7 +114,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
     if (!importedNode.width) importedNode.width = 200;
     if (!importedNode.height) importedNode.height = 150;
     
-    return importedNode;
+    return importedNode as Node<NodeData>;
   });
 
   // Process edges
@@ -218,7 +214,8 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
 
     // Filter node data within nodes array
     finalNodes = nodesFromStructureStore.map(node => {
-      const { property, ...restNode } = node;
+      const property = (node as any).property || {};
+      const { property: _, ...restNode } = node as any;
       const propertyToSave = { ...property };
       if ('responseContent' in propertyToSave) {
         delete propertyToSave.responseContent;
@@ -228,8 +225,8 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
       }
       return {
         ...restNode,
-        property: propertyToSave, 
-      };
+        property: propertyToSave,
+      } as Node<NodeData>;
     });
   }
 
@@ -285,25 +282,22 @@ export const exportFlowChainAsJson = (chainId: string, includeExecutionData: boo
   const flowMap: Record<string, FlowData> = {};
   
   for (const flowId of chain.flowIds) {
-    const flow = chain.flowMap[flowId];
+    const flow = (chain as any).flowMap[flowId];
     if (!flow) continue;
     
     // nodes 변환 시 타입 정의
-    const nodes: Node<NodeData>[] = Object.values(flow.nodes || {}).map(node => ({
+    const nodes: Node<NodeData>[] = Object.values((flow as any).nodes || {}).map((node: any) => ({
       id: node.id,
       type: node.type,
-      property: {
-        ...node.property,
-        ...(node.type === 'llm' && !node.property?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
-      },
+      data: node.property,
       position: node.position,
-      parentId: node.parentNodeId || undefined // null 대신 undefined 사용
-    }));
+      parentId: node.parentNodeId || undefined
+    } as Node<NodeData>));
     
     // edges 변환
-    const edges: Edge[] = Object.keys(flow.graph || {}).flatMap(nodeId => {
-      const relation = flow.graph[nodeId];
-      return relation.childs.map(childId => ({
+    const edges: Edge[] = Object.keys((flow as any).graph || {}).flatMap(nodeId => {
+      const relation = (flow as any).graph[nodeId];
+      return relation.childs.map((childId: any) => ({
         id: `edge-${nodeId}-${childId}`,
         source: nodeId,
         target: childId
@@ -393,14 +387,11 @@ export const importFlowChainFromJson = (chainData: FlowChainData): string | null
           // 노드 데이터 정리를 통해 타입 문제 회피
           const cleanedFlowData = {
             ...flowData,
-            nodes: flowData.nodes.map(node => ({
+            nodes: flowData.nodes.map((node: any) => ({
               id: node.id,
               type: node.type,
               position: node.position,
-              property: {
-                ...node.property,
-                ...(node.type === 'llm' && !node.property?.provider ? { provider: 'openai', model: 'gpt-3.5-turbo' } : {})
-              }
+              data: node.property
             }))
           } as FlowData;
           

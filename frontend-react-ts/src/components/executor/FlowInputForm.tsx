@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowResultDisplay from './FlowResultDisplay';
-import type { InputRow, InputType } from '../../types/flow';
+import type { InputRow, InputType } from '../../types/flow/InputRow';
 
 interface FlowInputFormProps {
   flowId: string;

@@ -326,7 +326,7 @@ export const ArrowDownTrayIcon = (props: IconProps) => (
     <path d="M8 9l4 4 4-4" />
     <path d="M12 13V2" />
   </svg>
-);
+); 
 
 // 대형 체크박스 (체크됨)
 export const LargeCheckboxCheckedIcon = (props: IconProps) => (
