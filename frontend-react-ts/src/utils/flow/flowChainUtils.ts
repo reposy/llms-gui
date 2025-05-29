@@ -15,32 +15,32 @@ export const synchronizeFlowData = (
 ): void => {
   // 깊은 복사를 사용하여 원본 데이터 변경 방지
   const flowDataClone = deepClone(flowData);
-
+  
   // ExecutorGraphStore 동기화
   const graphStore = useFlowExecutorStore.getState();
   const existingGraph = graphStore.getFlowGraph(flowId);
-
+  
   if (!existingGraph) {
     console.log(`[flowChainUtils] Setting flow graph in ExecutorGraphStore: ${flowId}`);
     graphStore.setFlowGraph(flowId, flowDataClone);
   }
-
+  
   // Flow Chain ID가 제공된 경우 ExecutorStateStore 동기화
   if (flowChainId) {
     const executorStore = useExecutorStateStore.getState();
     const flowChain = executorStore.getFlowChain(flowChainId);
-
+    
     if (flowChain) {
       // 체인 내에 해당 Flow가 존재하는지 확인
       const flowExists = flowChain.flowIds.includes(flowId);
-
+      
       if (!flowExists) {
         console.log(`[flowChainUtils] Adding flow to flow chain in ExecutorStateStore: ${flowId} to flow chain ${flowChainId}`);
         executorStore.addFlowToFlowChain(flowChainId, flowDataClone);
       }
     }
   }
-
+  
   console.log(`[flowChainUtils] Flow synchronization complete for flow: ${flowId}`);
 };
 

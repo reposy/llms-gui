@@ -5,6 +5,7 @@ import { NodeData } from '../types/nodes';
 import { createIDBStorage } from '../utils/storage/idbStorage';
 import { shallow } from 'zustand/shallow';
 import { useCallback } from 'react';
+import { createDefaultNodeData } from '../utils/flow/flowUtils';
 
 // 로깅 설정 - 자세한 로그를 보고 싶을 때 true로 설정
 const VERBOSE_LOGGING = false;
@@ -33,11 +34,27 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
       selectedNodeIds: [],
       
       setNodes: (nodes) => {
+        // Normalize nodes: ensure every node has a valid 'data' field
+        const normalizedNodes = nodes.map((node) => {
+          if (!node.data) {
+            if (process.env.NODE_ENV === 'development') {
+              throw new Error(`[setNodes] data가 없는 노드가 감지됨: ${node.id}`);
+            }
+          if ((node as any).property) {
+            return { ...node, data: (node as any).property };
+          }
+          if (node.type) {
+            return { ...node, data: createDefaultNodeData(node.type as any) };
+            }
+            return node;
+          }
+          return node;
+        });
         // Only update if nodes have actually changed (basic check)
-        if (nodesEqual(get().nodes, nodes)) {
+        if (nodesEqual(get().nodes, normalizedNodes)) {
           return;
         }
-        set({ nodes });
+        set({ nodes: normalizedNodes });
       },
       
       setEdges: (edges) => {

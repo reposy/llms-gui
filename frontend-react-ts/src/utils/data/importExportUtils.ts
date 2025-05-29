@@ -101,7 +101,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
       console.warn(`[importFlowFromJson] Node ${importedNode.id} has invalid position. Setting default position.`);
       importedNode.position = { x: 100, y: 100 };
     }
-
+    
     // Set default data properties based on node type if missing
     if (importedNode.type === 'llm' && importedNode.property) {
       const llmData = importedNode.property as any;
@@ -225,7 +225,7 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
       }
       return {
         ...restNode,
-        property: propertyToSave,
+        property: propertyToSave, 
       } as Node<NodeData>;
     });
   }

@@ -184,49 +184,49 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
         <div className="text-gray-400 text-sm flex-1">입력값을 추가하세요</div>
       </div>
       <div className="space-y-2 mb-4">
-        {rows.map((row, idx) => (
+      {rows.map((row, idx) => (
           <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
-            {/* 타입 토글 */}
-            <div className="flex gap-1">
-              <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
+          {/* 타입 토글 */}
+          <div className="flex gap-1">
+            <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
               <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => {
                 if (!editMode) return;
                 setType(idx, 'file');
                 setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
               }} disabled={!editMode}>File</button>
-              <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
-            </div>
-            {/* 입력 UI */}
-            {row.type === 'text' && (
+            <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+          </div>
+          {/* 입력 UI */}
+          {row.type === 'text' && (
               <textarea
                 className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white resize-none"
                 rows={2}
                 maxLength={500}
-                value={typeof row.value === 'string' ? row.value : ''}
-                onChange={e => editMode && handleTextChange(idx, e.target.value)}
-                onKeyDown={e => editMode && handleKeyDown(e, idx)}
-                placeholder="입력값을 입력하세요"
-                readOnly={!editMode}
+              value={typeof row.value === 'string' ? row.value : ''}
+              onChange={e => editMode && handleTextChange(idx, e.target.value)}
+              onKeyDown={e => editMode && handleKeyDown(e, idx)}
+              placeholder="입력값을 입력하세요"
+              readOnly={!editMode}
                 style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
-              />
-            )}
-            {row.type === 'file' && (
-              <div className="flex-1 flex items-center gap-2">
-                <input
-                  type="file"
-                  className="hidden"
-                  id={`file-input-${idx}`}
+            />
+          )}
+          {row.type === 'file' && (
+            <div className="flex-1 flex items-center gap-2">
+              <input
+                type="file"
+                className="hidden"
+                id={`file-input-${idx}`}
                   ref={el => fileInputRefs.current[idx] = el}
-                  onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
-                  disabled={!editMode}
-                />
-                {row.value && typeof row.value !== 'string' && (
-                  <span className="text-sm text-gray-700">{(row.value as File).name}</span>
-                )}
-                {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
-              </div>
-            )}
-            {row.type === 'flow-result' && (
+                onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                disabled={!editMode}
+              />
+              {row.value && typeof row.value !== 'string' && (
+                <span className="text-sm text-gray-700">{(row.value as File).name}</span>
+              )}
+              {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
+            </div>
+          )}
+          {row.type === 'flow-result' && (
               <div className="flex-1 flex gap-2">
                 {/* 1단계: FlowChain 선택 */}
                 <select
@@ -259,7 +259,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                   flowChainMap[String(row.flowChainId || '')].selectedFlowIds.length === 0 ? (
                     <span className="text-gray-400 text-sm">해당 flow chain에 선택된 flow가 없습니다</span>
                   ) : (
-                    <select
+            <select
                       className="border border-gray-300 rounded px-2 py-1 bg-white"
                       value={typeof row.sourceFlowId === 'string' ? row.sourceFlowId : ''}
                       onChange={e => {
@@ -284,7 +284,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                           </option>
                         );
                       })}
-                    </select>
+            </select>
                   )
                 )}
                 {/* 결과 없음 안내 */}
@@ -307,15 +307,15 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                   })()
                 )}
               </div>
-            )}
-            {/* 위/아래/삭제 */}
-            <div className="flex gap-1 ml-2">
-              <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
-              <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
-              <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
-            </div>
+          )}
+          {/* 위/아래/삭제 */}
+          <div className="flex gap-1 ml-2">
+            <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
+            <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
+            <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
           </div>
-        ))}
+        </div>
+      ))}
       </div>
       {/* 입력 추가 버튼: row 하단 우측 정렬 */}
       {editMode && (

@@ -34,12 +34,12 @@ InputMappingRegistry.register('flow-result', (row, flowChainId) => {
     if (!flow) {
       console.error(`[InputMappingRegistry] ERROR: flow is undefined for sourceFlowId:`, row.sourceFlowId);
       return [];
-    }
+  }
     if (Array.isArray(flow.lastResults) && flow.lastResults.length > 0) {
       return flow.lastResults.map((item: any) =>
-        typeof item === 'string' ? item : typeof item === 'object' ? JSON.stringify(item) : String(item)
-      );
-    }
+      typeof item === 'string' ? item : typeof item === 'object' ? JSON.stringify(item) : String(item)
+    );
+  }
     return [];
   } else {
     // 선택된 flow 전체 결과

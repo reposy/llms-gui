@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
-import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
 import { NodeData, NodeType, NodeContent } from '../types/nodes';
 import type { Node } from '@xyflow/react';
@@ -262,12 +261,7 @@ export const FlowEditor = () => {
         <div className="flex-none w-80 border-l border-gray-200 bg-white shadow-lg z-10 overflow-y-auto">
           {/* Render sidebar only if exactly one node is selected */}
           {singleSelectedNode ? (
-            // Decide which sidebar based on the single selected node's type
-            singleSelectedNode.type === 'group' ? (
-              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar as string[]} /> // Assert as string[] since singleSelectedNode ensures it's not null
-            ) : (
-              <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
-            )
+            <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} />
           ) : (
             // Render a placeholder or nothing when no node or multiple nodes are selected
             <div className="p-4 text-center text-gray-500">

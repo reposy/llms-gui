@@ -211,7 +211,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
           <button onClick={() => handleToggleNode(nodeId)} className="p-1 hover:text-gray-700" title={expanded ? '접기' : '상세 보기'}>
             {expanded ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
           </button>
-        </div>
+          </div>
         {expanded && (
           <div className="p-2 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto mt-1">
             <button
@@ -222,9 +222,9 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
               {getNodeViewMode(nodeId) === 'markdown' ? 'text' : 'markdown'}
             </button>
             {getNodeViewMode(nodeId) === 'markdown' ? (
-              <ReactMarkdown>{typeof nodeOutput === 'string' ? nodeOutput : JSON.stringify(nodeOutput, null, 2)}</ReactMarkdown>
-            ) : (
-              <p className="whitespace-pre-wrap">{resultText}</p>
+            <ReactMarkdown>{typeof nodeOutput === 'string' ? nodeOutput : JSON.stringify(nodeOutput, null, 2)}</ReactMarkdown>
+        ) : (
+            <p className="whitespace-pre-wrap">{resultText}</p>
             )}
           </div>
         )}
@@ -267,7 +267,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       return (
         <>
           {!hideHeader && (
-            <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+          <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
           )}
           <div>
             {result.outputs.map((nodeResult, idx) => renderNodeResult(nodeResult, idx))}
