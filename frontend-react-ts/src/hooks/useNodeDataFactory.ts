@@ -54,25 +54,20 @@ export function createNodeDataHook<
     const setNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
 
     /**
-     * Update content with deep equality check to prevent unnecessary updates
+     * Partial<NodeProperty>만 받아서 병합 업데이트합니다.
      */
     const updateContent = useCallback((updates: Partial<T>) => {
-      // Handle undefined content case - initialize with defaults
       if (!content) {
         setNodeProperty(nodeId, {...defaultValues, ...updates} as Partial<NodeProperty>);
         return;
       }
-      
-      // Check if any individual updates differ from current values
       const hasChanges = Object.entries(updates).some(([key, value]) => {
         const currentValue = content[key as keyof T];
         return !isEqual(currentValue, value);
       });
-      
       if (!hasChanges) {
         return;
       }
-      
       setNodeProperty(nodeId, updates as Partial<NodeProperty>);
     }, [nodeId, content, setNodeProperty, defaultValues]);
     
