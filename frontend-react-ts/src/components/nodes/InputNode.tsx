@@ -57,10 +57,10 @@ export const InputNode: React.FC<NodeProps> = ({ id, selected, isConnectable = t
 
   // Run handler - Simplified
   const handleRun = useCallback(() => {
-    console.log(`[InputNode] Triggering single execution for node ${id}`);
+    // console.log(`[InputNode] Triggering single execution for node ${id}`);
     // Call the centralized execution utility
     runSingleNodeExecution(id).catch(error => {
-      console.error(`[InputNode] Error during single execution:`, error);
+      // console.error(`[InputNode] Error during single execution:`, error);
       // Optionally, update node state to show error feedback to the user here
     });
   }, [id]); // Dependency is only the node id now

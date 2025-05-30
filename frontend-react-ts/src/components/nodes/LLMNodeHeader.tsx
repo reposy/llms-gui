@@ -42,12 +42,12 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const handleRun = useCallback(() => {
     const isGroupRootNode = isRootNode || !!document.querySelector(`[data-id="${id}"]`)?.closest('[data-type="group"]');
     if (isGroupRootNode) {
-      console.log(`[LlmNodeHeader] Triggering single execution for node ${id}`);
+      // console.log(`[LlmNodeHeader] Triggering single execution for node ${id}`);
       runSingleNodeExecution(id).catch((error: Error) => {
-        console.error(`[LlmNodeHeader] Error during single execution for node ${id}:`, error);
+        // console.error(`[LlmNodeHeader] Error during single execution for node ${id}:`, error);
       });
     } else {
-       console.log(`[LlmNodeHeader] Skipping run for non-root node ${id}`);
+       // console.log(`[LlmNodeHeader] Skipping run for non-root node ${id}`);
     }
   }, [id, isRootNode]);
 

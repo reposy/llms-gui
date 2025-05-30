@@ -46,7 +46,6 @@ export const ConditionalNode: React.FC<NodeProps> = memo(({ id, data, selected, 
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[ConditionalNode] Updated label for node ${nodeId} in both stores.`);
   }, [nodes, setNodes, setNodeProperty]);
 
   const handleConditionTypeChangeEvent = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {

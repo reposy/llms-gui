@@ -119,12 +119,12 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[MergerNode] Updated label for node ${updatedNodeId} in both stores.`);
+    // console.log(`[MergerNode] Updated label for node ${updatedNodeId} in both stores.`);
   }, [nodes, setNodes, setNodeProperty]);
 
   // Handle reset button click
   const handleResetClick = useCallback(() => {
-    console.log(`MergerNode(${id}): Reset button clicked`);
+    // console.log(`MergerNode(${id}): Reset button clicked`);
     resetItems();
   }, [id, resetItems]);
 

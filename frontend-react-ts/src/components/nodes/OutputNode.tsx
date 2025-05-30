@@ -86,7 +86,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
   // Handler for the download button
   const handleDownload = useCallback(() => {
     if (nodeState?.status !== 'success' || nodeState.result === null || nodeState.result === undefined) {
-      console.warn('No successful result to download.');
+      // console.warn('No successful result to download.');
       return;
     }
     const contentToDownload = formatResultBasedOnFormat(nodeState.result, format);

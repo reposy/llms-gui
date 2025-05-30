@@ -24,7 +24,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, selected, isConnectable }) => {
   const handleRunGroup = useCallback(() => {
     if (isRunning) return;
     // TODO: 그룹 실행 로직 구현 필요
-    console.log(`[GroupNode] ${id}: 그룹 실행 로직은 별도 구현 필요`);
   }, [id, isRunning]);
   
   const handleSelectGroup = useCallback((e: React.MouseEvent) => {
@@ -55,7 +54,6 @@ const GroupNode: React.FC<NodeProps> = ({ id, selected, isConnectable }) => {
         : node
     );
     setNodesLocal(updatedNodes); // Use the function obtained from the store hook
-    console.log(`[GroupNode] Updated label for node ${updatedNodeId} in both stores.`);
   }, [allNodes, setNodesLocal]); // Add dependencies
   // --- End LOCAL handler ---
 

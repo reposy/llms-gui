@@ -81,7 +81,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
         : node
     );
     setNodesLocal(updatedNodes);
-    console.log(`[APINode] Updated label for node ${updatedNodeId} in both stores.`);
   }, [currentNodes, setNodesLocal, setNodePropertyLocal]);
 
   const buildParamDrafts = useCallback((params: Record<string, string> = {}) => {

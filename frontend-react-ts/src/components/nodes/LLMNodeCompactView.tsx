@@ -16,7 +16,7 @@ interface LLMNodeCompactViewProps {
 // Temporary placeholder for isVisionModel logic (same as in LLMConfig.tsx)
 // TODO: Move this to a shared utility location (e.g., src/utils/llm/)
 const isVisionModel = (provider: 'ollama' | 'openai' | string, model: string): boolean => {
-  console.warn('[CompactView] Vision model detection is using a placeholder!');
+  // console.warn('[CompactView] Vision model detection is using a placeholder!');
   if (provider === 'ollama' && model?.includes('vision')) {
       return true;
   }

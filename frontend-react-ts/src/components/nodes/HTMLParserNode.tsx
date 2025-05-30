@@ -42,7 +42,7 @@ const HTMLParserNode: React.FC<NodeProps> = ({ id, selected }) => {
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[HTMLParserNode] Updated label for node ${updatedNodeId} in both stores.`);
+    // console.log(`[HTMLParserNode] Updated label for node ${updatedNodeId} in both stores.`);
   };
 
   const displayContent = () => {

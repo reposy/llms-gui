@@ -67,13 +67,13 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data, selected, isConnecta
         : node
     );
     setNodesLocal(updatedNodes);
-    console.log(`[JSONExtractorNode] Updated label for node ${nodeId} in both stores.`);
+    // console.log(`[JSONExtractorNode] Updated label for node ${nodeId} in both stores.`);
   }, [nodes, setNodesLocal, setNodePropertyLocal]);
 
   const handleRun = useCallback(() => {
-    console.log(`[JSONExtractorNode] Triggering single execution for node ${id}`);
+    // console.log(`[JSONExtractorNode] Triggering single execution for node ${id}`);
     runSingleNodeExecution(id).catch(error => {
-      console.error(`[JSONExtractorNode] Error during single execution:`, error);
+      // console.error(`[JSONExtractorNode] Error during single execution:`, error);
       // Optionally, update node state to show error feedback
     });
   }, [id]);

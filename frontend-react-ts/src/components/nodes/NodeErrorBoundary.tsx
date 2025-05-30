@@ -39,8 +39,6 @@ class NodeErrorBoundary extends Component<Props, State> {
       error,
       errorInfo
     });
-    
-    console.error(`[NodeError] Error in node ${this.props.nodeId}:`, error, errorInfo);
   }
 
   render(): ReactNode {

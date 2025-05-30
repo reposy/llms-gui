@@ -69,7 +69,7 @@ export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.mem
   const canEnableVisionMode = useMemo(() => {
     const hasInputs = hasImageInputs;
     if (DEBUG_LOGS) {
-      console.log(`[LLMNodeExpandedView] Node ${id} can${hasInputs ? '' : 'not'} use vision mode (has image inputs: ${hasInputs})`);
+      // console.log(`[LLMNodeExpandedView] Node ${id} can${hasInputs ? '' : 'not'} use vision mode (has image inputs: ${hasInputs})`);
     }
     return hasInputs;
   }, [id, hasImageInputs]);

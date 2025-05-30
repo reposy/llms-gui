@@ -27,10 +27,10 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, selected, isConnectable = tru
   
   // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {
-    console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
+    // console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
     // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
     runFlow(id).catch((error: Error) => {
-        console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
+        // console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
         // Optionally, mark the node as error in UI state here if needed
     });
   }, [id]); // 의존성 배열에서 nodes, edges 제거
@@ -54,7 +54,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, selected, isConnectable = tru
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
+    // console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
   }, [id, setContent]);
   
   // Handle toggle view
