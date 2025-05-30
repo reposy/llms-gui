@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 // 노드 타입 정의를 위한 타입 별칭 추가
-type FlowNode = Node<NodeType>;
+type FlowNode = Node<NodeProperty>;
 type FlowEdge = Edge;
 
 // Import custom hooks
@@ -55,7 +55,7 @@ import { ConditionalNode } from './nodes/ConditionalNode';
 import MergerNode from './nodes/MergerNode';
 import WebCrawlerNode from './nodes/WebCrawlerNode';
 import HTMLParserNode from './nodes/HTMLParserNode';
-import { NodeType } from '../types/nodes';
+import { NodeType, NodeProperty } from '../types/nodes';
 
 // Custom wrapper to remove default React Flow node styling
 export const NodeWrapper = ({ children }: { children: React.ReactNode }) => (
@@ -146,7 +146,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     const selectedNodes = zustandNodes.filter(node => node.selected);
     if (selectedNodes.length > 0) {
       console.log(`[FlowCanvas] 선택된 ${selectedNodes.length}개 노드 삭제`);
-      handleNodesDelete(selectedNodes as Node<NodeType>[]);
+      handleNodesDelete(selectedNodes as Node<NodeProperty>[]);
     }
   }, [zustandNodes, handleNodesDelete]);
   
