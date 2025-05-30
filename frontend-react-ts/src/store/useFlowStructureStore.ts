@@ -83,10 +83,6 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
         set({
           nodes: applyNodeChanges(changes, get().nodes as any) as any,
         });
-        // 필요한 경우 변경 사항 로깅
-        if (VERBOSE_LOGGING) {
-          console.log(`[FlowStructureStore] Applied ${changes.length} node changes`);
-        }
       },
       
       onEdgesChange: (changes: EdgeChange[]) => {
@@ -94,13 +90,14 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
           edges: applyEdgeChanges(changes, get().edges),
         });
       },
+
+      onRehydrateStorage: () => (state: any) => {
+        return state;
+      }
     }),
     {
       name: 'flow-structure-storage',
       storage: createJSONStorage(() => createIDBStorage()),
-      onRehydrateStorage: () => (state) => {
-        console.log('Flow structure hydrated:', state);
-      }
     }
   ),
   shallow

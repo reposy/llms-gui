@@ -1,9 +1,7 @@
 // src/components/nodes/LLMNodeExpandedView.tsx
 import React, { useCallback, useMemo } from 'react';
-import { LlmNodeProperty } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
-import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 

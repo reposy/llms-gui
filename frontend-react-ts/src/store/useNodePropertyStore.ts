@@ -101,7 +101,6 @@ export function createDefaultNodeProperty(type: string, id: string): NodePropert
         items: []
       } as GroupNodeProperty;
     default:
-      console.warn(`Creating default content for unknown node type: ${type}. Returning empty object.`);
       return {} as NodeProperty;
   }
 }

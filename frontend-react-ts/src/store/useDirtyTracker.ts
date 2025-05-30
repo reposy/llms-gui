@@ -101,15 +101,6 @@ export const useDirtyTracker = () => {
     
     if (newIsDirty !== isDirty) {
       useDirtyTrackerStore.getState().setDirty(newIsDirty);
-      
-      // For debug purposes
-      if (newIsDirty) {
-        console.log('[DirtyTracker] Flow is now dirty', { 
-          isNodesDirty, 
-          isEdgesDirty, 
-          isContentsDirty 
-        });
-      }
     }
   }, [nodes, edges, contents, cleanState, isDirty]);
 

@@ -47,34 +47,25 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   // Push a new snapshot to history
   pushSnapshot: (snapshot: FlowSnapshot) => {
     if (!get().isCapturing) return;
-
     set(state => {
-      // Ensure we're storing a deep copy of the contents to prevent reference issues
       const snapshotWithDeepCopy = {
         ...snapshot,
         contents: cloneDeep(snapshot.contents)
       };
-
-      // Check if this snapshot is identical to the most recent one
       const latestSnapshot = state.past[state.past.length - 1];
       if (latestSnapshot && 
           isEqual(latestSnapshot.nodes, snapshotWithDeepCopy.nodes) && 
           isEqual(latestSnapshot.edges, snapshotWithDeepCopy.edges) && 
           isEqual(latestSnapshot.contents, snapshotWithDeepCopy.contents)) {
-        return state; // No change, return the current state
+        return state;
       }
-
-      // Limit history size
       const newPast = [...state.past, snapshotWithDeepCopy];
       if (newPast.length > state.maxHistorySize) {
-        newPast.shift(); // Remove oldest item
+        newPast.shift();
       }
-
-      console.log(`[HistoryStore] Pushed snapshot with ${snapshotWithDeepCopy.nodes.length} nodes, ${snapshotWithDeepCopy.edges.length} edges, and ${Object.keys(snapshotWithDeepCopy.contents).length} content entries`);
-
       return {
         past: newPast,
-        future: [], // Clear future when a new snapshot is added
+        future: [],
         canUndo: true,
         canRedo: false
       };
@@ -84,32 +75,20 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   // Undo the last action
   undo: () => {
     const state = get();
-    if (state.past.length <= 1) return; // Keep at least one snapshot
-
+    if (state.past.length <= 1) return;
     const newPast = [...state.past];
-    const current = newPast.pop()!; // Get current state
-    const previous = newPast[newPast.length - 1]; // Get previous state
-
-    console.log(`[HistoryStore] Undoing to snapshot with ${previous.nodes.length} nodes, ${previous.edges.length} edges, and ${Object.keys(previous.contents).length} content entries`);
-
-    // 1. Reset execution state for all affected nodes
-    const allNodeIds = [...previous.nodes.map(n => n.id), ...current.nodes.map(n => n.id)];
-    resetNodeStates(allNodeIds);
-
-    // 2. Restore node contents using loadFromImportedContents
+    const current = newPast.pop()!;
+    const previous = newPast[newPast.length - 1];
+    resetNodeStates([...previous.nodes.map(n => n.id), ...current.nodes.map(n => n.id)]);
     loadFromImportedContents(cloneDeep(previous.contents));
-
-    // 3. Restore flow structure
     setNodes(previous.nodes);
     setEdges(previous.edges);
-    
     set({
       past: newPast,
       future: [current, ...state.future],
       canUndo: newPast.length > 1,
       canRedo: true
     });
-
     return previous;
   },
 
@@ -117,32 +96,18 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   redo: () => {
     const state = get();
     if (state.future.length === 0) return;
-
     const newFuture = [...state.future];
     const next = newFuture.shift()!;
-
-    console.log(`[HistoryStore] Redoing to snapshot with ${next.nodes.length} nodes, ${next.edges.length} edges, and ${Object.keys(next.contents).length} content entries`);
-
-    // 1. Reset execution state for all affected nodes
-    const currentNodeIds = state.past[state.past.length - 1]?.nodes.map(n => n.id) || [];
-    const nextNodeIds = next.nodes.map(n => n.id);
-    const allNodeIds = [...currentNodeIds, ...nextNodeIds];
-    resetNodeStates(allNodeIds);
-
-    // 2. Restore node contents using loadFromImportedContents
+    resetNodeStates([...(state.past[state.past.length - 1]?.nodes.map(n => n.id) || []), ...next.nodes.map(n => n.id)]);
     loadFromImportedContents(cloneDeep(next.contents));
-
-    // 3. Restore flow structure
     setNodes(next.nodes);
     setEdges(next.edges);
-    
     set({
       past: [...state.past, next],
       future: newFuture,
       canUndo: true,
       canRedo: newFuture.length > 0
     });
-
     return next;
   },
 
