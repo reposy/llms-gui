@@ -41,7 +41,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
    * 
    * We've removed this hook because:
    * - The loadFromReduxNodes function is called when the flow is initially loaded
-   * - The useManagedNodeProperty hook now properly handles bidirectional sync between Zustand and Redux
+   * - The useNodeProperty hook now properly handles bidirectional sync between Zustand and Redux
    * - State is managed consistently through that hook in both the node UI and sidebar components
    */
   
