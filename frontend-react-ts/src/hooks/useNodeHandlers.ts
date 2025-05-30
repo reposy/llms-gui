@@ -66,14 +66,11 @@ function updateNodeParentRelationship(
   if (newParentId) {
     const groupNode = allNodes.find(n => n.id === newParentId);
     if (!groupNode) {
-      console.warn(`[updateNodeParentRelationship] Group ${newParentId} not found!`);
       return allNodes;
     }
     
-    console.log(`[NodeDragStop] Adding node ${node.id} to group ${newParentId}`);
     return addNodeToGroup(nodeWithAbsPos, groupNode, allNodes);
   } else {
-    console.log(`[NodeDragStop] Removing node ${node.id} from group ${node.parentId}`);
     return removeNodeFromGroup(nodeWithAbsPos, allNodes);
   }
 }
@@ -119,15 +116,9 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
 
       // Update state only if parent relationship has changed
       if (currentParentId !== intersectingGroupId) {
-        console.log(`[NodeDragStop] Parent changed for ${draggedNode.id}: ${currentParentId || 'none'} -> ${intersectingGroupId || 'none'}`);
-        
         // Update node parent relationship
         const updatedNodes = updateNodeParentRelationship(draggedNode, intersectingGroupId, nodes);
         setZustandNodes(updatedNodes);
-      } else {
-        // If parent hasn't changed, we don't need to do anything
-        // React Flow's onNodesChange will handle position updates
-        console.log(`[NodeDragStop] Node ${draggedNode.id} position changed but parent remains the same`);
       }
     },
     [nodes, setZustandNodes]

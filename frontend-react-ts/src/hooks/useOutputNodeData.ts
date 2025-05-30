@@ -36,11 +36,9 @@ export const useOutputNodeProperty = (nodeId: string) => {
     });
     
     if (!hasChanges) {
-      console.log(`[OutputNode ${nodeId}] Skipping content update - no changes (deep equal)`);
       return;
     }
     
-    console.log(`[OutputNode ${nodeId}] Updating content with:`, updates);
     setNodeProperty(nodeId, updates);
   }, [nodeId, content, setNodeProperty]);
 
@@ -58,12 +56,10 @@ export const useOutputNodeProperty = (nodeId: string) => {
   }, [updateOutputContent]);
 
   const clearOutput = useCallback(() => {
-    console.log(`[OutputNode ${nodeId}] Clearing output content`);
     updateOutputContent({ content: undefined });
   }, [updateOutputContent, nodeId]);
 
   const handleContentChange = useCallback((newContent: any) => {
-    console.log(`[OutputNode ${nodeId}] Setting output content`);
     updateOutputContent({ content: newContent });
   }, [updateOutputContent, nodeId]);
 
@@ -100,7 +96,6 @@ export const useOutputNodeProperty = (nodeId: string) => {
           }
       }
     } catch (error) {
-      console.error('Error formatting output:', error);
       return String(data); // Fallback to simple string conversion on error
     }
   }, [result, format]);

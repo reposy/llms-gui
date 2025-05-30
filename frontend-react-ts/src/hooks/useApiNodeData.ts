@@ -109,7 +109,6 @@ export const useApiNodeData = ({ nodeId }: { nodeId: string }): ApiNodeDataHook 
           return;
         }
         if (isRunning) {
-          console.log(`[APINode ${nodeId}] API call already in progress.`);
           return;
         }
 
@@ -124,7 +123,6 @@ export const useApiNodeData = ({ nodeId }: { nodeId: string }): ApiNodeDataHook 
 
         // TODO: Implement actual API call logic (e.g., using fetch in a worker)
         // Simulating async operation for now
-        console.log(`[APINode ${nodeId}] Executing API call: ${method} ${url}`);
         await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
 
         try {
@@ -140,9 +138,7 @@ export const useApiNodeData = ({ nodeId }: { nodeId: string }): ApiNodeDataHook 
             errorMessage: undefined,
             isRunning: false,
           });
-          console.log(`[APINode ${nodeId}] API call successful.`);
         } catch (error) {
-          console.error(`[APINode ${nodeId}] API call failed:`, error);
           const message = error instanceof Error ? error.message : 'Unknown error';
           updateApiContent({
             errorMessage: message,
@@ -162,8 +158,6 @@ export const useApiNodeData = ({ nodeId }: { nodeId: string }): ApiNodeDataHook 
           // Check if the component is still mounted and if the node still exists
           const nodeContent = getStoreState().contents[nodeId];
           if (isRunning && nodeContent !== undefined) {
-            console.warn(`[APINode ${nodeId}] Unmounting while API call was in progress. Resetting state.`);
-            // Use the store's setter directly as the hook's context might be gone
             getStoreState().setNodeProperty(nodeId, { isRunning: false });
           }
         };

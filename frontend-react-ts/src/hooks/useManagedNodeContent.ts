@@ -42,17 +42,11 @@ export const useManagedNodeProperty = (nodeId: string): UseManagedNodePropertyRe
    * Updates the content in the Zustand store and marks it as dirty.
    */
   const updateContent = useCallback((updatedFields: Partial<NodeProperty>, shouldSnapshot = false) => {
-    console.log(`[useManagedNodeProperty ${nodeId}] Updating content:`, {
-      updatedFields,
-      shouldSnapshot
-    });
-
     // Update content in store
     setNodeProperty(nodeId, updatedFields);
 
     // Create snapshot if requested (default false)
     if (shouldSnapshot) {
-      console.log(`[useManagedNodeProperty ${nodeId}] Creating history snapshot after update`);
       pushCurrentSnapshot();
     }
   }, [nodeId]);
@@ -61,17 +55,6 @@ export const useManagedNodeProperty = (nodeId: string): UseManagedNodePropertyRe
    * Marks the content as clean in Zustand store.
    */
   const saveContent = useCallback(() => {
-    /* Removed: Rely on useDirtyTracker
-    if (isNodeDirty(nodeId)) {
-      // Logic to persist the changes, e.g., save to backend or local storage
-      // This is a placeholder - actual save logic depends on application needs
-      console.log(`[useManagedNodeProperty ${nodeId}] Saving changes...`, content);
-      // After saving, mark the node as not dirty
-      // markNodeNotDirty(nodeId); // Assuming such a function exists
-    } else {
-      console.log(`[useManagedNodeProperty ${nodeId}] No changes to save.`);
-    }
-    */
     console.warn(`[useManagedNodeProperty ${nodeId}] saveContent called - actual persistence logic not implemented here.`);
   }, [nodeId, content]);
 

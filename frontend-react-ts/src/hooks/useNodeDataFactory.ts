@@ -59,7 +59,6 @@ export function createNodeDataHook<
     const updateContent = useCallback((updates: Partial<T>) => {
       // Handle undefined content case - initialize with defaults
       if (!content) {
-        console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Initializing content with:`, {...defaultValues, ...updates});
         setNodeProperty(nodeId, {...defaultValues, ...updates} as Partial<NodeProperty>);
         return;
       }
@@ -71,11 +70,9 @@ export function createNodeDataHook<
       });
       
       if (!hasChanges) {
-        console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Skipping content update - no changes (deep equal)`);
         return;
       }
       
-      console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Updating content with:`, updates);
       setNodeProperty(nodeId, updates as Partial<NodeProperty>);
     }, [nodeId, content, setNodeProperty, defaultValues]);
     
