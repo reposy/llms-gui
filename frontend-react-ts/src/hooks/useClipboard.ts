@@ -8,7 +8,7 @@ import {
   copyNodesAndEdgesFromInstance
 } from '../utils/ui/clipboardUtils';
 import { useFlowStructureStore, setSelectedNodeIds as setZustandSelectedNodeIds } from '../store/useFlowStructureStore';
-import { setNodeContent, getAllNodeContents as getAllNodeContentsFromStore } from '../store/useNodeContentStore';
+import { setNodeProperty, getAllNodePropertys as getAllNodePropertysFromStore } from '../store/useNodePropertyStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { cloneDeep } from 'lodash';
 
@@ -181,7 +181,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     const { 
       newNodes: pastedNodes, 
       newEdges: pastedEdges, 
-      nodeContents: pastedNodeContentsInfo,
+      nodeContents: pastedNodePropertysInfo,
       newNodeIds
     } = pasteResult;
 
@@ -207,22 +207,22 @@ export const useClipboard = (): UseClipboardReturnType => {
       // 1. Get current state from Zustand
       const currentNodes = useFlowStructureStore.getState().nodes;
       const currentEdges = useFlowStructureStore.getState().edges;
-      const currentContents = getAllNodeContentsFromStore();
+      const currentContents = getAllNodePropertysFromStore();
 
       // 2. Create new state arrays
       const nextNodes = [...currentNodes, ...finalNodes];
       const nextEdges = [...currentEdges, ...finalEdges];
       let nextContents = { ...currentContents };
-      Object.values(pastedNodeContentsInfo).forEach(({ nodeId, content }) => {
+      Object.values(pastedNodePropertysInfo).forEach(({ nodeId, content }) => {
          nextContents[nodeId] = content; // Assume content is already deep copied
       });
 
       // 3. Update Zustand stores
       setNodes(nextNodes); 
       setEdges(nextEdges);
-      // Directly update contents in the content store (assuming setNodeContent handles individual updates)
-      Object.values(pastedNodeContentsInfo).forEach(({ nodeId, content }) => {
-          setNodeContent(nodeId, content);
+      // Directly update contents in the content store (assuming setNodeProperty handles individual updates)
+      Object.values(pastedNodePropertysInfo).forEach(({ nodeId, content }) => {
+          setNodeProperty(nodeId, content);
       });
       console.log(`[Clipboard] Updated structure and content stores.`);
 
@@ -259,7 +259,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     screenToFlowPosition, 
     setNodes, 
     setEdges, 
-    setNodeContent, 
+    setNodeProperty, 
     pushSnapshot, 
     getNodes, // Keep for focusViewportOnNodes
     focusViewportOnNodes,

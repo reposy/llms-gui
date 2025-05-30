@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { callApi } from '../services/apiService.ts';
-import { HTTPMethod, APINodeContent } from '../types/nodes.ts';
+import { HTTPMethod, APINodeProperty } from '../types/nodes.ts';
 
 /**
  * API node properties
@@ -24,7 +24,7 @@ export interface ApiNodeProperty {
  * ApiNode for making API requests
  */
 export class ApiNode extends Node {
-  declare property: APINodeContent;
+  declare property: APINodeProperty;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'api', property);
@@ -41,12 +41,12 @@ export class ApiNode extends Node {
   async execute(input: any): Promise<any> {
     this._log('Executing');
 
-    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
-    let nodeContent: APINodeContent | undefined = undefined;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as APINodeContent;
+    // context가 있으면 context의 getNodePropertyFunc를, 없으면 this.property를 사용
+    let nodeContent: APINodeProperty | undefined = undefined;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as APINodeProperty;
     } else {
-      nodeContent = this.property as APINodeContent;
+      nodeContent = this.property as APINodeProperty;
     }
     
     const { 

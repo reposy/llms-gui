@@ -6,7 +6,7 @@ import { NodeFactory } from '../core/NodeFactory';
 import { registerAllNodeTypes } from '../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
 import { useFlowStructureStore } from './useFlowStructureStore';
-import { getNodeContent } from './useNodeContentStore';
+import { getNodeProperty } from './useNodePropertyStore';
 import { runGroupNodeExecution } from '../core/executionUtils';
 
 // Rename state interface

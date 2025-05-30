@@ -2,11 +2,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { globalNodeFactory } from './NodeFactory';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { getNodeContent } from '../store/useNodeContentStore';
+import { getNodeProperty } from '../store/useNodePropertyStore';
 import { Node } from './Node'; // Import Node base class for type hinting
-import { LLMNodeContent } from '../types/nodes'; // For specific node data handling
+import { LlmNodeProperty } from '../types/nodes'; // For specific node data handling
 import { setNodeState } from '../store/useNodeStateStore';
-import { setNodeContent } from '../store/useNodeContentStore';
+import { setNodeProperty } from '../store/useNodePropertyStore';
 
 /**
  * Prepares the FlowExecutionContext for a new execution run.
@@ -25,8 +25,8 @@ const prepareExecutionContext = (): FlowExecutionContext => {
   }
   const { nodes, edges } = flowStructureStore;
 
-  if (!getNodeContent) {
-     throw new Error("getNodeContent function is not available.");
+  if (!getNodeProperty) {
+     throw new Error("getNodeProperty function is not available.");
   }
 
   // Create and configure NodeFactory
@@ -35,7 +35,7 @@ const prepareExecutionContext = (): FlowExecutionContext => {
   // Create the context
   const context = new FlowExecutionContext(
     executionId, 
-    getNodeContent, 
+    getNodeProperty, 
     nodes, 
     edges, 
     nodeFactory,
@@ -58,14 +58,14 @@ const prepareExecutionContext = (): FlowExecutionContext => {
           error: undefined,
           executionId,
         });
-        setNodeContent(nodeId, { responseContent: result });
+        setNodeProperty(nodeId, { responseContent: result });
       } else if (status === 'error') {
         setNodeState(nodeId, {
           status: 'error',
           error,
           executionId,
         });
-        setNodeContent(nodeId, { responseContent: error });
+        setNodeProperty(nodeId, { responseContent: error });
       }
     },
     undefined // onStoreOutput 콜백은 필요시만 사용
@@ -117,7 +117,7 @@ const _startExecutionProcess = async (
       // TODO: Generalize this if other nodes need special data merging
       let combinedNodeProperty = { ...(nodeStructure as any).property };
       if (nodeStructure.type === 'llm') {
-         const nodeContent = context.getNodeContentFunc(nodeId, 'llm') as LLMNodeContent;
+         const nodeContent = context.getNodePropertyFunc(nodeId, 'llm') as LlmNodeProperty;
          if (nodeContent) {
             combinedNodeProperty = { ...combinedNodeProperty, ...nodeContent };
             context.log(`Combined property for LLM node ${nodeId}`);
@@ -297,7 +297,7 @@ const _executeWithInput = async (
       // Special Data Preparation (similar to _startExecutionProcess)
       let combinedNodeProperty = { ...(nodeStructure as any).property };
       if (nodeStructure.type === 'llm') {
-         const nodeContent = context.getNodeContentFunc(nodeId, 'llm') as any;
+         const nodeContent = context.getNodePropertyFunc(nodeId, 'llm') as any;
          if (nodeContent) {
             combinedNodeProperty = { ...combinedNodeProperty, ...nodeContent };
             context.log(`Combined property for LLM node ${nodeId}`);

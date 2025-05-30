@@ -1,5 +1,5 @@
 import { FileLikeObject } from '../../types/nodes';
-import { InputNodeContent, NodeContent, isInputNodeContent } from './common';
+import { InputNodeProperty, NodeProperty, isInputNodeProperty } from './common';
 import { isEqual } from 'lodash';
 
 /**
@@ -21,19 +21,19 @@ export const isValidInputItem = (item: any): boolean => {
  */
 export const sanitizeInputItems = (items: any[]): string[] => {
   if (!Array.isArray(items)) {
-    console.warn('[inputNodeContent] sanitizeInputItems received non-array input:', items);
+    console.warn('[inputNodeProperty] sanitizeInputItems received non-array input:', items);
     return [];
   }
 
   const sanitized = items.filter(item => {
     const isValid = isValidInputItem(item);
     if (!isValid) {
-      console.log('[inputNodeContent] Filtered out invalid item:', item);
+      console.log('[inputNodeProperty] Filtered out invalid item:', item);
     }
     return isValid;
   });
 
-  console.log('[inputNodeContent] Sanitization result:', {
+  console.log('[inputNodeProperty] Sanitization result:', {
     before: items,
     after: sanitized,
     removedCount: items.length - sanitized.length
@@ -43,13 +43,13 @@ export const sanitizeInputItems = (items: any[]): string[] => {
 };
 
 /**
- * Sanitizes the entire InputNodeContent
+ * Sanitizes the entire InputNodeProperty
  */
-export const sanitizeInputNodeContent = (content: InputNodeContent): InputNodeContent => {
+export const sanitizeInputNodeProperty = (content: InputNodeProperty): InputNodeProperty => {
   if (!content) return {};
   
   // Log content state before sanitization
-  console.log('[inputNodeContent] Pre-sanitization content:', {
+  console.log('[inputNodeProperty] Pre-sanitization content:', {
     hasItems: 'items' in content,
     itemCount: content.items?.length,
     items: content.items?.map(item => ({
@@ -62,7 +62,7 @@ export const sanitizeInputNodeContent = (content: InputNodeContent): InputNodeCo
   
   // Log sanitization results
   if (!isEqual(sanitizedItems, content.items)) {
-    console.log('[inputNodeContent] Items changed after sanitization:', {
+    console.log('[inputNodeProperty] Items changed after sanitization:', {
       before: content.items?.map(item => ({
         value: item,
         type: typeof item
@@ -79,9 +79,9 @@ export const sanitizeInputNodeContent = (content: InputNodeContent): InputNodeCo
 };
 
 /**
- * Creates default InputNodeContent
+ * Creates default InputNodeProperty
  */
-export const createDefaultInputNodeContent = (label?: string): InputNodeContent => {
+export const createDefaultInputNodeProperty = (label?: string): InputNodeProperty => {
   return {
     label: label || 'Input Node',
     items: [],
@@ -93,13 +93,13 @@ export const createDefaultInputNodeContent = (label?: string): InputNodeContent 
 };
 
 /**
- * Sanitizes any type of NodeContent if it's an InputNodeContent
+ * Sanitizes any type of NodeProperty if it's an InputNodeProperty
  */
-export const sanitizeNodeContent = (content: NodeContent): NodeContent => {
+export const sanitizeNodeProperty = (content: NodeProperty): NodeProperty => {
   if (!content) return {};
   
-  if (isInputNodeContent(content)) {
-    return sanitizeInputNodeContent(content);
+  if (isInputNodeProperty(content)) {
+    return sanitizeInputNodeProperty(content);
   }
   
   return content;

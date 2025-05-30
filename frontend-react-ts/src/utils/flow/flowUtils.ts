@@ -1,5 +1,5 @@
 import { Node, Edge } from '@xyflow/react';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData, HTMLParserNodeData } from '../../types/nodes';
+import { NodeData, LlmNodeProperty, APINodeData, OutputNodeProperty, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData, HTMLParserNodeData } from '../../types/nodes';
 import { ExecutableNode } from '../../core/ExecutableNode';
 
 // Constants for node positioning
@@ -72,7 +72,7 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         prompt: '',
         temperature: 0.7,
         ollamaUrl: 'http://localhost:11434' // Default Ollama URL
-      } as LLMNodeData;
+      } as LlmNodeProperty;
     case 'api':
       return {
         ...baseData,
@@ -91,7 +91,7 @@ export const createDefaultNodeData = (type: NodeType): NodeData => {
         label: 'Output', // Specific default label
         format: 'text',
         content: '' // Add default content field
-      } as OutputNodeData;
+      } as OutputNodeProperty;
     case 'json-extractor':
       return {
         ...baseData,

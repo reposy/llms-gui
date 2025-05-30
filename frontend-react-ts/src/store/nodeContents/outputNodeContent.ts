@@ -1,9 +1,9 @@
-import { OutputNodeContent } from './common';
+import { OutputNodeProperty } from './common';
 
 /**
- * Creates default OutputNodeContent
+ * Creates default OutputNodeProperty
  */
-export const createDefaultOutputNodeContent = (label?: string): OutputNodeContent => {
+export const createDefaultOutputNodeProperty = (label?: string): OutputNodeProperty => {
   return {
     label: label || 'Output Node',
     format: 'text',
@@ -17,9 +17,9 @@ export const createDefaultOutputNodeContent = (label?: string): OutputNodeConten
  * Truncates output content if too long for storage
  */
 export const truncateOutputContentForStorage = (
-  content: OutputNodeContent, 
+  content: OutputNodeProperty, 
   maxLength: number = 1000
-): OutputNodeContent => {
+): OutputNodeProperty => {
   if (!content) return {};
   
   const result = { ...content };

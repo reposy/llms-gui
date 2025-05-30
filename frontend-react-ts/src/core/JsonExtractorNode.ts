@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { extractValue } from '../utils/flow/executionUtils.ts';
-import { JSONExtractorNodeContent } from '../types/nodes.ts';
+import { JSONExtractorNodeProperty } from '../types/nodes.ts';
 
 /**
  * JSON Extractor node properties
@@ -21,7 +21,7 @@ export class JsonExtractorNode extends Node {
   /**
    * Type assertion for property
    */
-  declare property: JSONExtractorNodeContent;
+  declare property: JSONExtractorNodeProperty;
 
   /**
    * Constructor for JsonExtractorNode
@@ -50,12 +50,12 @@ export class JsonExtractorNode extends Node {
       return null;
     }
 
-    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
-    let nodeContent: JSONExtractorNodeContent | undefined = undefined;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as JSONExtractorNodeContent;
+    // context가 있으면 context의 getNodePropertyFunc를, 없으면 this.property를 사용
+    let nodeContent: JSONExtractorNodeProperty | undefined = undefined;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as JSONExtractorNodeProperty;
     } else {
-      nodeContent = this.property as JSONExtractorNodeContent;
+      nodeContent = this.property as JSONExtractorNodeProperty;
     }
     
     const path = nodeContent.path;

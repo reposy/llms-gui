@@ -1,14 +1,14 @@
 // src/components/nodes/InputNode.tsx
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { InputNodeContent } from '../../types/nodes';
+import { InputNodeProperty } from '../../types/nodes';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
-import { useNodeContentStore, useNodeContent } from '../../store/useNodeContentStore';
+import { useNodePropertyStore, useNodeProperty } from '../../store/useNodePropertyStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { TrashIcon, PhotoIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/20/solid';
@@ -19,11 +19,11 @@ import { runSingleNodeExecution } from '../../core/executionUtils';
 export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
-  const setZustandNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const setZustandNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
   const { incoming } = useNodeConnections(id);
   const isRootNode = incoming.length === 0;
   const currentNodes = useFlowStructureStore(state => state.nodes); 
-  const { content: nodeContent } = useNodeContent<InputNodeContent>(id, 'input');
+  const { content: nodeContent } = useNodeProperty<InputNodeProperty>(id, 'input');
 
   // Use the consolidated input node hook with all functionalities
   const {
@@ -49,12 +49,12 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
 
   // Label update handler
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    setZustandNodeContent(updatedNodeId, { label: newLabel });
+    setZustandNodeProperty(updatedNodeId, { label: newLabel });
     const updatedNodes = currentNodes.map(node => 
       node.id === updatedNodeId ? { ...node, data: { ...node.data, label: newLabel } } : node
     );
     setNodes(updatedNodes);
-  }, [currentNodes, setZustandNodeContent]);
+  }, [currentNodes, setZustandNodeProperty]);
 
   // Run handler - Simplified
   const handleRun = useCallback(() => {

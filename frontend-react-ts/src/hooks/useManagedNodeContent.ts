@@ -2,17 +2,17 @@ import { useCallback } from 'react';
 import { shallow } from 'zustand/shallow';
 import { isEqual } from 'lodash';
 
-import { NodeContent } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import {
-  useNodeContentStore,
-  setNodeContent
-} from '../store/useNodeContentStore';
+  useNodePropertyStore,
+  setNodeProperty
+} from '../store/useNodePropertyStore';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 
-interface UseManagedNodeContentResult {
-  content: NodeContent; // The current content for the node
+interface UseManagedNodePropertyResult {
+  content: NodeProperty; // The current content for the node
   isDirty: boolean; // Is the content different from the last saved state?
-  updateContent: (updatedFields: Partial<NodeContent>, shouldSnapshot?: boolean) => void; // Update content in Zustand, mark as dirty
+  updateContent: (updatedFields: Partial<NodeProperty>, shouldSnapshot?: boolean) => void; // Update content in Zustand, mark as dirty
   saveContent: () => void; // Mark content as clean in Zustand (no longer persists to Redux)
 }
 
@@ -22,12 +22,12 @@ interface UseManagedNodeContentResult {
  * @param nodeId The ID of the node whose content is being managed.
  * @returns An object with content state and functions to update/save it.
  */
-export const useManagedNodeContent = (nodeId: string): UseManagedNodeContentResult => {
+export const useManagedNodeProperty = (nodeId: string): UseManagedNodePropertyResult => {
   // --- State directly from Zustand Store ---
   const { 
     content, 
     isDirty 
-  } = useNodeContentStore(
+  } = useNodePropertyStore(
     state => ({
       // Provide default empty object if content doesn't exist using state.contents
       content: state.contents[nodeId] ?? {},
@@ -41,18 +41,18 @@ export const useManagedNodeContent = (nodeId: string): UseManagedNodeContentResu
   /**
    * Updates the content in the Zustand store and marks it as dirty.
    */
-  const updateContent = useCallback((updatedFields: Partial<NodeContent>, shouldSnapshot = false) => {
-    console.log(`[useManagedNodeContent ${nodeId}] Updating content:`, {
+  const updateContent = useCallback((updatedFields: Partial<NodeProperty>, shouldSnapshot = false) => {
+    console.log(`[useManagedNodeProperty ${nodeId}] Updating content:`, {
       updatedFields,
       shouldSnapshot
     });
 
     // Update content in store
-    setNodeContent(nodeId, updatedFields);
+    setNodeProperty(nodeId, updatedFields);
 
     // Create snapshot if requested (default false)
     if (shouldSnapshot) {
-      console.log(`[useManagedNodeContent ${nodeId}] Creating history snapshot after update`);
+      console.log(`[useManagedNodeProperty ${nodeId}] Creating history snapshot after update`);
       pushCurrentSnapshot();
     }
   }, [nodeId]);
@@ -65,14 +65,14 @@ export const useManagedNodeContent = (nodeId: string): UseManagedNodeContentResu
     if (isNodeDirty(nodeId)) {
       // Logic to persist the changes, e.g., save to backend or local storage
       // This is a placeholder - actual save logic depends on application needs
-      console.log(`[useManagedNodeContent ${nodeId}] Saving changes...`, content);
+      console.log(`[useManagedNodeProperty ${nodeId}] Saving changes...`, content);
       // After saving, mark the node as not dirty
       // markNodeNotDirty(nodeId); // Assuming such a function exists
     } else {
-      console.log(`[useManagedNodeContent ${nodeId}] No changes to save.`);
+      console.log(`[useManagedNodeProperty ${nodeId}] No changes to save.`);
     }
     */
-    console.warn(`[useManagedNodeContent ${nodeId}] saveContent called - actual persistence logic not implemented here.`);
+    console.warn(`[useManagedNodeProperty ${nodeId}] saveContent called - actual persistence logic not implemented here.`);
   }, [nodeId, content]);
 
   // Return state directly from Zustand selector and the simplified callbacks

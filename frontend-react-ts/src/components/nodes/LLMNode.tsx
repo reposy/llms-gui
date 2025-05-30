@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
-import { LLMNodeData } from '../../types/nodes';
+import { LlmNodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
@@ -12,12 +12,12 @@ import { LLMNodeViewController } from './LLMNodeViewController';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 import LLMNodeHeader from './LLMNodeHeader';
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { LlmNodeProperty } from '../../types/nodes';
 
 interface Props {
   id: string;
-  data: LLMNodeData;
+  data: LlmNodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
@@ -34,7 +34,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   useLlmNodeData({ nodeId: id });
   
   // property(interface)만 zustand에서 구독
-  const { content: property, setContent } = useNodeContent<LlmNodeProperty>(id, 'llm');
+  const { content: property, setContent } = useNodeProperty<LlmNodeProperty>(id, 'llm');
   
   /**
    * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.
@@ -46,7 +46,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
    * 
    * We've removed this hook because:
    * - The loadFromReduxNodes function is called when the flow is initially loaded
-   * - The useManagedNodeContent hook now properly handles bidirectional sync between Zustand and Redux
+   * - The useManagedNodeProperty hook now properly handles bidirectional sync between Zustand and Redux
    * - State is managed consistently through that hook in both the node UI and sidebar components
    */
   

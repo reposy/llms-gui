@@ -3,17 +3,17 @@ import { persist } from 'zustand/middleware';
 import { isEqual } from 'lodash';
 import { useCallback } from 'react';
 import { 
-  InputNodeContent,
-  LLMNodeContent, 
-  OutputNodeContent, 
-  WebCrawlerNodeContent, 
-  APINodeContent, 
-  ConditionalNodeContent, 
-  JSONExtractorNodeContent,
-  GroupNodeContent, 
-  NodeContent,
-  MergerNodeContent,
-  HTMLParserNodeContent,
+  InputNodeProperty,
+  LlmNodeProperty, 
+  OutputNodeProperty, 
+  WebCrawlerNodeProperty, 
+  APINodeProperty, 
+  ConditionalNodeProperty, 
+  JSONExtractorNodeProperty,
+  GroupNodeProperty, 
+  NodeProperty,
+  MergerNodeProperty,
+  HTMLParserNodeProperty,
   NodeTypeMap,
   HTTPMethod,
   RequestBodyType,
@@ -23,10 +23,10 @@ import { shallow } from 'zustand/shallow';
 
 /**
  * Creates the default content for a given node type.
- * These objects should ONLY contain properties defined in the specific *NodeContent types.
+ * These objects should ONLY contain properties defined in the specific *NodeProperty types.
  * Base properties like label/isDirty are set by the consumer of this function.
  */
-export function createDefaultNodeContent(type: string, id: string): NodeContent {
+export function createDefaultNodeProperty(type: string, id: string): NodeProperty {
   switch (type) {
     case 'input':
       return {
@@ -38,7 +38,7 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         executionMode: 'batch',
         chainingUpdateMode: 'element',
         accumulationMode: 'always',
-      } as InputNodeContent;
+      } as InputNodeProperty;
 
     case 'llm':
       return {
@@ -48,14 +48,14 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         provider: 'ollama',
         ollamaUrl: 'http://localhost:11434',
         mode: 'text',
-      } as LLMNodeContent;
+      } as LlmNodeProperty;
 
     case 'output':
       return {
         format: 'text',
         content: '',
         mode: 'read',
-      } as OutputNodeContent;
+      } as OutputNodeProperty;
 
     case 'web-crawler':
       return {
@@ -65,12 +65,12 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         timeout: 30000,
         headers: {},
         outputFormat: 'html',
-      } as WebCrawlerNodeContent;
+      } as WebCrawlerNodeProperty;
 
     case 'html-parser':
       return { 
         extractionRules: []
-      } as HTMLParserNodeContent;
+      } as HTMLParserNodeProperty;
 
     case 'api':
       return {
@@ -79,13 +79,13 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         requestBodyType: 'none' as RequestBodyType,
         requestHeaders: {},
         requestBody: '',
-      } as APINodeContent;
+      } as APINodeProperty;
 
     case 'conditional':
       return {
         conditionType: 'contains',
         conditionValue: '',
-      } as ConditionalNodeContent;
+      } as ConditionalNodeProperty;
     
     case 'merger':
       return {
@@ -93,49 +93,49 @@ export function createDefaultNodeContent(type: string, id: string): NodeContent 
         strategy: 'array',
         items: [],
         keys: [],
-      } as MergerNodeContent;
+      } as MergerNodeProperty;
 
     case 'json-extractor':
       return {
         path: '',
-      } as JSONExtractorNodeContent;
+      } as JSONExtractorNodeProperty;
 
     case 'group':
       return {
         isCollapsed: false,
         items: []
-      } as GroupNodeContent;
+      } as GroupNodeProperty;
 
     default:
       console.warn(`Creating default content for unknown node type: ${type}. Returning empty object.`);
-      return {} as NodeContent;
+      return {} as NodeProperty;
   }
 }
 
 /**
  * 노드 컨텐츠 스토어 인터페이스
  */
-interface NodeContentState {
+interface NodePropertyState {
   // 노드 ID를 키로 사용하는 컨텐츠 맵
-  contents: Record<string, NodeContent>;
+  contents: Record<string, NodeProperty>;
   
   // 노드 ID와 컨텐츠를 받아 저장하는 함수
-  setNodeContent: <T extends NodeContent>(nodeId: string, content: Partial<T>) => void;
+  setNodeProperty: <T extends NodeProperty>(nodeId: string, content: Partial<T>) => void;
   
   // 노드 컨텐츠 삭제 함수
-  deleteNodeContent: (nodeId: string) => void;
+  deleteNodeProperty: (nodeId: string) => void;
   
   // 노드 ID로 컨텐츠를 조회하는 함수 (타입 안전한 버전)
-  getNodeContent: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => 
+  getNodeProperty: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => 
     K extends keyof NodeTypeMap ? NodeTypeMap[K] : 
-    K extends NodeType ? NodeContent : 
-    NodeContent;
+    K extends NodeType ? NodeProperty : 
+    NodeProperty;
   
   // 모든 컨텐츠를 가져오는 함수
-  getAllNodeContents: () => Record<string, NodeContent>;
+  getAllNodePropertys: () => Record<string, NodeProperty>;
   
   // 임포트된 컨텐츠를 로드하는 함수
-  loadFromImportedContents: (contents: Record<string, NodeContent>) => void;
+  loadFromImportedContents: (contents: Record<string, NodeProperty>) => void;
   
   // 모든 컨텐츠를 초기화하는 함수
   resetAllContent: () => void;
@@ -147,22 +147,22 @@ interface NodeContentState {
   isNodeDirty: (nodeId: string) => boolean;
   
   // 노드 컨텐츠 리셋 함수
-  resetNodeContent: (nodeId: string) => void;
+  resetNodeProperty: (nodeId: string) => void;
 }
 
 /**
  * 노드 컨텐츠를 저장하는 Zustand 스토어
  * persist 미들웨어로 로컬 스토리지에 자동 저장
  */
-export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
+export const useNodePropertyStore = createWithEqualityFn<NodePropertyState>()(
   persist(
     (set, get) => ({
       contents: {},
 
-      setNodeContent: <T extends NodeContent>(nodeId: string, contentUpdate: Partial<T>) => set(state => {
+      setNodeProperty: <T extends NodeProperty>(nodeId: string, contentUpdate: Partial<T>) => set(state => {
         // 타입 체크 방식 변경 - as로 타입 단언 대신 안전한 방식 사용
         const nodeType = (contentUpdate as any).type || 'unknown';
-        const currentContent = state.contents[nodeId] || createDefaultNodeContent(nodeType, nodeId);
+        const currentContent = state.contents[nodeId] || createDefaultNodeProperty(nodeType, nodeId);
         
         const newContent = { 
           ...currentContent,
@@ -182,35 +182,35 @@ export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
         }
       }),
 
-      deleteNodeContent: (nodeId) => set(state => {
+      deleteNodeProperty: (nodeId) => set(state => {
         const { [nodeId]: removedContent, ...rest } = state.contents;
         return { contents: rest };
       }),
 
-      getNodeContent: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => {
+      getNodeProperty: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => {
         const state = get();
         const content = state.contents[nodeId];
         
         if (content) {
-          return content as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeContent : NodeContent);
+          return content as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeProperty : NodeProperty);
         }
         
         // 컨텐츠가 없으면 기본값 생성
         if (nodeType) {
-          return createDefaultNodeContent(nodeType as string, nodeId) as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeContent : NodeContent);
+          return createDefaultNodeProperty(nodeType as string, nodeId) as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeProperty : NodeProperty);
         }
         
-        return {} as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeContent : NodeContent);
+        return {} as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeProperty : NodeProperty);
       },
 
-      getAllNodeContents: () => get().contents,
+      getAllNodePropertys: () => get().contents,
 
       loadFromImportedContents: (contents) => set({ contents }),
 
       resetAllContent: () => set({ contents: {} }),
 
       cleanupDeletedNodes: (existingNodeIds) => set(state => {
-        const updatedContents: Record<string, NodeContent> = {};
+        const updatedContents: Record<string, NodeProperty> = {};
         
         existingNodeIds.forEach(nodeId => {
           if (state.contents[nodeId]) {
@@ -226,7 +226,7 @@ export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
         return content ? !!content.isDirty : false;
       },
       
-      resetNodeContent: (nodeId) => set(state => {
+      resetNodeProperty: (nodeId) => set(state => {
         const content = state.contents[nodeId];
         if (!content) return state;
         
@@ -235,7 +235,7 @@ export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
         if (!nodeType) return state;
         
         // Create fresh default content
-        const freshContent = createDefaultNodeContent(nodeType, nodeId);
+        const freshContent = createDefaultNodeProperty(nodeType, nodeId);
         
         return {
           contents: {
@@ -283,7 +283,7 @@ export const useNodeContentStore = createWithEqualityFn<NodeContentState>()(
 /**
  * 노드 타입 추론 함수
  */
-function inferNodeType(content: NodeContent): string | null {
+function inferNodeType(content: NodeProperty): string | null {
   // LLM 노드
   if ('prompt' in content && 'model' in content) {
     return 'llm';
@@ -333,28 +333,28 @@ function inferNodeType(content: NodeContent): string | null {
 }
 
 // 직접 스토어 상태와 액션에 접근하기 위한 헬퍼 함수들
-export const getAllNodeContents = () => useNodeContentStore.getState().getAllNodeContents();
-export const getNodeContent = <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K): 
+export const getAllNodePropertys = () => useNodePropertyStore.getState().getAllNodePropertys();
+export const getNodeProperty = <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K): 
   K extends keyof NodeTypeMap ? NodeTypeMap[K] : 
-  K extends NodeType ? NodeContent :
-  NodeContent => 
-  useNodeContentStore.getState().getNodeContent(nodeId, nodeType as any);
-export const setNodeContent = <T extends NodeContent>(nodeId: string, content: Partial<T>) => useNodeContentStore.getState().setNodeContent(nodeId, content);
-export const loadFromImportedContents = (contents: Record<string, NodeContent>) => useNodeContentStore.getState().loadFromImportedContents(contents);
-export const resetAllContent = () => useNodeContentStore.getState().resetAllContent();
+  K extends NodeType ? NodeProperty :
+  NodeProperty => 
+  useNodePropertyStore.getState().getNodeProperty(nodeId, nodeType as any);
+export const setNodeProperty = <T extends NodeProperty>(nodeId: string, content: Partial<T>) => useNodePropertyStore.getState().setNodeProperty(nodeId, content);
+export const loadFromImportedContents = (contents: Record<string, NodeProperty>) => useNodePropertyStore.getState().loadFromImportedContents(contents);
+export const resetAllContent = () => useNodePropertyStore.getState().resetAllContent();
 
 // 컴포넌트에서 사용하기 위한 커스텀 훅
-export function useNodeContent<T extends NodeContent = NodeContent>(
+export function useNodeProperty<T extends NodeProperty = NodeProperty>(
   nodeId: string,
   nodeType?: string
 ) {
-  return useNodeContentStore(
+  return useNodePropertyStore(
     useCallback(
       (state) => ({
-        content: state.getNodeContent(nodeId, nodeType as any) as T,
+        content: state.getNodeProperty(nodeId, nodeType as any) as T,
         isContentDirty: state.isNodeDirty(nodeId),
-        setContent: (updates: Partial<T>) => state.setNodeContent(nodeId, updates),
-        resetContent: () => state.resetNodeContent(nodeId)
+        setContent: (updates: Partial<T>) => state.setNodeProperty(nodeId, updates),
+        resetContent: () => state.resetNodeProperty(nodeId)
       }),
       [nodeId, nodeType]
     ),
@@ -363,6 +363,6 @@ export function useNodeContent<T extends NodeContent = NodeContent>(
 }
 
 // 타입 정의
-export type NodeContentRecord = {
-  [nodeId: string]: NodeContent;
+export type NodePropertyRecord = {
+  [nodeId: string]: NodeProperty;
 };

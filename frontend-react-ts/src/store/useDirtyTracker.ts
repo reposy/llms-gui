@@ -1,7 +1,7 @@
 import { createWithEqualityFn } from 'zustand/traditional';
 import { shallow } from 'zustand/shallow';
 import { useNodes, useEdges } from './useFlowStructureStore';
-import { useNodeContentStore } from './useNodeContentStore';
+import { useNodePropertyStore } from './useNodePropertyStore';
 import { useEffect, useCallback } from 'react';
 import { isEqual } from 'lodash';
 
@@ -52,7 +52,7 @@ export const useIsDirty = () => useDirtyTrackerStore(state => state.isDirty);
 export const useMarkClean = () => {
   const nodes = useNodes();
   const edges = useEdges();
-  const contents = useNodeContentStore(state => state.getAllNodeContents());
+  const contents = useNodePropertyStore(state => state.getAllNodePropertys());
   const setCleanState = useDirtyTrackerStore(state => state.setCleanState);
 
   return useCallback(() => {
@@ -71,7 +71,7 @@ export const useMarkClean = () => {
 export const useDirtyTracker = () => {
   const nodes = useNodes();
   const edges = useEdges();
-  const contents = useNodeContentStore(state => state.getAllNodeContents());
+  const contents = useNodePropertyStore(state => state.getAllNodePropertys());
   const markClean = useMarkClean();
   
   const { cleanState, isDirty } = useDirtyTrackerStore(

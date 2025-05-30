@@ -1,13 +1,13 @@
 import React from 'react';
 import { shallow } from 'zustand/shallow';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodePropertyStore } from '../store/useNodePropertyStore';
 
 interface LLMNodeExpandedViewProps {
   nodeId: string;
 }
 
 const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = ({ nodeId }) => {
-  const nodeContent = useNodeContentStore(
+  const nodeContent = useNodePropertyStore(
     state => state.contents[nodeId] || {},
     shallow
   );

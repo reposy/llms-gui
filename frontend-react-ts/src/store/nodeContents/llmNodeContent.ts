@@ -1,9 +1,9 @@
-import { LLMNodeContent } from './common';
+import { LlmNodeProperty } from './common';
 
 /**
- * Creates default LLMNodeContent
+ * Creates default LlmNodeProperty
  */
-export const createDefaultLlmNodeContent = (label?: string): LLMNodeContent => {
+export const createDefaultLlmNodeProperty = (label?: string): LlmNodeProperty => {
   return {
     label: label || 'LLM Node',
     prompt: '',
@@ -21,7 +21,7 @@ export const createDefaultLlmNodeContent = (label?: string): LLMNodeContent => {
 /**
  * Validates a LLM node's properties
  */
-export const validateLlmNodeContent = (content: LLMNodeContent): string[] => {
+export const validateLlmNodeProperty = (content: LlmNodeProperty): string[] => {
   const errors: string[] = [];
   
   // Validate prompt
@@ -62,9 +62,9 @@ export const validateLlmNodeContent = (content: LLMNodeContent): string[] => {
  * Truncates LLM content if too long for storage
  */
 export const truncateLlmContentForStorage = (
-  content: LLMNodeContent, 
+  content: LlmNodeProperty, 
   maxLength: number = 1000
-): LLMNodeContent => {
+): LlmNodeProperty => {
   if (!content) return {
     provider: 'ollama',
     model: '',

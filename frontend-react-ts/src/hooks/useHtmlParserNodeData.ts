@@ -1,11 +1,11 @@
 import { useCallback } from 'react';
 import { createNodeDataHook } from './useNodeDataFactory';
-import { HTMLParserNodeContent, ExtractionRule } from '../types/nodes';
+import { HTMLParserNodeProperty, ExtractionRule } from '../types/nodes';
 
 /**
  * Default values for HTMLParser node content
  */
-const HTML_PARSER_DEFAULTS: Partial<HTMLParserNodeContent> = {
+const HTML_PARSER_DEFAULTS: Partial<HTMLParserNodeProperty> = {
   extractionRules: []
 };
 
@@ -13,9 +13,9 @@ const HTML_PARSER_DEFAULTS: Partial<HTMLParserNodeContent> = {
  * Return type for useHtmlParserNodeData hook
  */
 interface HtmlParserNodeDataHook {
-  content: HTMLParserNodeContent | undefined;
+  content: HTMLParserNodeProperty | undefined;
   extractionRules: ExtractionRule[];
-  updateContent: (updates: Partial<HTMLParserNodeContent>) => void;
+  updateContent: (updates: Partial<HTMLParserNodeProperty>) => void;
   addExtractionRule: (rule: ExtractionRule) => void;
   updateExtractionRule: (index: number, rule: ExtractionRule) => void;
   deleteExtractionRule: (index: number) => void;
@@ -24,7 +24,7 @@ interface HtmlParserNodeDataHook {
 /**
  * Custom hook for managing HTML Parser node data
  */
-export const useHtmlParserNodeData = createNodeDataHook<HTMLParserNodeContent, HtmlParserNodeDataHook>(
+export const useHtmlParserNodeData = createNodeDataHook<HTMLParserNodeProperty, HtmlParserNodeDataHook>(
   'html-parser',
   (params) => {
     const { nodeId, content, updateContent } = params;

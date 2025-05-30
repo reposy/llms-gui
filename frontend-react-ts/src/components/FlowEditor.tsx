@@ -2,10 +2,10 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
 import { FlowManager } from './FlowManager';
-import { NodeData, NodeType, NodeContent } from '../types/nodes';
+import { NodeData, NodeType, NodeProperty } from '../types/nodes';
 import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition, getRootNodeIdsWithTypeConversion } from '../utils/flow/flowUtils';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodePropertyStore } from '../store/useNodePropertyStore';
 import { 
   useNodes, 
   useEdges, 
@@ -31,8 +31,8 @@ export const FlowEditor = () => {
   const hydrated = useFlowStructureStore.persist.hasHydrated();
 
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
-  const { getNodeContent, setNodeContent: setContent } = useNodeContentStore(
-    (state) => ({ getNodeContent: state.getNodeContent, setNodeContent: state.setNodeContent })
+  const { getNodeProperty, setNodeProperty: setContent } = useNodePropertyStore(
+    (state) => ({ getNodeProperty: state.getNodeProperty, setNodeProperty: state.setNodeProperty })
   );
 
   const [selectedNodeIdForSidebar, setSelectedNodeIdForSidebar] = useState<string[] | null>(null);
@@ -87,7 +87,7 @@ export const FlowEditor = () => {
     setStructureNodes(updatedNodes); 
     
     const initialContent = { ...newNode.data, isDirty: false };
-    setContent(newNode.id, initialContent as Partial<NodeContent>); 
+    setContent(newNode.id, initialContent as Partial<NodeProperty>); 
     // console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, initialContent);
     
     pushCurrentSnapshot();

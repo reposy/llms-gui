@@ -2,9 +2,9 @@ import React from 'react';
 import { Node } from '@xyflow/react';
 import { 
   NodeData, 
-  LLMNodeData, 
+  LlmNodeProperty, 
   APINodeData, 
-  OutputNodeData, 
+  OutputNodeProperty, 
   InputNodeData,
   ConditionalNodeData,
   GroupNodeData,

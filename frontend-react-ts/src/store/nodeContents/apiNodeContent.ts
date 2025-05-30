@@ -1,9 +1,9 @@
-import { APINodeContent } from './common';
+import { APINodeProperty } from './common';
 
 /**
- * Creates default APINodeContent
+ * Creates default APINodeProperty
  */
-export const createDefaultApiNodeContent = (label?: string): APINodeContent => {
+export const createDefaultApiNodeProperty = (label?: string): APINodeProperty => {
   return {
     label: label || 'API Node',
     url: '',
@@ -21,7 +21,7 @@ export const createDefaultApiNodeContent = (label?: string): APINodeContent => {
 /**
  * Validates an API node's properties
  */
-export const validateApiNodeContent = (content: APINodeContent): string[] => {
+export const validateApiNodeProperty = (content: APINodeProperty): string[] => {
   const errors: string[] = [];
   
   // Validate URL

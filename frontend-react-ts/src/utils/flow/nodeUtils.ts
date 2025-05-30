@@ -1,5 +1,5 @@
 import { Node, Position, XYPosition, Edge } from '@xyflow/react';
-import { GroupNodeData, LLMNodeData, NodeData } from '../../types/nodes';
+import { GroupNodeData, LlmNodeProperty, NodeData } from '../../types/nodes';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

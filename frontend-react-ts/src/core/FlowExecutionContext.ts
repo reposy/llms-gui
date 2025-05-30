@@ -1,6 +1,6 @@
 import { ExecutionContext } from '../types/execution';
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
-import { NodeContent } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
 import { NodeFactory, globalNodeFactory } from './NodeFactory';
 import { Node } from './Node';
@@ -78,7 +78,7 @@ export class FlowExecutionContext implements ExecutionContext {
   /**
    * Function to get a node's content
    */
-  getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent;
+  getNodePropertyFunc: (nodeId: string, nodeType?: string) => NodeProperty;
 
   /**
    * Full list of nodes in the current flow structure.
@@ -106,7 +106,7 @@ export class FlowExecutionContext implements ExecutionContext {
   /**
    * Create a new flow execution context
    * @param executionId Unique ID for this execution
-   * @param getNodeContentFunc Function to get a node's content
+   * @param getNodePropertyFunc Function to get a node's content
    * @param nodes Full list of nodes in the flow
    * @param edges Full list of edges in the flow
    * @param nodeFactory Node factory for creating node instances
@@ -118,7 +118,7 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   constructor(
     executionId: string,
-    getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
+    getNodePropertyFunc: (nodeId: string, nodeType?: string) => NodeProperty,
     nodes: FlowNode[],
     edges: Edge[],
     nodeFactory?: NodeFactory,
@@ -130,7 +130,7 @@ export class FlowExecutionContext implements ExecutionContext {
   ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
-    this.getNodeContentFunc = getNodeContentFunc;
+    this.getNodePropertyFunc = getNodePropertyFunc;
     this.nodes = nodes;
     this.edges = edges;
     this.nodeFactory = nodeFactory || globalNodeFactory;
@@ -178,7 +178,7 @@ export class FlowExecutionContext implements ExecutionContext {
   /**
    * 실행기용 실행 컨텍스트 생성 팩토리 메서드
    * @note 이 컨텍스트는 nodeMap, rootIds, leafIds 기반으로만 동작하며,
-   *       Editor store/NodeContent 등은 절대 참조하지 않는다.
+   *       Editor store/NodeProperty 등은 절대 참조하지 않는다.
    *       Editor store 접근 시도시 에러를 throw한다.
    * @param executionId 실행 ID
    * @param flowData Flow 데이터

@@ -5,19 +5,19 @@ import { NodeViewMode } from '../../store/viewModeStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { NodeHeader } from './shared/NodeHeader';
-import { LLMNodeData, NodeData } from '../../types/nodes';
-import { LLMNodeContent } from '../../types/nodes';
+import { LlmNodeProperty, NodeData } from '../../types/nodes';
+import { LlmNodeProperty } from '../../types/nodes';
 import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
 import { v4 as uuidv4 } from 'uuid';
-import { getNodeContent, setNodeContent } from '../../store/useNodeContentStore';
+import { getNodeProperty, setNodeProperty } from '../../store/useNodePropertyStore';
 import { runSingleNodeExecution } from '../../core/executionUtils';
 
 interface LLMNodeHeaderProps {
   id: string;
-  data: LLMNodeData;
+  data: LlmNodeProperty;
   viewMode: NodeViewMode;
   onToggleView: () => void;
   isContentDirty?: boolean;
@@ -34,10 +34,10 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   
-  const initialLabel = (getNodeContent(id, 'llm') as LLMNodeContent)?.label || data.label || 'LLM';
+  const initialLabel = (getNodeProperty(id, 'llm') as LlmNodeProperty)?.label || data.label || 'LLM';
   
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    setNodeContent<LLMNodeContent>(nodeId, { label: newLabel });
+    setNodeProperty<LlmNodeProperty>(nodeId, { label: newLabel });
     
     setStructureNodes(nodes.map((node: Node<NodeData>) => 
         node.id === nodeId ? { ...node, data: { ...node.data, label: newLabel } } : node

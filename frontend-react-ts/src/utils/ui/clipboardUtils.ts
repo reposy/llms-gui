@@ -1,7 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeData } from '../../types/nodes';
-import { getNodeContent, NodeContent } from '../../store/useNodeContentStore';
+import { getNodeProperty, NodeProperty } from '../../store/useNodePropertyStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { cloneDeep } from 'lodash';
 
@@ -9,14 +9,14 @@ import { cloneDeep } from 'lodash';
 export interface ClipboardData {
   nodes: Node<NodeData>[];
   edges: Edge[];
-  nodeContents: Record<string, NodeContent>;
+  nodeContents: Record<string, NodeProperty>;
 }
 
 // Interface for paste result
 export interface PasteResult {
   newNodes: Node<NodeData>[];
   newEdges: Edge[];
-  nodeContents: Record<string, {content: NodeContent, nodeId: string, nodeType: string}>;
+  nodeContents: Record<string, {content: NodeProperty, nodeId: string, nodeType: string}>;
   oldToNewIdMap: Record<string, string>;
   newNodeIds: string[];
 }
@@ -65,9 +65,9 @@ export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], a
   console.log('[ClipboardUtils DEBUG] 관련 엣지 수:', relevantEdges.length);
 
   // Fetch and store the DEEP COPIED content for each selected node
-  const nodeContents: Record<string, NodeContent> = {};
+  const nodeContents: Record<string, NodeProperty> = {};
   selectedNodes.forEach(node => {
-    const content = getNodeContent(node.id); // useNodeContentStore에서 가져오기
+    const content = getNodeProperty(node.id); // useNodePropertyStore에서 가져오기
     console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!content);
     if (content) {
       // 콘텐츠 데이터 깊은 복사
@@ -234,7 +234,7 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
   }).filter(Boolean) as Edge[]; // Remove null edges (skipped edges)
 
   // Prepare node contents with type information
-  const nodeContents: Record<string, {content: NodeContent, nodeId: string, nodeType: string}> = {};
+  const nodeContents: Record<string, {content: NodeProperty, nodeId: string, nodeType: string}> = {};
   for (const [oldNodeId, content] of Object.entries(clipboardData.nodeContents)) {
     const newNodeId = oldToNewIdMap[oldNodeId];
     if (!newNodeId) continue;

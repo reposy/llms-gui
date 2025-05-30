@@ -17,7 +17,7 @@ export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }
   const {
     label,
     isCollapsed,
-    items, // NodeContent에서 직접 items 사용
+    items, // NodeProperty에서 직접 items 사용
     handleLabelChange,
     toggleCollapse
   } = useGroupNodeData({ nodeId });

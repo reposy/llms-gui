@@ -78,12 +78,12 @@ Example:
 
 ```ts
 import { createNodeDataHook } from './useNodeDataFactory';
-import { YourNodeContent } from '../types/nodes';
+import { YourNodeProperty } from '../types/nodes';
 
 /**
  * Default values for your node content
  */
-const YOUR_NODE_DEFAULTS: Partial<YourNodeContent> = {
+const YOUR_NODE_DEFAULTS: Partial<YourNodeProperty> = {
   property1: 'default value',
   property2: 123
 };
@@ -97,7 +97,7 @@ export const useYourNodeData = ({ nodeId }: { nodeId: string }) => {
     content, 
     setContent, 
     createChangeHandler 
-  } = createNodeDataHook<YourNodeContent>('your-node-type', YOUR_NODE_DEFAULTS)({ nodeId });
+  } = createNodeDataHook<YourNodeProperty>('your-node-type', YOUR_NODE_DEFAULTS)({ nodeId });
 
   // Extract properties with defaults
   const property1 = content?.property1 || YOUR_NODE_DEFAULTS.property1;

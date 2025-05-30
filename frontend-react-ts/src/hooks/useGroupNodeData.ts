@@ -1,11 +1,11 @@
 import { useCallback } from 'react';
 import { createNodeDataHook } from './useNodeDataFactory';
-import { GroupNodeContent } from '../types/nodes';
+import { GroupNodeProperty } from '../types/nodes';
 
 /**
  * Default values for Group node content
  */
-const GROUP_DEFAULTS: Partial<GroupNodeContent> = {
+const GROUP_DEFAULTS: Partial<GroupNodeProperty> = {
   isCollapsed: false,
   label: '',
   items: []
@@ -16,13 +16,13 @@ const GROUP_DEFAULTS: Partial<GroupNodeContent> = {
  * Explicitly defining return type helps TypeScript understand the guarantees we're making
  */
 interface GroupNodeDataHook {
-  content: GroupNodeContent | undefined;
+  content: GroupNodeProperty | undefined;
   label: string; // Explicitly marked as string (not string | undefined)
   isCollapsed: boolean;
   items: any[];
   handleLabelChange: (nodeId: string, newLabel: string) => void;
   toggleCollapse: () => void;
-  updateContent: (updates: Partial<GroupNodeContent>) => void;
+  updateContent: (updates: Partial<GroupNodeProperty>) => void;
   updateItems: (newItems: any[]) => void;
 }
 
@@ -32,7 +32,7 @@ interface GroupNodeDataHook {
  */
 export const useGroupNodeData = ({ nodeId }: { nodeId: string }): GroupNodeDataHook => {
   // Use the factory to create the base hook functionality
-  return createNodeDataHook<GroupNodeContent, GroupNodeDataHook>(
+  return createNodeDataHook<GroupNodeProperty, GroupNodeDataHook>(
     'group', 
     (params) => {
       const { 

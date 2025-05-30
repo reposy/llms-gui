@@ -1,11 +1,11 @@
 import { useCallback } from 'react';
 import { createNodeDataHook } from './useNodeDataFactory';
-import { WebCrawlerNodeContent } from '../types/nodes';
+import { WebCrawlerNodeProperty } from '../types/nodes';
 
 /**
  * Default values for WebCrawler node content
  */
-const WEBCRAWLER_DEFAULTS: Partial<WebCrawlerNodeContent> = {
+const WEBCRAWLER_DEFAULTS: Partial<WebCrawlerNodeProperty> = {
   url: '',
   waitForSelectorOnPage: '',
   iframeSelector: '',
@@ -20,7 +20,7 @@ const WEBCRAWLER_DEFAULTS: Partial<WebCrawlerNodeContent> = {
  * Explicitly defining return type helps TypeScript understand the guarantees we're making
  */
 interface WebCrawlerNodeDataHook {
-  content: WebCrawlerNodeContent | undefined;
+  content: WebCrawlerNodeProperty | undefined;
   url: string;
   waitForSelectorOnPage: string;
   iframeSelector: string;
@@ -28,7 +28,7 @@ interface WebCrawlerNodeDataHook {
   timeout: number;
   headers: Record<string, string>;
   extractElementSelector: string;
-  updateContent: (updates: Partial<WebCrawlerNodeContent>) => void;
+  updateContent: (updates: Partial<WebCrawlerNodeProperty>) => void;
   updateUrl: (url: string) => void;
   updateWaitForSelectorOnPage: (selector: string) => void;
   updateIframeSelector: (selector: string) => void;
@@ -46,7 +46,7 @@ interface WebCrawlerNodeDataHook {
  */
 export const useWebCrawlerNodeData = ({ nodeId }: { nodeId: string }): WebCrawlerNodeDataHook => {
   // Use the factory to create the base hook functionality
-  return createNodeDataHook<WebCrawlerNodeContent, WebCrawlerNodeDataHook>(
+  return createNodeDataHook<WebCrawlerNodeProperty, WebCrawlerNodeDataHook>(
     'web-crawler',
     (params) => {
       const { 

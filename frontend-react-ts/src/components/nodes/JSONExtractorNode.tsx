@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';
 import { NodeFactory } from '../../core/NodeFactory';
 import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { useNodeContentStore, getNodeContent } from '../../store/useNodeContentStore';
+import { useNodePropertyStore, getNodeProperty } from '../../store/useNodePropertyStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { runSingleNodeExecution } from '../../core/executionUtils';
 
@@ -37,7 +37,7 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
-  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodePropertyLocal = useNodePropertyStore(state => state.setNodeProperty);
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
   
   // Get from Zustand store instead of Redux
@@ -64,8 +64,8 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
 
   // Encapsulate label update logic
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore (config state)
-    setNodeContentLocal(nodeId, { label: newLabel });
+    // 1. Update NodePropertyStore (config state)
+    setNodePropertyLocal(nodeId, { label: newLabel });
 
     // 2. Update FlowStructureStore (React Flow rendering state)
     const updatedNodes = nodes.map(node =>
@@ -81,7 +81,7 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
     );
     setNodesLocal(updatedNodes);
     console.log(`[JSONExtractorNode] Updated label for node ${nodeId} in both stores.`);
-  }, [nodes, setNodesLocal, setNodeContentLocal]);
+  }, [nodes, setNodesLocal, setNodePropertyLocal]);
 
   const handleRun = useCallback(() => {
     console.log(`[JSONExtractorNode] Triggering single execution for node ${id}`);

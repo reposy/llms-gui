@@ -7,15 +7,15 @@ import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
-import { WebCrawlerNodeData, WebCrawlerNodeContent } from '../../types/nodes';
-import { useNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
+import { WebCrawlerNodeData, WebCrawlerNodeProperty } from '../../types/nodes';
+import { useNodeProperty, setNodeProperty as setNodePropertyGlobal } from '../../store/useNodePropertyStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';
 import { runFlow } from '../../core/FlowRunner';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
-  // Use useNodeContent hook correctly
-  const { content: crawlerData, setContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
+  // Use useNodeProperty hook correctly
+  const { content: crawlerData, setContent } = useNodeProperty<WebCrawlerNodeProperty>(id, 'web-crawler');
 
   // Get node execution state
   const nodeState = useNodeState(id);
@@ -42,7 +42,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore using the updateContent function from the hook
+    // 1. Update NodePropertyStore using the updateContent function from the hook
     setContent({ label: newLabel }); 
 
     // 2. Update FlowStructureStore (React Flow rendering state)

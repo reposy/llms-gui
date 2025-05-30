@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { Node as FlowNode } from '@xyflow/react'; // Edge 타입은 직접 사용 안 할 수 있지만, FlowNode는 필요
-import { GroupNodeContent } from '../types/nodes';
+import { GroupNodeProperty } from '../types/nodes';
 
 interface GroupNodeProperty {
   label: string;
@@ -150,7 +150,7 @@ export class GroupNode extends Node {
   }
 
   /**
-   * GroupNodeContent의 items 속성을 업데이트합니다.
+   * GroupNodeProperty의 items 속성을 업데이트합니다.
    */
   private _updateContentItems(items: any[]): void {
     // zustand store 제거: core에서는 store 업데이트하지 않음. 필요시 context에서 처리.
@@ -194,7 +194,7 @@ export class GroupNode extends Node {
       
       const finalResults = this._collectLeafNodeResults(internalLeafNodeIds, currentContext);
       
-      // execute의 최종 반환값으로 NodeContent를 업데이트
+      // execute의 최종 반환값으로 NodeProperty를 업데이트
       this._updateContentItems(finalResults);
 
       if (finalResults.length === 0) {

@@ -1,11 +1,11 @@
 import { useCallback } from 'react';
 import { createNodeDataHook } from './useNodeDataFactory';
-import { MergerNodeContent } from '../types/nodes';
+import { MergerNodeProperty } from '../types/nodes';
 
 /**
  * Default values for Merger node content
  */
-const MERGER_DEFAULTS: Partial<MergerNodeContent> = {
+const MERGER_DEFAULTS: Partial<MergerNodeProperty> = {
   mergeMode: 'concat',
   joinSeparator: ', ',
   items: []
@@ -15,12 +15,12 @@ const MERGER_DEFAULTS: Partial<MergerNodeContent> = {
  * Return type for useMergerNodeData hook
  */
 interface MergerNodeDataHook {
-  content: MergerNodeContent | undefined;
+  content: MergerNodeProperty | undefined;
   items: any[];
   itemCount: number;
   mergeMode: string;
   joinSeparator: string;
-  updateContent: (updates: Partial<MergerNodeContent>) => void;
+  updateContent: (updates: Partial<MergerNodeProperty>) => void;
   resetItems: () => void;
   addItem: (item: any) => void;
 }
@@ -28,7 +28,7 @@ interface MergerNodeDataHook {
 /**
  * Custom hook for managing Merger node data
  */
-export const useMergerNodeData = createNodeDataHook<MergerNodeContent, MergerNodeDataHook>(
+export const useMergerNodeData = createNodeDataHook<MergerNodeProperty, MergerNodeDataHook>(
   'merger',
   (params) => {
     const { nodeId, content, updateContent } = params;

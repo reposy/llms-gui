@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { HTMLParserNodeContent } from '../types/nodes';
+import { HTMLParserNodeProperty } from '../types/nodes';
 
 /**
  * HTML 문자열에서 CSS 선택자를 사용하여 요소를 추출하는 함수
@@ -96,7 +96,7 @@ function getHtmlContentFromInput(input: any, log: (message: string) => void): st
  * WebCrawler 등에서 전달받은 HTML을 파싱하여 구조화된 데이터로 변환
  */
 export class HTMLParserNode extends Node {
-  declare property: HTMLParserNodeContent;
+  declare property: HTMLParserNodeProperty;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'html-parser', property);
@@ -126,11 +126,11 @@ export class HTMLParserNode extends Node {
     }
 
     // 최신 노드 설정 가져오기
-    let nodeContent: HTMLParserNodeContent | undefined = undefined;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as HTMLParserNodeContent;
+    let nodeContent: HTMLParserNodeProperty | undefined = undefined;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as HTMLParserNodeProperty;
     } else {
-      nodeContent = this.property as HTMLParserNodeContent;
+      nodeContent = this.property as HTMLParserNodeProperty;
     }
     const extractionRules = nodeContent.extractionRules || [];
 

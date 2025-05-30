@@ -11,7 +11,7 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
-import { useNodeContentStore, setNodeContent } from '../../store/useNodeContentStore';
+import { useNodePropertyStore, setNodeProperty } from '../../store/useNodePropertyStore';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
 
 interface Props {
@@ -73,11 +73,11 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   const [isEditingParams, setIsEditingParams] = useState(false);
 
   const currentNodes = useFlowStructureStore(state => state.nodes);
-  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodePropertyLocal = useNodePropertyStore(state => state.setNodeProperty);
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
 
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    setNodeContentLocal(updatedNodeId, { label: newLabel });
+    setNodePropertyLocal(updatedNodeId, { label: newLabel });
 
     const updatedNodes = currentNodes.map(node => 
       node.id === updatedNodeId
@@ -92,7 +92,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     );
     setNodesLocal(updatedNodes);
     console.log(`[APINode] Updated label for node ${updatedNodeId} in both stores.`);
-  }, [currentNodes, setNodesLocal, setNodeContentLocal]);
+  }, [currentNodes, setNodesLocal, setNodePropertyLocal]);
 
   const buildParamDrafts = useCallback((params: Record<string, string> = {}) => {
     const drafts: QueryParamDrafts = {};

@@ -1,8 +1,8 @@
 // src/components/config/WebCrawlerNodeConfig.tsx
 import React, { useState, useCallback } from 'react';
 // Remove unused imports
-// import { useNodeContent } from '../../store/useNodeContentStore';
-// import { WebCrawlerNodeContent } from '../../types/nodes';
+// import { useNodeProperty } from '../../store/useNodePropertyStore';
+// import { WebCrawlerNodeProperty } from '../../types/nodes';
 import { useWebCrawlerNodeData } from '../../hooks/useWebCrawlerNodeData';
 
 interface WebCrawlerNodeConfigProps {
@@ -10,7 +10,7 @@ interface WebCrawlerNodeConfigProps {
 }
 
 export const WebCrawlerNodeConfig: React.FC<WebCrawlerNodeConfigProps> = ({ nodeId }) => {
-  // Use the new custom hook instead of useNodeContent
+  // Use the new custom hook instead of useNodeProperty
   const {
     url,
     waitForSelectorOnPage,

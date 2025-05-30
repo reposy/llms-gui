@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { MergerNodeData } from '../../types/nodes';
 import { NodeState } from '../../types/execution'; // Import NodeState type from the correct path
 import { TrashIcon, PlusIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'; // Or your icon library
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 
 interface MergerNodeSidebarProps {
   nodeId: string;
@@ -11,7 +11,7 @@ interface MergerNodeSidebarProps {
 }
 
 export const MergerNodeSidebar: React.FC<MergerNodeSidebarProps> = ({ nodeId, nodeData, nodeState }) => {
-  const { content, setContent } = useNodeContent(nodeId);
+  const { content, setContent } = useNodeProperty(nodeId);
   
   // State for editable custom items
   const [customItems, setCustomItems] = useState<string[]>(nodeData.items || []);

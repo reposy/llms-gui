@@ -3,7 +3,7 @@ import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
 import { Node } from '@xyflow/react'; // Import Node type
 import { NodeData } from '../../types/nodes'; // Import NodeData type
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { useNodeState } from '../../store/useNodeStateStore'; // Import useNodeState
 import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils'; // Import the common utility function
 
@@ -42,7 +42,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   }, [selectedNodes, selectedNodeIds]);
 
   // Get the latest content for the selected node from the store
-  const { content: selectedNodeContent } = useNodeContent(
+  const { content: selectedNodeProperty } = useNodeProperty(
     primarySelectedNode?.id || '',
     primarySelectedNode?.type
   );
@@ -92,7 +92,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   // Generate header text using the common utility function
   const headerText = formatNodeHeaderText(
     primarySelectedNode?.type || '', 
-    selectedNodeContent?.label
+    selectedNodeProperty?.label
   );
 
   return (

@@ -5,7 +5,7 @@ import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { downloadFile } from '../../utils/data/downloadUtils';
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { NodeProps } from '@xyflow/react';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 
@@ -16,7 +16,7 @@ interface Props extends NodeProps {}
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRootNode = useIsRootNode(id);
-  const { content: property, setContent } = useNodeContent<OutputNodeProperty>(id, 'output');
+  const { content: property, setContent } = useNodeProperty<OutputNodeProperty>(id, 'output');
   const format = property?.format || 'text';
   
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {

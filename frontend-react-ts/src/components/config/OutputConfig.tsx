@@ -1,8 +1,8 @@
 // src/components/config/OutputConfig.tsx
 import React, { useCallback } from 'react';
-import { OutputNodeData, OutputFormat } from '../../types/nodes';
+import { OutputNodeProperty, OutputFormat } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { useOutputNodeData } from '../../hooks/useOutputNodeData';
+import { useOutputNodeProperty } from '../../hooks/useOutputNodeProperty';
 
 interface OutputConfigProps {
   nodeId: string;
@@ -44,7 +44,7 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId }) => {
     handleFormatChange, 
     formatResultBasedOnFormat,
     content
-  } = useOutputNodeData(nodeId);
+  } = useOutputNodeProperty(nodeId);
   
   // Event handler to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

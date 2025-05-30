@@ -1,13 +1,13 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { MergerNodeContent } from '../types/nodes';
+import { MergerNodeProperty } from '../types/nodes';
 
 /**
  * MergerNode accumulates inputs from multiple upstream nodes
  * and returns the entire collection on each execution.
  */
 export class MergerNode extends Node {
-  declare property: MergerNodeContent;
+  declare property: MergerNodeProperty;
   private collectedItems: any[] = [];
 
   /**
@@ -15,7 +15,7 @@ export class MergerNode extends Node {
    */
   constructor(
     id: string, 
-    property: MergerNodeContent,
+    property: MergerNodeProperty,
     context?: FlowExecutionContext
   ) {
     super(id, 'merger', property);

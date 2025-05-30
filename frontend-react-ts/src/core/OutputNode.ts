@@ -1,11 +1,11 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { OutputNodeContent, OutputNodeProperty } from '../types/nodes';
+import { OutputNodeProperty } from '../types/nodes';
 
 /**
  * Interface for Output node content in the store
  */
-// interface OutputNodeContent {
+// interface OutputNodeProperty {
 //   content?: string;
 //   _forceUpdate?: number;
 // }
@@ -56,9 +56,9 @@ export class OutputNode extends Node {
    */
   async execute(input: any): Promise<any> {
     this._log('Executing');
-    let nodeContent: OutputNodeContent = this.property;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as OutputNodeContent;
+    let nodeContent: OutputNodeProperty = this.property;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as OutputNodeProperty;
     }
     const format = nodeContent.format || 'text';
     let outputData = input;

@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeContent, createDefaultNodeContent } from '../store/useNodeContentStore.ts';
+import { getNodeProperty, createDefaultNodeProperty } from '../store/useNodePropertyStore.ts';
 
 /**
  * 노드 팩토리 클래스
@@ -57,7 +57,7 @@ export class NodeFactory {
     }
 
     // 2. 노드 콘텐츠 가져오기 (스토어에서)
-    const storedContent = getNodeContent(id, type);
+    const storedContent = getNodeProperty(id, type);
     
     // 3. 속성 준비
     // - 스토어에 저장된 콘텐츠가 있으면 사용
@@ -65,7 +65,7 @@ export class NodeFactory {
     const nodeContent = storedContent && Object.keys(storedContent).length > 0
       ? storedContent
       : {
-          ...createDefaultNodeContent(type, id),
+          ...createDefaultNodeProperty(type, id),
           ...this.typeDefaults[type] || {},
           ...props
         };

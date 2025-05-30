@@ -1,12 +1,12 @@
 // Re-export default content creation functions from each node type file
-import { createDefaultInputNodeContent } from './inputNodeContent';
-import { createDefaultLlmNodeContent } from './llmNodeContent';
-import { createDefaultApiNodeContent } from './apiNodeContent';
-import { createDefaultOutputNodeContent } from './outputNodeContent';
+import { createDefaultInputNodeProperty } from './inputNodeProperty';
+import { createDefaultLlmNodeProperty } from './llmNodeProperty';
+import { createDefaultApiNodeProperty } from './apiNodeProperty';
+import { createDefaultOutputNodeProperty } from './outputNodeProperty';
 
 export {
-  createDefaultInputNodeContent,
-  createDefaultLlmNodeContent,
-  createDefaultApiNodeContent,
-  createDefaultOutputNodeContent
+  createDefaultInputNodeProperty,
+  createDefaultLlmNodeProperty,
+  createDefaultApiNodeProperty,
+  createDefaultOutputNodeProperty
 }; 

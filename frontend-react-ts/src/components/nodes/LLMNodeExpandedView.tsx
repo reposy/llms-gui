@@ -1,6 +1,6 @@
 // src/components/nodes/LLMNodeExpandedView.tsx
 import React, { useCallback, useMemo } from 'react';
-import { LLMNodeData } from '../../types/nodes';
+import { LlmNodeProperty } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import LLMNodeHeader from './LLMNodeHeader';
@@ -13,7 +13,7 @@ const DEBUG_LOGS = false;
 
 interface LLMNodeExpandedViewProps {
   id: string;
-  data: LLMNodeData;
+  data: LlmNodeProperty;
   nodeState: NodeState | null;
   viewMode: NodeViewMode;
   onToggleView: () => void;

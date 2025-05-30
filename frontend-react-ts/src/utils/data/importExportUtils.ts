@@ -1,12 +1,12 @@
 import { Node, Edge } from '@xyflow/react';
 import { cloneDeep } from 'lodash';
 import { NodeData, NodeType } from '../../types/nodes';
-import { loadFromImportedContents, getAllNodeContents } from '../../store/useNodeContentStore';
+import { loadFromImportedContents, getAllNodePropertys } from '../../store/useNodePropertyStore';
 import { setNodes, setEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 
-// NodeContent 타입 정의
-export interface NodeContent {
+// NodeProperty 타입 정의
+export interface NodeProperty {
   content?: any;
   responseContent?: any;
   [key: string]: any;
@@ -17,7 +17,7 @@ export interface FlowData {
   createdAt?: string;
   nodes: Node<NodeData>[];
   edges: Edge[];
-  contents?: Record<string, NodeContent>;
+  contents?: Record<string, NodeProperty>;
   meta?: {
     llmDefaults?: {
       provider: string;
@@ -152,7 +152,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeData>[
   // Process node contents if available
   if (flowData.contents) {
     // Verify content is for valid nodes
-    const validContents: Record<string, NodeContent> = {};
+    const validContents: Record<string, NodeProperty> = {};
     
     Object.entries(flowData.contents).forEach(([nodeId, content]) => {
       const node = importedNodes.find(n => n.id === nodeId);
@@ -188,7 +188,7 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
   const edges = useFlowStructureStore.getState().edges;
   
   // Get the node contents from the Zustand store
-  const nodeContents = getAllNodeContents();
+  const nodeContents = getAllNodePropertys();
 
   let finalNodes = nodesFromStructureStore;
   let finalContents = nodeContents;
@@ -196,7 +196,7 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
   // If execution data should NOT be included, filter it out
   if (!includeExecutionData) {
     // Filter contents
-    const contentsToExport: Record<string, Partial<NodeContent>> = {};
+    const contentsToExport: Record<string, Partial<NodeProperty>> = {};
     for (const nodeId in nodeContents) {
       if (Object.prototype.hasOwnProperty.call(nodeContents, nodeId)) {
         const originalContent = nodeContents[nodeId];

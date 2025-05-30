@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { createNodeDataHook } from './useNodeDataFactory';
-import { HTTPMethod, RequestBodyType, APIResponse, APINodeContent } from '../types/nodes';
+import { HTTPMethod, RequestBodyType, APIResponse, APINodeProperty } from '../types/nodes';
 import { isValidUrl } from '../utils/web/urlUtils';
 
 /**
  * Default values for API node content
  */
-const API_DEFAULTS: Partial<APINodeContent> = {
+const API_DEFAULTS: Partial<APINodeProperty> = {
   url: '',
   method: 'GET',
   label: 'API Call',
@@ -20,7 +20,7 @@ const API_DEFAULTS: Partial<APINodeContent> = {
  * Return type for useApiNodeData hook
  */
 interface ApiNodeDataHook {
-  content: APINodeContent | undefined;
+  content: APINodeProperty | undefined;
   url: string;
   method: HTTPMethod;
   label: string;
@@ -43,7 +43,7 @@ interface ApiNodeDataHook {
   handleStatusCodeChange: (value: number | undefined) => void;
   handleExecutionTimeChange: (value: number | undefined) => void;
   handleErrorMessageChange: (value: string | undefined) => void;
-  updateContent: (updates: Partial<APINodeContent>) => void;
+  updateContent: (updates: Partial<APINodeProperty>) => void;
   setIsRunning: (value: boolean) => void;
   
   executeApiCall: () => Promise<void>;
@@ -55,7 +55,7 @@ interface ApiNodeDataHook {
  */
 export const useApiNodeData = ({ nodeId }: { nodeId: string }): ApiNodeDataHook => {
   // Use the factory to create the base hook functionality with proper extension
-  return createNodeDataHook<APINodeContent, ApiNodeDataHook>(
+  return createNodeDataHook<APINodeProperty, ApiNodeDataHook>(
     'api',
     (params) => {
       const { 
@@ -164,7 +164,7 @@ export const useApiNodeData = ({ nodeId }: { nodeId: string }): ApiNodeDataHook 
           if (isRunning && nodeContent !== undefined) {
             console.warn(`[APINode ${nodeId}] Unmounting while API call was in progress. Resetting state.`);
             // Use the store's setter directly as the hook's context might be gone
-            getStoreState().setNodeContent(nodeId, { isRunning: false });
+            getStoreState().setNodeProperty(nodeId, { isRunning: false });
           }
         };
       }, [nodeId, isRunning, getStoreState]);

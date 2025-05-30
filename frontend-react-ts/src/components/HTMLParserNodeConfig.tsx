@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNodeContent } from '../store/useNodeContentStore';
+import { useNodeProperty } from '../store/useNodePropertyStore';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,8 +13,8 @@ interface ExtractionRule {
   multiple: boolean;
 }
 
-// HTMLParserNodeContent 인터페이스 정의
-interface HTMLParserNodeContent {
+// HTMLParserNodeProperty 인터페이스 정의
+interface HTMLParserNodeProperty {
   extractionRules?: ExtractionRule[];
   label?: string;
   [key: string]: any;
@@ -28,7 +28,7 @@ interface HTMLParserNodeConfigProps {
  * HTML Parser 노드의 설정 패널 컴포넌트
  */
 export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
-  const { content, setContent } = useNodeContent<HTMLParserNodeContent>(nodeId, 'html-parser');
+  const { content, setContent } = useNodeProperty<HTMLParserNodeProperty>(nodeId, 'html-parser');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   

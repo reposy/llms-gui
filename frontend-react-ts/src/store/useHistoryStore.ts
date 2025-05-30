@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
-import { NodeContent, NodeData } from '../types/nodes';
-import { setNodeContent, loadFromImportedContents, getAllNodeContents } from './useNodeContentStore';
+import { NodeProperty, NodeData } from '../types/nodes';
+import { setNodeProperty, loadFromImportedContents, getAllNodePropertys } from './useNodePropertyStore';
 import { isEqual, cloneDeep } from 'lodash';
 import { setNodes, setEdges } from './useFlowStructureStore';
 import { resetNodeStates } from './useNodeStateStore';
@@ -10,7 +10,7 @@ import { resetNodeStates } from './useNodeStateStore';
 export interface FlowSnapshot {
   nodes: Node<NodeData>[];
   edges: Edge[];
-  contents: Record<string, NodeContent>;
+  contents: Record<string, NodeProperty>;
 }
 
 interface HistoryState {

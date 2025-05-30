@@ -9,31 +9,31 @@ import { Node as ReactFlowNode } from '@xyflow/react';
 
 // Import all node content types and utilities
 import { 
-  NodeContent,
-  isInputNodeContent,
+  NodeProperty,
+  isInputNodeProperty,
   MAX_PERSISTED_CONTENT_LENGTH
 } from './common';
 
 // Import node-specific utilities
-import { sanitizeNodeContent } from './inputNodeContent';
-import { truncateLlmContentForStorage } from './llmNodeContent';
-import { truncateOutputContentForStorage } from './outputNodeContent';
+import { sanitizeNodeProperty } from './inputNodeProperty';
+import { truncateLlmContentForStorage } from './llmNodeProperty';
+import { truncateOutputContentForStorage } from './outputNodeProperty';
 import { 
-  createDefaultInputNodeContent, 
-  createDefaultLlmNodeContent, 
-  createDefaultApiNodeContent, 
-  createDefaultOutputNodeContent 
+  createDefaultInputNodeProperty, 
+  createDefaultLlmNodeProperty, 
+  createDefaultApiNodeProperty, 
+  createDefaultOutputNodeProperty 
 } from './nodeTypeDefaults';
 
 // Store type definition
-interface NodeContentStore {
+interface NodePropertyStore {
   // State
-  nodeContents: Record<string, NodeContent>;
+  nodeContents: Record<string, NodeProperty>;
   
   // Actions
-  getNodeContent: (nodeId: string) => NodeContent;
-  setNodeContent: (nodeId: string, updates: Partial<NodeContent>, allowFallback?: boolean) => void;
-  resetNodeContent: (nodeId: string) => void;
+  getNodeProperty: (nodeId: string) => NodeProperty;
+  setNodeProperty: (nodeId: string, updates: Partial<NodeProperty>, allowFallback?: boolean) => void;
+  resetNodeProperty: (nodeId: string) => void;
   
   // Utility
   markNodeDirty: (nodeId: string, isDirty?: boolean) => void;
@@ -41,33 +41,33 @@ interface NodeContentStore {
   
   // Migration / Import / Export
   loadFromNodes: (nodes: (NodeData | ReactFlowNode<NodeData>)[]) => void;
-  loadFromImportedContents: (contents: Record<string, NodeContent>) => void;
+  loadFromImportedContents: (contents: Record<string, NodeProperty>) => void;
   cleanupDeletedNodes: (existingNodeIds: string[]) => void;
-  getAllNodeContents: () => Record<string, NodeContent>;
+  getAllNodePropertys: () => Record<string, NodeProperty>;
   reset: () => void;
 }
 
 /**
  * Creates default content for a node type
  */
-export const createDefaultContent = (nodeType?: string): NodeContent => {
+export const createDefaultContent = (nodeType?: string): NodeProperty => {
   if (!nodeType) {
-    console.warn('[NodeContentStore] Creating default content with undefined type');
+    console.warn('[NodePropertyStore] Creating default content with undefined type');
     return { isDirty: false, label: 'Unknown Node' };
   }
 
   switch (nodeType.toLowerCase()) {
     case 'input':
-      return createDefaultInputNodeContent();
+      return createDefaultInputNodeProperty();
     
     case 'llm':
-      return createDefaultLlmNodeContent();
+      return createDefaultLlmNodeProperty();
     
     case 'api':
-      return createDefaultApiNodeContent();
+      return createDefaultApiNodeProperty();
     
     case 'output':
-      return createDefaultOutputNodeContent();
+      return createDefaultOutputNodeProperty();
     
     // Add other node types as needed
     
@@ -79,7 +79,7 @@ export const createDefaultContent = (nodeType?: string): NodeContent => {
 /**
  * Resolves a node's type based on its ID and content
  */
-export const resolveNodeType = (nodeId: string, content?: Partial<NodeContent>): string | undefined => {
+export const resolveNodeType = (nodeId: string, content?: Partial<NodeProperty>): string | undefined => {
   // Try to determine type from existing content
   if (content) {
     // Type checks for each content type
@@ -120,14 +120,14 @@ export const resolveNodeType = (nodeId: string, content?: Partial<NodeContent>):
  */
 const safelyInitializeContent = (
   nodeId: string, 
-  updates?: Partial<NodeContent>, 
+  updates?: Partial<NodeProperty>, 
   allowFallback = false
-): NodeContent | undefined => {
+): NodeProperty | undefined => {
   const nodeType = resolveNodeType(nodeId, updates);
   
   // If no valid type was found and fallbacks aren't allowed, return undefined
   if (!nodeType && !allowFallback) {
-    console.warn(`[NodeContentStore] Cannot initialize content for ${nodeId}: No valid type found`);
+    console.warn(`[NodePropertyStore] Cannot initialize content for ${nodeId}: No valid type found`);
     return undefined;
   }
   
@@ -143,7 +143,7 @@ const safelyInitializeContent = (
   
   // Mark content if it was created with a fallback type (for debugging)
   if (!nodeType && allowFallback) {
-    console.warn(`[NodeContentStore] Using fallback type '${finalType}' for ${nodeId}`);
+    console.warn(`[NodePropertyStore] Using fallback type '${finalType}' for ${nodeId}`);
   }
   
   // Return default content merged with updates if provided
@@ -151,28 +151,28 @@ const safelyInitializeContent = (
 };
 
 // Create the Zustand store
-export const useNodeContentStore = create<NodeContentStore>()(
+export const useNodePropertyStore = create<NodePropertyStore>()(
   persist(
     immer((set, get) => ({
       // Initial state - empty record
       nodeContents: {},
       
       // Get content for a node, with default values if not found
-      getNodeContent: (nodeId) => {
+      getNodeProperty: (nodeId) => {
         const state = get();
         const existingContent = state.nodeContents[nodeId];
         
         if (!existingContent) {
-          console.log(`[NodeContentStore] No content found for ${nodeId}`);
+          console.log(`[NodePropertyStore] No content found for ${nodeId}`);
           return {};
         }
 
         // Always sanitize content before returning
-        return sanitizeNodeContent(existingContent);
+        return sanitizeNodeProperty(existingContent);
       },
       
       // Set or update content for a node
-      setNodeContent: (nodeId, updates, allowFallback = false) => {
+      setNodeProperty: (nodeId, updates, allowFallback = false) => {
         set(state => {
           // Get current node content
           const currentContent = state.nodeContents[nodeId];
@@ -183,11 +183,11 @@ export const useNodeContentStore = create<NodeContentStore>()(
             
             // If we couldn't resolve a valid node type, exit early to prevent infinite loops
             if (!initialContent) {
-              console.warn(`[NodeContentStore] Skipping content initialization for ${nodeId}: No valid type available`);
+              console.warn(`[NodePropertyStore] Skipping content initialization for ${nodeId}: No valid type available`);
               return;
             }
             
-            console.log(`[NodeContentStore] Initializing new content for ${nodeId} with type: ${resolveNodeType(nodeId, initialContent) || 'unknown'}`);
+            console.log(`[NodePropertyStore] Initializing new content for ${nodeId} with type: ${resolveNodeType(nodeId, initialContent) || 'unknown'}`);
             state.nodeContents[nodeId] = initialContent;
           }
 
@@ -201,23 +201,23 @@ export const useNodeContentStore = create<NodeContentStore>()(
               ...state.nodeContents[nodeId],
               ...updates,
               // Force a new object reference when 'content' is updated
-              // This ensures the shallow equality check in useNodeContent hook doesn't prevent re-renders
+              // This ensures the shallow equality check in useNodeProperty hook doesn't prevent re-renders
               _forceUpdate: hasContentUpdate ? Date.now() : state.nodeContents[nodeId]._forceUpdate
             };
 
             // Always sanitize the entire content if it's an input node
-            const sanitizedContent = sanitizeNodeContent(newContent);
+            const sanitizedContent = sanitizeNodeProperty(newContent);
             
             // Log if content was modified by sanitization
             if (!isEqual(sanitizedContent, newContent)) {
-              console.log(`[NodeContentStore] Content sanitized for ${nodeId}:`, {
+              console.log(`[NodePropertyStore] Content sanitized for ${nodeId}:`, {
                 before: newContent,
                 after: sanitizedContent
               });
             }
 
             if (hasContentUpdate) {
-              console.log(`[NodeContentStore] Forcing update for content change on node ${nodeId}`);
+              console.log(`[NodePropertyStore] Forcing update for content change on node ${nodeId}`);
             }
 
             state.nodeContents[nodeId] = sanitizedContent;
@@ -231,23 +231,23 @@ export const useNodeContentStore = create<NodeContentStore>()(
       },
       
       // Reset a node's content to default
-      resetNodeContent: (nodeId) => {
+      resetNodeProperty: (nodeId) => {
         set(state => {
           const currentContent = state.nodeContents[nodeId];
           
           if (!currentContent) {
-            console.log(`[NodeContentStore] No content to reset for ${nodeId}`);
+            console.log(`[NodePropertyStore] No content to reset for ${nodeId}`);
             return;
           }
           
           const nodeType = resolveNodeType(nodeId, currentContent);
           
           if (!nodeType) {
-            console.warn(`[NodeContentStore] Cannot reset content for ${nodeId}: Unknown node type`);
+            console.warn(`[NodePropertyStore] Cannot reset content for ${nodeId}: Unknown node type`);
             return;
           }
           
-          console.log(`[NodeContentStore] Resetting content for ${nodeId} of type ${nodeType}`);
+          console.log(`[NodePropertyStore] Resetting content for ${nodeId} of type ${nodeType}`);
           state.nodeContents[nodeId] = createDefaultContent(nodeType);
         });
       },
@@ -269,7 +269,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
       
       // Load content from various node sources
       loadFromNodes: (nodes) => {
-        console.log(`[NodeContentStore] Loading content from ${nodes.length} nodes`);
+        console.log(`[NodePropertyStore] Loading content from ${nodes.length} nodes`);
         
         set(state => {
           nodes.forEach(node => {
@@ -282,7 +282,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
             const nodeType = nodeData.type?.toLowerCase() || '';
             
             if (!nodeId || !nodeType) {
-              console.warn(`[NodeContentStore] Skipping invalid node: ID=${nodeId}, Type=${nodeType}`);
+              console.warn(`[NodePropertyStore] Skipping invalid node: ID=${nodeId}, Type=${nodeType}`);
               return;
             }
 
@@ -298,7 +298,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
             });
             
             // Sanitize content before storing
-            content = sanitizeNodeContent(content);
+            content = sanitizeNodeProperty(content);
             
             // Store the content
             state.nodeContents[nodeId] = content;
@@ -308,12 +308,12 @@ export const useNodeContentStore = create<NodeContentStore>()(
       
       // Load content from imported flow
       loadFromImportedContents: (contents) => {
-        console.log('[NodeContentStore] Loading imported contents:', contents);
+        console.log('[NodePropertyStore] Loading imported contents:', contents);
         set(state => ({
           contents: {
             ...state.nodeContents,
             ...Object.fromEntries(
-              Object.entries(contents).map(([nodeId, content]) => [nodeId, sanitizeNodeContent(content)])
+              Object.entries(contents).map(([nodeId, content]) => [nodeId, sanitizeNodeProperty(content)])
             )
           }
         }));
@@ -327,7 +327,7 @@ export const useNodeContentStore = create<NodeContentStore>()(
             nodeId => !existingNodeIdSet.has(nodeId)
           );
           
-          console.log(`[NodeContentStore] Cleaning up ${nodeIdsToRemove.length} deleted nodes`);
+          console.log(`[NodePropertyStore] Cleaning up ${nodeIdsToRemove.length} deleted nodes`);
           
           nodeIdsToRemove.forEach(nodeId => {
             delete state.nodeContents[nodeId];
@@ -336,23 +336,23 @@ export const useNodeContentStore = create<NodeContentStore>()(
       },
       
       // Get all node contents
-      getAllNodeContents: () => {
+      getAllNodePropertys: () => {
         return get().nodeContents;
       },
       
       // Reset the store
       reset: () => {
-        console.log('[NodeContentStore] Resetting all content');
+        console.log('[NodePropertyStore] Resetting all content');
         set({ nodeContents: {} });
       }
     })),
     {
       name: 'node-content-storage',
       // Cast storage through unknown to satisfy the type checker
-      storage: createIDBStorage() as unknown as PersistStorage<Partial<NodeContentStore>>,
-      partialize: (state): Partial<NodeContentStore> => {
+      storage: createIDBStorage() as unknown as PersistStorage<Partial<NodePropertyStore>>,
+      partialize: (state): Partial<NodePropertyStore> => {
         // Create a filtered copy of nodeContents with potentially large values truncated
-        const filteredContents: Record<string, NodeContent> = {};
+        const filteredContents: Record<string, NodeProperty> = {};
         
         Object.entries(state.nodeContents).forEach(([nodeId, content]) => {
           let filteredContent = { ...content };
@@ -374,13 +374,13 @@ export const useNodeContentStore = create<NodeContentStore>()(
 );
 
 // Create a hook to use content for a specific node
-export const useNodeContent = (nodeId: string) => {
-  return useNodeContentStore(
+export const useNodeProperty = (nodeId: string) => {
+  return useNodePropertyStore(
     (state) => ({
-      content: state.getNodeContent(nodeId),
+      content: state.getNodeProperty(nodeId),
       isContentDirty: state.isNodeDirty(nodeId),
-      setContent: (updates: Partial<NodeContent>) => state.setNodeContent(nodeId, updates),
-      resetContent: () => state.resetNodeContent(nodeId)
+      setContent: (updates: Partial<NodeProperty>) => state.setNodeProperty(nodeId, updates),
+      resetContent: () => state.resetNodeProperty(nodeId)
     }),
     shallow
   );

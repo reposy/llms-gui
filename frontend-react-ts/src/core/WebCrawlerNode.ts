@@ -1,13 +1,13 @@
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { crawling } from '../utils/web/crawling';
-import { WebCrawlerNodeContent } from '../types/nodes';
+import { WebCrawlerNodeProperty } from '../types/nodes';
 import { Node } from './Node';
 
 /**
  * Web Crawler node implementation.
  */
 export class WebCrawlerNode extends Node {
-  constructor(id: string, data: WebCrawlerNodeContent, context?: FlowExecutionContext) {
+  constructor(id: string, data: WebCrawlerNodeProperty, context?: FlowExecutionContext) {
     super(id, 'web-crawler', data);
     
     // 생성자에서 context를 명시적으로 설정
@@ -25,7 +25,7 @@ export class WebCrawlerNode extends Node {
     this._log(`Executing`);
     this.context?.markNodeRunning(this.id);
 
-    const nodeContent = this.property as WebCrawlerNodeContent;
+    const nodeContent = this.property as WebCrawlerNodeProperty;
     let targetUrl = nodeContent.url || '';
 
     if (typeof input === 'string' && input.trim() !== '') {

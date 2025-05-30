@@ -1,6 +1,6 @@
 // src/components/nodes/LLMNodeCompactView.tsx
 import React from 'react';
-import { LLMNodeData } from '../../types/nodes';
+import { LlmNodeProperty } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
@@ -8,7 +8,7 @@ import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface LLMNodeCompactViewProps {
   id: string;
-  data: LLMNodeData;
+  data: LlmNodeProperty;
   nodeState: NodeState | null;
   viewMode: NodeViewMode;
   onToggleView: () => void;

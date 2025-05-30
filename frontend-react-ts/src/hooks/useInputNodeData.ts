@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from 'react';
-import { InputNodeContent, BaseNodeData } from '../types/nodes';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { InputNodeProperty, BaseNodeData } from '../types/nodes';
+import { useNodePropertyStore } from '../store/useNodePropertyStore';
 import { formatFileSize, FileMetadata, LocalFileMetadata, createLocalFileMetadata, isFileSizeValid, revokeObjectUrl } from '../types/files';
 
 // 파일 처리 상태 인터페이스
@@ -14,16 +14,16 @@ interface FileProcessingState {
  * InputNode 데이터 관리 훅 (세 가지 아이템 목록 지원)
  * 
  * Input 노드의 상태(chainingItems, commonItems, items, textBuffer, chainingUpdateMode, iterateEachRow)
- * 를 관리하고 관련 액션 핸들러를 제공합니다. 모든 상태는 useNodeContentStore와 동기화됩니다.
+ * 를 관리하고 관련 액션 핸들러를 제공합니다. 모든 상태는 useNodePropertyStore와 동기화됩니다.
  */
 export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
-  // useNodeContentStore 훅 사용
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  // useNodePropertyStore 훅 사용
+  const setNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
   
   // 노드 컨텐츠 가져오기
-  const content = useNodeContentStore(
+  const content = useNodePropertyStore(
     useCallback(
-      (state) => state.getNodeContent(nodeId, 'input') as InputNodeContent,
+      (state) => state.getNodeProperty(nodeId, 'input') as InputNodeProperty,
       [nodeId]
     )
   );
@@ -72,12 +72,12 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
   /**
    * 부분적인 컨텐츠 업데이트 유틸리티 함수
    */
-  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeContent, keyof BaseNodeData>>) => {
-    setNodeContent<InputNodeContent>(nodeId, {
+  const updateInputContent = useCallback((updates: Partial<Omit<InputNodeProperty, keyof BaseNodeData>>) => {
+    setNodeProperty<InputNodeProperty>(nodeId, {
       ...content,
       ...updates,
     });
-  }, [nodeId, content, setNodeContent]);
+  }, [nodeId, content, setNodeProperty]);
 
   /**
    * 텍스트 버퍼 변경 핸들러
@@ -236,7 +236,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
    * 모든 아이템 또는 특정 타입 아이템 삭제
    */
   const handleClearItems = useCallback((itemType: 'chaining' | 'common' | 'element' | 'all' = 'all') => {
-    const updates: Partial<InputNodeContent> = {};
+    const updates: Partial<InputNodeProperty> = {};
     
     // ObjectURL 정리
     if (itemType === 'chaining' || itemType === 'all') {

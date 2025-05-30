@@ -1,13 +1,13 @@
 import { useCallback } from 'react';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodePropertyStore } from '../store/useNodePropertyStore';
 import { isEqual } from 'lodash';
-import { NodeContent } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 
-// NodeContentState 타입 직접 정의
-type NodeContentState = {
-  getNodeContent: (nodeId: string, nodeType?: string) => NodeContent | undefined;
-  setNodeContent: (nodeId: string, updates: Partial<NodeContent>) => void;
-  contents: Record<string, NodeContent>;
+// NodePropertyState 타입 직접 정의
+type NodePropertyState = {
+  getNodeProperty: (nodeId: string, nodeType?: string) => NodeProperty | undefined;
+  setNodeProperty: (nodeId: string, updates: Partial<NodeProperty>) => void;
+  contents: Record<string, NodeProperty>;
   // 기타 필요한 속성들
 };
 
@@ -23,12 +23,12 @@ type NodeContentState = {
  * @returns A custom hook to manage node state and operations
  */
 export function createNodeDataHook<
-  T extends NodeContent,
+  T extends NodeProperty,
   TExtended = {
     content: T | undefined;
     updateContent: (updates: Partial<T>) => void;
     createChangeHandler: <K extends keyof T>(propName: K) => (value: T[K]) => void;
-    getStoreState: () => NodeContentState;
+    getStoreState: () => NodePropertyState;
   }
 >(
   nodeType: string,
@@ -37,21 +37,21 @@ export function createNodeDataHook<
     content: T | undefined;
     updateContent: (updates: Partial<T>) => void;
     createChangeHandler: <K extends keyof T>(propName: K) => (value: T[K]) => void;
-    getStoreState: () => NodeContentState;
+    getStoreState: () => NodePropertyState;
   }) => TExtended,
   defaultValues: Partial<T> = {} as Partial<T>
 ) {
   return function useNodeData({ nodeId }: { nodeId: string }): TExtended {
     // Get the content using proper selector pattern
-    const content = useNodeContentStore(
+    const content = useNodePropertyStore(
       useCallback(
-        (state) => state.getNodeContent(nodeId, nodeType) as T | undefined,
+        (state) => state.getNodeProperty(nodeId, nodeType) as T | undefined,
         [nodeId]
       )
     );
     
-    // Get the setNodeContent function
-    const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+    // Get the setNodeProperty function
+    const setNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
 
     /**
      * Update content with deep equality check to prevent unnecessary updates
@@ -60,7 +60,7 @@ export function createNodeDataHook<
       // Handle undefined content case - initialize with defaults
       if (!content) {
         console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Initializing content with:`, {...defaultValues, ...updates});
-        setNodeContent(nodeId, {...defaultValues, ...updates} as Partial<NodeContent>);
+        setNodeProperty(nodeId, {...defaultValues, ...updates} as Partial<NodeProperty>);
         return;
       }
       
@@ -76,8 +76,8 @@ export function createNodeDataHook<
       }
       
       console.log(`[${nodeType.toUpperCase()}Node ${nodeId}] Updating content with:`, updates);
-      setNodeContent(nodeId, updates as Partial<NodeContent>);
-    }, [nodeId, content, setNodeContent, defaultValues]);
+      setNodeProperty(nodeId, updates as Partial<NodeProperty>);
+    }, [nodeId, content, setNodeProperty, defaultValues]);
     
     /**
      * Creates property change handlers for each property
@@ -96,7 +96,7 @@ export function createNodeDataHook<
       updateContent,
       createChangeHandler,
       // Method to directly access the store state (for use in cleanup effects)
-      getStoreState: useNodeContentStore.getState,
+      getStoreState: useNodePropertyStore.getState,
     };
 
     // If extendHook is provided, use it to extend the base hook

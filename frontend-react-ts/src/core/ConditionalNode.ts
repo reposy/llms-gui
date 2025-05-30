@@ -1,6 +1,6 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { ConditionalNodeContent } from '../types/nodes.ts';
+import { ConditionalNodeProperty } from '../types/nodes.ts';
 import { evaluateCondition } from '../utils/flow/executionUtils.ts';
 
 /**
@@ -21,7 +21,7 @@ export class ConditionalNode extends Node {
   /**
    * Type assertion for the property
    */
-  declare property: ConditionalNodeContent;
+  declare property: ConditionalNodeProperty;
   
   /**
    * Constructor for ConditionalNode
@@ -52,11 +52,11 @@ export class ConditionalNode extends Node {
   async execute(input: any): Promise<any> {
     this._log('Executing'); // Will use inherited _log
 
-    let nodeContent: ConditionalNodeContent | undefined = undefined;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as ConditionalNodeContent;
+    let nodeContent: ConditionalNodeProperty | undefined = undefined;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as ConditionalNodeProperty;
     } else {
-      nodeContent = this.property as ConditionalNodeContent;
+      nodeContent = this.property as ConditionalNodeProperty;
     }
     
     const { 
