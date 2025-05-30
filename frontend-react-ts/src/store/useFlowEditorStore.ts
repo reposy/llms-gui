@@ -4,12 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { Edge, Node } from '@xyflow/react';
 import { deepClone } from '../utils/helpers';
 import { type FlowData } from '../utils/data/importExportUtils';
-import { NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 
 // 스토어 상태 타입 정의
 interface FlowEditorState {
   // 노드 및 에지 데이터
-  nodes: Node<NodeData>[];
+  nodes: Node<NodeProperty>[];
   edges: Edge[];
   
   // 현재 Flow 메타데이터
@@ -25,16 +25,16 @@ interface FlowEditorState {
   
   // 기록 관리
   history: {
-    past: { nodes: Node<NodeData>[], edges: Edge[] }[];
-    future: { nodes: Node<NodeData>[], edges: Edge[] }[];
+    past: { nodes: Node<NodeProperty>[], edges: Edge[] }[];
+    future: { nodes: Node<NodeProperty>[], edges: Edge[] }[];
   };
   
   // 액션
   // 노드 관련
-  addNode: (node: Node<NodeData>) => void;
-  updateNode: (id: string, updates: Partial<Node<NodeData>>) => void;
+  addNode: (node: Node<NodeProperty>) => void;
+  updateNode: (id: string, updates: Partial<Node<NodeProperty>>) => void;
   removeNode: (id: string) => void;
-  setNodes: (nodes: Node<NodeData>[]) => void;
+  setNodes: (nodes: Node<NodeProperty>[]) => void;
   
   // 에지 관련
   addEdge: (edge: Edge) => void;
@@ -64,7 +64,7 @@ interface FlowEditorState {
 
 // 초기 상태
 const initialState = {
-  nodes: [] as Node<NodeData>[],
+  nodes: [] as Node<NodeProperty>[],
   edges: [] as Edge[],
   currentFlow: null,
   selectedNodes: [],
@@ -116,7 +116,7 @@ export const useFlowEditorStore = create<FlowEditorState>()(
         get().recordHistory();
       },
       
-      setNodes: (nodes: Node<NodeData>[]) => {
+      setNodes: (nodes: Node<NodeProperty>[]) => {
         set({ nodes });
         get().recordHistory();
       },
@@ -221,7 +221,7 @@ export const useFlowEditorStore = create<FlowEditorState>()(
       
       loadFlow: (flow: FlowData) => {
         set({
-          nodes: deepClone(flow.nodes) as Node<NodeData>[],
+          nodes: deepClone(flow.nodes) as Node<NodeProperty>[],
           edges: deepClone(flow.edges) as Edge[],
           currentFlow: {
             id: `flow-${uuidv4()}`,
@@ -244,7 +244,7 @@ export const useFlowEditorStore = create<FlowEditorState>()(
         }
         const flowData: FlowData = {
           name: currentFlow.name,
-          nodes: deepClone(nodes) as Node<NodeData>[],
+          nodes: deepClone(nodes) as Node<NodeProperty>[],
           edges: deepClone(edges) as Edge[]
         };
         set(state => ({

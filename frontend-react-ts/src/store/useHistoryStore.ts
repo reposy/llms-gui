@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Node, Edge } from '@xyflow/react';
-import { NodeProperty, NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { setNodeProperty, loadFromImportedContents, getAllNodePropertys } from './useNodePropertyStore';
 import { isEqual, cloneDeep } from 'lodash';
 import { setNodes, setEdges } from './useFlowStructureStore';
@@ -8,7 +8,7 @@ import { resetNodeStates } from './useNodeStateStore';
 
 // Define snapshot interface
 export interface FlowSnapshot {
-  nodes: Node<NodeData>[];
+  nodes: Node<NodeProperty>[];
   edges: Edge[];
   contents: Record<string, NodeProperty>;
 }

@@ -1,7 +1,7 @@
 import { Edge, Node } from '@xyflow/react';
 import { createWithEqualityFn } from 'zustand/traditional';
 import { devtools } from 'zustand/middleware';
-import { NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { useFlowStructureStore } from './useFlowStructureStore';
 
 /**
