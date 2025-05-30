@@ -1,7 +1,7 @@
 // src/components/nodes/JSONExtractorNode.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow, NodeProps } from '@xyflow/react';
-import { JSONExtractorNodeData } from '../../types/nodes';
+import { JSONExtractorNodeProperty } from '../../types/nodes';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
@@ -22,14 +22,14 @@ import { runSingleNodeExecution } from '../../core/executionUtils';
 
 interface Props {
   id: string;
-  data: JSONExtractorNodeData;
+  data: JSONExtractorNodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
 
 const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, isConnectable = true }) => {
   // Use a specific type assertion for clarity and safety
-  const data = nodeData as JSONExtractorNodeData;
+  const data = nodeData as JSONExtractorNodeProperty;
   
   // Use updateNode from Zustand store
   const { nodes, edges } = useFlowStructureStore();

@@ -7,7 +7,7 @@ import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
-import { WebCrawlerNodeData, WebCrawlerNodeProperty } from '../../types/nodes';
+import { WebCrawlerNodeProperty } from '../../types/nodes';
 import { useNodeProperty, setNodeProperty as setNodePropertyGlobal } from '../../store/useNodePropertyStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';

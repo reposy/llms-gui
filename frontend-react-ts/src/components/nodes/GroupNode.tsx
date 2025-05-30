@@ -2,7 +2,7 @@
 import React, { useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
 import clsx from 'clsx';
-import { GroupNodeData, NodeData } from '../../types/nodes';
+import { GroupNodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
@@ -20,7 +20,7 @@ import { useNodePropertyStore, setNodeProperty } from '../../store/useNodeProper
 import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
-  const groupData = data as GroupNodeData;
+  const groupData = data as GroupNodeProperty;
   
   const allNodes = useNodes();
   const allEdges = useEdges();
@@ -39,7 +39,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
 
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
     // Check both parentId and parentNode properties to support both formats
-    const nodesWithParentId = allNodes.filter((node: Node<NodeData>) => 
+    const nodesWithParentId = allNodes.filter((node: Node<GroupNodeProperty>) => 
       node.parentId === id
     );
     

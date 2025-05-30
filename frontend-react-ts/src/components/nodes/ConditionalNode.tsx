@@ -1,7 +1,7 @@
 // src/components/nodes/ConditionalNode.tsx
 import React, { memo, useCallback} from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { ConditionalNodeData, ConditionType } from '../../types/nodes';
+import { ConditionalNodeProperty, ConditionType } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
@@ -13,8 +13,8 @@ import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { useNodePropertyStore } from '../../store/useNodePropertyStore';
 
 export const ConditionalNode: React.FC<NodeProps> = memo(({ id, data, selected, isConnectable = true }) => {
-  // Cast data to ConditionalNodeData where needed
-  const conditionData = data as ConditionalNodeData;
+  // Cast data to ConditionalNodeProperty where needed
+  const conditionData = data as ConditionalNodeProperty;
   
   const nodeState = useNodeState(id);
 

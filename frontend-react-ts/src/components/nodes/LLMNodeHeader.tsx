@@ -5,7 +5,6 @@ import { NodeViewMode } from '../../store/viewModeStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { NodeHeader } from './shared/NodeHeader';
-import { LlmNodeProperty, NodeData } from '../../types/nodes';
 import { LlmNodeProperty } from '../../types/nodes';
 import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
 import { FlowExecutionContext } from '../../core/FlowExecutionContext';

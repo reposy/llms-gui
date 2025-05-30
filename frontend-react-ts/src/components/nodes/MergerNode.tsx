@@ -1,7 +1,7 @@
 // src/components/nodes/MergerNode.tsx
 import React, { useState, useCallback, useEffect, Fragment, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { MergerNodeData } from '../../types/nodes';
+import { MergerNodeProperty } from '../../types/nodes';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
@@ -14,13 +14,13 @@ import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 // Type for props
 interface MergerNodeProps {
   id: string;
-  data: MergerNodeData;
+  data: MergerNodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
 
-// We need to extend MergerNodeData for runtime properties
-interface RuntimeMergerNodeData extends MergerNodeData {
+// We need to extend MergerNodeProperty for runtime properties
+interface RuntimeMergerNodeData extends MergerNodeProperty {
   property?: {
     separator?: string;
     [key: string]: any;

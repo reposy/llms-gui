@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { VIEW_MODES } from '../../store/viewModeStore';
-import { APINodeData, HTTPMethod } from '../../types/nodes';
+import { APINodeProperty, HTTPMethod } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import NodeErrorBoundary from './NodeErrorBoundary';
@@ -16,7 +16,7 @@ import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureSto
 
 interface Props {
   id: string;
-  data: APINodeData;
+  data: APINodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
@@ -29,7 +29,7 @@ interface QueryParamDrafts {
 }
 
 const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const apiData = data;
+  const apiData = data as APINodeProperty;
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
