@@ -107,12 +107,16 @@ export function createDefaultNodeProperty(type: string, id: string): NodePropert
 
 interface NodePropertyState {
   contents: Record<string, NodeProperty>;
-  setNodeProperty: (nodeId: string, content: Partial<NodeProperty>) => void;
+  /**
+   * 노드의 속성 일부(Partial<NodeProperty>)만 받아서 병합 업데이트합니다.
+   * 항상 Partial<NodeProperty>만 허용하며, 전체 NodeProperty를 직접 대입하지 않습니다.
+   */
+  setNodeProperty: (nodeId: string, updates: Partial<NodeProperty>) => void;
   deleteNodeProperty: (nodeId: string) => void;
-  getNodeProperty: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) =>
-    K extends keyof NodeTypeMap ? NodeTypeMap[K] :
-    K extends NodeType ? NodeProperty :
-    NodeProperty;
+  /**
+   * 노드의 전체 속성(NodeProperty)을 반환합니다. (존재하지 않으면 기본값)
+   */
+  getNodeProperty: (nodeId: string, nodeType?: string) => NodeProperty;
   getAllNodePropertys: () => Record<string, NodeProperty>;
   loadFromImportedContents: (contents: Record<string, NodeProperty>) => void;
   resetAllContent: () => void;
@@ -125,12 +129,12 @@ export const useNodePropertyStore = createWithEqualityFn<NodePropertyState>()(
   persist(
     (set, get) => ({
       contents: {},
-      setNodeProperty: (nodeId, contentUpdate) => set(state => {
-        const nodeType = (contentUpdate as any).type || 'unknown';
+      setNodeProperty: (nodeId, updates) => set(state => {
+        const nodeType = (updates as any).type || 'unknown';
         const currentContent = state.contents[nodeId] || createDefaultNodeProperty(nodeType, nodeId);
         const newContent = {
           ...currentContent,
-          ...contentUpdate,
+          ...updates,
           isDirty: true
         } as NodeProperty;
         if (!isEqual(currentContent, newContent)) {
@@ -148,16 +152,16 @@ export const useNodePropertyStore = createWithEqualityFn<NodePropertyState>()(
         const { [nodeId]: removedContent, ...rest } = state.contents;
         return { contents: rest };
       }),
-      getNodeProperty: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) => {
+      getNodeProperty: (nodeId, nodeType) => {
         const state = get();
         const content = state.contents[nodeId];
         if (content) {
-          return content as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeProperty : NodeProperty);
+          return content;
         }
         if (nodeType) {
-          return createDefaultNodeProperty(nodeType as string, nodeId) as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeProperty : NodeProperty);
+          return createDefaultNodeProperty(nodeType as string, nodeId);
         }
-        return {} as (K extends keyof NodeTypeMap ? NodeTypeMap[K] : K extends NodeType ? NodeProperty : NodeProperty);
+        return {} as NodeProperty;
       },
       getAllNodePropertys: () => get().contents,
       loadFromImportedContents: (contents) => set({ contents }),
@@ -247,10 +251,7 @@ function inferNodeType(content: NodeProperty): string | null {
 }
 
 export const getAllNodePropertys = () => useNodePropertyStore.getState().getAllNodePropertys();
-export const getNodeProperty = <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K):
-  K extends keyof NodeTypeMap ? NodeTypeMap[K] :
-  K extends NodeType ? NodeProperty :
-  NodeProperty =>
+export const getNodeProperty = (nodeId: string, nodeType?: string): NodeProperty =>
   useNodePropertyStore.getState().getNodeProperty(nodeId, nodeType as any);
 export const setNodeProperty = (nodeId: string, content: Partial<NodeProperty>) => useNodePropertyStore.getState().setNodeProperty(nodeId, content);
 export const loadFromImportedContents = (contents: Record<string, NodeProperty>) => useNodePropertyStore.getState().loadFromImportedContents(contents);
