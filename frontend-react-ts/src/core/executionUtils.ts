@@ -5,6 +5,8 @@ import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { getNodeContent } from '../store/useNodeContentStore';
 import { Node } from './Node'; // Import Node base class for type hinting
 import { LLMNodeContent } from '../types/nodes'; // For specific node data handling
+import { setNodeState } from '../store/useNodeStateStore';
+import { setNodeContent } from '../store/useNodeContentStore';
 
 /**
  * Prepares the FlowExecutionContext for a new execution run.
@@ -36,7 +38,38 @@ const prepareExecutionContext = (): FlowExecutionContext => {
     getNodeContent, 
     nodes, 
     edges, 
-    nodeFactory
+    nodeFactory,
+    false, // isExecutorContext
+    undefined, // chainId
+    undefined, // flowId
+    // onNodeStateChange 콜백: 실행 상태를 zustand store에 반영
+    (nodeId, status, result, error) => {
+      if (status === 'running') {
+        setNodeState(nodeId, {
+          status: 'running',
+          result: undefined,
+          error: undefined,
+          executionId,
+        });
+      } else if (status === 'success') {
+        setNodeState(nodeId, {
+          status: 'success',
+          result,
+          error: undefined,
+          executionId,
+        });
+      } else if (status === 'error') {
+        setNodeState(nodeId, {
+          status: 'error',
+          error,
+          executionId,
+        });
+      }
+    },
+    // onStoreOutput 콜백: 실행 결과를 zustand store에 반영
+    (nodeId, output) => {
+      setNodeContent(nodeId, { responseContent: output, outputTimestamp: Date.now() });
+    }
   );
 
   console.log(`[ExecutionUtils] Prepared Execution Context (ID: ${executionId})`);
