@@ -1,7 +1,7 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { ConditionalNodeProperty } from '../types/nodes.ts';
-import { evaluateCondition } from '../utils/flow/executionUtils.ts';
+import { ConditionalNodeProperty } from '../types/nodes';
+import { evaluateCondition } from '../utils/flow/executionUtils';
 
 /**
  * Available condition types
@@ -9,7 +9,7 @@ import { evaluateCondition } from '../utils/flow/executionUtils.ts';
 export type ConditionType = 
   | 'numberGreaterThan'
   | 'numberLessThan'
-  | 'equalTo'
+  | 'equal_to'
   | 'containsSubstring'
   | 'jsonPathExistsTruthy'
   | 'contains';  // Legacy type for backward compatibility
@@ -39,7 +39,7 @@ export class ConditionalNode extends Node {
     }
     
     // Initialize with default values if not provided
-    this.property.conditionType = this.property.conditionType || 'equalTo';
+    this.property.conditionType = this.property.conditionType || 'equal_to';
     this.property.conditionValue = this.property.conditionValue || '';
   }
 

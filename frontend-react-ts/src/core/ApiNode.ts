@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { callApi } from '../services/apiService.ts';
-import { HTTPMethod, APINodeProperty } from '../types/nodes.ts';
+import { callApi } from '../services/apiService';
+import { HTTPMethod, APINodeProperty } from '../types/nodes';
 
 /**
  * API node properties

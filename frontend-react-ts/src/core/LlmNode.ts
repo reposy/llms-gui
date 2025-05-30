@@ -1,8 +1,8 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { LlmNodeProperty } from '../types/nodes';
-import { runLLM } from '../services/llmService.ts';
-import { LLMRequestParams } from '../services/llm/types.ts';
+import { runLLM } from '../services/llmService';
+import { LLMRequestParams } from '../services/llm/types';
 import { LocalFileMetadata } from '../types/files';
 
 /**

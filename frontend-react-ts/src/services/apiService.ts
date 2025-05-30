@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig, Method, AxiosError } from 'axios';
-import { HTTPMethod } from '../types/nodes.ts';
+import { HTTPMethod } from '../types/nodes';
 
 interface CallApiParams {
   url: string;

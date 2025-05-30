@@ -1,7 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { extractValue } from '../utils/flow/executionUtils.ts';
-import { JSONExtractorNodeProperty } from '../types/nodes.ts';
+import { extractValue } from '../utils/flow/executionUtils';
+import { JSONExtractorNodeProperty } from '../types/nodes';
 
 /**
  * JSON Extractor node properties
