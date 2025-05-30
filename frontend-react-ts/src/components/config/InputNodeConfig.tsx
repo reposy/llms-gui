@@ -1,12 +1,9 @@
 // src/components/config/InputNodeConfig.tsx
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { InputNodeData } from '../../types/nodes';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
-import { InputTextManagerSidebar } from '../input/InputTextManagerSidebar';
 import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
-import { InputModeToggle } from '../input/InputModeToggle';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Import the utility function
 import clsx from 'clsx';
 import { InputNodeProperty } from '../../types/nodes';

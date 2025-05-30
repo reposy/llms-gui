@@ -1,15 +1,14 @@
 import React from 'react';
 import { Node } from '@xyflow/react';
 import { 
-  NodeData, 
   LlmNodeProperty, 
-  APINodeData, 
+  APINodeProperty, 
   OutputNodeProperty, 
-  InputNodeData,
-  ConditionalNodeData,
-  GroupNodeData,
-  MergerNodeData,
-  WebCrawlerNodeData
+  InputNodeProperty,
+  ConditionalNodeProperty,
+  GroupNodeProperty,
+  MergerNodeProperty,
+  WebCrawlerNodeProperty
 } from '../../types/nodes';
 
 // Import components directly with relative path
@@ -27,7 +26,7 @@ import { HTMLParserNodeConfig } from './HTMLParserNodeConfig';
 const DEBUG_LOGS = false;
 
 interface ConfigFactoryProps {
-  selectedNode: Node<NodeData> | null;
+  selectedNode: any;
 }
 
 export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selectedNode }) => {
@@ -75,15 +74,15 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
     
     case 'conditional':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering ConditionalNodeConfig');
-      return <ConditionalNodeConfig nodeId={id} data={data as ConditionalNodeData} />;
+      return <ConditionalNodeConfig nodeId={id} data={data as ConditionalNodeProperty} />;
     
     case 'group':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering GroupNodeConfig');
-      return <GroupNodeConfig nodeId={id} data={data as GroupNodeData} />;
+      return <GroupNodeConfig nodeId={id} data={data as GroupNodeProperty} />;
     
     case 'merger':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering MergerConfig');
-      return <MergerConfig selectedNode={selectedNode as Node<MergerNodeData>} />;
+      return <MergerConfig selectedNode={selectedNode as any} />;
     
     case 'web-crawler':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering WebCrawlerNodeConfig');

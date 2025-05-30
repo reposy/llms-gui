@@ -2,7 +2,7 @@
 import React, { useCallback } from 'react';
 import { OutputNodeProperty, OutputFormat } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { useOutputNodeProperty } from '../../hooks/useOutputNodeProperty';
+import { useOutputNodeProperty } from '../../hooks/useOutputNodeData';
 
 interface OutputConfigProps {
   nodeId: string;
