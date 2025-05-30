@@ -1,6 +1,6 @@
 import { Edge, Node } from '@xyflow/react';
 import jsonpath from 'jsonpath';
-import { ConditionType, NodeData } from '../../types/nodes';
+import { ConditionType, NodeProperty } from '../../types/nodes';
 
 // Utility to safely extract a value from an object using a JSONPath query
 export const extractValue = (obj: any, path: string): any => {
@@ -239,7 +239,7 @@ export const getRootNodesFromSubset = (nodes: Node[], edges: Edge[], subsetNodeI
 };
 
 // Helper to check if a node is a root node (no incoming edges within its context)
-export const isNodeRoot = (nodeId: string, nodes: Node<NodeData>[], edges: Edge[]): boolean => {
+export const isNodeRoot = (nodeId: string, nodes: Node<NodeProperty>[], edges: Edge[]): boolean => {
   const node = nodes.find(n => n.id === nodeId);
   if (!node) return false; // Node not found
 

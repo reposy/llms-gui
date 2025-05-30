@@ -1,5 +1,5 @@
 import { Node, Position, XYPosition, Edge } from '@xyflow/react';
-import { GroupNodeData, LlmNodeProperty, NodeData } from '../../types/nodes';
+import { NodeProperty } from '../../types/nodes';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -8,27 +8,19 @@ import { v4 as uuidv4 } from 'uuid';
  * @param nodes 처리할 노드 배열
  * @returns 처리된 노드 배열
  */
-export function prepareNodesForReactFlow(nodes: Node<NodeData>[]): Node<NodeData>[] {
-  // 먼저 그룹 노드들을 필터링합니다
+export function prepareNodesForReactFlow(nodes: Node<NodeProperty>[]): Node<NodeProperty>[] {
   const groupNodes = nodes.filter(node => node.type === 'group');
   const nonGroupNodes = nodes.filter(node => node.type !== 'group');
   
   // 그룹이 아닌 노드들을 처리합니다
   const processedNonGroupNodes = nonGroupNodes.map(node => {
-    // Create a base node
-    const processedNode = { ...node } as Node<NodeData>;
-    
-    // parentId가 있으면 React Flow용 parentNode 속성도 설정
+    const processedNode = { ...node } as Node<NodeProperty>;
     if (node.parentId) {
-      // React Flow 내부 처리를 위해 parentNode 속성도 설정
       (processedNode as any).parentNode = node.parentId;
     } else {
-      // parentId가 없으면 parentNode도 명시적으로 undefined로 설정
-      // (React Flow에서는 parentNode가 undefined일 때 부모 관계가 없다고 간주함)
       processedNode.parentId = undefined;
       (processedNode as any).parentNode = undefined;
     }
-    
     return processedNode;
   });
   
@@ -73,10 +65,10 @@ export function relativeToAbsolutePosition(
  * This includes converting position from absolute to relative
  */
 export function addNodeToGroup(
-  node: Node<NodeData>, 
-  groupNode: Node<NodeData>, 
-  nodes: Node<NodeData>[]
-): Node<NodeData>[] {
+  node: Node<NodeProperty>, 
+  groupNode: Node<NodeProperty>, 
+  nodes: Node<NodeProperty>[]
+): Node<NodeProperty>[] {
   // Skip if node is already in this group
   if (node.parentId === groupNode.id) {
     return nodes;
@@ -102,7 +94,7 @@ export function addNodeToGroup(
         parentId: groupNode.id,
         // Keep existing extent if present, otherwise don't add it
         ...(n.extent ? { extent: n.extent } : {})
-      } as Node<NodeData>;
+      } as Node<NodeProperty>;
       
       // Add parentNode via type assertion to avoid TypeScript error
       (updatedNode as any).parentNode = groupNode.id;
@@ -118,9 +110,9 @@ export function addNodeToGroup(
  * This includes converting position from relative to absolute
  */
 export function removeNodeFromGroup(
-  node: Node<NodeData>, 
-  nodes: Node<NodeData>[]
-): Node<NodeData>[] {
+  node: Node<NodeProperty>, 
+  nodes: Node<NodeProperty>[]
+): Node<NodeProperty>[] {
   // Skip if node has no parent
   if (!node.parentId) {
     return nodes;
@@ -144,7 +136,7 @@ export function removeNodeFromGroup(
         position: node.position,
         // Explicitly set to undefined to ensure React Flow treats it as a root node
         parentId: undefined,
-      } as Node<NodeData>;
+      } as Node<NodeProperty>;
       
       // Add parentNode: undefined via type assertion to avoid TypeScript error
       (updatedNode as any).parentNode = undefined;
@@ -162,8 +154,8 @@ export function removeNodeFromGroup(
  * @returns True if node's center is inside the group
  */
 export function isNodeInGroup(
-  node: Node<NodeData>, 
-  groupNode: Node<NodeData>
+  node: Node<NodeProperty>, 
+  groupNode: Node<NodeProperty>
 ): boolean {
   // Calculate node center point
   const nodeWidth = node.width || 150;
@@ -202,8 +194,8 @@ export function isNodeInGroup(
  * Returns the ID of the smallest intersecting group or null if none found
  */
 export function getIntersectingGroupId(
-  draggedNode: Node<NodeData>,
-  nodes: Node<NodeData>[]
+  draggedNode: Node<NodeProperty>,
+  nodes: Node<NodeProperty>[]
 ): string | null {
   // Skip self-check for groups (groups can't be their own parent)
   if (draggedNode.type === 'group') {
@@ -246,8 +238,8 @@ export function getIntersectingGroupId(
  * Calculate the center point of a node in absolute coordinates
  */
 function getNodeCenterAbsolute(
-  node: Node<NodeData>, 
-  allNodes: Node<NodeData>[]
+  node: Node<NodeProperty>, 
+  allNodes: Node<NodeProperty>[]
 ): { x: number, y: number } {
   const nodeWidth = node.width || 150;
   const nodeHeight = node.height || 50;
@@ -272,7 +264,7 @@ function getNodeCenterAbsolute(
  */
 function isPointInsideGroup(
   point: { x: number, y: number }, 
-  groupNode: Node<NodeData>
+  groupNode: Node<NodeProperty>
 ): boolean {
   const groupLeft = groupNode.position.x;
   const groupTop = groupNode.position.y;
@@ -292,7 +284,7 @@ function isPointInsideGroup(
 /**
  * Find the smallest group node by area
  */
-function findSmallestGroupByArea(groupNodes: Node<NodeData>[]): Node<NodeData> {
+function findSmallestGroupByArea(groupNodes: Node<NodeProperty>[]): Node<NodeProperty> {
   return groupNodes.reduce((smallest, current) => {
     const smallestArea = (smallest.width || 1200) * (smallest.height || 700);
     const currentArea = (current.width || 1200) * (current.height || 700);
@@ -306,7 +298,7 @@ function findSmallestGroupByArea(groupNodes: Node<NodeData>[]): Node<NodeData> {
  * @param nodes 모든 노드의 배열
  * @returns 업데이트된 노드 배열
  */
-export function updateNodeParentRelationships(nodes: Node<NodeData>[]): Node<NodeData>[] {
+export function updateNodeParentRelationships(nodes: Node<NodeProperty>[]): Node<NodeProperty>[] {
   // 그룹 노드만 미리 필터링 (잠재적 부모로 사용)
   const groupNodes = nodes.filter(node => node.type === 'group');
 
@@ -335,7 +327,7 @@ export function updateNodeParentRelationships(nodes: Node<NodeData>[]): Node<Nod
     
     // 여러 그룹과 교차하는 경우 가장 작은 그룹 선택
     let newParentId: string | undefined = undefined;
-    let intersectingGroupNode: Node<NodeData> | null = null;
+    let intersectingGroupNode: Node<NodeProperty> | null = null;
     
     if (intersectingGroups.length > 0) {
       if (intersectingGroups.length > 1) {
@@ -368,14 +360,14 @@ export function updateNodeParentRelationships(nodes: Node<NodeData>[]): Node<Nod
   });
 
   // 노드 렌더링을 위한 정렬
-  return sortNodesForRendering(updatedNodesWithParents as Node[]) as Node<NodeData>[];
+  return sortNodesForRendering(updatedNodesWithParents as Node<NodeProperty>[]) as Node<NodeProperty>[];
 }
 
 /**
  * Sorts nodes for rendering, ensuring group nodes come before other nodes.
  * This helps React Flow render groups correctly so children appear inside them.
  */
-export const sortNodesForRendering = (nodes: Node[]): Node[] => {
+export const sortNodesForRendering = (nodes: Node<NodeProperty>[]): Node<NodeProperty>[] => {
   return [...nodes].sort((a, b) => {
     const isAGroup = a.type === 'group';
     const isBGroup = b.type === 'group';

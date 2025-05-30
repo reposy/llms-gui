@@ -5,7 +5,7 @@ import { NodeProperty } from '../types/nodes';
 import { createIDBStorage } from '../utils/storage/idbStorage';
 import { shallow } from 'zustand/shallow';
 import { useCallback } from 'react';
-import { createDefaultNodeData } from '../utils/flow/flowUtils';
+import { createDefaultNodeProperty } from '../utils/flow/flowUtils';
 
 // 로깅 설정 - 자세한 로그를 보고 싶을 때 true로 설정
 const VERBOSE_LOGGING = false;
@@ -44,7 +44,7 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
             return { ...node, data: (node as any).property };
           }
           if (node.type) {
-            return { ...node, data: createDefaultNodeData(node.type as any) };
+            return { ...node, data: createDefaultNodeProperty(node.type as any) };
             }
             return node;
           }
