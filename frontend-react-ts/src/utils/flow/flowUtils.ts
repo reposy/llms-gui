@@ -70,16 +70,13 @@ export const createDefaultNodeProperty = (type: NodeType): NodeProperty => {
 // Utility to resolve simple {{item}} templates
 export const resolveTemplate = (template: string | undefined, context: { item: any }): string => {
   if (template === undefined) return '';
-  // Basic replacement, can be extended for more complex templating
   try {
-    // Convert item to string for simple replacement. Handle objects if needed.
     const itemString = typeof context.item === 'object' 
                       ? JSON.stringify(context.item) 
                       : String(context.item);
     return template.replace(/\{\{\s*item\s*\}\}/g, itemString);
   } catch (e) {
-      console.error("Error resolving template:", e);
-      return template; // Return original template on error
+      return template;
   }
 };
 
@@ -193,12 +190,8 @@ export function getChildNodesByHandle(nodes: Node<NodeProperty>[], edges: Edge[]
 
 // Create executable nodes for all child nodes
 export function createExecutableChildNodes(nodes: Node<NodeProperty>[], edges: Edge[], nodeId: string): ExecutableNode[] {
-  // This function is deprecated as part of the transition to the new Node architecture
-  // Use buildExecutionGraph and getChildNodeIds instead
-  console.warn('createExecutableChildNodes is deprecated. Use buildExecutionGraph instead.');
   const childNodes = getChildNodes(nodes, edges, nodeId);
   return childNodes.map(node => {
-    // Return an empty ExecutableNode implementation
     return {
       nodeId: node.id,
       execute: async () => null,
@@ -215,12 +208,8 @@ export function createExecutableChildNodesByHandle(
   nodeId: string, 
   handle: string
 ): ExecutableNode[] {
-  // This function is deprecated as part of the transition to the new Node architecture
-  // Use buildExecutionGraph and getChildNodeIds instead
-  console.warn('createExecutableChildNodesByHandle is deprecated. Use buildExecutionGraph instead.');
   const childNodes = getChildNodesByHandle(nodes, edges, nodeId, handle);
   return childNodes.map(node => {
-    // Return an empty ExecutableNode implementation
     return {
       nodeId: node.id,
       execute: async () => null,

@@ -79,39 +79,13 @@ export const evaluateCondition = (inputType: ConditionType, inputValue: any, con
  * @returns The appropriate value to use for template resolution
  */
 export const getResolvedInput = (context: any, input: any): any => {
-  console.log(`[getResolvedInput] Starting with context mode: ${context?.executionMode || 'undefined'}`);
-  
-  // Priority 1: If we're inside an iteration, use the iteration item
   if (context?.iterationItem !== undefined) {
-    console.log(`[getResolvedInput] Using iterationItem for template resolution:`, context.iterationItem);
-    console.log(`[getResolvedInput] Execution mode: ${context.executionMode}, Execution ID: ${context.executionId}`);
-    if (context.iterationTracking) {
-      console.log(`[getResolvedInput] Iteration tracking: Item ${context.iterationTracking.currentIndex+1} of ${context.iterationTracking.totalItems}`);
-    }
-    // Make it explicitly clear we're returning the iteration item for iteration-item mode
     if (context.executionMode === 'iteration-item') {
-      console.log(`[getResolvedInput] ITERATION-ITEM MODE: Prioritizing iterationItem over input array`);
     }
     return context.iterationItem;
   }
-  
-  // Priority 2: If we're in batch mode with inputRows available, use them
   if (context?.executionMode === 'batch' && Array.isArray(context?.inputRows)) {
-    console.log(`[getResolvedInput] Using batch inputRows (${context.inputRows.length} items)`);
-    console.log(`[getResolvedInput] Batch mode: Will use full array for template resolution`);
     return context.inputRows;
-  }
-  
-  // Priority 3: Check for foreach mode (but this should be handled by iterationItem above)
-  if ((context?.executionMode === 'foreach' || context?.executionMode === 'iteration-item') && Array.isArray(input)) {
-    console.log(`[getResolvedInput] Using foreach/iteration input array (${input.length} items)`);
-    return input;
-  }
-  
-  // Priority 4: Fall back to the direct input parameter
-  console.log(`[getResolvedInput] Using direct input (no special context):`, input);
-  if (Array.isArray(input)) {
-    console.log(`[getResolvedInput] Direct input is an array with ${input.length} items`);
   }
   return input;
 };
@@ -159,34 +133,25 @@ export const resolveTemplate = (template: string, data: any, context?: any): str
       const jsonpathContext = (typeof effectiveData === 'object' && effectiveData !== null) ? effectiveData : {};
       // If data is primitive, non-input paths cannot be resolved.
       if (typeof jsonpathContext !== 'object' || jsonpathContext === null) {
-        console.warn(`Template variable "${trimmedPath}" cannot be resolved from primitive data.`);
-        return match; // Return original placeholder
+        return match;
       }
 
       try {
-        // Prefix with '$' if it's not already there for jsonpath compatibility
         const jsonPathQuery = trimmedPath.startsWith('$') ? trimmedPath : `$.${trimmedPath}`;
         const results = jsonpath.query(jsonpathContext, jsonPathQuery);
         const value = results.length > 0 ? results[0] : undefined;
-
-        // Handle different value types
         if (value === undefined || value === null) {
-          // Return original placeholder if path resolves to undefined/null
-          console.warn(`Template variable "${trimmedPath}" resolved to undefined/null in context:`, jsonpathContext);
           return match; 
         }
         if (typeof value === 'object') {
           try {
-            return JSON.stringify(value); // Stringify nested objects/arrays
+            return JSON.stringify(value);
           } catch (e) {
-             console.error(`Error stringifying nested object for "${trimmedPath}":`, e);
-             return '[Nested Object]'; // Fallback
+             return '[Nested Object]';
           }
         }
-        return String(value); // Convert other resolved primitive types to string
+        return String(value);
       } catch (e) {
-        // Return original placeholder on jsonpath query error
-        console.error(`Error resolving template variable "${trimmedPath}":`, e);
         return match; 
       }
     });

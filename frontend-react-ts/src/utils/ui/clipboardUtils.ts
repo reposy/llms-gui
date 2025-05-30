@@ -44,31 +44,16 @@ const CLIPBOARD_STORAGE_KEY = 'flow-editor-clipboard';
  * @returns The number of nodes copied
  */
 export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeProperty>[], allEdges: Edge[]): number => {
-  console.log('[ClipboardUtils DEBUG] copyNodesAndEdgesFromInstance 호출됨');
-  console.log('[ClipboardUtils DEBUG] 선택된 노드 수:', selectedNodes.length);
-  
   if (selectedNodes.length === 0) {
-    console.log('[Clipboard] No selected nodes provided to copy');
     return 0;
   }
-
-  // Collect node IDs for filtering edges
   const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
-  console.log('[ClipboardUtils DEBUG] 선택된 노드 ID들:', Array.from(selectedNodeIds));
-  
-  // Only copy edges where both source and target are selected nodes
   const relevantEdges = allEdges.filter(edge => 
     selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
   );
-  console.log('[ClipboardUtils DEBUG] 관련 엣지 수:', relevantEdges.length);
-
-  // Fetch and store the DEEP COPIED content for each selected node
   const nodeContents: Record<string, NodeProperty> = {};
   selectedNodes.forEach(node => {
-    // getNodeProperty 제거: content는 별도 전달 또는 store에서 직접 조회 필요
-    console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!node.data);
     if (node.data) {
-      // 콘텐츠 데이터 깊은 복사
       nodeContents[node.id] = cloneDeep(node.data); 
     }
   });
@@ -80,20 +65,13 @@ export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeProperty>[
       edges: cloneDeep(relevantEdges), // 엣지 구조도 깊은 복사
       nodeContents // 콘텐츠는 이미 위에서 깊은 복사됨
     };
-    console.log('[ClipboardUtils DEBUG] clipboardMemory 설정 완료:', {
-      nodesCount: clipboardMemory.nodes.length,
-      edgesCount: clipboardMemory.edges.length,
-      contentsCount: Object.keys(clipboardMemory.nodeContents).length
-    });
 
     // Persist to localStorage if available
     localStorage.setItem(CLIPBOARD_STORAGE_KEY, JSON.stringify(clipboardMemory)); 
-    console.log('[ClipboardUtils DEBUG] localStorage에 저장 완료');
   } catch (error) {
     console.error('[Clipboard] Failed to save clipboard data:', error);
   }
 
-  console.log(`[Clipboard] Copied ${selectedNodes.length} nodes and ${relevantEdges.length} edges from instance state`);
   return selectedNodes.length;
 };
 
@@ -117,7 +95,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
   }
 
   if (!clipboardData || clipboardData.nodes.length === 0) {
-    console.log('[Clipboard] No data to paste');
     return null;
   }
 
@@ -190,15 +167,12 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
       if (oldToNewIdMap[newNode.parentId]) {
         // Parent was also copied, update the reference
         newNode.parentId = oldToNewIdMap[newNode.parentId];
-        console.log(`[Clipboard] Updated parentId reference for ${newId} to ${newNode.parentId}`);
         
         // For nodes within groups, position is already relative
         if (typeof copiedNode.parentId === 'string' && groupNodeIds.has(copiedNode.parentId)) {
-          console.log(`[Clipboard] Node ${newId} is within copied group ${newNode.parentId}, preserving relative position`);
         }
       } else {
         // If the parent wasn't copied, remove the parentId reference
-        console.log(`[Clipboard] Removing parentId reference for ${newId} as parent wasn't copied`);
         delete newNode.parentId;
       }
     }
@@ -218,7 +192,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     
     // Skip if either source or target wasn't copied or doesn't exist
     if (!newSource || !newTarget) {
-      console.warn(`[Clipboard] Skipping edge from ${copiedEdge.source} to ${copiedEdge.target} as one of the nodes wasn't copied`);
       return null;
     }
     
@@ -244,7 +217,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     // Find the newly created node to get its type
     const newNode = newNodes.find(node => node.id === newNodeId);
     if (!newNode || !newNode.data?.type) {
-      console.warn(`[Clipboard] Skipping content preparation for node ${newNodeId}: No valid type`);
       continue;
     }
     
@@ -271,14 +243,10 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     // Set a timeout to remove from tracking set after a short delay
     setTimeout(() => {
       recentlyPastedNodes.delete(newNodeId);
-      console.log(`[Clipboard] Removed ${newNodeId} from paste tracking`);
     }, 500); // 500ms should be enough to prevent re-initialization
   }
 
   const newNodeIds = newNodes.map(node => node.id);
-  
-  console.log(`[Clipboard] Prepared ${newNodes.length} nodes and ${newEdges.length} edges for pasting`);
-  console.log('[Clipboard] ID mapping:', oldToNewIdMap);
   
   return {
     newNodes,
@@ -318,7 +286,6 @@ export const clearClipboard = (): void => {
   try {
     localStorage.removeItem(CLIPBOARD_STORAGE_KEY);
   } catch (error) {
-    console.warn('[Clipboard] Failed to clear localStorage:', error);
+    // ignore
   }
-  console.log('[Clipboard] Clipboard cleared');
-}; 
+} 

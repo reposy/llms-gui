@@ -31,7 +31,6 @@ export const synchronizeFlowData = (
       const flowExists = flowChain.flowIds.includes(flowId);
       
       if (!flowExists) {
-        console.log(`[flowChainUtils] Adding flow to flow chain in ExecutorStateStore: ${flowId} to flow chain ${flowChainId}`);
         executorStore.addFlowToFlowChain(flowChainId, flowDataClone);
       }
     }
