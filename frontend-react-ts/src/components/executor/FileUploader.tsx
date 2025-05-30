@@ -103,14 +103,13 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         // Flow를 체인에 등록
         if (activeChainId) {
           const flowId = addFlowToFlowChain(activeChainId, flowData);
-          console.log(`[FileUploader] Added flow to chain: chainId=${activeChainId}, flowId=${flowId}`);
-          
+          // console.log(`[FileUploader] Added flow to chain: chainId=${activeChainId}, flowId=${flowId}`);
           // 콜백 호출
           if (onFileUpload) {
             onFileUpload(flowData, activeChainId, flowId);
           }
         } else {
-          console.warn('[FileUploader] No active chain selected');
+          // console.warn('[FileUploader] No active chain selected');
           setError('Flow를 추가할 Chain이 선택되지 않았습니다.');
         }
       } catch (err) {

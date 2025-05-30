@@ -85,7 +85,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
         }
       });
     } catch (error) {
-      console.error('Chain execution error in Detail:', error);
+      // console.error('Chain execution error in Detail:', error);
       useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, 'error');
     } finally {
       setIsExecuting(false);

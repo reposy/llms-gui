@@ -35,7 +35,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
         store.setFlowStatus(flowChainId, flowId, 'error', response.error);
       }
     } catch (error) {
-      console.error(`[FlowDetailModal] Error executing flow ${flowId}:`, error);
+      // console.error(`[FlowDetailModal] Error executing flow ${flowId}:`, error);
       store.setFlowStatus(flowChainId, flowId, 'error', String(error));
     }
   };

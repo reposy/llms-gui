@@ -54,7 +54,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   const [localOpenNodes, setLocalOpenNodes] = useState<{ [nodeId: string]: boolean }>({});
   
   useEffect(() => {
-    console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
+    // console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
   }, [flowId, result]);
 
   // defaultExpand가 true이고 result.outputs가 바뀔 때마다 모든 노드를 펼침 상태로 초기화
@@ -132,7 +132,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
     // 1. flowExecutionService.ts의 NodeResult 형태: { nodeId, outputs }
     // 2. outputCollector.ts의 NodeResult 형태: { nodeId, nodeName, nodeType, result }
     
-    console.log(`[ResultDisplay] 결과 항목 ${index} 렌더링 시작:`, nodeResult);
+    // console.log(`[ResultDisplay] 결과 항목 ${index} 렌더링 시작:`, nodeResult);
     
     let nodeId, nodeName, nodeOutput;
     
@@ -144,33 +144,33 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       // outputs 배열에서 첫 번째 항목을 사용하거나, result 값이 있으면 그것을 사용
       if (nodeResult.result !== undefined) {
         nodeOutput = nodeResult.result;
-        console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용:`, nodeOutput);
+        // console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용:`, nodeOutput);
       } else if (nodeResult.outputs && nodeResult.outputs.length > 0) {
         nodeOutput = nodeResult.outputs[0];
-        console.log(`[ResultDisplay] 노드 ${nodeId}의 outputs[0] 값 사용:`, nodeOutput);
+        // console.log(`[ResultDisplay] 노드 ${nodeId}의 outputs[0] 값 사용:`, nodeOutput);
       } else {
         nodeOutput = undefined;
-        console.log(`[ResultDisplay] 노드 ${nodeId}에 출력 값 없음`);
+        // console.log(`[ResultDisplay] 노드 ${nodeId}에 출력 값 없음`);
       }
     } else {
       // outputCollector.ts 형태
       nodeId = nodeResult.nodeId;
       nodeName = nodeResult.nodeName || nodeId.split('-')[0] || 'Node';
       nodeOutput = nodeResult.result;
-      console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용 (outputCollector 형태):`, nodeOutput);
+      // console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용 (outputCollector 형태):`, nodeOutput);
     }
     
     // 결과 데이터를 문자열로 변환
     let resultText;
     if (nodeOutput === undefined || nodeOutput === null) {
       resultText = ''; // undefined/null인 경우 빈 문자열로 처리
-      console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: 빈 값`);
+      // console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: 빈 값`);
     } else if (typeof nodeOutput === 'object') {
       resultText = JSON.stringify(nodeOutput, null, 2);
-      console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: 객체를 JSON으로 변환`);
+      // console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: 객체를 JSON으로 변환`);
     } else {
       resultText = String(nodeOutput);
-      console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: ${resultText.substring(0, 50)}${resultText.length > 50 ? '...' : ''}`);
+      // console.log(`[ResultDisplay] 노드 ${nodeId}의 결과 텍스트: ${resultText.substring(0, 50)}${resultText.length > 50 ? '...' : ''}`);
     }
     
     // 초기 표시 모드 설정 (이미 설정된 모드가 없으면)

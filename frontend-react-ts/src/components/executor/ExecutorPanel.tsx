@@ -62,14 +62,12 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         
         // 버전 확인
         if (!importData.version) {
-          console.warn('[ExecutorPanel] 버전 정보가 없는 파일입니다.');
           // 버전 없이 계속 진행
         }
         
         // flowChain 배열 존재 확인
         if (!Array.isArray(importData.flowChain)) {
           // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
-          console.log('[ExecutorPanel] flowChain 배열이 없습니다. 단일 Flow JSON으로 처리합니다.');
           
           // 단일 Flow 객체 생성
           importData = {
@@ -94,7 +92,6 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
           try {
             // flowJson 유효성 검사
             if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-              console.warn(`[ExecutorPanel] 유효하지 않은 flowJson 형식, flow:`, flow);
               return; // 이 Flow는 건너뛰고 계속 진행
             }
             
@@ -117,10 +114,8 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
               }
             } else {
               // 활성 체인이 없으면 새 체인 생성 후 Flow 추가
-              console.warn('[ExecutorPanel] 활성 체인이 없습니다. 새 체인 생성 필요');
             }
           } catch (flowError) {
-            console.error(`[ExecutorPanel] Flow 추가 중 오류:`, flowError);
             // 이 Flow는 건너뛰고 계속 진행
           }
         });
@@ -129,10 +124,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         if (flowChainIds.length === 0) {
           setStage('input');
         }
-        
-        console.log(`[ExecutorPanel] Flow chain imported successfully`);
       } catch (error) {
-        console.error(`[ExecutorPanel] Error parsing imported flow chain:`, error);
         alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
       }
     };
@@ -154,7 +146,7 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
         <div className="flex gap-2">
           <button
             onClick={() => {
-              console.log('[ExecutorPanel] 모든 내용 초기화 버튼 클릭됨');
+              // console.log('[ExecutorPanel] 모든 내용 초기화 버튼 클릭됨');
               onClearAll();
             }}
             className="px-3 py-1 text-red-600 border border-red-600 rounded hover:bg-red-50 transition-colors text-sm font-medium flex items-center"
