@@ -116,7 +116,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
               ) : (
                 <LLMNodeExpandedView
                   id={id}
-                  data={data}
                   nodeState={nodeState}
                   onToggleView={toggleNodeView}
                 />
