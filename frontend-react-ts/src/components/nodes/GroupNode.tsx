@@ -11,7 +11,7 @@ import { EditableNodeLabel } from './shared/EditableNodeLabel';
 // Add CSS import back to handle z-index
 import './GroupNode.css';
 
-const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
+const GroupNode: React.FC<NodeProps> = ({ id, selected, isConnectable }) => {
   const allNodes = useNodes() as Node<NodeProperty>[];
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';

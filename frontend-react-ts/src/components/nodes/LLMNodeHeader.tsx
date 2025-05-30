@@ -25,7 +25,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   onToggleView,
   isContentDirty
 }) => {
-  const { nodes, edges } = useFlowStructureStore();
+  const { nodes } = useFlowStructureStore();
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   

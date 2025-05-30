@@ -11,8 +11,8 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
-import { useNodePropertyStore, setNodeProperty } from '../../store/useNodePropertyStore';
-import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 interface Props {
   id: string;
@@ -29,12 +29,9 @@ interface QueryParamDrafts {
 }
 
 const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const apiData = data as APINodeProperty;
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
-  const { getZoom } = useReactFlow();
   const viewMode = useViewModeStore(state => state.getNodeEffectiveViewMode(id));
-  const globalViewMode = useViewModeStore(state => state.globalViewMode);
   const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
   const isCompactMode = viewMode === VIEW_MODES.COMPACT;
   
@@ -53,11 +50,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     isRunning,
     handleUrlChange,
     handleMethodChange,
-    handleRequestBodyTypeChange,
-    handleRequestBodyChange,
-    handleHeadersChange,
     updateContent,
-    setIsRunning,
     executeApiCall
   } = useApiNodeData({ nodeId: id });
 

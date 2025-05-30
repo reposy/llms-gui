@@ -13,10 +13,10 @@ import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useStore as useViewModeStore, useNodeViewMode } from '../../store/viewModeStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { runSingleNodeExecution } from '../../core/executionUtils';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
 
-const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, isConnectable = true }) => {
-  // Use a specific type assertion for clarity and safety
-  const data = nodeData as JSONExtractorNodeProperty;
+const JSONExtractorNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+  const jsonData = data as JSONExtractorNodeProperty;
   
   // Use updateNode from Zustand store
   const { nodes } = useFlowStructureStore();
@@ -32,15 +32,15 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
   const globalViewMode = useViewModeStore(state => state.globalViewMode);
   const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
   
-  const [pathDraft, setPathDraft] = useState<string>(data?.path || '');
+  const [pathDraft, setPathDraft] = useState<string>(jsonData?.path || '');
   const [isComposing, setIsComposing] = useState(false);
 
   // Update drafts when data changes externally
   useEffect(() => {
     if (!isComposing) {
-      setPathDraft(data.path || '');
+      setPathDraft(jsonData.path || '');
     }
-  }, [data.path, isComposing]);
+  }, [jsonData.path, isComposing]);
 
   const handlePathChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newPath = e.target.value;
@@ -150,7 +150,7 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
         >
           <NodeHeader
             nodeId={id}
-            label={data?.label || 'JSON Extractor'}
+            label={jsonData?.label || 'JSON Extractor'}
             placeholderLabel="JSON Extractor"
             isRootNode={isRootNode}
             isRunning={nodeStatus === 'running'}
@@ -167,7 +167,7 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
             {viewMode === VIEW_MODES.COMPACT ? (
               <>
                 <div className="text-sm text-gray-600">
-                  Extract: {data?.path || 'No path set'}
+                  Extract: {jsonData?.path || 'No path set'}
                 </div>
                 <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
               </>

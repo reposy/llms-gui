@@ -6,14 +6,14 @@ import { NodeBody } from './shared/NodeBody';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
-import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { WebCrawlerNodeProperty } from '../../types/nodes';
-import { useNodeProperty, setNodeProperty as setNodePropertyGlobal } from '../../store/useNodePropertyStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';
 import { runFlow } from '../../core/FlowRunner';
 
-const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+const WebCrawlerNode: React.FC<NodeProps> = ({ id, selected, isConnectable = true }) => {
   // Use useNodeProperty hook correctly
   const { content: crawlerData, setContent } = useNodeProperty<WebCrawlerNodeProperty>(id, 'web-crawler');
 
@@ -24,11 +24,6 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   
   // Add view mode state
   const [viewMode, setViewMode] = useState<typeof VIEW_MODES.COMPACT | typeof VIEW_MODES.EXPANDED>(VIEW_MODES.EXPANDED);
-  
-  // Get flow structure
-  const { nodes, edges } = useFlowStructureStore();
-  // Get the setNodes function from the store
-  const setNodes = useFlowStructureStore(state => state.setNodes);
   
   // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {

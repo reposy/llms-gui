@@ -11,7 +11,7 @@ import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureSto
 /**
  * HTML Parser 노드의 UI 컴포넌트
  */
-const HTMLParserNode: React.FC<NodeProps> = ({ id, selected, data }) => {
+const HTMLParserNode: React.FC<NodeProps> = ({ id, selected }) => {
   const { content } = useNodeProperty<HTMLParserNodeProperty>(id);
   const extractionRules = content?.extractionRules;
   const label = content?.label;

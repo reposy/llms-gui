@@ -16,7 +16,7 @@ import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
 import { runSingleNodeExecution } from '../../core/executionUtils';
 
 // Node component
-export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+export const InputNode: React.FC<NodeProps> = ({ id, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
   const setZustandNodeProperty = useNodePropertyStore(state => state.setNodeProperty);

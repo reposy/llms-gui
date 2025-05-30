@@ -1,5 +1,5 @@
 // src/components/nodes/LLMNode.tsx
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
 import { useNodeState } from '../../store/useNodeStateStore';
@@ -11,7 +11,6 @@ import { LLMNodeViewController } from './LLMNodeViewController';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 import LLMNodeHeader from './LLMNodeHeader';
-import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { LlmNodeProperty } from '../../types/nodes';
 
 interface Props {
@@ -31,9 +30,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   
   // Get LLM data from Zustand store
   useLlmNodeData({ nodeId: id });
-  
-  // property(interface)만 zustand에서 구독
-  const { content: property, setContent } = useNodeProperty<LlmNodeProperty>(id, 'llm');
   
   /**
    * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.
@@ -115,7 +111,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                   id={id}
                   data={data}
                   nodeState={nodeState}
-                  viewMode={viewMode}
                   onToggleView={toggleNodeView}
                 />
               ) : (
@@ -123,7 +118,6 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                   id={id}
                   data={data}
                   nodeState={nodeState}
-                  viewMode={viewMode}
                   onToggleView={toggleNodeView}
                 />
               )}

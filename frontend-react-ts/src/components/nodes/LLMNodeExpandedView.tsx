@@ -3,7 +3,6 @@ import React, { useCallback, useMemo } from 'react';
 import { LlmNodeProperty } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
-import LLMNodeHeader from './LLMNodeHeader';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
@@ -13,9 +12,7 @@ const DEBUG_LOGS = false;
 
 interface LLMNodeExpandedViewProps {
   id: string;
-  data: LlmNodeProperty;
   nodeState: NodeState | null;
-  viewMode: NodeViewMode;
   onToggleView: () => void;
 }
 
@@ -43,9 +40,7 @@ const renderResponseContent = (content: string | any | React.ReactNode): React.R
 
 export const LLMNodeExpandedView: React.FC<LLMNodeExpandedViewProps> = React.memo(({
   id,
-  data,
   nodeState,
-  viewMode,
   onToggleView,
 }) => {
   const { 

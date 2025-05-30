@@ -10,7 +10,6 @@ interface LLMNodeCompactViewProps {
   id: string;
   data: LlmNodeProperty;
   nodeState: NodeState | null;
-  viewMode: NodeViewMode;
   onToggleView: () => void;
 }
 
@@ -32,7 +31,6 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   id,
   data,
   nodeState,
-  viewMode,
   onToggleView
 }) => {
   // Use the LLM data hook to get content
