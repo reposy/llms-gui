@@ -1,8 +1,4 @@
 /**
- * Utility helper functions for general purposes
- */
-
-/**
  * Creates a deep copy of an object or array.
  * This ensures that all nested objects and arrays are cloned,
  * preventing shared references between the original and the copy.
