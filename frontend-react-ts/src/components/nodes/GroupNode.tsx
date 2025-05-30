@@ -2,7 +2,7 @@
 import React, { useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
 import clsx from 'clsx';
-import { GroupNodeProperty } from '../../types/nodes';
+import { GroupNodeProperty, NodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
@@ -22,7 +22,7 @@ import './GroupNode.css';
 const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
   const groupData = data as GroupNodeProperty;
   
-  const allNodes = useNodes();
+  const allNodes = useNodes() as Node<NodeProperty>[];
   const allEdges = useEdges();
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
@@ -39,8 +39,8 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
 
   const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
     // Check both parentId and parentNode properties to support both formats
-    const nodesWithParentId = allNodes.filter((node: Node<GroupNodeProperty>) => 
-      node.parentId === id
+    const nodesWithParentId = allNodes.filter((node) => 
+      node.parentId === id && node.type === 'group'
     );
     
     // React Flow v11+에서 사용되는 parentNode 속성도 체크 (호환성 보장)

@@ -51,7 +51,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     executionTime,
     errorMessage,
     isRunning,
-    isDirty,
     handleUrlChange,
     handleMethodChange,
     handleRequestBodyTypeChange,
@@ -380,7 +379,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             placeholderLabel="API Call"
             isRootNode={isRootNode}
             isRunning={isRunning}
-            isContentDirty={isDirty}
             viewMode={viewMode}
             themeColor="purple"
             onRun={handleApiRun}

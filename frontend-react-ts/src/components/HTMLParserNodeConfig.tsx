@@ -4,21 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-
-interface ExtractionRule {
-  name: string;
-  selector: string;
-  target: 'text' | 'html' | 'attribute';
-  attribute_name?: string;
-  multiple: boolean;
-}
-
-// HTMLParserNodeProperty 인터페이스 정의
-interface HTMLParserNodeProperty {
-  extractionRules?: ExtractionRule[];
-  label?: string;
-  [key: string]: any;
-}
+import { HTMLParserNodeProperty, ExtractionRule } from '../../types/nodes';
 
 interface HTMLParserNodeConfigProps {
   nodeId: string;
@@ -59,7 +45,7 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
 
   // 새 규칙 입력값 변경 핸들러
   const handleNewRuleChange = (field: keyof ExtractionRule, value: any) => {
-    setNewRule(prev => ({ ...prev, [field]: value }));
+    setNewRule((prev: ExtractionRule) => ({ ...prev, [field]: value }));
   };
 
   // 규칙 추가 핸들러
@@ -79,7 +65,7 @@ export function HTMLParserNodeConfig({ nodeId }: HTMLParserNodeConfigProps) {
     }
 
     // 중복 이름 검사
-    if (content?.extractionRules?.some(rule => rule.name === newRule.name)) {
+    if (content?.extractionRules?.some((rule: ExtractionRule) => rule.name === newRule.name)) {
       showMessage('동일한 이름의 규칙이 이미 존재합니다.', 'error');
       return;
     }

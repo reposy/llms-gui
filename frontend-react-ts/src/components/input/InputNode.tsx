@@ -2,8 +2,8 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeProperty } from '../../types/nodes';
 import clsx from 'clsx';
-import NodeErrorBoundary from './NodeErrorBoundary';
-import { NodeHeader } from './shared/NodeHeader';
+import NodeErrorBoundary from '../nodes/NodeErrorBoundary';
+import { NodeHeader } from '../nodes/shared/NodeHeader';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
@@ -162,7 +162,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                   'always': 'Always',
                   'oncePerContext': 'Once',
                   'none': 'None'
-                }[nodeContent?.accumulationMode || 'always'] /* Default to Always if undefined */}
+                }[(nodeContent?.accumulationMode || 'always') as 'always' | 'oncePerContext' | 'none'] /* Default to Always if undefined */}
               </span>
             </div>
             
