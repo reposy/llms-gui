@@ -108,7 +108,7 @@ export function createDefaultNodeProperty(type: string, id: string): NodePropert
 
 interface NodePropertyState {
   contents: Record<string, NodeProperty>;
-  setNodeProperty: <T extends NodeProperty>(nodeId: string, content: Partial<T>) => void;
+  setNodeProperty: (nodeId: string, content: Partial<NodeProperty>) => void;
   deleteNodeProperty: (nodeId: string) => void;
   getNodeProperty: <K extends keyof NodeTypeMap | string>(nodeId: string, nodeType?: K) =>
     K extends keyof NodeTypeMap ? NodeTypeMap[K] :
@@ -126,14 +126,14 @@ export const useNodePropertyStore = createWithEqualityFn<NodePropertyState>()(
   persist(
     (set, get) => ({
       contents: {},
-      setNodeProperty: <T extends NodeProperty>(nodeId: string, contentUpdate: Partial<T>) => set(state => {
+      setNodeProperty: (nodeId, contentUpdate) => set(state => {
         const nodeType = (contentUpdate as any).type || 'unknown';
         const currentContent = state.contents[nodeId] || createDefaultNodeProperty(nodeType, nodeId);
         const newContent = {
           ...currentContent,
           ...contentUpdate,
           isDirty: true
-        };
+        } as NodeProperty;
         if (!isEqual(currentContent, newContent)) {
           return {
             contents: {
@@ -253,7 +253,7 @@ export const getNodeProperty = <K extends keyof NodeTypeMap | string>(nodeId: st
   K extends NodeType ? NodeProperty :
   NodeProperty =>
   useNodePropertyStore.getState().getNodeProperty(nodeId, nodeType as any);
-export const setNodeProperty = <T extends NodeProperty>(nodeId: string, content: Partial<T>) => useNodePropertyStore.getState().setNodeProperty(nodeId, content);
+export const setNodeProperty = (nodeId: string, content: Partial<NodeProperty>) => useNodePropertyStore.getState().setNodeProperty(nodeId, content);
 export const loadFromImportedContents = (contents: Record<string, NodeProperty>) => useNodePropertyStore.getState().loadFromImportedContents(contents);
 export const resetAllContent = () => useNodePropertyStore.getState().resetAllContent();
 
