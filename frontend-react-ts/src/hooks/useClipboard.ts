@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { useReactFlow, XYPosition, Node, Edge } from '@xyflow/react';
-import { NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { 
   pasteClipboardContents, 
   hasClipboardData,
@@ -140,7 +140,7 @@ export const useClipboard = (): UseClipboardReturnType => {
       console.log('[useClipboard DEBUG] 모든 엣지 수:', allEdges.length);
       
       // Assert the type of selectedNodes before passing
-      const copiedCount = copyNodesAndEdgesFromInstance(selectedNodes as Node<NodeData>[], allEdges);
+      const copiedCount = copyNodesAndEdgesFromInstance(selectedNodes as Node<NodeProperty>[], allEdges);
       
       if (copiedCount > 0) {
         console.log(`[Clipboard] Copied ${copiedCount} nodes to clipboard.`);
@@ -192,7 +192,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     }
 
     // 3. Prepare final nodes/edges (apply z-index boost)
-    const finalNodes = pastedNodes.map((node: Node<NodeData>) => ({ 
+    const finalNodes = pastedNodes.map((node: Node<NodeProperty>) => ({ 
       ...node,
       selected: false, // Start deselected, select later
       zIndex: (node.zIndex || 0) + PASTE_Z_INDEX_BOOST 

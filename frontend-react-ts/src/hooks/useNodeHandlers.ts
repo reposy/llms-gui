@@ -8,7 +8,7 @@ import {
   getConnectedEdges,
   NodeMouseHandler
 } from '@xyflow/react'; 
-import { NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { 
   setNodes as setZustandNodes, 
   setEdges as setZustandEdges, 
@@ -30,10 +30,10 @@ interface UseNodeHandlersParams {
 
 interface UseNodeHandlersReturn {
   handleConnect: (connection: Connection) => void;
-  handleNodeDragStop: (event: React.MouseEvent, node: Node<NodeData>) => void;
-  handleSelectionDragStop: (event: React.MouseEvent, nodes: Node<NodeData>[]) => void;
+  handleNodeDragStop: (event: React.MouseEvent, node: Node<NodeProperty>) => void;
+  handleSelectionDragStop: (event: React.MouseEvent, nodes: Node<NodeProperty>[]) => void;
   handleEdgesDelete: (edges: Edge[]) => void;
-  handleNodesDelete: (nodes: Node<NodeData>[]) => void;
+  handleNodesDelete: (nodes: Node<NodeProperty>[]) => void;
   handleNodeClick: NodeMouseHandler;
 }
 
@@ -41,8 +41,8 @@ interface UseNodeHandlersReturn {
  * Calculate absolute position for a node, accounting for parent groups
  */
 function getNodeAbsolutePosition(
-  node: Node<NodeData>, 
-  allNodes: Node<NodeData>[]
+  node: Node<NodeProperty>, 
+  allNodes: Node<NodeProperty>[]
 ): { x: number, y: number } {
   if (!node.parentId) return { ...node.position };
   
@@ -56,10 +56,10 @@ function getNodeAbsolutePosition(
  * Update a node's parent relationship
  */
 function updateNodeParentRelationship(
-  node: Node<NodeData>, 
+  node: Node<NodeProperty>, 
   newParentId: string | null, 
-  allNodes: Node<NodeData>[]
-): Node<NodeData>[] {
+  allNodes: Node<NodeProperty>[]
+): Node<NodeProperty>[] {
   const absolutePosition = getNodeAbsolutePosition(node, allNodes);
   const nodeWithAbsPos = { ...node, position: absolutePosition };
   
@@ -112,7 +112,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
 
   // Handle node drag stop
   const handleNodeDragStop = useCallback(
-    (event: React.MouseEvent, draggedNode: Node<NodeData>) => {
+    (event: React.MouseEvent, draggedNode: Node<NodeProperty>) => {
       // Find the group node that the dragged node intersects with
       const intersectingGroupId = getIntersectingGroupId(draggedNode, nodes);
       const currentParentId = draggedNode.parentId;
@@ -136,7 +136,7 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   // Handle selection drag stop
   const handleSelectionDragStop = useCallback((event: React.MouseEvent, draggedNodesInput: Node[]) => {
       // console.log(`[SelectionDragStop] Multi-selection drag completed. Syncing positions.`);
-      setZustandNodes(getNodes() as Node<NodeData>[]); 
+      setZustandNodes(getNodes() as Node<NodeProperty>[]); 
   }, [getNodes]);
 
   // Handle edges delete
@@ -151,12 +151,12 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   }, [getEdges]);
 
   // Handle nodes delete with updated type handling
-  const handleNodesDelete = useCallback((nodesToDelete: Node<NodeData>[]) => {
+  const handleNodesDelete = useCallback((nodesToDelete: Node<NodeProperty>[]) => {
     if (nodesToDelete.length === 0) return;
     
     // Process node deletion
     const nodeIdsToDelete = new Set(nodesToDelete.map(n => n.id));
-    const currentNodes = getNodes() as Node<NodeData>[]; 
+    const currentNodes = getNodes() as Node<NodeProperty>[]; 
     const currentEdges = getEdges();
     
     // Remove deleted nodes
