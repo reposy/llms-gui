@@ -54,19 +54,6 @@ export const calculateNodePosition = (
   return { x: 100, y: 100 };
 };
 
-// Helper function to create default property for a new node
-// (실제 구현은 store/useNodePropertyStore.ts의 createDefaultNodeProperty를 사용하세요. NodeData는 더 이상 사용하지 않습니다.)
-export const createDefaultNodeProperty = (type: NodeType): NodeProperty => {
-  const baseData = {
-    label: type.charAt(0).toUpperCase() + type.slice(1), // Capitalize first letter
-    isExecuting: false, // This might be managed by execution store, but good default
-  };
-
-  // NodeProperty 생성은 store/useNodePropertyStore.ts의 createDefaultNodeProperty를 사용하도록 위임
-  // (여기서는 단순히 타입만 맞추고, 실제 생성은 store에서 일관성 있게 관리)
-  throw new Error('createDefaultNodeProperty는 store/useNodePropertyStore.ts의 함수를 사용하세요.');
-};
-
 // Utility to resolve simple {{item}} templates
 export const resolveTemplate = (template: string | undefined, context: { item: any }): string => {
   if (template === undefined) return '';
@@ -86,15 +73,12 @@ export const createNewNode = (
   position: { x: number; y: number }
 ): Node<NodeProperty> => {
   console.log(`[createNewNode] Creating new node of type: ${type} at position:`, position);
-  
   // Generate a unique ID for the node
   const newNodeId = `${type}-${crypto.randomUUID()}`;
   console.log(`[createNewNode] Generated new node ID: ${newNodeId}`);
-  
-  // Get the default data for the node type
-  const defaultData = createDefaultNodeProperty(type);
+  // Get the default data for the node type from the store (type, id)
+  const defaultData = require('../../store/useNodePropertyStore').createDefaultNodeProperty(type, newNodeId);
   console.log(`[createNewNode] Created default data for ${type} node:`, defaultData);
-  
   // Create the base node
   const newNode: Node<NodeProperty> = {
     id: newNodeId,
@@ -102,14 +86,12 @@ export const createNewNode = (
     position,
     data: defaultData,
   };
-
   // Apply special properties for specific node types
   if (type === 'group') {
-    newNode.style = { width: 1200, height: 700 }; // Increased from 1000x600 to 1200x700 for even more space
-    newNode.dragHandle = '.group-node-container'; // Allow dragging from the entire group node
+    newNode.style = { width: 1200, height: 700 };
+    newNode.dragHandle = '.group-node-container';
     console.log(`[createNewNode] Applied special properties for group node:`, newNode.style);
   }
-
   console.log(`[createNewNode] Final node object:`, newNode);
   return newNode;
 };
