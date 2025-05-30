@@ -73,7 +73,7 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
    * 부분적인 컨텐츠 업데이트 유틸리티 함수
    */
   const updateInputContent = useCallback((updates: Partial<Omit<InputNodeProperty, keyof BaseNodeData>>) => {
-    setNodeProperty<InputNodeProperty>(nodeId, {
+    setNodeProperty(nodeId, {
       ...content,
       ...updates,
     });

@@ -32,7 +32,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const initialLabel = (getNodeProperty(id, 'llm') as LlmNodeProperty)?.label || data.label || 'LLM';
   
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    setNodeProperty<LlmNodeProperty>(nodeId, { label: newLabel });
+    setNodeProperty(nodeId, { label: newLabel });
     
     setStructureNodes(nodes.map((node: Node<any>) => 
         node.id === nodeId ? { ...node, data: { ...node.data, label: newLabel } } : node
