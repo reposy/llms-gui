@@ -1,10 +1,9 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { LlmNodeProperty } from '../types/nodes.ts';
+import { LlmNodeProperty } from '../types/nodes';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
 import { LocalFileMetadata } from '../types/files';
-import { LlmNodeProperty } from '../types/nodes';
 
 /**
  * LLM node for generating text via LLM providers

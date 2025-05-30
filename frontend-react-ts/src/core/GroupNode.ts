@@ -3,14 +3,6 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { Node as FlowNode } from '@xyflow/react'; // Edge 타입은 직접 사용 안 할 수 있지만, FlowNode는 필요
 import { GroupNodeProperty } from '../types/nodes';
 
-interface GroupNodeProperty {
-  label: string;
-  nodes?: any[]; // GroupNode 자체의 property에는 전체 노드/엣지 정보가 있을 수 있음 (초기 설정용)
-  edges?: any[];
-  nodeFactory?: any;
-  // executionGraph?: any; // 내부 실행 그래프는 동적으로 생성
-}
-
 export class GroupNode extends Node {
   declare property: GroupNodeProperty;
 

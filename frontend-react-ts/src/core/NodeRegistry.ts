@@ -37,8 +37,8 @@ export function getNodeFactory(type: string): NodeFactoryFn | undefined {
 export function registerAllNodeTypes(factory: NodeFactory) {
   // Register factory functions for node types
   factory.register('input', (id, property, context) => {
-    // Ensure required input node properties exist with defaults
     const inputProperty = {
+      type: 'input' as const,
       items: Array.isArray(property.items) ? property.items : [],
       iterateEachRow: Boolean(property.iterateEachRow),
       ...property
@@ -50,9 +50,8 @@ export function registerAllNodeTypes(factory: NodeFactory) {
   });
 
   factory.register('llm', (id, property, context) => {
-    // Ensure required LLM node properties exist with defaults
     const llmProperty = {
-      // Set required defaults
+      type: 'llm' as const,
       prompt: 'prompt' in property ? property.prompt : '',
       temperature: 'temperature' in property ? property.temperature : 0.7,
       model: 'model' in property ? property.model : 'llama3',
@@ -60,7 +59,6 @@ export function registerAllNodeTypes(factory: NodeFactory) {
       ollamaUrl: 'ollamaUrl' in property ? property.ollamaUrl : 'http://localhost:11434',
       openaiApiKey: 'openaiApiKey' in property ? property.openaiApiKey : '',
       mode: 'mode' in property ? property.mode : 'text',
-      // Preserve any other properties
       ...property
     };
     if (context) {
@@ -70,8 +68,8 @@ export function registerAllNodeTypes(factory: NodeFactory) {
   });
   
   factory.register('api', (id, property, context) => {
-    // Ensure required API node properties exist with defaults
     const apiProperty = {
+      type: 'api' as const,
       method: property.method || 'GET',
       url: property.url || '',
       headers: property.headers || {},
@@ -84,10 +82,10 @@ export function registerAllNodeTypes(factory: NodeFactory) {
   });
   
   factory.register('output', (id, property, context) => {
-    // Ensure required output node properties exist with defaults
     const outputProperty = {
+      type: 'output' as const,
       format: property.format || 'text',
-      data: property.data || null,
+      content: property.content || '',
       ...property
     };
     if (context) {
@@ -98,10 +96,10 @@ export function registerAllNodeTypes(factory: NodeFactory) {
 
   // Register merger node type
   factory.register('merger', (id, property, context) => {
-    // Ensure required merger node properties exist with defaults
     const mergerProperty = {
-      strategy: property.strategy || 'array',
-      keys: property.keys || [],
+      type: 'merger' as const,
+      mergeMode: property.mergeMode || 'concat',
+      propertyNames: property.propertyNames || [],
       ...property
     };
     if (context) {
@@ -112,8 +110,8 @@ export function registerAllNodeTypes(factory: NodeFactory) {
 
   // Register HTML Parser node type
   factory.register('html-parser', (id, property, context) => {
-    // Ensure required HTML Parser properties exist with defaults
     const htmlParserProperty = {
+      type: 'html-parser' as const,
       extractionRules: property.extractionRules || [],
       ...property
     };
@@ -126,31 +124,47 @@ export function registerAllNodeTypes(factory: NodeFactory) {
   // ConditionalNode, GroupNode, JsonExtractorNode, WebCrawlerNode
   // don't need special property handling so we pass property directly
   factory.register('conditional', (id, property, context) => {
+    const conditionalProperty = {
+      type: 'conditional' as const,
+      ...property
+    };
     if (context) {
-      return new ConditionalNode(id, property, context);
+      return new ConditionalNode(id, conditionalProperty, context);
     }
-    return new ConditionalNode(id, property);
+    return new ConditionalNode(id, conditionalProperty);
   });
 
   factory.register('group', (id, property, context) => {
+    const groupProperty = {
+      type: 'group' as const,
+      ...property
+    };
     if (context) {
-      return new GroupNode(id, property, context);
+      return new GroupNode(id, groupProperty, context);
     }
-    return new GroupNode(id, property);
+    return new GroupNode(id, groupProperty);
   });
 
   factory.register('json-extractor', (id, property, context) => {
+    const jsonExtractorProperty = {
+      type: 'json-extractor' as const,
+      ...property
+    };
     if (context) {
-      return new JsonExtractorNode(id, property, context);
+      return new JsonExtractorNode(id, jsonExtractorProperty, context);
     }
-    return new JsonExtractorNode(id, property);
+    return new JsonExtractorNode(id, jsonExtractorProperty);
   });
 
   factory.register('web-crawler', (id, property, context) => {
+    const webCrawlerProperty = {
+      type: 'web-crawler' as const,
+      ...property
+    };
     if (context) {
-      return new WebCrawlerNode(id, property, context);
+      return new WebCrawlerNode(id, webCrawlerProperty, context);
     }
-    return new WebCrawlerNode(id, property);
+    return new WebCrawlerNode(id, webCrawlerProperty);
   });
 }
 

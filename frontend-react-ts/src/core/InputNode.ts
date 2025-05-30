@@ -3,16 +3,6 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { InputNodeProperty } from '../types/nodes';
 
 /**
- * Input node properties
- */
-export interface InputNodeProperty {
-  items: any[];
-  iterateEachRow: boolean;
-  nodeFactory?: any;
-  [key: string]: any;
-}
-
-/**
  * Input node that provides data to the flow
  */
 export class InputNode extends Node {
@@ -26,7 +16,7 @@ export class InputNode extends Node {
    */
   constructor(
     id: string, 
-    property: InputNodeProperty = { items: [], iterateEachRow: false } as InputNodeProperty,
+    property: InputNodeProperty = { type: 'input', items: [], iterateEachRow: false } as InputNodeProperty,
     context?: FlowExecutionContext
   ) {
     super(id, 'input', property);
