@@ -1,12 +1,11 @@
 // src/components/nodes/GroupNode.tsx
-import React, { useMemo, useCallback, memo, useRef, useEffect } from 'react';
+import React, { useCallback, memo } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
 import clsx from 'clsx';
-import { GroupNodeProperty, NodeProperty } from '../../types/nodes';
+import { NodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
-import { useNodes, useEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { useNodes, useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { EditableNodeLabel } from './shared/EditableNodeLabel';
 
 // Add CSS import back to handle z-index
@@ -14,66 +13,19 @@ import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
   const allNodes = useNodes() as Node<NodeProperty>[];
-  const allEdges = useEdges();
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
-  const executionContextRef = useRef<FlowExecutionContext | null>(null);
   
-  const { 
-    label,
-    isCollapsed, 
-  } = useGroupNodeData({ nodeId: id });
+  const { label, isCollapsed, items } = useGroupNodeData({ nodeId: id });
 
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
 
   const handleRunGroup = useCallback(() => {
     if (isRunning) return;
-    
-    console.log(`[GroupNode] ${id}: Triggering execution of group via runFlow`);
-    
-    // --- REPLACE complex internal logic with a call to runFlow --- 
-    // The runFlow function will handle creating the context, 
-    // finding the correct starting node (this group node), 
-    // creating its instance (with proper properties like nodes, edges, factory),
-    // and calling its process() method.
-    // Note: Now we pass the group's ID as the startNodeId.
-    runFlow(id).catch((error: Error) => {
-      console.error(`Error running flow triggered by group ${id}:`, error);
-      // Optionally, mark the group node as error in the UI state
-      // This requires access to FlowExecutionContext or similar mechanism outside runFlow
-      // For now, just log the error.
-    });
-    // -----------------------------------------------------------
-    
-    // // --- OLD LOGIC TO BE REMOVED --- 
-    // const executionId = `exec-${uuidv4()}`;
-    // const executionContext = new FlowExecutionContext(executionId);
-    // executionContextRef.current = executionContext;
-    
-    // // 그룹 노드 자신이 아닌 그룹 내부의 노드들을 실행하도록 설정
-    // executionContext.setTriggerNode(id);
-    
-    // buildExecutionGraphFromFlow(nodes, edges);
-    
-    // // 그룹 노드 자체는 항상 런닝 상태로 표시
-    // const groupNode = nodes.find(n => n.id === id);
-    // if (!groupNode) {
-    //   executionContext.log(`그룹 ${id}를 찾을 수 없습니다.`);
-    //   return;
-    // }
-    
-    // // 그룹 내부의 실제 루트 노드들을 직접 찾아서 실행
-    // if (nodesInGroup.length > 0) {
-    //   runNodesInGroup(executionContext, nodesInGroup, allEdges, nodes);
-    // } else {
-    //   // 그룹 내 노드가 없는 경우
-    //   executionContext.log(`그룹 ${id}에 실행할 노드가 없습니다.`);
-    //   executionContext.markNodeSuccess(id, { message: "그룹 내 노드 없음" });
-    // }
-    // --- END OF OLD LOGIC --- 
-
-  }, [id, isRunning]); // Removed dependencies related to old logic
+    // TODO: 그룹 실행 로직 구현 필요
+    console.log(`[GroupNode] ${id}: 그룹 실행 로직은 별도 구현 필요`);
+  }, [id, isRunning]);
   
   const handleSelectGroup = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -174,17 +126,17 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         >
           <div className="group-node-overlay"></div>
           
-          {nodesInGroup.length === 0 && (
+          {items && items.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs placeholder">
               Drag nodes here
             </div>
           )}
           
           <div className="absolute top-2 right-2 p-2 bg-orange-50/70 rounded-md text-xs max-w-[80%] max-h-[75%] overflow-auto group-controls">
-            <div className="font-medium mb-1">Nodes in Group ({nodesInGroup.length})</div>
-            {nodesInGroup.length > 0 ? (
+            <div className="font-medium mb-1">Nodes in Group ({items ? items.length : 0})</div>
+            {items && items.length > 0 ? (
               <ul className="list-disc pl-4 text-xs text-gray-600">
-                {nodesInGroup.map(node => (
+                {items.map((node: any) => (
                   <li key={node.id} className="truncate">
                     {node.data?.label || node.type || node.id}
                   </li>
