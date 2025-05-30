@@ -4,14 +4,16 @@ import { LLMNodeContent } from '../types/nodes.ts';
 import { runLLM } from '../services/llmService.ts';
 import { LLMRequestParams } from '../services/llm/types.ts';
 import { LocalFileMetadata } from '../types/files';
+import { LlmNodeProperty } from '../types/nodes';
 
 /**
  * LLM node for generating text via LLM providers
  */
 export class LlmNode extends Node {
-  declare property: LLMNodeContent;
+  declare property: LlmNodeProperty;
   
-  constructor(id: string, property: LLMNodeContent = {
+  constructor(id: string, property: LlmNodeProperty = {
+    type: 'llm',
     provider: 'ollama',
     model: '',
     prompt: '',

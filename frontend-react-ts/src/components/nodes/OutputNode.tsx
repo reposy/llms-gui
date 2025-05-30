@@ -9,14 +9,14 @@ import { useNodeContent } from '../../store/useNodeContentStore';
 import { NodeProps } from '@xyflow/react';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 
-import { OutputNodeContent } from '../../types/nodes';
+import { OutputNodeProperty } from '../../types/nodes';
 
 interface Props extends NodeProps {}
 
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRootNode = useIsRootNode(id);
-  const { content: property, setContent } = useNodeContent<OutputNodeContent>(id, 'output');
+  const { content: property, setContent } = useNodeContent<OutputNodeProperty>(id, 'output');
   const format = property?.format || 'text';
   
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {

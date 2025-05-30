@@ -79,7 +79,7 @@ export interface BaseNodeData {
 }
 
 // LLM 노드 데이터
-export interface LLMNodeData extends BaseNodeData {
+export interface LlmNodeProperty extends BaseNodeData {
   type: 'llm';
   provider: 'ollama' | 'openai';
   model: string;
@@ -89,6 +89,12 @@ export interface LLMNodeData extends BaseNodeData {
   openaiApiKey?: string;
   mode?: LLMMode;
   viewMode?: NodeViewMode;
+  maxTokens?: number;
+  responseContent?: LLMResult | string;
+  isStreaming?: boolean;
+  streamingResult?: string;
+  selectedFiles?: File[];
+  hasImageInputs?: boolean;
 }
 
 // API 노드 데이터
@@ -107,7 +113,7 @@ export interface APINodeData extends BaseNodeData {
 }
 
 // Output 노드 데이터
-export interface OutputNodeData extends BaseNodeData {
+export interface OutputNodeProperty extends BaseNodeData {
   type: 'output';
   format?: OutputFormat;
   content?: string;
@@ -190,9 +196,9 @@ export interface HTMLParserNodeData extends BaseNodeData {
 
 // 전체 노드 데이터 유니온 타입
 export type NodeData = 
-  | LLMNodeData 
+  | LlmNodeProperty 
   | APINodeData 
-  | OutputNodeData
+  | OutputNodeProperty
   | JSONExtractorNodeData
   | InputNodeData
   | GroupNodeData

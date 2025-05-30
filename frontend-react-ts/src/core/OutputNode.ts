@@ -1,15 +1,6 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { OutputNodeContent } from '../types/nodes';
-
-/**
- * Output node properties
- */
-interface OutputNodeProperty {
-  format: 'json' | 'text';
-  data: any;
-  lastContent?: string; // Track last content to avoid redundant updates
-}
+import { OutputNodeContent, OutputNodeProperty } from '../types/nodes';
 
 /**
  * Interface for Output node content in the store
@@ -40,14 +31,14 @@ export class OutputNode extends Node {
   /**
    * Type assertion for the property
    */
-  declare property: OutputNodeContent;
+  declare property: OutputNodeProperty;
   
   /**
    * Constructor for OutputNode
    */
   constructor(
     id: string,
-    property: OutputNodeContent = { format: 'text', content: '', mode: 'read' },
+    property: OutputNodeProperty = { type: 'output', format: 'text', content: '', mode: 'read' },
     context?: FlowExecutionContext
   ) {
     super(id, 'output', property);
