@@ -1,12 +1,12 @@
 import React, { useCallback } from 'react';
-import { GroupNodeData } from '../../types/nodes';
+import { GroupNodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
 import { useNodes } from '../../store/useFlowStructureStore';
 
 interface GroupNodeConfigProps {
   nodeId: string;
-  data: GroupNodeData;
+  data: GroupNodeProperty;
 }
 
 export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }) => {
