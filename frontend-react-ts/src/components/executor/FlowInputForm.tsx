@@ -7,17 +7,15 @@ interface FlowInputFormProps {
   flowId: string;
   inputs?: any[];
   onInputChange?: (inputs: any[]) => void;
-  isChainInput?: boolean;
 }
 
-const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
+const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange }) => {
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
   const flowChainMap = store.flowChainMap;
   const flowChainIds = store.flowChainIds;
   const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flow = chain && flowId ? chain.flowMap[flowId] : undefined;
-  const prevFlows = chain ? chain.flowIds.filter(id => id !== flowId && chain.flowIds.indexOf(id) < chain.flowIds.indexOf(flowId)) : [];
 
   // store의 값을 직접 구독 (propInputs가 없으면)
   const initialRows = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
@@ -93,13 +91,6 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     updateRows(newRows);
   };
 
-  // Flow Result 선택
-  const handleFlowResultChange = (idx: number, flowId: string) => {
-    const newRows = [...rows];
-    newRows[idx] = { type: 'flow-result', value: flowId, sourceFlowId: flowId };
-    updateRows(newRows);
-  };
-
   // 텍스트 입력
   const handleTextChange = (idx: number, value: string) => {
     const newRows = [...rows];
@@ -108,7 +99,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
   };
 
   // Shift+Enter로 Row 추가
-  const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
       addRow();
@@ -204,7 +195,7 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                 maxLength={500}
               value={typeof row.value === 'string' ? row.value : ''}
               onChange={e => editMode && handleTextChange(idx, e.target.value)}
-              onKeyDown={e => editMode && handleKeyDown(e, idx)}
+              onKeyDown={e => editMode && handleKeyDown(e)}
               placeholder="입력값을 입력하세요"
               readOnly={!editMode}
                 style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}

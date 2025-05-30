@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FlowData } from '../../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
-import { PlusIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
+import { DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 
 interface FileUploaderProps {
   onFileUpload?: (flowData: FlowData, chainId?: string, flowId?: string) => void;

@@ -16,7 +16,6 @@ interface ResultDisplayProps {
   result: FlowExecutionResult | null;
   flowId: string;
   flowName: string;
-  outputFormat?: 'text' | 'markdown';
   compact?: boolean;
   openNodes?: { [nodeId: string]: boolean };
   onToggleNode?: (nodeId: string) => void;
@@ -41,7 +40,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, outputFormat = 'text', compact = true, openNodes = {}, onToggleNode, hideHeader, defaultExpand = false }) => {
+const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, compact = true, openNodes = {}, onToggleNode, hideHeader, defaultExpand = false }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -91,14 +90,6 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
     );
   };
 
-  // 표시 모드 토글 함수
-  const toggleDisplayMode = (nodeId: string) => {
-    setDisplayModes(prevModes => ({
-      ...prevModes,
-      [nodeId]: prevModes[nodeId] === 'markdown' ? 'text' : 'markdown'
-    }));
-  };
-
   // 노드 결과의 초기 표시 모드 결정
   const getInitialDisplayMode = (nodeId: string, content: string): 'text' | 'markdown' => {
     if (displayModes[nodeId]) return displayModes[nodeId];
@@ -143,13 +134,12 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
     
     console.log(`[ResultDisplay] 결과 항목 ${index} 렌더링 시작:`, nodeResult);
     
-    let nodeId, nodeName, nodeType, nodeOutput;
+    let nodeId, nodeName, nodeOutput;
     
     if ('outputs' in nodeResult) {
       // flowExecutionService.ts 형태
       nodeId = nodeResult.nodeId;
       nodeName = nodeResult.nodeName || nodeId.split('-')[0] || 'Node';  // ID에서 간단한 이름 추출
-      nodeType = nodeResult.nodeType || 'unknown';
       
       // outputs 배열에서 첫 번째 항목을 사용하거나, result 값이 있으면 그것을 사용
       if (nodeResult.result !== undefined) {
@@ -166,7 +156,6 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       // outputCollector.ts 형태
       nodeId = nodeResult.nodeId;
       nodeName = nodeResult.nodeName || nodeId.split('-')[0] || 'Node';
-      nodeType = nodeResult.nodeType || 'unknown';
       nodeOutput = nodeResult.result;
       console.log(`[ResultDisplay] 노드 ${nodeId}의 result 값 사용 (outputCollector 형태):`, nodeOutput);
     }
@@ -194,10 +183,6 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
         }));
       }
     }
-    
-    const currentDisplayMode = typeof nodeOutput === 'string' 
-      ? (displayModes[nodeId] || getInitialDisplayMode(nodeId, nodeOutput)) 
-      : 'text';
     
     const expanded = isExpanded(nodeId);
     return (

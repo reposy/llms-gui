@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TrashIcon } from '@heroicons/react/20/solid';
-import { PlayIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
+import { PlayIcon, PenLineIcon } from '../Icons';
 import { executeChain } from '../../services/flowExecutionService';
 import InlineEditInput from '../ui/InlineEditInput';
 
@@ -19,8 +19,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
   const focusedFlowChainId = store.focusedFlowChainId;
   const setStore = useFlowExecutorStore.setState;
   const [editingChainId, setEditingChainId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
   const handleAddFlowChain = () => {
     const name = newFlowChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;

@@ -5,7 +5,7 @@ import { executeChain, executeFlowExecutor } from '../../services/flowExecutionS
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 import FlowChainResultDisplay from './FlowChainResultDisplay';
-import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
+import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon } from '../Icons';
 import InlineEditInput from '../ui/InlineEditInput';
 
 interface FlowChainDetailsViewProps {
@@ -48,8 +48,6 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
-  const [editFlowValue, setEditFlowValue] = useState('');
-  const [editFlowError, setEditFlowError] = useState<string | null>(null);
 
   if (!flowChain) { 
     return (

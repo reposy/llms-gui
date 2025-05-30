@@ -7,8 +7,6 @@ import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
  */
 export const useExecutorPanelHooks = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
   const store = useFlowExecutorStore();
   const flowChainIds = store.flowChainIds;
@@ -21,7 +19,6 @@ export const useExecutorPanelHooks = () => {
   return {
     exportModalOpen,
     setExportModalOpen,
-    isExecuting,
     flowIds,
     flowMap,
     handleImportFlowChain: () => {}, // TODO: 구현 필요시

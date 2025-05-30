@@ -46,7 +46,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
   autoUpload = true
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFileName, setSelectedFileName] = useState<string>('');
   
   // 파일 선택기 열기 함수
   const openFileSelector = useCallback(() => {
@@ -68,7 +67,6 @@ const FileSelector: React.FC<FileSelectorProps> = ({
     if (!files || files.length === 0) return;
     
     const file = files[0];
-    setSelectedFileName(file.name);
     
     // 외부 콜백 호출
     if (autoUpload) {

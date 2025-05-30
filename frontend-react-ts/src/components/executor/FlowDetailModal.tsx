@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowInputForm from './FlowInputForm';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
-import ReactMarkdown from 'react-markdown';
 
 interface FlowDetailModalProps {
   flowChainId: string;
@@ -14,7 +13,6 @@ interface FlowDetailModalProps {
 const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, onClose }) => {
   const store = useFlowExecutorStore();
   const flowChainMap = store.flowChainMap;
-  const flowChainIds = store.flowChainIds;
   const chain = flowChainMap[flowChainId];
   const flow = chain?.flowMap[flowId];
 
@@ -29,9 +27,6 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
         inputs: flow.inputs,
         flowId: flow.id,
         flowChainId: flowChainId,
-        onComplete: (outputs) => {
-          // 결과 핸들링 필요시 구현
-        }
       });
       if (response.status === 'success') {
         store.setFlowStatus(flowChainId, flowId, 'success');
