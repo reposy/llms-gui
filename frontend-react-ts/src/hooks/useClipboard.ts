@@ -12,29 +12,7 @@ import { setNodeProperty, getAllNodePropertys as getAllNodePropertysFromStore } 
 import { pushSnapshot } from '../store/useHistoryStore';
 import { cloneDeep } from 'lodash';
 
-// Remove complex _devFlags related to async paste logic
-declare global {
-  interface Window {
-    _devFlags?: { 
-      [key: string]: any; 
-      pasteVersion?: number; // Keep for potential key changes
-      debugMode?: boolean; 
-    };
-  }
-}
-
-// Initialize flags
-if (typeof window !== 'undefined') {
-  if (!window._devFlags) {
-    window._devFlags = { 
-      pasteVersion: 0,
-      debugMode: false 
-    };
-  } else {
-    window._devFlags.pasteVersion = window._devFlags.pasteVersion ?? 0;
-    window._devFlags.debugMode = window._devFlags.debugMode ?? false;
-  }
-}
+// NodeData 관련 dead code 제거, NodeProperty 기반으로만 동작
 
 // Keep z-index boost
 const PASTE_Z_INDEX_BOOST = 10;
@@ -52,7 +30,7 @@ export const useClipboard = (): UseClipboardReturnType => {
   const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
   
   // Keep pasteVersionRef if needed for key changes
-  const pasteVersionRef = useRef<number>(window._devFlags?.pasteVersion || 0);
+  const pasteVersionRef = useRef<number>(0);
   const isManualPasteInProgressRef = useRef<boolean>(false); // Keep simple lock
 
   // Keep calculateNodesBoundingBox and focusViewportOnNodes if used directly

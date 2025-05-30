@@ -134,9 +134,8 @@ export function useNodeHandlers({ onNodeSelect }: UseNodeHandlersParams = {}): U
   );
 
   // Handle selection drag stop
-  const handleSelectionDragStop = useCallback((event: React.MouseEvent, draggedNodesInput: Node[]) => {
-      // console.log(`[SelectionDragStop] Multi-selection drag completed. Syncing positions.`);
-      setZustandNodes(getNodes() as Node<NodeProperty>[]); 
+  const handleSelectionDragStop = useCallback((event: React.MouseEvent, draggedNodesInput: Node<NodeProperty>[]) => {
+    setZustandNodes(getNodes() as Node<NodeProperty>[]); 
   }, [getNodes]);
 
   // Handle edges delete
