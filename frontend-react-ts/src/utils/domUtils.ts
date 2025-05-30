@@ -70,7 +70,7 @@ export const generateSelector = (element: Element | null): string => {
     if (!tagName) break; 
 
     let part = tagName;
-    const parent = currentElement.parentElement;
+    const parent: Element | null = currentElement.parentElement;
 
     // Calculate :nth-child() if it has a parent and is not the html element itself
     if (parent && tagName !== 'html') {

@@ -18,12 +18,8 @@ export const synchronizeFlowData = (
   
   // ExecutorGraphStore 동기화
   const graphStore = useFlowExecutorStore.getState();
-  const existingGraph = graphStore.getFlowGraph(flowId);
-  
-  if (!existingGraph) {
-    console.log(`[flowChainUtils] Setting flow graph in ExecutorGraphStore: ${flowId}`);
-    graphStore.setFlowGraph(flowId, flowDataClone);
-  }
+  // TODO: getFlowGraph/setFlowGraph는 현재 store에 없음. 필요시 resetFlowGraphs 등 공식 메서드로 대체하거나, 동기화 로직을 store 구조에 맞게 구현 필요.
+  // 예시: graphStore.resetFlowGraphs({ [flowId]: flowDataClone });
   
   // Flow Chain ID가 제공된 경우 ExecutorStateStore 동기화
   if (flowChainId) {

@@ -170,7 +170,7 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
       const allowedTypes = [
         'llm', 'api', 'output', 'json-extractor', 'input', 'group', 'conditional', 'merger', 'web-crawler', 'html-parser'
       ];
-      newNode.data.type = allowedTypes.includes(newNode.type) ? newNode.type : 'unknown';
+      newNode.data.type = allowedTypes.includes(newNode.type) ? (newNode.type as import('../../types/nodes').NodeType) : 'output';
     }
     
     // Special handling for group nodes

@@ -1,23 +1,16 @@
 import { Node, Edge } from '@xyflow/react';
 import { cloneDeep } from 'lodash';
-import { NodeProperty, NodeType } from '../../types/nodes';
+import { NodeProperty as NodePropertyType, NodeType } from '../../types/nodes';
 import { loadFromImportedContents, getAllNodePropertys } from '../../store/useNodePropertyStore';
 import { setNodes, setEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 
-// NodeProperty 타입 정의
-export interface NodeProperty {
-  content?: any;
-  responseContent?: any;
-  [key: string]: any;
-}
-
 export interface FlowData {
   name?: string;
   createdAt?: string;
-  nodes: Node<NodeProperty>[];
+  nodes: Node<NodePropertyType>[];
   edges: Edge[];
-  contents?: Record<string, NodeProperty>;
+  contents?: Record<string, NodePropertyType>;
   meta?: {
     llmDefaults?: {
       provider: string;
@@ -51,7 +44,7 @@ function isSupportedNodeType(type: string): boolean {
  * @param flowData The flow data object containing nodes, edges, and node contents
  * @returns An object containing the imported nodes and edges
  */
-export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeProperty>[]; edges: Edge[] } {
+export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodePropertyType>[]; edges: Edge[] } {
   // Validate flow data
   if (!flowData) {
     throw new Error('Invalid flow data: Flow data is null or undefined');
@@ -73,7 +66,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeProper
   });
 
   // Process and validate nodes
-  const importedNodes: Node<NodeProperty>[] = flowData.nodes.map(node => {
+  const importedNodes: Node<NodePropertyType>[] = flowData.nodes.map(node => {
     const { data, ...rest } = node as any;
     const importedNode = { ...rest, property: data };
     
@@ -114,7 +107,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeProper
     if (!importedNode.width) importedNode.width = 200;
     if (!importedNode.height) importedNode.height = 150;
     
-    return importedNode as Node<NodeProperty>;
+    return importedNode as Node<NodePropertyType>;
   });
 
   // Process edges
@@ -152,7 +145,7 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeProper
   // Process node contents if available
   if (flowData.contents) {
     // Verify content is for valid nodes
-    const validContents: Record<string, NodeProperty> = {};
+    const validContents: Record<string, NodePropertyType> = {};
     
     Object.entries(flowData.contents).forEach(([nodeId, content]) => {
       const node = importedNodes.find(n => n.id === nodeId);
@@ -196,7 +189,7 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
   // If execution data should NOT be included, filter it out
   if (!includeExecutionData) {
     // Filter contents
-    const contentsToExport: Record<string, Partial<NodeProperty>> = {};
+    const contentsToExport: Record<string, Partial<NodePropertyType>> = {};
     for (const nodeId in nodeContents) {
       if (Object.prototype.hasOwnProperty.call(nodeContents, nodeId)) {
         const originalContent = nodeContents[nodeId];
@@ -210,7 +203,7 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
         contentsToExport[nodeId] = contentToSave;
       }
     }
-    finalContents = contentsToExport;
+    finalContents = contentsToExport as Record<string, NodePropertyType>;
 
     // Filter node data within nodes array
     finalNodes = nodesFromStructureStore.map(node => {
@@ -226,7 +219,7 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
       return {
         ...restNode,
         property: propertyToSave, 
-      } as Node<NodeProperty>;
+      } as Node<NodePropertyType>;
     });
   }
 
@@ -286,13 +279,13 @@ export const exportFlowChainAsJson = (chainId: string, includeExecutionData: boo
     if (!flow) continue;
     
     // nodes 변환 시 타입 정의
-    const nodes: Node<NodeProperty>[] = Object.values((flow as any).nodes || {}).map((node: any) => ({
+    const nodes: Node<NodePropertyType>[] = Object.values((flow as any).nodes || {}).map((node: any) => ({
       id: node.id,
       type: node.type,
       data: node.property,
       position: node.position,
       parentId: node.parentNodeId || undefined
-    } as Node<NodeProperty>));
+    } as Node<NodePropertyType>));
     
     // edges 변환
     const edges: Edge[] = Object.keys((flow as any).graph || {}).flatMap(nodeId => {
