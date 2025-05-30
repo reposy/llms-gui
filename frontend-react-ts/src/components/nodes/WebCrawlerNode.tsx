@@ -11,7 +11,7 @@ import { WebCrawlerNodeProperty } from '../../types/nodes';
 import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';
-import { runFlow } from '../../core/FlowRunner';
+import { runFlowEditorExecution } from '../../core/executionUtils';
 
 const WebCrawlerNode: React.FC<NodeProps> = ({ id, selected, isConnectable = true }) => {
   // Use useNodeProperty hook correctly
@@ -29,7 +29,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, selected, isConnectable = tru
   const handleRun = useCallback(() => {
     // console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
     // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
-    runFlow(id).catch((error: Error) => {
+    runFlowEditorExecution(id).catch((error: Error) => {
         // console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
         // Optionally, mark the node as error in UI state here if needed
     });

@@ -1,6 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { NodeType, NodeProperty } from '../../types/nodes';
 import { ExecutableNode } from '../../core/ExecutableNode';
+import { createDefaultNodeProperty } from '../../store/useNodePropertyStore';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -77,7 +78,7 @@ export const createNewNode = (
   const newNodeId = `${type}-${crypto.randomUUID()}`;
   console.log(`[createNewNode] Generated new node ID: ${newNodeId}`);
   // Get the default data for the node type from the store (type, id)
-  const defaultData = require('../../store/useNodePropertyStore').createDefaultNodeProperty(type, newNodeId);
+  const defaultData = createDefaultNodeProperty(type, newNodeId);
   console.log(`[createNewNode] Created default data for ${type} node:`, defaultData);
   // Create the base node
   const newNode: Node<NodeProperty> = {

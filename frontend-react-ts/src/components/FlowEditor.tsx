@@ -17,7 +17,7 @@ import {
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
-import { runFlow } from '../core/FlowRunner';
+   import { runFlowEditorExecution } from '../core/executionUtils';
 import { addNodeToGroup } from '../utils/flow/nodeUtils';
 import { Link } from 'react-router-dom';
 
@@ -111,7 +111,7 @@ export const FlowEditor = () => {
     const executionPromises = rootNodeIds.map((rootId: string) => {
       console.log(`[FlowEditor] Initiating execution for root node: ${rootId}`);
       // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
-      return runFlow(rootId); 
+      return runFlowEditorExecution(rootId); 
     });
 
     // 3. Wait for all triggered executions to settle (complete or fail)
