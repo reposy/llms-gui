@@ -203,62 +203,50 @@ export const runGroupNodeExecution = async (groupNodeId: string): Promise<void> 
 };
 
 /**
- * Runs the execution process for the entire flow.
+ * Runs the execution process for the entire flow (Flow Editor 전용).
  * Determines starting nodes (root nodes or a specific one) and initiates the process.
  * 
  * @param startNodeId Optional ID of a specific node to start execution from. If not provided, execution starts from all root nodes.
  * @param inputData Optional input data to pass to the start nodes' process method.
  * @throws Error if execution preparation or process fails.
  */
-export const runFullFlowExecution = async (startNodeId?: string, inputData?: any): Promise<void> => {
+export const runFlowEditorExecution = async (startNodeId?: string, inputData?: any): Promise<void> => {
   console.log(`[ExecutionUtils] Received request to run full flow ${startNodeId ? `from node ${startNodeId}`: 'from root nodes'}`);
   try {
     const context = prepareExecutionContext();
-    
-    // Determine the actual starting nodes
     let nodesToExecuteIds: string[] = [];
     let triggerId = 'root'; // Default trigger ID for full flow
 
     if (startNodeId) {
-      // Ensure the start node exists
       if (context.nodes.some(node => node.id === startNodeId)) {
         nodesToExecuteIds = [startNodeId];
-        triggerId = startNodeId; // Use the specific node as the trigger ID
+        triggerId = startNodeId;
       } else {
         context.log(`Start node ${startNodeId} not found in the flow. Aborting execution.`);
-        // Throw error or return early? Throwing might be better for caller.
         throw new Error(`Start node ${startNodeId} not found.`);
       }
     } else {
-      // Find root nodes if no specific start node is given
-      // Need getRootNodeIds utility - should be moved or imported if defined elsewhere
-      // Assuming getRootNodeIds exists and works with context.nodes/edges
-      try {
-        // Temporarily define or import getRootNodeIds here if not globally available
-        const getRootNodeIds = (nodes: any[], edges: any[]): string[] => { 
-            const nodeIds = new Set(nodes.map(n => n.id));
-            const targetNodeIds = new Set(edges.map(e => e.target));
-            return Array.from(nodeIds).filter(id => !targetNodeIds.has(id));
-        };
-        nodesToExecuteIds = getRootNodeIds(context.nodes, context.edges);
-        if (nodesToExecuteIds.length === 0) {
-          context.log('No root nodes found in the flow. Nothing to execute.');
-          return; // Nothing to do
-        }
-      } catch (e) {
-         console.error("[ExecutionUtils] Failed to get root nodes:", e);
-         throw new Error("Failed to determine root nodes for execution.");
+      const getRootNodeIds = (nodes: any[], edges: any[]): string[] => { 
+        const nodeIds = new Set(nodes.map(n => n.id));
+        const targetNodeIds = new Set(edges.map(e => e.target));
+        return Array.from(nodeIds).filter(id => !targetNodeIds.has(id));
+      };
+      nodesToExecuteIds = getRootNodeIds(context.nodes, context.edges);
+      if (nodesToExecuteIds.length === 0) {
+        context.log('No root nodes found in the flow. Nothing to execute.');
+        return;
       }
     }
-    
     context.log(`Determined starting nodes: ${nodesToExecuteIds.join(', ')}`);
-    
-    // Flow Editor 전용 실행 함수 사용 (불필요한 executeFlowEditor import 및 호출 제거)
-    // 기존 context와 실행 로직을 그대로 사용하면 충분함
-    // (불필요한 임포트/콜백/executeFlowEditor 관련 코드 삭제)
+
+    // 실제 실행 트리거 추가
+    if (inputData !== undefined) {
+      await _executeWithInput(nodesToExecuteIds, triggerId, context, inputData);
+    } else {
+      await _startExecutionProcess(nodesToExecuteIds, triggerId, context);
+    }
   } catch (error) {
     console.error(`[ExecutionUtils] Failed to run full flow execution:`, error);
-    // Re-throw the error so the caller (e.g., UI) can handle it
     throw error; 
   }
 };
