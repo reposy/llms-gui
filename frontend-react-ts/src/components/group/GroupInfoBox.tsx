@@ -1,12 +1,11 @@
 import { Node } from '@xyflow/react';
-import { NodeData, GroupNodeData, InputNodeData } from '../../types/nodes';
 import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils';
 
 interface GroupInfoBoxProps {
-  groupNode?: Node<GroupNodeData>;
+  groupNode?: Node<any>;
   label: string;
   type?: string;
-  sourceNode?: Node<InputNodeData>;
+  sourceNode?: Node<any>;
   sourceNodeId?: string;
   status: 'idle' | 'running' | 'success' | 'error' | 'skipped';
   error?: string;

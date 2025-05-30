@@ -1,9 +1,8 @@
 import { Node } from '@xyflow/react';
-import { GroupNodeData } from '../../types/nodes';
 import { GroupExecutionItemResult } from '../../types/execution';
 
 interface GroupExecutionToolbarProps {
-  groupNode?: Node<GroupNodeData>;
+  groupNode?: Node<any>;
   status: 'idle' | 'running' | 'success' | 'error' | 'skipped';
   results?: GroupExecutionItemResult[];
   onRunGroup: () => void;

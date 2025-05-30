@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
 import { Node } from '@xyflow/react'; // Import Node type
-import { NodeData } from '../../types/nodes'; // Import NodeData type
 import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { useNodeState } from '../../store/useNodeStateStore'; // Import useNodeState
 import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils'; // Import the common utility function

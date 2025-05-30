@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
 import { FlowManager } from './FlowManager';
-import { NodeData, NodeType, NodeProperty } from '../types/nodes';
+import { NodeType } from '../types/nodes';
 import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition, getRootNodeIdsWithTypeConversion } from '../utils/flow/flowUtils';
 import { useNodePropertyStore } from '../store/useNodePropertyStore';
@@ -87,7 +87,7 @@ export const FlowEditor = () => {
     setStructureNodes(updatedNodes); 
     
     const initialContent = { ...newNode.data, isDirty: false };
-    setContent(newNode.id, initialContent as Partial<NodeProperty>); 
+    setContent(newNode.id, initialContent as Partial<NodeType>); 
     // console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, initialContent);
     
     pushCurrentSnapshot();
@@ -179,9 +179,9 @@ export const FlowEditor = () => {
     
     for (const node of selectedNodesToAdd) {
       updatedNodes = addNodeToGroup(
-        node as unknown as Node<NodeData>, 
-        selectedGroup as unknown as Node<NodeData>, 
-        updatedNodes as Node<NodeData>[]
+        node as unknown as Node<NodeType>, 
+        selectedGroup as unknown as Node<NodeType>, 
+        updatedNodes as Node<NodeType>[]
       );
     }
     
