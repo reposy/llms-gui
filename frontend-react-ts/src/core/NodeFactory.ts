@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { getNodeProperty, createDefaultNodeProperty } from '../store/useNodePropertyStore';
+import { getNodeProperty, createDefaultNodeProperty } from '../store/useNodeContentStore';
 
 /**
  * 노드 팩토리 클래스

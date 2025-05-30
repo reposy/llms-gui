@@ -2,11 +2,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { globalNodeFactory } from './NodeFactory';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
-import { getNodeProperty } from '../store/useNodePropertyStore';
+import { getNodeProperty } from '../store/useNodeContentStore';
 import { Node } from './Node'; // Import Node base class for type hinting
 import { LlmNodeProperty } from '../types/nodes'; // For specific node data handling
 import { setNodeState } from '../store/useNodeStateStore';
-import { setNodeProperty } from '../store/useNodePropertyStore';
+import { setNodeProperty } from '../store/useNodeContentStore';
 
 /**
  * Prepares the FlowExecutionContext for a new execution run.
