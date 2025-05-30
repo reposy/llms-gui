@@ -8,12 +8,13 @@ import { NodeHeader } from './shared/NodeHeader';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
-import { useNodePropertyStore, useNodeProperty } from '../../store/useNodePropertyStore';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { TrashIcon, PhotoIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
 import { runSingleNodeExecution } from '../../core/executionUtils';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 
 // Node component
 export const InputNode: React.FC<NodeProps> = ({ id, selected, isConnectable = true }) => {
@@ -23,7 +24,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, selected, isConnectable = t
   const { incoming } = useNodeConnections(id);
   const isRootNode = incoming.length === 0;
   const currentNodes = useFlowStructureStore(state => state.nodes); 
-  const { content: nodeContent } = useNodeProperty<InputNodeProperty>(id, 'input');
 
   // Use the consolidated input node hook with all functionalities
   const {
@@ -81,6 +81,8 @@ export const InputNode: React.FC<NodeProps> = ({ id, selected, isConnectable = t
       {previewItems.length > 2 && <li className="text-gray-400">... (+{previewItems.length - 2} more)</li>}
     </ul>
   );
+
+  const { content: nodeContent } = useNodeProperty<InputNodeProperty>(id, 'input');
 
   return (
     <NodeErrorBoundary nodeId={id}>

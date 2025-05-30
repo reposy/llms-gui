@@ -1,6 +1,6 @@
 // src/components/nodes/GroupNode.tsx
 import React, { useCallback, memo } from 'react';
-import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
+import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from '@xyflow/react';
 import clsx from 'clsx';
 import { NodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
@@ -12,7 +12,7 @@ import { EditableNodeLabel } from './shared/EditableNodeLabel';
 import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps> = ({ id, selected, isConnectable }) => {
-  const allNodes = useNodes() as Node<NodeProperty>[];
+  const allNodes = useNodes() as any[];
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
