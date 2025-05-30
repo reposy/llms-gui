@@ -1,5 +1,5 @@
 // src/components/nodes/InputNode.tsx
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { InputNodeProperty } from '../../types/nodes';
 import clsx from 'clsx';
@@ -39,7 +39,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     label,
     fileProcessing,
     resetError,
-    serverConnected
   } = useInputNodeData({ nodeId: id });
   
   // Format items for display
@@ -161,10 +160,10 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
               >
                 {/* Map mode value to display text */}
                 {{
-                  'always': 'Always',
-                  'oncePerContext': 'Once',
-                  'none': 'None'
-                }[nodeContent?.accumulationMode || 'always'] /* Default to Always if undefined */}
+                  always: 'Always',
+                  oncePerContext: 'Once per Context',
+                  none: 'None'
+                }[(nodeContent?.accumulationMode as 'always' | 'oncePerContext' | 'none') || 'always'] /* Default to Always if undefined */}
               </span>
             </div>
             

@@ -65,8 +65,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   const [urlDraft, setUrlDraft] = useState(url || '');
   const [paramDrafts, setParamDrafts] = useState<QueryParamDrafts>({});
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [testResponse, setTestResponse] = useState<any>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [isEditingUrl, setIsEditingUrl] = useState(false);
   const [isEditingParams, setIsEditingParams] = useState(false);

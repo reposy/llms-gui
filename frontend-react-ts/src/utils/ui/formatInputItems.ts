@@ -1,5 +1,4 @@
 import { FileMetadata, LocalFileMetadata } from '../../types/files';
-import { DisplayableItem } from './adaptDisplayableItem';
 
 /**
  * 입력 아이템 표시 형식 정의

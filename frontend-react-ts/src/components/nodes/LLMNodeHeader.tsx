@@ -1,5 +1,5 @@
 // src/components/nodes/LLMNodeHeader.tsx
-import React, { memo, useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { Node } from '@xyflow/react';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
@@ -7,10 +7,6 @@ import { useNodeState } from '../../store/useNodeStateStore';
 import { NodeHeader } from './shared/NodeHeader';
 import { LlmNodeProperty } from '../../types/nodes';
 import { useFlowStructureStore, setNodes as setStructureNodes } from '../../store/useFlowStructureStore';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { v4 as uuidv4 } from 'uuid';
 import { getNodeProperty, setNodeProperty } from '../../store/useNodePropertyStore';
 import { runSingleNodeExecution } from '../../core/executionUtils';
 
@@ -38,7 +34,7 @@ const LLMNodeHeader: React.FC<LLMNodeHeaderProps> = ({
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
     setNodeProperty<LlmNodeProperty>(nodeId, { label: newLabel });
     
-    setStructureNodes(nodes.map((node: Node<NodeData>) => 
+    setStructureNodes(nodes.map((node: Node<any>) => 
         node.id === nodeId ? { ...node, data: { ...node.data, label: newLabel } } : node
     ));
   }, [nodes]);

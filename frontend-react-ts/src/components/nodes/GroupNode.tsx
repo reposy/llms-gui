@@ -7,21 +7,12 @@ import { useNodeState } from '../../store/useNodeStateStore';
 import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
 import { useNodes, useEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { v4 as uuidv4 } from 'uuid';
-import { useNodeStateStore } from '../../store/useNodeStateStore';
-import { runFlow } from '../../core/FlowRunner';
 import { EditableNodeLabel } from './shared/EditableNodeLabel';
-import { useNodePropertyStore, setNodeProperty } from '../../store/useNodePropertyStore';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
 
 const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
-  const groupData = data as GroupNodeProperty;
-  
   const allNodes = useNodes() as Node<NodeProperty>[];
   const allEdges = useEdges();
   const nodeState = useNodeState(id);
@@ -34,52 +25,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     isCollapsed, 
   } = useGroupNodeData({ nodeId: id });
 
-  const setNodePropertyLocal = useNodePropertyStore(state => state.setNodeProperty);
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
-
-  const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
-    // Check both parentId and parentNode properties to support both formats
-    const nodesWithParentId = allNodes.filter((node) => 
-      node.parentId === id && node.type === 'group'
-    );
-    
-    // React Flow v11+에서 사용되는 parentNode 속성도 체크 (호환성 보장)
-    const nodesWithParentNode = allNodes.filter((node: any) => 
-      node.parentNode === id && !node.parentId
-    );
-    
-    // 두 결과 결합 (중복 제거)
-    const combinedNodes = [...nodesWithParentId];
-    nodesWithParentNode.forEach(node => {
-      if (!combinedNodes.some(n => n.id === node.id)) {
-        combinedNodes.push(node);
-      }
-    });
-    
-    // 개발 모드에서만 로깅 - 성능 최적화
-    if (process.env.NODE_ENV === 'development') {
-      // console.log(`[GroupNode] ID: ${id}, 전체 노드 수: ${allNodes.length}, 그룹에 속한 노드 수: ${combinedNodes.length}`);
-    }
-    
-    const nodeIdsInGroup = new Set(combinedNodes.map(n => n.id));
-    const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
-    const internalRoots = getRootNodesFromSubset(combinedNodes, edgesInGroup);
-    
-    return {
-      nodesInGroup: combinedNodes,
-      hasInternalRootNodes: internalRoots.length > 0,
-    };
-  }, [allNodes, allEdges, id]);
-
-  // Clean up any running executions when the component unmounts
-  useEffect(() => {
-    return () => {
-      if (executionContextRef.current) {
-        // Clean up logic if needed
-        executionContextRef.current = null;
-      }
-    };
-  }, []);
 
   const handleRunGroup = useCallback(() => {
     if (isRunning) return;
@@ -144,10 +90,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
 
   // --- Define LOCAL label update handler --- 
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    // 1. Update NodePropertyStore (config state)
-    setNodePropertyLocal(updatedNodeId, { label: newLabel });
-
-    // 2. Update FlowStructureStore (React Flow rendering state)
+    // 1. Update FlowStructureStore (React Flow rendering state)
     const updatedNodes = allNodes.map(node => 
       node.id === updatedNodeId
         ? { 
@@ -161,7 +104,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
     );
     setNodesLocal(updatedNodes); // Use the function obtained from the store hook
     console.log(`[GroupNode] Updated label for node ${updatedNodeId} in both stores.`);
-  }, [allNodes, setNodesLocal, setNodePropertyLocal]); // Add dependencies
+  }, [allNodes, setNodesLocal]); // Add dependencies
   // --- End LOCAL handler ---
 
   return (

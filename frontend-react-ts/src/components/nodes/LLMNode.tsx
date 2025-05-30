@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
-import { LlmNodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';

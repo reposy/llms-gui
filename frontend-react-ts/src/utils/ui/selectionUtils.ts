@@ -1,5 +1,5 @@
 import { Node } from '@xyflow/react';
-import { NodeData } from '../../types/nodes';
+import { NodeProperty } from '../../types/nodes';
 
 /**
  * Ensures ReactFlow nodes' visual selection state matches Zustand's selectedNodeIds
@@ -9,9 +9,9 @@ import { NodeData } from '../../types/nodes';
  * @returns A new array of nodes with updated selection states, or the original array if no changes
  */
 export function syncVisualSelectionToReactFlow(
-  nodes: Node<NodeData>[],
+  nodes: Node<NodeProperty>[],
   selectedNodeIds: string[]
-): Node<NodeData>[] {
+): Node<NodeProperty>[] {
   // Create a Set for faster lookups
   const selectedIdsSet = new Set(selectedNodeIds);
   

@@ -1,20 +1,18 @@
 import { Node, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeData } from '../../types/nodes';
-import { getNodeProperty, NodeProperty } from '../../store/useNodePropertyStore';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { NodeProperty } from '../../types/nodes';
 import { cloneDeep } from 'lodash';
 
 // Interface for copied data
 export interface ClipboardData {
-  nodes: Node<NodeData>[];
+  nodes: Node<NodeProperty>[];
   edges: Edge[];
   nodeContents: Record<string, NodeProperty>;
 }
 
 // Interface for paste result
 export interface PasteResult {
-  newNodes: Node<NodeData>[];
+  newNodes: Node<NodeProperty>[];
   newEdges: Edge[];
   nodeContents: Record<string, {content: NodeProperty, nodeId: string, nodeType: string}>;
   oldToNewIdMap: Record<string, string>;
@@ -45,7 +43,7 @@ const CLIPBOARD_STORAGE_KEY = 'flow-editor-clipboard';
  * @param allEdges Array of all edge objects from React Flow
  * @returns The number of nodes copied
  */
-export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], allEdges: Edge[]): number => {
+export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeProperty>[], allEdges: Edge[]): number => {
   console.log('[ClipboardUtils DEBUG] copyNodesAndEdgesFromInstance 호출됨');
   console.log('[ClipboardUtils DEBUG] 선택된 노드 수:', selectedNodes.length);
   
@@ -67,11 +65,11 @@ export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], a
   // Fetch and store the DEEP COPIED content for each selected node
   const nodeContents: Record<string, NodeProperty> = {};
   selectedNodes.forEach(node => {
-    const content = getNodeProperty(node.id); // useNodePropertyStore에서 가져오기
-    console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!content);
-    if (content) {
+    // getNodeProperty 제거: content는 별도 전달 또는 store에서 직접 조회 필요
+    console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!node.data);
+    if (node.data) {
       // 콘텐츠 데이터 깊은 복사
-      nodeContents[node.id] = cloneDeep(content); 
+      nodeContents[node.id] = cloneDeep(node.data); 
     }
   });
 
@@ -151,7 +149,7 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     const nodeCopy = JSON.parse(JSON.stringify(copiedNode));
     
     // Update the node with new ID and position
-    const newNode: Node<NodeData> = {
+    const newNode: Node<NodeProperty> = {
       ...nodeCopy,
       id: newId,
       position: {
@@ -163,12 +161,16 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     
     // Ensure data property exists
     if (!newNode.data) {
-      newNode.data = { type: copiedNode.type || 'unknown' } as NodeData;
+      newNode.data = { type: copiedNode.type || 'unknown' } as NodeProperty;
     }
     
     // Ensure type consistency between node.type and node.data.type
     if (newNode.type && (!newNode.data.type || newNode.data.type !== newNode.type)) {
-      newNode.data.type = newNode.type;
+      // NodeType 유니언에 속하는 값만 허용
+      const allowedTypes = [
+        'llm', 'api', 'output', 'json-extractor', 'input', 'group', 'conditional', 'merger', 'web-crawler', 'html-parser'
+      ];
+      newNode.data.type = allowedTypes.includes(newNode.type) ? newNode.type : 'unknown';
     }
     
     // Special handling for group nodes

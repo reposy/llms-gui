@@ -12,27 +12,14 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useStore as useViewModeStore, useNodeViewMode } from '../../store/viewModeStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
-import { v4 as uuidv4 } from 'uuid';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { useNodePropertyStore, getNodeProperty } from '../../store/useNodePropertyStore';
-import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { runSingleNodeExecution } from '../../core/executionUtils';
-
-interface Props {
-  id: string;
-  data: JSONExtractorNodeProperty;
-  isConnectable: boolean;
-  selected?: boolean;
-}
 
 const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, isConnectable = true }) => {
   // Use a specific type assertion for clarity and safety
   const data = nodeData as JSONExtractorNodeProperty;
   
   // Use updateNode from Zustand store
-  const { nodes, edges } = useFlowStructureStore();
+  const { nodes } = useFlowStructureStore();
   
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);

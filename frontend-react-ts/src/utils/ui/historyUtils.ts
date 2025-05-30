@@ -1,5 +1,5 @@
 import { Node, Edge } from '@xyflow/react';
-import { NodeData } from '../../types/nodes';
+import { NodeProperty } from '../../types/nodes';
 import { FlowSnapshot, pushSnapshot } from '../../store/useHistoryStore';
 import { getAllNodePropertys } from '../../store/useNodePropertyStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
@@ -39,7 +39,7 @@ export const pushSnapshotAfterNodeOperation = (operation: string) => {
  * @param nodes - The nodes to include in the snapshot
  * @param edges - The edges to include in the snapshot
  */
-export const pushCustomSnapshot = (nodes: Node<NodeData>[], edges: Edge[]) => {
+export const pushCustomSnapshot = (nodes: Node<NodeProperty>[], edges: Edge[]) => {
   const contents = getAllNodePropertys();
   
   // Create a snapshot
