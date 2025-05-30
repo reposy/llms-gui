@@ -16,8 +16,8 @@ interface Props extends NodeProps {}
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRootNode = useIsRootNode(id);
-  const { content, setContent } = useNodeContent<OutputNodeContent>(id, 'output');
-  const format = content?.format || 'text';
+  const { content: property, setContent } = useNodeContent<OutputNodeContent>(id, 'output');
+  const format = property?.format || 'text';
   
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
     setContent({ format: newFormat });

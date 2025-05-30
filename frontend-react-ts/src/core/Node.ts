@@ -183,6 +183,8 @@ export abstract class Node {
           this._log('Execute returned single item');
           currentContext.storeOutput(this.id, output); 
           this._log(`Stored output: ${JSON.stringify(output).substring(0, 100)}`);
+          // 반드시 단일 결과도 success 처리
+          currentContext.markNodeSuccess(this.id, output);
         }
         
         // Double-check that result was properly stored

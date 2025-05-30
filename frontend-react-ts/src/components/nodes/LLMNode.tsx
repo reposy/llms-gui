@@ -12,6 +12,8 @@ import { LLMNodeViewController } from './LLMNodeViewController';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 import LLMNodeHeader from './LLMNodeHeader';
+import { useNodeContent } from '../../store/useNodeContentStore';
+import { LLMNodeContent } from '../../types/nodes';
 
 interface Props {
   id: string;
@@ -30,6 +32,9 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
   
   // Get LLM data from Zustand store
   useLlmNodeData({ nodeId: id });
+  
+  // property(interface)만 zustand에서 구독
+  const { content: property, setContent } = useNodeContent<LLMNodeContent>(id, 'llm');
   
   /**
    * NOTE: Previously, there was a useEffect hook here that was synchronizing Redux data with the Zustand store.

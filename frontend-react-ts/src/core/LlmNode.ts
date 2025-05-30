@@ -11,7 +11,13 @@ import { LocalFileMetadata } from '../types/files';
 export class LlmNode extends Node {
   declare property: LLMNodeContent;
   
-  constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
+  constructor(id: string, property: LLMNodeContent = {
+    provider: 'ollama',
+    model: '',
+    prompt: '',
+    temperature: 0.7,
+    mode: 'text',
+  }, context?: FlowExecutionContext) {
     super(id, 'llm', property);
     
     if (context) {

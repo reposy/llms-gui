@@ -42,7 +42,7 @@ const prepareExecutionContext = (): FlowExecutionContext => {
     false, // isExecutorContext
     undefined, // chainId
     undefined, // flowId
-    // onNodeStateChange 콜백: 실행 상태를 zustand store에 반영
+    // onNodeStateChange 콜백: 실행 상태와 결과를 zustand store에 동시에 반영
     (nodeId, status, result, error) => {
       if (status === 'running') {
         setNodeState(nodeId, {
@@ -58,18 +58,17 @@ const prepareExecutionContext = (): FlowExecutionContext => {
           error: undefined,
           executionId,
         });
+        setNodeContent(nodeId, { responseContent: result });
       } else if (status === 'error') {
         setNodeState(nodeId, {
           status: 'error',
           error,
           executionId,
         });
+        setNodeContent(nodeId, { responseContent: error });
       }
     },
-    // onStoreOutput 콜백: 실행 결과를 zustand store에 반영
-    (nodeId, output) => {
-      setNodeContent(nodeId, { responseContent: output, outputTimestamp: Date.now() });
-    }
+    undefined // onStoreOutput 콜백은 필요시만 사용
   );
 
   console.log(`[ExecutionUtils] Prepared Execution Context (ID: ${executionId})`);
