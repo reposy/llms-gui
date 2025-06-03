@@ -459,33 +459,48 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   // Function to handle search input changes (debounced)
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
+    // Clear previous results when query changes
     setSearchResults([]);
     setCurrentSearchResultIndex(-1);
   };
 
   // ADD BACK: Handle search execution (on button click or Enter)
   const handleSearch = () => {
-    if (!parsedDOM || !searchQuery) return;
+    if (!parsedDOM || !searchQuery) {
+      setSearchResults([]);
+      setCurrentSearchResultIndex(-1);
+      return;
+    }
     
     let foundElements: Element[] = [];
     const rootElement: Element | null = parsedDOM.documentElement;
     if (!rootElement) return;
     
+    console.log(`[Search] Starting search for "${searchQuery}" (type: ${searchTarget})`);
+    
     try {
       switch (searchTarget) {
         case "TEXT":
           // Find elements containing the text (case-insensitive)
-          foundElements = Array.from(rootElement.querySelectorAll('*')).filter((el: Element) => 
-            el.textContent?.toLowerCase().includes(searchQuery.toLowerCase())
-          );
+          foundElements = Array.from(rootElement.querySelectorAll('*')).filter((el: Element) => {
+            const text = el.textContent?.toLowerCase();
+            return text && text.includes(searchQuery.toLowerCase());
+          });
           break;
         case "CLASS":
-          // Find elements with the exact class name
-          foundElements = Array.from(rootElement.getElementsByClassName(searchQuery));
+          // Find elements with the class name (partial match)
+          foundElements = Array.from(rootElement.querySelectorAll('*')).filter((el: Element) => {
+            const className = el.className;
+            return className && typeof className === 'string' && 
+                   className.toLowerCase().includes(searchQuery.toLowerCase());
+          });
           break;
         case "ID":
-          const elementById: Element | null = parsedDOM.getElementById(searchQuery);
-          foundElements = elementById ? [elementById] : [];
+          // Find elements with the ID (partial match)
+          foundElements = Array.from(rootElement.querySelectorAll('*')).filter((el: Element) => {
+            const id = el.id;
+            return id && id.toLowerCase().includes(searchQuery.toLowerCase());
+          });
           break;
         case "CSS":
            // Use querySelectorAll for CSS selectors
@@ -499,11 +514,14 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         return;
     }
     
+    console.log(`[Search] Found ${foundElements.length} elements`);
+    
     const results: string[] = foundElements
         // Ensure generatePathForElement uses documentElement as root
         .map((el: Element) => generatePathForElement(el, rootElement)) 
         .filter((path): path is string => !!path); // Filter out empty paths
         
+    console.log(`[Search] Generated ${results.length} valid paths`);
     setSearchResults(results);
     
     if (results.length > 0) {
@@ -516,26 +534,39 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         const preview: string = element.outerHTML.substring(0, 100); // Simple preview
         handleElementSelect(firstResultPath, selector, preview);
       } else {
-          // console.warn("Could not find element for first search result path:", firstResultPath);
+          console.warn("Could not find element for first search result path:", firstResultPath);
       }
     } else {
       setCurrentSearchResultIndex(-1);
-      // Optionally clear selection if no results
-      // handleElementSelect("", "", ""); 
+      // Clear selection if no results
+      handleElementSelect("", "", ""); 
     }
   };
 
   // Function to navigate search results (Optimized scrolling/highlighting)
-  const navigateResults = (direction: 'prev' | 'next') => {
-    if (searchResults.length === 0) return;
+  const navigateResults = useCallback((direction: 'prev' | 'next') => {
+    if (searchResults.length === 0) {
+      console.log("[Navigate] No search results available");
+      return;
+    }
+
+    console.log(`[Navigate] Current: ${currentSearchResultIndex}, Total: ${searchResults.length}, Direction: ${direction}`);
 
     let nextIndex: number = currentSearchResultIndex;
     if (direction === 'next') {
-      nextIndex = (currentSearchResultIndex + 1) % searchResults.length;
+      nextIndex = Math.min(currentSearchResultIndex + 1, searchResults.length - 1);
     } else {
-      nextIndex = (currentSearchResultIndex - 1 + searchResults.length) % searchResults.length;
+      nextIndex = Math.max(currentSearchResultIndex - 1, 0);
     }
-    setCurrentSearchResultIndex(nextIndex); // Update index, DOMTreeView useEffect will handle scroll/highlight
+    
+    // 이미 경계에 있다면 순환하지 않음
+    if (nextIndex === currentSearchResultIndex) {
+      console.log(`[Navigate] Already at ${direction === 'next' ? 'last' : 'first'} result`);
+      return;
+    }
+    
+    console.log(`[Navigate] Moving to index: ${nextIndex}`);
+    setCurrentSearchResultIndex(nextIndex);
     
     // Auto-select the element at the new index
     const nextPath: string = searchResults[nextIndex];
@@ -547,13 +578,14 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
             // Call handleElementSelect to update selection and trigger expansion
             handleElementSelect(nextPath, selector, preview); 
         } else {
-            // console.warn("Could not find element for path during navigation:", nextPath);
+            console.warn("Could not find element for path during navigation:", nextPath);
             handleElementSelect("", "", ""); // Clear selection if element not found
         }
     } else {
+        console.warn("Invalid path or no DOM during navigation:", nextPath);
         handleElementSelect("", "", ""); // Clear selection if path is invalid
     }
-  };
+  }, [searchResults, currentSearchResultIndex, parsedDOM, findElementByPath, handleElementSelect, generateSelector]);
 
   // Function to toggle node expansion
   const toggleExpand = useCallback((path: string) => {
@@ -648,19 +680,42 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       
       {/* HTML Explorer Modal */}
       {isHtmlExplorerOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsHtmlExplorerOpen(false);
+            }
+            if (e.key === 'ArrowDown' && searchResults.length > 0) {
+              e.preventDefault();
+              navigateResults('next');
+            }
+            if (e.key === 'ArrowUp' && searchResults.length > 0) {
+              e.preventDefault();
+              navigateResults('prev');
+            }
+          }}
+          tabIndex={-1}
+        >
           <div className="bg-white rounded-lg shadow-xl w-[90vw] h-[90vh] flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-lg font-semibold text-gray-900">HTML 구조 탐색</h2>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setIsHtmlExplorerOpen(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </Button>
+              <div className="flex items-center space-x-2">
+                {searchResults.length > 0 && (
+                  <span className="text-sm text-gray-600">
+                    💡 ↑↓ 키로 검색 결과 탐색 가능
+                  </span>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setIsHtmlExplorerOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </Button>
+              </div>
             </div>
 
             {/* Modal Content */}
@@ -677,16 +732,41 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                 <div className="h-full flex flex-col space-y-4">
                   {/* Search UI - Compact design for modal */}
                   <div className="space-y-3 p-3 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-                    {/* Search Header */}
+                    {/* Search Header with Results Counter */}
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-semibold text-gray-800 flex items-center">
                         <SearchIcon className="h-4 w-4 mr-2 text-blue-600" />
                         요소 검색
                       </h4>
                       {searchResults.length > 0 && (
-                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
-                          {currentSearchResultIndex + 1} / {searchResults.length}
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
+                            {currentSearchResultIndex + 1} / {searchResults.length}
+                          </span>
+                          {/* Navigation buttons - moved here for better visibility */}
+                          <div className="flex items-center space-x-1">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => navigateResults('prev')} 
+                              disabled={searchResults.length <= 1 || currentSearchResultIndex <= 0}
+                              className="h-7 w-7 p-0 border-blue-300 hover:bg-blue-100"
+                              title="이전 결과 (↑)"
+                            >
+                              <ChevronLeftIcon className="h-3 w-3 text-blue-600" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => navigateResults('next')} 
+                              disabled={searchResults.length <= 1 || currentSearchResultIndex >= searchResults.length - 1}
+                              className="h-7 w-7 p-0 border-blue-300 hover:bg-blue-100"
+                              title="다음 결과 (↓)"
+                            >
+                              <ChevronRightIcon className="h-3 w-3 text-blue-600" />
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
 
@@ -727,31 +807,11 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                             }
                             if (e.key === 'Escape') setIsHtmlExplorerOpen(false);
                           }}
-                          className="w-full h-9 px-3 pr-24 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          className="w-full h-9 px-3 pr-12 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         />
                         
-                        {/* Inline navigation buttons */}
-                        <div className="absolute right-1 top-1 flex items-center space-x-0.5">
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => navigateResults('prev')} 
-                            disabled={searchResults.length <= 1}
-                            className="h-7 w-7 p-0 hover:bg-gray-100"
-                            title="이전 (↑)"
-                          >
-                            <ChevronLeftIcon className="h-3 w-3" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => navigateResults('next')} 
-                            disabled={searchResults.length <= 1}
-                            className="h-7 w-7 p-0 hover:bg-gray-100"
-                            title="다음 (↓)"
-                          >
-                            <ChevronRightIcon className="h-3 w-3" />
-                          </Button>
+                        {/* Search button */}
+                        <div className="absolute right-1 top-1">
                           <Button 
                             size="sm" 
                             onClick={handleSearch} 
@@ -765,25 +825,53 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                       </div>
                     </div>
 
-                    {/* Search tips */}
-                    {searchTarget === 'CSS' && (
-                      <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                        💡 예시: .class-name, #element-id, div &gt; p, [data-attr="value"]
-                      </div>
-                    )}
+                    {/* Search tips and navigation hint */}
+                    <div className="flex items-center justify-between text-xs">
+                      {searchTarget === 'CSS' ? (
+                        <div className="text-gray-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex-1 mr-2">
+                          💡 예시: .class-name, #element-id, div &gt; p, [data-attr="value"]
+                        </div>
+                      ) : (
+                        <div className="text-gray-600 flex-1">
+                          💡 Enter로 검색, ↑↓ 키로 결과 탐색
+                        </div>
+                      )}
+                      {searchResults.length > 1 && (
+                        <div className="text-blue-600 font-medium">
+                          총 {searchResults.length}개 요소 발견
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Content Area - Two column layout */}
                   <div className="flex-1 flex space-x-4 min-h-0">
                     {/* DOM Tree - Left Column */}
                     <div className="flex-1 flex flex-col min-w-0">
-                      <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center">
-                        <span className="w-2 h-2 bg-gray-500 rounded-full mr-2"></span>
-                        DOM 구조
-                      </h4>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-semibold text-gray-800 flex items-center">
+                          <span className="w-2 h-2 bg-gray-500 rounded-full mr-2"></span>
+                          DOM 구조
+                        </h4>
+                        {searchResults.length > 0 && (
+                          <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                            {currentSearchResultIndex >= 0 && currentSearchResultIndex < searchResults.length ? 
+                              `현재: ${currentSearchResultIndex + 1}/${searchResults.length}` : 
+                              `${searchResults.length}개 발견`
+                            }
+                          </div>
+                        )}
+                      </div>
                       <div ref={domTreeContainerRef} className="flex-1 border rounded-lg bg-white shadow-sm overflow-hidden">
                         <div className="p-3 bg-gray-50 border-b text-xs text-gray-600 font-medium">
-                          💡 요소를 클릭하여 선택하세요. 화살표로 접기/펼치기할 수 있습니다.
+                          {searchResults.length > 0 ? (
+                            <div className="space-y-1">
+                              <div>💡 <strong>노란색</strong>: 검색된 요소, <strong>파란색</strong>: 선택된 요소</div>
+                              <div>🔍 검색 결과: 위 화살표 버튼 또는 ↑↓ 키로 이동</div>
+                            </div>
+                          ) : (
+                            "💡 요소를 클릭하여 선택하세요. 화살표로 접기/펼치기할 수 있습니다."
+                          )}
                         </div>
                         <div className="p-2 h-full overflow-y-auto scroll-smooth">
                           {parsedDOM && parsedDOM.documentElement && (
