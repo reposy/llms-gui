@@ -16,6 +16,53 @@ export interface FlowInputFormRef {
   getExecutableInputs: () => any[];
 }
 
+// Property 템플릿 정의
+const getPropertyTemplate = (nodeType: string): Record<string, any> => {
+  switch (nodeType) {
+    case 'llm':
+      return {
+        provider: 'ollama',
+        model: '',
+        prompt: '{{input}}',
+        temperature: 0.7,
+        mode: 'text'
+      };
+    case 'api':
+      return {
+        url: '',
+        method: 'GET',
+        headers: {},
+        contentType: 'application/json'
+      };
+    case 'web-crawler':
+      return {
+        url: '',
+        timeout: 30000,
+        waitForSelectorOnPage: '',
+        outputFormat: 'html'
+      };
+    default:
+      return {};
+  }
+};
+
+// Property 객체 파싱 및 생성 헬퍼
+const parsePropertyValue = (value: string): { nodeType: string; property: Record<string, any> } | null => {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    if (parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed) {
+      return parsed;
+    }
+  } catch (error) {
+    // 파싱 실패는 무시
+  }
+  return null;
+};
+
+const createPropertyValue = (nodeType: string, property: Record<string, any>): string => {
+  return JSON.stringify({ nodeType, property }, null, 2);
+};
+
 const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId, inputs: propInputs, onInputChange }, ref) => {
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
@@ -87,6 +134,13 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
+    else if (type === 'property') newRows[idx] = { 
+      type, 
+      value: JSON.stringify({
+        nodeType: '',
+        property: {}
+      }, null, 2)
+    };
     else newRows[idx] = { type, value: '' };
     updateRows(newRows);
   };
@@ -102,6 +156,15 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   const handleTextChange = (idx: number, value: string) => {
     const newRows = [...rows];
     newRows[idx] = { type: 'text', value };
+    updateRows(newRows);
+  };
+
+  // Property 타입의 nodeType 변경 핸들러
+  const handlePropertyNodeTypeChange = (idx: number, nodeType: string) => {
+    const newRows = [...rows];
+    const template = getPropertyTemplate(nodeType);
+    const newValue = createPropertyValue(nodeType, template);
+    newRows[idx] = { ...newRows[idx], value: newValue };
     updateRows(newRows);
   };
 
@@ -168,6 +231,21 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     return rows.map((row) => {
       if (row.type === 'flow-result') {
         return extractFlowResultText(row, flowChainMap);
+      } else if (row.type === 'property') {
+        // JSON 문자열을 동적 속성 객체로 파싱
+        try {
+          const parsed = JSON.parse(row.value as string || '{}');
+          // DynamicPropertyInput 형태인지 검증
+          if (parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed) {
+            return parsed;
+          } else {
+            console.warn('[FlowInputForm] Invalid property JSON structure:', parsed);
+            return row.value;
+          }
+        } catch (error) {
+          console.warn('[FlowInputForm] Failed to parse property JSON:', error);
+          return row.value;
+        }
       } else if (row.type === 'file') {
         // File 객체 그대로 반환
         return row.value;
@@ -220,6 +298,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                 setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
               }} disabled={!editMode}>File</button>
             <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+            <button type="button" className={`px-2 py-1 rounded ${row.type === 'property' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'property')} disabled={!editMode}>Property</button>
           </div>
           {/* 입력 UI */}
           {row.type === 'text' && (
@@ -234,6 +313,63 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
               readOnly={!editMode}
                 style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
             />
+          )}
+          {row.type === 'property' && (
+            <div className="flex-1 flex flex-col gap-2">
+              {/* nodeType 선택 */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 min-w-0 flex-shrink-0">Node Type:</label>
+                <select
+                  className="border border-gray-300 rounded px-2 py-1 bg-white text-sm"
+                  value={(() => {
+                    const parsed = parsePropertyValue(row.value as string);
+                    return parsed?.nodeType || '';
+                  })()}
+                  onChange={e => editMode && handlePropertyNodeTypeChange(idx, e.target.value)}
+                  disabled={!editMode}
+                >
+                  <option value="">선택하세요</option>
+                  <option value="llm">LLM</option>
+                  <option value="api">API</option>
+                  <option value="web-crawler">Web Crawler</option>
+                </select>
+              </div>
+              {/* JSON 입력 */}
+              <textarea
+                className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white font-mono text-sm"
+                rows={6}
+                value={typeof row.value === 'string' ? row.value : ''}
+                onChange={e => editMode && handleTextChange(idx, e.target.value)}
+                placeholder="위에서 Node Type을 선택하면 템플릿이 자동으로 생성됩니다.&#10;&#10;수동 입력 예시:&#10;{&#10;  &quot;nodeType&quot;: &quot;llm&quot;,&#10;  &quot;property&quot;: {&#10;    &quot;model&quot;: &quot;gpt-4&quot;,&#10;    &quot;prompt&quot;: &quot;{{input}}&quot;&#10;  }&#10;}"
+                readOnly={!editMode}
+                style={{ minHeight: '8rem', maxHeight: '12rem', overflow: 'auto' }}
+              />
+              {/* JSON 검증 상태 표시 */}
+              {(() => {
+                const parsed = parsePropertyValue(row.value as string);
+                if (!row.value || (row.value as string).trim() === '') {
+                  return null;
+                } else if (parsed) {
+                  return (
+                    <div className="text-xs text-green-600 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      유효한 동적 속성 JSON입니다
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="text-xs text-red-600 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      JSON 형식이 올바르지 않거나 구조가 맞지 않습니다
+                    </div>
+                  );
+                }
+              })()}
+            </div>
           )}
           {row.type === 'file' && (
             <div className="flex-1 flex items-center gap-2">
