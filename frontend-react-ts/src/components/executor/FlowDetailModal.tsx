@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
-import FlowInputForm from './FlowInputForm';
+import FlowInputForm, { FlowInputFormRef } from './FlowInputForm';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
 
@@ -15,6 +15,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
   const flowChainMap = store.flowChainMap;
   const chain = flowChainMap[flowChainId];
   const flow = chain?.flowMap[flowId];
+  const flowInputFormRef = useRef<FlowInputFormRef>(null);
 
   if (!flow) return null;
 
@@ -22,9 +23,14 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
     if (!flow) return;
     try {
       store.setFlowStatus(flowChainId, flowId, 'running');
+      
+      // FlowInputForm에서 실행용 입력 데이터 가져오기 (flow-result -> 실제 데이터 변환됨)
+      const executableInputs = flowInputFormRef.current?.getFinalInputData() || flow.inputs;
+      console.log('[FlowDetailModal] 실행용 입력:', executableInputs);
+      
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: flow.inputs,
+        inputs: executableInputs, // 변환된 입력 데이터 사용
         flowId: flow.id,
         flowChainId: flowChainId,
       });
@@ -94,6 +100,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
                 flowId={flowId} 
                 inputs={flow.inputs} 
                 onInputChange={handleInputChange} 
+                ref={flowInputFormRef}
               />
             </div>
           </div>

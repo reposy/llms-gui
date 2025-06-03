@@ -8,6 +8,7 @@ import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
 import { importFlowJsonToStore } from '../utils/flow/flowExecutorUtils';
 import FlowDetailModal from '../components/executor/FlowDetailModal';
+import { executeChain } from '../services/flowExecutionService';
 
 const FlowExecutorPage: React.FC = () => {
   const store = useFlowExecutorStore();
@@ -126,18 +127,45 @@ const FlowExecutorPage: React.FC = () => {
     }
   };
 
-  const handleExecuteFlow = () => {
-    if (selectedChain) {
-      setIsExecuting(true);
-      // Attempt to trigger executeChain in FlowChainDetail by simulating a click
-      // This is a workaround. Ideally, FlowChainDetail exposes a ref or a direct function.
-      const executeButton = document.querySelector('#flow-chain-detail-execute-button');
-      if (executeButton instanceof HTMLElement) {
-        executeButton.click();
-      }
-      setTimeout(() => setIsExecuting(false), 1000); // Set timeout to prevent multiple clicks
-    } else {
+  const handleExecuteFlow = async () => {
+    if (!selectedChain) {
       store.setError('실행할 활성 Flow Chain이 없습니다.');
+      return;
+    }
+
+    setIsExecuting(true);
+    try {
+      // 현재 화면의 모든 Flow Chain을 순차적으로 실행
+      for (const chainId of flowChainIds) {
+        const chain = flowChainMap[chainId];
+        if (!chain || chain.flowIds.length === 0) {
+          console.log(`[FlowExecutorPage] Skipping empty chain: ${chainId}`);
+          continue;
+        }
+
+        console.log(`[FlowExecutorPage] Executing chain: ${chainId}`);
+        
+        await executeChain({
+          flowChainId: chainId,
+          onFlowStart: (flowChainId, flowId) => {
+            store.setFlowStatus(flowChainId, flowId, 'running');
+          },
+          onFlowComplete: (flowChainId, flowId, results) => {
+            store.setFlowStatus(flowChainId, flowId, 'success');
+            store.setFlowResult(flowChainId, flowId, results);
+          },
+          onError: (flowChainId, flowId, error) => {
+            store.setFlowStatus(flowChainId, flowId, 'error', error?.toString());
+          }
+        });
+      }
+      
+      console.log('[FlowExecutorPage] All chains executed successfully');
+    } catch (error) {
+      console.error('[FlowExecutorPage] Error executing flow chains:', error);
+      store.setError(`Flow Chain 실행 중 오류가 발생했습니다: ${error}`);
+    } finally {
+      setIsExecuting(false);
     }
   };
 

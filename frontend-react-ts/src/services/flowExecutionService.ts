@@ -585,30 +585,57 @@ export const executeNode = async (
  */
 function resolveInputRowsToValues(inputs: any[], flowChainMap?: any): any[] {
   if (!Array.isArray(inputs)) return [];
-  let result: any[] = [];
-  for (let i = 0; i < inputs.length; i++) {
-    const row = inputs[i];
+  
+  return inputs.map((row) => {
     if (row && typeof row === 'object' && row.type === 'flow-result') {
       // flowChainId, sourceFlowId로 결과값 추출
       const chain = flowChainMap?.[row.flowChainId];
-      if (!chain) continue;
-      if (!row.sourceFlowId) {
-        // FlowChain 전체 결과 (selectedFlowIds의 모든 outputs)
-        const outputs = chain.selectedFlowIds.flatMap((fid: string) => chain.flowMap[fid]?.lastResults || []);
-        result.push(...outputs);
-      } else {
-        // 특정 Flow 결과만
-        const flow = chain.flowMap[row.sourceFlowId];
-        if (flow && Array.isArray(flow.lastResults)) {
-          result.push(...flow.lastResults);
+      if (!chain) return '';
+      
+      try {
+        let nodeResults: any[] = [];
+        
+        if (row.sourceFlowId === '__all__') {
+          // Flow Chain 전체 결과: flowIds의 모든 lastResults를 하나의 배열로 합침
+          nodeResults = chain.flowIds.flatMap((fid: string) => {
+            const flow = chain.flowMap[fid];
+            return flow?.lastResults || [];
+          });
+        } else if (row.sourceFlowId === '__selected__') {
+          // Flow Chain 선택 결과: selectedFlowIds의 lastResults를 하나의 배열로 합침
+          nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
+            const flow = chain.flowMap[fid];
+            return flow?.lastResults || [];
+          });
+        } else if (row.sourceFlowId) {
+          // 개별 Flow 결과: 해당 flow의 lastResults
+          const flow = chain.flowMap[row.sourceFlowId];
+          nodeResults = flow?.lastResults || [];
         }
+        
+        // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
+        const resultTexts = nodeResults
+          .map((nodeResult: any) => {
+            if (typeof nodeResult === 'string') {
+              return nodeResult;
+            } else if (nodeResult && typeof nodeResult === 'object') {
+              return nodeResult.result || '';
+            }
+            return '';
+          })
+          .filter(text => text.trim() !== ''); // 빈 문자열 제거
+        
+        return resultTexts.join('\n\n');
+      } catch (error) {
+        console.error('[resolveInputRowsToValues] Flow result 데이터 가져오기 오류:', error);
       }
+      return '';
     } else {
       // 일반 row는 value만 추출
-      result.push(row && typeof row === 'object' && 'value' in row ? row.value : row);
+      const value = row && typeof row === 'object' && 'value' in row ? row.value : row;
+      return value;
     }
-  }
-  return result;
+  });
 }
 
 /**

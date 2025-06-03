@@ -255,7 +255,14 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
           <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
           )}
           <div>
-            {result.outputs.map((nodeResult, idx) => renderNodeResult(nodeResult, idx))}
+            {result.outputs.map((nodeResult, idx) => {
+              const nodeId = nodeResult.nodeId || `node-${idx}`;
+              return (
+                <React.Fragment key={nodeId}>
+                  {renderNodeResult(nodeResult, idx)}
+                </React.Fragment>
+              );
+            })}
           </div>
         </>
       );

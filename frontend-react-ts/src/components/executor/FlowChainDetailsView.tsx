@@ -96,7 +96,68 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     const flow = useFlowExecutorStore.getState().flowChainMap[flowChainId]?.flowMap[flowId];
     if (!flow) return;
     setExecutingFlowId(flowId);
-    const execInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
+    
+    // flow.inputs에서 flow-result 타입을 실제 데이터로 변환
+    let execInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
+    
+    // flow-result 타입이 있는지 확인하고 변환
+    const hasFlowResultType = execInputs.some((input: any) => 
+      input && typeof input === 'object' && input.type === 'flow-result'
+    );
+    
+    if (hasFlowResultType) {
+      const store = useFlowExecutorStore.getState();
+      const flowChainMap = store.flowChainMap;
+      
+      execInputs = execInputs.map((input: any) => {
+        if (input && typeof input === 'object' && input.type === 'flow-result') {
+          const chain = flowChainMap[input.flowChainId];
+          if (!chain) return input.value || '';
+          
+          try {
+            let nodeResults: any[] = [];
+            
+            if (input.sourceFlowId === '__all__') {
+              // Flow Chain 전체 결과
+              nodeResults = chain.flowIds.flatMap((fid: string) => {
+                const flow = chain.flowMap[fid];
+                return flow?.lastResults || [];
+              });
+            } else if (input.sourceFlowId === '__selected__') {
+              // Flow Chain 선택 결과
+              nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
+                const flow = chain.flowMap[fid];
+                return flow?.lastResults || [];
+              });
+            } else if (input.sourceFlowId) {
+              // 개별 Flow 결과
+              const flow = chain.flowMap[input.sourceFlowId];
+              nodeResults = flow?.lastResults || [];
+            }
+            
+            // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
+            const resultTexts = nodeResults
+              .map((nodeResult: any) => {
+                if (typeof nodeResult === 'string') {
+                  return nodeResult;
+                } else if (nodeResult && typeof nodeResult === 'object') {
+                  return nodeResult.result || '';
+                }
+                return '';
+              })
+              .filter(text => text.trim() !== ''); // 빈 문자열 제거
+            
+            return resultTexts.join('\n\n');
+          } catch (error) {
+            console.error('[FlowChainDetailsView] Flow result 데이터 변환 오류:', error);
+          }
+          return input.value || '';
+        }
+        // 일반 입력은 그대로 반환
+        return input;
+      });
+    }
+    
     useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, 'running');
     try {
       const result = await executeFlowExecutor({

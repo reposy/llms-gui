@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowResultDisplay from './FlowResultDisplay';
 import type { InputRow, InputType } from '../../types/flow/InputRow';
@@ -9,7 +9,65 @@ interface FlowInputFormProps {
   onInputChange?: (inputs: any[]) => void;
 }
 
-const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange }) => {
+// FlowInputForm에서 외부로 노출할 인터페이스
+export interface FlowInputFormRef {
+  getFinalInputData: () => any[];
+  getExecutableInputs: () => any[];
+}
+
+// flow-result 타입의 입력에서 실제 데이터를 가져오는 함수
+const getFlowResultData = (
+  row: InputRow, 
+  flowChainMap: Record<string, any>
+): string => {
+  if (row.type !== 'flow-result' || !row.flowChainId || !row.sourceFlowId) {
+    return '';
+  }
+
+  const chain = flowChainMap[row.flowChainId];
+  if (!chain) return '';
+
+  try {
+    let nodeResults: any[] = [];
+    
+    if (row.sourceFlowId === '__all__') {
+      // Flow Chain 전체 결과: flowIds의 모든 lastResults를 하나의 배열로 합침
+      nodeResults = chain.flowIds.flatMap((fid: string) => {
+        const flow = chain.flowMap[fid];
+        return flow?.lastResults || [];
+      });
+    } else if (row.sourceFlowId === '__selected__') {
+      // Flow Chain 선택 결과: selectedFlowIds의 lastResults를 하나의 배열로 합침
+      nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
+        const flow = chain.flowMap[fid];
+        return flow?.lastResults || [];
+      });
+    } else {
+      // 개별 Flow 결과: 해당 flow의 lastResults
+      const flow = chain.flowMap[row.sourceFlowId];
+      nodeResults = flow?.lastResults || [];
+    }
+    
+    // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
+    const resultTexts = nodeResults
+      .map((nodeResult: any) => {
+        if (typeof nodeResult === 'string') {
+          return nodeResult;
+        } else if (nodeResult && typeof nodeResult === 'object') {
+          return nodeResult.result || '';
+        }
+        return '';
+      })
+      .filter(text => text.trim() !== ''); // 빈 문자열 제거
+    
+    return resultTexts.join('\n\n');
+  } catch (error) {
+    console.error('[FlowInputForm] Flow result 데이터 가져오기 오류:', error);
+    return '';
+  }
+};
+
+const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId, inputs: propInputs, onInputChange }, ref) => {
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
   const flowChainMap = store.flowChainMap;
@@ -156,6 +214,35 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
     ? { status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id }
     : null;
 
+  // 실행을 위한 입력 데이터 변환 함수 (flow-result를 실제 데이터로 변환)
+  const getExecutableInputs = (): any[] => {
+    return rows.map((row) => {
+      if (row.type === 'flow-result') {
+        const resultText = getFlowResultData(row, flowChainMap);
+        // 문자열 값 반환
+        return resultText;
+      } else if (row.type === 'file') {
+        // File 객체 그대로 반환
+        return row.value;
+      } else {
+        // 텍스트 값 그대로 반환
+        return row.value;
+      }
+    });
+  };
+
+  // Flow 실행을 위한 최종 입력 데이터 생성
+  const getFinalInputData = () => {
+    const executableInputs = getExecutableInputs();
+    console.log('[FlowInputForm] 실행용 입력 데이터:', executableInputs);
+    return executableInputs;
+  };
+
+  useImperativeHandle(ref, () => ({
+    getFinalInputData,
+    getExecutableInputs,
+  }));
+
   return (
     <div className="mb-6 p-3 border border-gray-200 rounded-lg bg-white relative">
       <div className="flex items-center justify-between mb-2">
@@ -234,7 +321,12 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                 >
                   <option value="">FlowChain 선택</option>
                   {flowChainIds
-                    .filter(id => flowChainIds.indexOf(id) <= flowChainIds.indexOf(String(focusedFlowChainId)))
+                    .filter(id => {
+                      // 현재 chain이거나 이전 chain들만 선택 가능
+                      const currentChainIndex = flowChainIds.indexOf(String(focusedFlowChainId));
+                      const targetChainIndex = flowChainIds.indexOf(id);
+                      return targetChainIndex <= currentChainIndex;
+                    })
                     .map(id => {
                       const isCurrentChain = id === focusedFlowChainId;
                       const name = flowChainMap[String(id)]?.name || id;
@@ -263,14 +355,29 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                     <option value="__all__">[Flow Chain 전체 결과]</option>
                     <option value="__selected__">[Flow Chain 선택 결과]</option>
                     <option disabled>────────────</option>
-                    {flowChainMap[String(row.flowChainId || '')].flowIds
-                      .filter(fid => fid !== flowId)
-                      .map(fid => {
-                        const name = flowChainMap[String(row.flowChainId || '')].flowMap[fid]?.name || fid;
-                        return (
-                          <option key={fid} value={fid}>{name}</option>
-                        );
-                      })}
+                    {(() => {
+                      const selectedChain = flowChainMap[String(row.flowChainId || '')];
+                      const isCurrentChain = row.flowChainId === focusedFlowChainId;
+                      
+                      return selectedChain.flowIds
+                        .filter(fid => {
+                          if (isCurrentChain) {
+                            // 현재 chain인 경우, 현재 flow보다 이전에 실행된 flow들만 선택 가능
+                            const currentFlowIndex = selectedChain.flowIds.indexOf(flowId);
+                            const targetFlowIndex = selectedChain.flowIds.indexOf(fid);
+                            return targetFlowIndex < currentFlowIndex;
+                          } else {
+                            // 이전 chain인 경우, 모든 flow 선택 가능
+                            return true;
+                          }
+                        })
+                        .map(fid => {
+                          const name = selectedChain.flowMap[fid]?.name || fid;
+                          return (
+                            <option key={fid} value={fid}>{name}</option>
+                          );
+                        });
+                    })()}
                   </select>
                 )}
                 {/* 결과 없음 안내 */}
@@ -326,6 +433,6 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
       </div>
     </div>
   );
-};
+});
 
 export default FlowInputForm; 
