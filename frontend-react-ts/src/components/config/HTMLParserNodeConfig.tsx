@@ -833,49 +833,101 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
             </div>
           ) : (
             <>
-              {/* Search UI - Add Select above Input */}
-              <div className="flex flex-col space-y-2 p-2 border rounded-md bg-gray-50">
-                {/* ADDED: Search Target Select */}
-                <div className="flex items-center space-x-2">
-                    <label htmlFor="searchTargetSelect" className="text-sm font-medium text-gray-700 flex-shrink-0">검색 대상:</label>
-                    <Select value={searchTarget} onValueChange={handleSearchTargetChange}>
-                        <SelectTrigger id="searchTargetSelect" className="h-9 w-auto min-w-[120px]"> {/* Adjusted width */} 
-                            <SelectValue placeholder="검색 대상 선택" />
-                        </SelectTrigger>
-                        <SelectContent className="w-auto"> 
-                            {/* Add whitespace-nowrap to prevent text wrapping */}
-                            <SelectItem value="TEXT" className="whitespace-nowrap">TEXT (내용)</SelectItem>
-                            <SelectItem value="CLASS" className="whitespace-nowrap">CLASS (클래스)</SelectItem>
-                            <SelectItem value="ID" className="whitespace-nowrap">ID (아이디)</SelectItem>
-                            <SelectItem value="CSS" className="whitespace-nowrap">CSS (선택자)</SelectItem>
-                        </SelectContent>
-                    </Select>
+              {/* Search UI - Improved compact design */}
+              <div className="space-y-3 p-3 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+                {/* Search Header */}
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-gray-800 flex items-center">
+                    <SearchIcon className="h-4 w-4 mr-2 text-blue-600" />
+                    요소 검색
+                  </h4>
+                  {searchResults.length > 0 && (
+                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
+                      {currentSearchResultIndex + 1} / {searchResults.length}
+                    </span>
+                  )}
                 </div>
 
-                {/* Existing Search Input */}
-                <input
-                  type="text"
-                  placeholder="검색어 입력..."
-                  value={searchQuery}
-                  onChange={handleSearchInputChange}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()} 
-                  className={`${inputClass} text-sm w-full`}
-                />
-                {/* Existing Search Navigation Buttons */}
-                <div className="flex items-center justify-end space-x-1">
-                  <Button size="sm" variant="ghost" onClick={() => navigateResults('prev')} disabled={searchResults.length <= 1} title="이전 결과">
-                    <ChevronLeftIcon className="h-4 w-4" />
-                  </Button>
-                  <span className="text-xs text-gray-600 min-w-[40px] text-center">
-                    {searchResults.length > 0 ? `${currentSearchResultIndex + 1} / ${searchResults.length}` : '0 / 0'}
-                  </span>
-                  <Button size="sm" variant="ghost" onClick={() => navigateResults('next')} disabled={searchResults.length <= 1} title="다음 결과">
-                    <ChevronRightIcon className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" onClick={handleSearch} disabled={!searchQuery} title="검색">
-                    <SearchIcon className="h-4 w-4" />
-                  </Button>
+                {/* Unified Search Input with Type Selection */}
+                <div className="flex space-x-2">
+                  <Select value={searchTarget} onValueChange={handleSearchTargetChange}>
+                    <SelectTrigger className="h-9 w-[100px] bg-white border-gray-300"> 
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="w-auto">
+                      <SelectItem value="TEXT">텍스트</SelectItem>
+                      <SelectItem value="CLASS">클래스</SelectItem>
+                      <SelectItem value="ID">ID</SelectItem>
+                      <SelectItem value="CSS">CSS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      placeholder={
+                        searchTarget === 'TEXT' ? '텍스트 검색...' :
+                        searchTarget === 'CLASS' ? '클래스명 검색...' :
+                        searchTarget === 'ID' ? 'ID 검색...' :
+                        'CSS 선택자 입력...'
+                      }
+                      value={searchQuery}
+                      onChange={handleSearchInputChange}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSearch();
+                        if (e.key === 'ArrowDown' && searchResults.length > 0) {
+                          e.preventDefault();
+                          navigateResults('next');
+                        }
+                        if (e.key === 'ArrowUp' && searchResults.length > 0) {
+                          e.preventDefault();
+                          navigateResults('prev');
+                        }
+                      }}
+                      className="w-full h-9 px-3 pr-24 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                    
+                    {/* Inline navigation buttons */}
+                    <div className="absolute right-1 top-1 flex items-center space-x-0.5">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => navigateResults('prev')} 
+                        disabled={searchResults.length <= 1}
+                        className="h-7 w-7 p-0 hover:bg-gray-100"
+                        title="이전 (↑)"
+                      >
+                        <ChevronLeftIcon className="h-3 w-3" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => navigateResults('next')} 
+                        disabled={searchResults.length <= 1}
+                        className="h-7 w-7 p-0 hover:bg-gray-100"
+                        title="다음 (↓)"
+                      >
+                        <ChevronRightIcon className="h-3 w-3" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        onClick={handleSearch} 
+                        disabled={!searchQuery}
+                        className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                        title="검색 (Enter)"
+                      >
+                        <SearchIcon className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Search tips */}
+                {searchTarget === 'CSS' && (
+                  <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    💡 예시: .class-name, #element-id, div > p, [data-attr="value"]
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between">

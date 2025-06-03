@@ -32,5 +32,46 @@ export async function crawling({
   extract_element_selector?: string;
   output_format?: string;
 }): Promise<any | null> { 
-  // ... existing code ...
+  try {
+    console.log(`[crawling] Calling backend API for URL: ${url}`);
+    
+    // 백엔드 API URL 설정 (환경에 따라 변경 가능)
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    
+    // 백엔드 API 요청 본문 구성 (WebCrawlerRequest 모델에 맞춤)
+    const requestBody = {
+      url,
+      waitForSelectorOnPage,
+      iframeSelector,
+      waitForSelectorInIframe,
+      timeout,
+      headers: headers || {},
+      extractElementSelector: extract_element_selector,
+      output_format: output_format || 'html'
+    };
+
+    // 백엔드 API 호출
+    const response = await fetch(`${BACKEND_URL}/api/web-crawler/fetch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      console.error(`[crawling] Backend API returned status ${response.status}: ${response.statusText}`);
+      return null;
+    }
+
+    const result = await response.json();
+    console.log(`[crawling] Backend response status: ${result.status}`);
+    
+    // WebCrawlerResponse 모델에 따른 응답 처리
+    return result;
+    
+  } catch (error) {
+    console.error(`[crawling] Error during API call:`, error);
+    return null;
+  }
 } 

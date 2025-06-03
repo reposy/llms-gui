@@ -54,54 +54,55 @@ async def _navigate_and_wait(page: Page, url: str, timeout: int):
         logger.error(f"Unexpected error during navigation/wait for {url}: {str(e)}")
         raise
 
+async def _wait_for_optional_selector(context: Union[Page, Frame], selector: Optional[str], timeout: int, context_name: str = "Context"):
+    """Waits for an optional CSS selector within the given context."""
+    if not selector or not selector.strip():
+        logger.info(f"[{context_name}] No selector provided, skipping selector wait.")
+        return
+
+    try:
+        logger.info(f"[{context_name}] Waiting for selector '{selector}' (timeout: {timeout}ms)")
+        await context.wait_for_selector(selector, timeout=timeout)
+        logger.info(f"[{context_name}] Selector '{selector}' found successfully.")
+    except PlaywrightError as e:
+        if "Timeout" in str(e):
+            logger.warning(f"[{context_name}] Timeout waiting for selector '{selector}' - continuing anyway.")
+        else:
+            logger.warning(f"[{context_name}] Error waiting for selector '{selector}': {str(e)} - continuing anyway.")
+    except Exception as e:
+        logger.warning(f"[{context_name}] Unexpected error waiting for selector '{selector}': {str(e)} - continuing anyway.")
+
 async def _find_target_frame(page: Page, iframe_selector: Optional[str]) -> Union[Page, Frame]:
-    """Finds the target iframe or returns the main page."""
-    if not iframe_selector:
+    """Finds the target iframe or returns the main page if no iframe selector is provided."""
+    if not iframe_selector or not iframe_selector.strip():
         logger.info("No iframe selector provided, using main page context.")
         return page
 
-    logger.info(f"Attempting to find iframe with selector: {iframe_selector}")
     try:
-        iframe_element = await page.wait_for_selector(iframe_selector, state="attached", timeout=5000)
+        logger.info(f"Looking for iframe with selector: {iframe_selector}")
+        iframe_element = await page.wait_for_selector(iframe_selector, timeout=5000)
+        
         if iframe_element:
             frame = await iframe_element.content_frame()
             if frame:
-                logger.info(f"Successfully found and switched context to iframe: {iframe_selector}")
+                logger.info(f"Successfully found iframe and accessed its content frame.")
                 return frame
             else:
-                logger.warning(f"Found iframe element for '{iframe_selector}', but could not get content frame.")
+                logger.warning(f"Found iframe element but could not access content frame. Using main page.")
+                return page
         else:
-             logger.warning(f"Iframe element not found for selector '{iframe_selector}' within timeout.")
-
+            logger.warning(f"Iframe with selector '{iframe_selector}' not found. Using main page.")
+            return page
+            
     except PlaywrightError as e:
-        logger.warning(f"Error finding or waiting for iframe '{iframe_selector}': {str(e)}. Falling back to main page context.")
-    except Exception as e:
-         logger.error(f"Unexpected error getting iframe context '{iframe_selector}': {str(e)}. Falling back to main page context.")
-
-    return page
-
-async def _wait_for_optional_selector(context: Union[Page, Frame], selector: Optional[str], timeout: int, context_name: str = "Context"):
-    """Waits for an optional selector within the given context (Page or Frame)."""
-    if not selector:
-        return
-
-    logger.info(f"[{context_name}] Waiting for selector: {selector}")
-    try:
-        # Use a portion of the *remaining* timeout logically allocated to this step
-        # This requires careful timeout management in the main function
-        selector_timeout = timeout # Pass the allocated timeout directly
-        await context.wait_for_selector(selector, state="visible", timeout=selector_timeout)
-        logger.info(f"[{context_name}] Selector '{selector}' found and visible.")
-    except PlaywrightError as pe:
-        if "Timeout" in str(pe):
-            logger.warning(f"[{context_name}] Selector '{selector}' did not appear or become visible within timeout ({selector_timeout}ms).")
+        if "Timeout" in str(e):
+            logger.warning(f"Timeout finding iframe '{iframe_selector}' - using main page.")
         else:
-            logger.error(f"[{context_name}] Playwright error waiting for selector '{selector}': {str(pe)}")
-            # Decide if this should be a fatal error for the crawl
-            # raise pe # Optional: re-raise to fail the crawl
+            logger.warning(f"Error finding iframe '{iframe_selector}': {str(e)} - using main page.")
+        return page
     except Exception as e:
-        logger.error(f"[{context_name}] Unexpected error waiting for selector '{selector}': {str(e)}")
-        # raise e # Optional: re-raise unexpected errors
+        logger.warning(f"Unexpected error finding iframe '{iframe_selector}': {str(e)} - using main page.")
+        return page
 
 async def _extract_content(context: Union[Page, Frame], include_html: bool) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """Extracts page title (main page only), text content, and optionally HTML from the context."""

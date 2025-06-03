@@ -171,11 +171,12 @@ export interface MergerNodeProperty extends BaseNodeData {
 export interface WebCrawlerNodeProperty extends BaseNodeData {
   type: 'web-crawler';
   url?: string;
-  waitForSelector?: string;
-  extractSelectors?: Record<string, string>;
+  waitForSelectorOnPage?: string;
+  iframeSelector?: string;
+  waitForSelectorInIframe?: string;
   timeout?: number;
   headers?: Record<string, string>;
-  includeHtml?: boolean;
+  extractElementSelector?: string;
   outputFormat?: 'full' | 'text' | 'extracted' | 'html';
 }
 
