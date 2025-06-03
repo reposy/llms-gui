@@ -155,7 +155,8 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   // 텍스트 입력
   const handleTextChange = (idx: number, value: string) => {
     const newRows = [...rows];
-    newRows[idx] = { type: 'text', value };
+    // 기존 row의 타입과 다른 속성들을 유지하면서 value만 업데이트
+    newRows[idx] = { ...newRows[idx], value };
     updateRows(newRows);
   };
 
