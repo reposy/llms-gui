@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } f
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowResultDisplay from './FlowResultDisplay';
 import type { InputRow, InputType } from '../../types/flow/InputRow';
+import { extractFlowResultText } from '../../utils/flowResultUtils';
 
 interface FlowInputFormProps {
   flowId: string;
@@ -14,58 +15,6 @@ export interface FlowInputFormRef {
   getFinalInputData: () => any[];
   getExecutableInputs: () => any[];
 }
-
-// flow-result 타입의 입력에서 실제 데이터를 가져오는 함수
-const getFlowResultData = (
-  row: InputRow, 
-  flowChainMap: Record<string, any>
-): string => {
-  if (row.type !== 'flow-result' || !row.flowChainId || !row.sourceFlowId) {
-    return '';
-  }
-
-  const chain = flowChainMap[row.flowChainId];
-  if (!chain) return '';
-
-  try {
-    let nodeResults: any[] = [];
-    
-    if (row.sourceFlowId === '__all__') {
-      // Flow Chain 전체 결과: flowIds의 모든 lastResults를 하나의 배열로 합침
-      nodeResults = chain.flowIds.flatMap((fid: string) => {
-        const flow = chain.flowMap[fid];
-        return flow?.lastResults || [];
-      });
-    } else if (row.sourceFlowId === '__selected__') {
-      // Flow Chain 선택 결과: selectedFlowIds의 lastResults를 하나의 배열로 합침
-      nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
-        const flow = chain.flowMap[fid];
-        return flow?.lastResults || [];
-      });
-    } else {
-      // 개별 Flow 결과: 해당 flow의 lastResults
-      const flow = chain.flowMap[row.sourceFlowId];
-      nodeResults = flow?.lastResults || [];
-    }
-    
-    // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
-    const resultTexts = nodeResults
-      .map((nodeResult: any) => {
-        if (typeof nodeResult === 'string') {
-          return nodeResult;
-        } else if (nodeResult && typeof nodeResult === 'object') {
-          return nodeResult.result || '';
-        }
-        return '';
-      })
-      .filter(text => text.trim() !== ''); // 빈 문자열 제거
-    
-    return resultTexts.join('\n\n');
-  } catch (error) {
-    console.error('[FlowInputForm] Flow result 데이터 가져오기 오류:', error);
-    return '';
-  }
-};
 
 const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId, inputs: propInputs, onInputChange }, ref) => {
   const store = useFlowExecutorStore();
@@ -218,9 +167,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   const getExecutableInputs = (): any[] => {
     return rows.map((row) => {
       if (row.type === 'flow-result') {
-        const resultText = getFlowResultData(row, flowChainMap);
-        // 문자열 값 반환
-        return resultText;
+        return extractFlowResultText(row, flowChainMap);
       } else if (row.type === 'file') {
         // File 객체 그대로 반환
         return row.value;

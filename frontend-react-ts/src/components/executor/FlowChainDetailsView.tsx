@@ -7,6 +7,7 @@ import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 import FlowChainResultDisplay from './FlowChainResultDisplay';
 import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon } from '../Icons';
 import InlineEditInput from '../ui/InlineEditInput';
+import { extractFlowResultText } from '../../utils/flowResultUtils';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
@@ -111,47 +112,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
       
       execInputs = execInputs.map((input: any) => {
         if (input && typeof input === 'object' && input.type === 'flow-result') {
-          const chain = flowChainMap[input.flowChainId];
-          if (!chain) return input.value || '';
-          
-          try {
-            let nodeResults: any[] = [];
-            
-            if (input.sourceFlowId === '__all__') {
-              // Flow Chain 전체 결과
-              nodeResults = chain.flowIds.flatMap((fid: string) => {
-                const flow = chain.flowMap[fid];
-                return flow?.lastResults || [];
-              });
-            } else if (input.sourceFlowId === '__selected__') {
-              // Flow Chain 선택 결과
-              nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
-                const flow = chain.flowMap[fid];
-                return flow?.lastResults || [];
-              });
-            } else if (input.sourceFlowId) {
-              // 개별 Flow 결과
-              const flow = chain.flowMap[input.sourceFlowId];
-              nodeResults = flow?.lastResults || [];
-            }
-            
-            // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
-            const resultTexts = nodeResults
-              .map((nodeResult: any) => {
-                if (typeof nodeResult === 'string') {
-                  return nodeResult;
-                } else if (nodeResult && typeof nodeResult === 'object') {
-                  return nodeResult.result || '';
-                }
-                return '';
-              })
-              .filter(text => text.trim() !== ''); // 빈 문자열 제거
-            
-            return resultTexts.join('\n\n');
-          } catch (error) {
-            console.error('[FlowChainDetailsView] Flow result 데이터 변환 오류:', error);
-          }
-          return input.value || '';
+          return extractFlowResultText(input, flowChainMap);
         }
         // 일반 입력은 그대로 반환
         return input;

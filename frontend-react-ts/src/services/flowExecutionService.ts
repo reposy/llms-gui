@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { deepClone } from '../utils/helpers';
 import { ExecutionStatus } from '../store/useExecutorStateStore';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
+import { resolveFlowResultInputs } from '../utils/flowResultUtils';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -581,108 +582,6 @@ export const executeNode = async (
 };
 
 /**
- * InputRow[] → value[] 변환 (flow-result row 치환 포함)
- */
-function resolveInputRowsToValues(inputs: any[], flowChainMap?: any): any[] {
-  if (!Array.isArray(inputs)) return [];
-  
-  return inputs.map((row) => {
-    if (row && typeof row === 'object' && row.type === 'flow-result') {
-      // flowChainId, sourceFlowId로 결과값 추출
-      const chain = flowChainMap?.[row.flowChainId];
-      if (!chain) return '';
-      
-      try {
-        let nodeResults: any[] = [];
-        
-        if (row.sourceFlowId === '__all__') {
-          // Flow Chain 전체 결과: flowIds의 모든 lastResults를 하나의 배열로 합침
-          nodeResults = chain.flowIds.flatMap((fid: string) => {
-            const flow = chain.flowMap[fid];
-            return flow?.lastResults || [];
-          });
-        } else if (row.sourceFlowId === '__selected__') {
-          // Flow Chain 선택 결과: selectedFlowIds의 lastResults를 하나의 배열로 합침
-          nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
-            const flow = chain.flowMap[fid];
-            return flow?.lastResults || [];
-          });
-        } else if (row.sourceFlowId) {
-          // 개별 Flow 결과: 해당 flow의 lastResults
-          const flow = chain.flowMap[row.sourceFlowId];
-          nodeResults = flow?.lastResults || [];
-        }
-        
-        // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
-        const resultTexts = nodeResults
-          .map((nodeResult: any) => {
-            if (typeof nodeResult === 'string') {
-              return nodeResult;
-            } else if (nodeResult && typeof nodeResult === 'object') {
-              return nodeResult.result || '';
-            }
-            return '';
-          })
-          .filter(text => text.trim() !== ''); // 빈 문자열 제거
-        
-        return resultTexts.join('\n\n');
-      } catch (error) {
-        console.error('[resolveInputRowsToValues] Flow result 데이터 가져오기 오류:', error);
-      }
-      return '';
-    } else {
-      // 일반 row는 value만 추출
-      const value = row && typeof row === 'object' && 'value' in row ? row.value : row;
-      return value;
-    }
-  });
-}
-
-/**
- * [Flow Editor용] 단일 Flow 실행
- * @param params 실행 매개변수
- * @returns 실행 응답
- */
-export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  const store = useFlowExecutorStore.getState();
-  const flowChainMap = store.flowChainMap;
-  const normalizedInputs = resolveInputRowsToValues(params.inputs, flowChainMap);
-  return editorFlowExecutor.execute({ ...params, inputs: normalizedInputs });
-};
-
-/**
- * Flow Executor를 위한 Flow 실행 함수
- * @param params 실행 매개변수
- * @returns 실행 응답
- */
-export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  let resolvedInputs = params.inputs;
-  if (Array.isArray(params.inputs) && params.inputs.length > 0 && typeof params.inputs[0] === 'object' && 'type' in params.inputs[0]) {
-    const store = useFlowExecutorStore.getState();
-    const flowChainMap = store.flowChainMap;
-    resolvedInputs = resolveInputRowsToValues(params.inputs, flowChainMap);
-  }
-  if (!params.flowChainId || !params.flowId) {
-    return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
-  }
-  const response = await executorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
-  if (response.status === 'success') {
-    const safeOutputs = response.outputs || [];
-    useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
-  }
-  if (params.onComplete && response.status === 'success') {
-    params.onComplete(response.outputs);
-    notifyResultCallbacks(params.flowId, {
-      status: response.status,
-      outputs: response.outputs,
-      error: response.error,
-      flowId: params.flowId
-    });
-  }
-  return response;
-};
-
-/**
  * 입력 참조 처리 함수
  * 입력값 중 참조 패턴(${flow.id.result})을 찾아 실제 값으로 대체
  * @param inputs 입력 배열
@@ -730,4 +629,48 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
     
     return processValue(input);
   });
+};
+
+/**
+ * [Flow Editor용] 단일 Flow 실행
+ * @param params 실행 매개변수
+ * @returns 실행 응답
+ */
+export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  const store = useFlowExecutorStore.getState();
+  const flowChainMap = store.flowChainMap;
+  const normalizedInputs = resolveFlowResultInputs(params.inputs, flowChainMap);
+  return editorFlowExecutor.execute({ ...params, inputs: normalizedInputs });
+};
+
+/**
+ * Flow Executor를 위한 Flow 실행 함수
+ * @param params 실행 매개변수
+ * @returns 실행 응답
+ */
+export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  let resolvedInputs = params.inputs;
+  if (Array.isArray(params.inputs) && params.inputs.length > 0 && typeof params.inputs[0] === 'object' && 'type' in params.inputs[0]) {
+    const store = useFlowExecutorStore.getState();
+    const flowChainMap = store.flowChainMap;
+    resolvedInputs = resolveFlowResultInputs(params.inputs, flowChainMap);
+  }
+  if (!params.flowChainId || !params.flowId) {
+    return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
+  }
+  const response = await executorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
+  if (response.status === 'success') {
+    const safeOutputs = response.outputs || [];
+    useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
+  }
+  if (params.onComplete && response.status === 'success') {
+    params.onComplete(response.outputs);
+    notifyResultCallbacks(params.flowId, {
+      status: response.status,
+      outputs: response.outputs,
+      error: response.error,
+      flowId: params.flowId
+    });
+  }
+  return response;
 }; 
