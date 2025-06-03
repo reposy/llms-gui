@@ -4,6 +4,7 @@ import { LlmNodeProperty } from '../types/nodes';
 import { runLLM } from '../services/llmService';
 import { LLMRequestParams } from '../services/llm/types';
 import { LocalFileMetadata } from '../types/files';
+import { extractDynamicProperty, mergeDynamicProperty, removeActualInputFromDynamic } from '../utils/dynamicPropertyUtils';
 
 /**
  * LLM node for generating text via LLM providers
@@ -133,53 +134,67 @@ export class LlmNode extends Node {
     console.log('[LLMNode] execute input:', input);
     this._log('Executing LLMNode');
 
-    // 필수 속성 확인
-    const provider = this.property?.provider;
-    const model = this.property?.model;
-    if (!provider || !model) {
-      const errorMsg = "Missing required properties: provider or model.";
-      this._log(`Error - ${errorMsg}`);
-      this.context?.markNodeError(this.id, errorMsg);
-      return null;
+    // 동적 속성 추출 및 적용
+    const dynamicProperty = extractDynamicProperty(input, 'llm');
+    const effectiveProperty = mergeDynamicProperty(this.property, dynamicProperty);
+    
+    // 동적 속성이 있다면 임시로 this.property 업데이트
+    const originalProperty = this.property;
+    if (dynamicProperty) {
+      this.property = effectiveProperty as LlmNodeProperty;
+      this._log(`Applied dynamic property: ${JSON.stringify(dynamicProperty)}`);
     }
 
-    // 모드 및 프롬프트 설정
-    const mode = this.property.mode || 'text';
-    this._log(`Config - Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
-    
-    // 프롬프트 템플릿 처리
-    const finalPrompt = this.resolvePrompt(input);
-    console.log('[LLMNode] final prompt after input replace:', finalPrompt);
-    
-    // 이미지 추출
-    const { files: imageFiles, metaData: localImageMetadata } = this.extractImages(input);
-    this._log(`Found ${imageFiles.length} image files and ${localImageMetadata.length} local image metadata`);
-    
-    // 비전 모드 검증
-    if (mode === 'vision' && imageFiles.length === 0 && localImageMetadata.length === 0 && 
-        (finalPrompt.trim() === this.property.prompt?.trim() || !finalPrompt.trim())) {
-      const errorMsg = "Vision mode requires at least one image or non-empty prompt.";
-      this._log(`Error - ${errorMsg}`);
-      this.context?.markNodeError(this.id, errorMsg);
-      return null;
-    }
-    
-    // API 요청 파라미터 구성
-    const params: LLMRequestParams = {
-      provider,
-      model,
-      prompt: finalPrompt,
-      temperature: this.property.temperature,
-      maxTokens: this.property.maxTokens,
-      mode,
-      inputFiles: imageFiles.length > 0 ? imageFiles : undefined,
-      localImages: localImageMetadata.length > 0 ? localImageMetadata : undefined,
-      ollamaUrl: this.property.ollamaUrl,
-      openaiApiKey: this.property.openaiApiKey,
-    };
+    // 동적 속성 객체를 제거한 실제 입력 추출
+    const actualInput = removeActualInputFromDynamic(input, 'llm');
 
     try {
-      // LLM 서비스 호출
+      // 필수 속성 확인 (이제 effectiveProperty 사용)
+      const provider = effectiveProperty?.provider;
+      const model = effectiveProperty?.model;
+      if (!provider || !model) {
+        const errorMsg = "Missing required properties: provider or model.";
+        this._log(`Error - ${errorMsg}`);
+        this.context?.markNodeError(this.id, errorMsg);
+        return null;
+      }
+
+      // 모드 및 프롬프트 설정 (effectiveProperty 사용)
+      const mode = effectiveProperty.mode || 'text';
+      this._log(`Config - Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
+      
+      // 프롬프트 템플릿 처리 (기존 로직 유지, actualInput 사용)
+      const finalPrompt = this.resolvePrompt(actualInput);
+      console.log('[LLMNode] final prompt after input replace:', finalPrompt);
+      
+      // 이미지 추출 (actualInput 사용)
+      const { files: imageFiles, metaData: localImageMetadata } = this.extractImages(actualInput);
+      this._log(`Found ${imageFiles.length} image files and ${localImageMetadata.length} local image metadata`);
+      
+      // 비전 모드 검증
+      if (mode === 'vision' && imageFiles.length === 0 && localImageMetadata.length === 0 && 
+          (finalPrompt.trim() === effectiveProperty.prompt?.trim() || !finalPrompt.trim())) {
+        const errorMsg = "Vision mode requires at least one image or non-empty prompt.";
+        this._log(`Error - ${errorMsg}`);
+        this.context?.markNodeError(this.id, errorMsg);
+        return null;
+      }
+      
+      // API 요청 파라미터 구성 (effectiveProperty 사용)
+      const params: LLMRequestParams = {
+        provider,
+        model,
+        prompt: finalPrompt,
+        temperature: effectiveProperty.temperature,
+        maxTokens: effectiveProperty.maxTokens,
+        mode,
+        inputFiles: imageFiles.length > 0 ? imageFiles : undefined,
+        localImages: localImageMetadata.length > 0 ? localImageMetadata : undefined,
+        ollamaUrl: effectiveProperty.ollamaUrl,
+        openaiApiKey: effectiveProperty.openaiApiKey,
+      };
+
+      // LLM 서비스 호출 (기존 로직 유지)
       this._log(`Calling LLM service with: ${params.mode} mode, ${imageFiles.length + localImageMetadata.length} images`);
       console.log('[LLMNode] Sending to LLM service:', params);
       const result = await runLLM(params);
@@ -187,7 +202,7 @@ export class LlmNode extends Node {
         throw new Error('LLM service returned null or undefined unexpectedly.');
       }
       
-      // 비전 모드 결과 형식화
+      // 비전 모드 결과 형식화 (기존 로직 유지)
       let resultText = result.response;
       
       // 응답이 undefined인 경우 빈 문자열로 대체
@@ -231,6 +246,12 @@ export class LlmNode extends Node {
       this.context?.markNodeError(this.id, errorMessage);
       this._log(`Error during LLM service call: ${errorMessage}`);
       return null;
+    } finally {
+      // 동적 속성이 있다면 원래의 property로 복원
+      if (dynamicProperty) {
+        this.property = originalProperty as LlmNodeProperty;
+        this._log(`Restored original property: ${JSON.stringify(originalProperty)}`);
+      }
     }
   }
   

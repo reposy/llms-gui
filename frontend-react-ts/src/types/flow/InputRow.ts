@@ -1,4 +1,4 @@
-export type InputType = 'text' | 'file' | 'flow-result';
+export type InputType = 'text' | 'file' | 'flow-result' | 'property';
 
 export interface InputRow {
   type: InputType;

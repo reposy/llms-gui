@@ -81,6 +81,21 @@ export const resolveFlowResultInputs = (
       if (input.type === 'flow-result') {
         // flow-result 타입: 텍스트로 변환
         return extractFlowResultText(input, flowChainMap || {});
+      } else if (input.type === 'property') {
+        // property 타입: JSON 파싱하여 동적 속성 객체로 변환
+        try {
+          const parsed = JSON.parse(input.value as string || '{}');
+          // DynamicPropertyInput 형태인지 검증
+          if (parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed) {
+            return parsed;
+          } else {
+            console.warn('[resolveFlowResultInputs] Invalid property JSON structure:', parsed);
+            return input.value;
+          }
+        } catch (error) {
+          console.warn('[resolveFlowResultInputs] Failed to parse property JSON:', error);
+          return input.value;
+        }
       } else if (input.type === 'file') {
         // file 타입: 객체 그대로 전달 (File 객체)
         return input.value;
