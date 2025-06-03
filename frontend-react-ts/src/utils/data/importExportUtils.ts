@@ -32,7 +32,9 @@ function isSupportedNodeType(type: string): boolean {
     'group', 
     'conditional', 
     'merger',
-    'json-extractor'
+    'json-extractor',
+    'html-parser',
+    'web-crawler'
   ];
   
   return supportedTypes.includes(type as NodeType);
@@ -68,7 +70,8 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeProper
   // Process and validate nodes
   const importedNodes: Node<NodePropertyType>[] = flowData.nodes.map(node => {
     const { data, ...rest } = node as any;
-    const importedNode = { ...rest, property: data };
+    // useFlowStructureStore에서 data 필드를 기대하므로 data 필드를 유지
+    const importedNode = { ...rest, data: data };
     
     // Validate node has a type
     if (!importedNode.type) {
@@ -96,8 +99,8 @@ export function importFlowFromJson(flowData: FlowData): { nodes: Node<NodeProper
     }
     
     // Set default data properties based on node type if missing
-    if (importedNode.type === 'llm' && importedNode.property) {
-      const llmData = importedNode.property as any;
+    if (importedNode.type === 'llm' && importedNode.data) {
+      const llmData = importedNode.data as any;
       if (!llmData.model) {
         llmData.model = 'llama3';
       }
