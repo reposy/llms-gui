@@ -129,10 +129,13 @@ export class HTMLParserNode extends Node {
     let nodeContent: HTMLParserNodeProperty | undefined = undefined;
     if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
       nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as HTMLParserNodeProperty;
+      this._log(`Context에서 설정 로드됨: ${JSON.stringify(nodeContent, null, 2)}`);
     } else {
       nodeContent = this.property as HTMLParserNodeProperty;
+      this._log(`Property에서 설정 로드됨: ${JSON.stringify(nodeContent, null, 2)}`);
     }
     const extractionRules = nodeContent.extractionRules || [];
+    this._log(`추출 규칙 개수: ${extractionRules.length}`);
 
     // If no rules, maybe return the HTML itself or null?
     // Returning the HTML makes it act like a pass-through if no rules defined.
@@ -170,7 +173,12 @@ export class HTMLParserNode extends Node {
       if (rule.multiple) {
         result[rule.name] = extractedValues;
       } else {
-        result[rule.name] = extractedValues.length > 0 ? extractedValues[0] : '';
+        // ✅ 단일 선택 규칙이면서 text 타입인 경우, 여러 결과를 \n으로 조인
+        if (rule.target === 'text' && extractedValues.length > 1) {
+          result[rule.name] = extractedValues.join('\n');
+        } else {
+          result[rule.name] = extractedValues.length > 0 ? extractedValues[0] : '';
+        }
       }
     }
 

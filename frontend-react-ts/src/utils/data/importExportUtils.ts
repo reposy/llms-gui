@@ -244,7 +244,9 @@ export const exportFlowAsJson = (includeExecutionData: boolean = false): FlowDat
   console.log(`[exportFlowAsJson] Created flow data (includeExecutionData: ${includeExecutionData}) with:`, {
     nodes: finalNodes.length,
     edges: edges.length,
-    nodeContents: Object.keys(finalContents).length
+    nodeContents: Object.keys(finalContents).length,
+    contentsKeys: Object.keys(finalContents),
+    sampleContent: Object.keys(finalContents).length > 0 ? finalContents[Object.keys(finalContents)[0]] : 'none'
   });
 
   return flowData;
@@ -281,18 +283,18 @@ export const exportFlowChainAsJson = (chainId: string, includeExecutionData: boo
     const flow = (chain as any).flowMap[flowId];
     if (!flow) continue;
     
-    // nodes 변환 시 타입 정의
-    const nodes: Node<NodePropertyType>[] = Object.values((flow as any).nodes || {}).map((node: any) => ({
+    // nodes 변환 시 타입 정의 - flow.nodeMap 사용
+    const nodes: Node<NodePropertyType>[] = Object.values(flow.nodeMap || {}).map((node: any) => ({
       id: node.id,
       type: node.type,
-      data: node.property,
+      data: node.property || node.data || {},
       position: node.position,
-      parentId: node.parentNodeId || undefined
+      parentId: node.parentId || undefined
     } as Node<NodePropertyType>));
     
-    // edges 변환
-    const edges: Edge[] = Object.keys((flow as any).graph || {}).flatMap(nodeId => {
-      const relation = (flow as any).graph[nodeId];
+    // edges 변환 - flow.graphMap 사용
+    const edges: Edge[] = Object.keys(flow.graphMap || {}).flatMap(nodeId => {
+      const relation = flow.graphMap[nodeId];
       return relation.childs.map((childId: any) => ({
         id: `edge-${nodeId}-${childId}`,
         source: nodeId,
@@ -300,11 +302,21 @@ export const exportFlowChainAsJson = (chainId: string, includeExecutionData: boo
       }));
     });
     
+    // contents 필드 생성 - 각 노드의 property를 contents에 저장
+    const contents: Record<string, NodePropertyType> = {};
+    Object.values(flow.nodeMap || {}).forEach((node: any) => {
+      const nodeProperty = node.property || node.data || {};
+      if (nodeProperty && typeof nodeProperty === 'object') {
+        contents[node.id] = nodeProperty;
+      }
+    });
+    
     const flowData: FlowData = {
       name: flow.name,
-      createdAt: new Date().toISOString(), // 현재 시간으로 설정
+      createdAt: new Date().toISOString(),
       nodes,
-      edges
+      edges,
+      contents
     };
     
     flowMap[flowId] = flowData;
@@ -370,37 +382,36 @@ export const importFlowChainFromJson = (chainData: FlowChainData): string | null
     const newChainId = storeState.addFlowChain(chainData.name);
     
     console.log(`[importFlowChainFromJson] Created new chain: ${newChainId}`);
+    console.log(`[importFlowChainFromJson] Importing ${chainData.flowIds.length} flows`);
     
     // Flow들을 순차적으로 가져오기
     // nodeFactory 오류 회피를 위해 setTimeout으로 비동기 처리
     setTimeout(() => {
       try {
-        // Flow들을 Chain에 추가
-        for (const flowId of chainData.flowIds) {
-          const flowData = chainData.flowMap[flowId];
-          if (!flowData) continue;
+        // flowExecutorUtils 임포트 - 동적 임포트로 순환 참조 방지
+        import('../flow/flowExecutorUtils').then(({ importFlowToFlowChain }) => {
+          // Flow들을 Chain에 추가
+          for (const flowId of chainData.flowIds) {
+            const flowData = chainData.flowMap[flowId];
+            if (!flowData) continue;
+            
+            console.log(`[importFlowChainFromJson] Processing flow: ${flowId}`);
+            console.log(`[importFlowChainFromJson] Flow has ${flowData.nodes?.length || 0} nodes`);
+            console.log(`[importFlowChainFromJson] Flow contents keys:`, Object.keys(flowData.contents || {}));
+            
+            // ✅ flowExecutorUtils의 importFlowToFlowChain 사용하여 올바른 Flow 객체 생성
+            importFlowToFlowChain(newChainId, flowData);
+          }
           
-          // 노드 데이터 정리를 통해 타입 문제 회피
-          const cleanedFlowData = {
-            ...flowData,
-            nodes: flowData.nodes.map((node: any) => ({
-              id: node.id,
-              type: node.type,
-              position: node.position,
-              data: node.property
-            }))
-          } as FlowData;
+          // 선택된 Flow 설정
+          if (chainData.selectedFlowId) {
+            storeState.setSelectedFlow?.(newChainId, chainData.selectedFlowId);
+          }
           
-          // Flow Chain에 추가
-          storeState.addFlowToFlowChain(newChainId, cleanedFlowData);
-        }
-        
-        // 선택된 Flow 설정
-        if (chainData.selectedFlowId) {
-          storeState.setSelectedFlow(newChainId, chainData.selectedFlowId);
-        }
-        
-        console.log(`[importFlowChainFromJson] Added ${chainData.flowIds.length} flows to chain ${newChainId}`);
+          console.log(`[importFlowChainFromJson] Added ${chainData.flowIds.length} flows to chain ${newChainId}`);
+        }).catch(error => {
+          console.error('[importFlowChainFromJson] Failed to import flowExecutorUtils:', error);
+        });
       } catch (error) {
         console.error('[importFlowChainFromJson] Error adding flows to chain:', error);
       }

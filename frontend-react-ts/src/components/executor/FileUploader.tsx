@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FlowData } from '../../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../../store/useExecutorStateStore';
 import { DocumentArrowUpIcon } from '@heroicons/react/24/outline';
+import { importFlowToFlowChain } from '../../utils/flow/flowExecutorUtils';
 
 interface FileUploaderProps {
   onFileUpload?: (flowData: FlowData, chainId?: string, flowId?: string) => void;
@@ -102,7 +103,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
         
         // Flow를 체인에 등록
         if (activeChainId) {
-          const flowId = addFlowToFlowChain(activeChainId, flowData);
+          const flowId = importFlowToFlowChain(activeChainId, flowData);
           // console.log(`[FileUploader] Added flow to chain: chainId=${activeChainId}, flowId=${flowId}`);
           // 콜백 호출
           if (onFileUpload) {

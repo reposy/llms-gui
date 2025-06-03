@@ -29,47 +29,35 @@ const prepareExecutionContext = (): FlowExecutionContext => {
      throw new Error("getNodeProperty function is not available.");
   }
 
-  // Create and configure NodeFactory
-  const nodeFactory = globalNodeFactory;
+  // Use the createForEditor factory method
+  const context = FlowExecutionContext.createForEditor(executionId, { nodes, edges });
 
-  // Create the context
-  const context = new FlowExecutionContext(
-    executionId, 
-    getNodeProperty, 
-    nodes, 
-    edges, 
-    nodeFactory,
-    false, // isExecutorContext
-    undefined, // chainId
-    undefined, // flowId
-    // onNodeStateChange 콜백: 실행 상태와 결과를 zustand store에 동시에 반영
-    (nodeId, status, result, error) => {
-      if (status === 'running') {
-        setNodeState(nodeId, {
-          status: 'running',
-          result: undefined,
-          error: undefined,
-          executionId,
-        });
-      } else if (status === 'success') {
-        setNodeState(nodeId, {
-          status: 'success',
-          result,
-          error: undefined,
-          executionId,
-        });
-        setNodeProperty(nodeId, { responseContent: result });
-      } else if (status === 'error') {
-        setNodeState(nodeId, {
-          status: 'error',
-          error,
-          executionId,
-        });
-        setNodeProperty(nodeId, { responseContent: error });
-      }
-    },
-    undefined // onStoreOutput 콜백은 필요시만 사용
-  );
+  // Set up callbacks for node state changes
+  context.setNodeStateChangeCallback((nodeId, status, result, error) => {
+    if (status === 'running') {
+      setNodeState(nodeId, {
+        status: 'running',
+        result: undefined,
+        error: undefined,
+        executionId,
+      });
+    } else if (status === 'success') {
+      setNodeState(nodeId, {
+        status: 'success',
+        result,
+        error: undefined,
+        executionId,
+      });
+      setNodeProperty(nodeId, { responseContent: result });
+    } else if (status === 'error') {
+      setNodeState(nodeId, {
+        status: 'error',
+        error,
+        executionId,
+      });
+      setNodeProperty(nodeId, { responseContent: error });
+    }
+  });
 
   console.log(`[ExecutionUtils] Prepared Execution Context (ID: ${executionId})`);
   return context;

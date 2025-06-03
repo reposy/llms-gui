@@ -6,7 +6,7 @@ import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
-import { importFlowJsonToStore } from '../utils/flow/flowExecutorUtils';
+import { importFlowToFlowChain } from '../utils/flow/flowExecutorUtils';
 import FlowDetailModal from '../components/executor/FlowDetailModal';
 import { executeChain } from '../services/flowExecutionService';
 
@@ -51,7 +51,7 @@ const FlowExecutorPage: React.FC = () => {
         try {
           const json = event.target?.result as string;
           const flowData = JSON.parse(json);
-          importFlowJsonToStore(focusedFlowChainId, flowData);
+          importFlowToFlowChain(focusedFlowChainId, flowData);
         } catch (error) {
           console.error('Flow 가져오기 오류:', error);
           alert('Flow 파일을 처리하는 중 오류가 발생했습니다.');

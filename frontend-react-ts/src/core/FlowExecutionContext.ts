@@ -160,7 +160,17 @@ export class FlowExecutionContext implements ExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
-        // Editor 모드: data만 반환
+        // Editor 모드: useNodePropertyStore에서 최신 설정을 가져옴
+        try {
+          const { getNodeProperty } = require('../store/useNodePropertyStore');
+          const storeProperty = getNodeProperty(nodeId);
+          if (storeProperty && typeof storeProperty === 'object') {
+            return storeProperty;
+          }
+        } catch (e) {
+          console.warn('[createForEditor] Failed to get property from store:', e);
+        }
+        // fallback to node.data
         const node = flowData.nodes.find(n => n.id === nodeId);
         return node && (node as any).data ? (node as any).data : {};
       },
@@ -201,27 +211,77 @@ export class FlowExecutionContext implements ExecutionContext {
     return new FlowExecutionContext(
       executionId,
       (nodeId) => {
-        // Executor 모드: property만 반환
+        // Executor 모드: Flow Executor store에서 data 필드를 property로 사용
         try {
           if (flowChainId && flowId) {
-            const { useFlowExecutorStore } = require('../store/useFlowExecutorStore');
-            const store = useFlowExecutorStore.getState();
-            const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
-            const storeProperty = nodeMap?.[nodeId]?.property;
-            if (storeProperty && typeof storeProperty === 'object' && 'prompt' in storeProperty) {
-              return storeProperty;
+            // ✅ ES6 동적 import 사용 - require 에러 해결
+            import('../store/useFlowExecutorStore').then(({ useFlowExecutorStore }) => {
+              const store = useFlowExecutorStore.getState();
+              const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
+              const storeProperty = nodeMap?.[nodeId]?.data;
+              
+              // HTML Parser 노드의 경우 상세 디버깅
+              if (nodeId.includes('html-parser')) {
+                console.log(`[createForExecutor] HTML Parser ${nodeId} store lookup:`, {
+                  flowChainId,
+                  flowId,
+                  hasFlowChainMap: !!store.flowChainMap,
+                  hasChain: !!store.flowChainMap?.[flowChainId],
+                  hasFlow: !!store.flowChainMap?.[flowChainId]?.flowMap?.[flowId],
+                  hasNodeMap: !!store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap,
+                  hasNode: !!nodeMap?.[nodeId],
+                  nodeKeys: nodeMap?.[nodeId] ? Object.keys(nodeMap[nodeId]) : 'no node',
+                  storePropertyKeys: storeProperty ? Object.keys(storeProperty) : 'no storeProperty',
+                  extractionRulesLength: (storeProperty as any)?.extractionRules?.length || 0,
+                  actualStoreProperty: storeProperty
+                });
+              }
+            }).catch(console.error);
+            
+            // ✅ 동기적 대체 방법: 전역 store 직접 접근
+            if (typeof window !== 'undefined' && (window as any).__FLOW_EXECUTOR_STORE__) {
+              const store = (window as any).__FLOW_EXECUTOR_STORE__.getState();
+              const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
+              const storeProperty = nodeMap?.[nodeId]?.data;
+              
+              if (nodeId.includes('html-parser')) {
+                console.log(`[createForExecutor] HTML Parser ${nodeId} global store lookup:`, {
+                  hasGlobalStore: true,
+                  storePropertyKeys: storeProperty ? Object.keys(storeProperty) : 'no storeProperty',
+                  extractionRulesLength: (storeProperty as any)?.extractionRules?.length || 0,
+                  actualStoreProperty: storeProperty
+                });
+              }
+              
+              if (storeProperty && typeof storeProperty === 'object') {
+                return storeProperty;
+              }
             }
           }
-        } catch (e) {}
-        // property가 없으면 빈 객체 반환 (data로 fallback하지 않음)
+        } catch (e) {
+          console.error(`[createForExecutor] Error retrieving node ${nodeId}:`, e);
+        }
+        
+        // ✅ fallback을 buildGraphStructure에서 설정한 데이터로 변경
         const node = flowData.nodes.find(n => n.id === nodeId);
-        if (node && (node as any).property && 'prompt' in (node as any).property) return (node as any).property;
-        return {};
+        // buildGraphStructure에서 이미 올바른 데이터가 node.data에 설정되어 있어야 함
+        const fallbackData = node && node.data && typeof node.data === 'object' ? node.data : {};
+        
+        if (nodeId.includes('html-parser')) {
+          console.log(`[createForExecutor] HTML Parser ${nodeId} fallback:`, {
+            hasNode: !!node,
+            nodeDataKeys: node?.data ? Object.keys(node.data) : 'no node.data',
+            fallbackExtractionRules: (fallbackData as any)?.extractionRules?.length || 0,
+            actualFallbackData: fallbackData
+          });
+        }
+        
+        return fallbackData;
       },
       flowData.nodes,
       flowData.edges,
-      nodeFactory || globalNodeFactory, // 항상 싱글턴 사용
-      true, // isExecutorContext 플래그
+      nodeFactory || globalNodeFactory,
+      true,
       flowChainId,
       flowId,
       undefined,
@@ -459,5 +519,21 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   markNodeExecuted(nodeId: string): void {
     this.executedNodeIds.add(nodeId);
+  }
+
+  /**
+   * Set node state change callback
+   * @param callback Callback function for node state changes
+   */
+  setNodeStateChangeCallback(callback: (nodeId: string, status: 'init' | 'running' | 'success' | 'error', result?: any, error?: any) => void): void {
+    this.onNodeStateChange = callback;
+  }
+
+  /**
+   * Set store output callback
+   * @param callback Callback function for node output storage
+   */
+  setStoreOutputCallback(callback: (nodeId: string, output: any) => void): void {
+    this.onStoreOutput = callback;
   }
 } 

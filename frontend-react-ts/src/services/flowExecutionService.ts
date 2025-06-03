@@ -349,11 +349,49 @@ class ExecutorFlowExecutor extends FlowExecutor {
     if (!chainId || !flowId) {
       throw new Error('chainId and flowId are required for ExecutorFlowExecutor context');
     }
-    // 실행기용 컨텍스트 생성
+    
+    // ✅ Flow Executor store에서 실제 노드 데이터를 미리 가져와서 flowJson.nodes를 업데이트
+    try {
+      const store = useFlowExecutorStore.getState();
+      const nodeMap = store.flowChainMap?.[chainId]?.flowMap?.[flowId]?.nodeMap;
+      
+      if (nodeMap) {
+        // flowJson.nodes의 data 필드를 store의 data로 업데이트
+        const updatedNodes = flowJson.nodes.map(node => {
+          const storeNode = nodeMap[node.id];
+          if (storeNode && storeNode.data && typeof storeNode.data === 'object') {
+            console.log(`[ExecutorFlowExecutor] Updated node ${node.id} data from store:`, {
+              originalKeys: node.data ? Object.keys(node.data) : 'no data',
+              storeKeys: Object.keys(storeNode.data),
+              ...(node.id.includes('html-parser') && {
+                originalExtractionRules: (node.data as any)?.extractionRules?.length || 0,
+                storeExtractionRules: (storeNode.data as any)?.extractionRules?.length || 0
+              })
+            });
+            
+            return {
+              ...node,
+              data: storeNode.data  // ✅ store의 데이터로 교체
+            };
+          }
+          return node;
+        });
+        
+        // 업데이트된 flowJson 생성
+        flowJson = {
+          ...flowJson,
+          nodes: updatedNodes
+        };
+      }
+    } catch (error) {
+      console.error('[ExecutorFlowExecutor] Error updating flowJson with store data:', error);
+    }
+    
+    // 업데이트된 flowJson으로 실행기용 컨텍스트 생성
     return FlowExecutionContext.createForExecutor(
       executionId, 
       flowJson, 
-      undefined, // nodeFactory는 context 내부에서 기본값으로 생성됨
+      undefined,
       chainId, 
       flowId
     );

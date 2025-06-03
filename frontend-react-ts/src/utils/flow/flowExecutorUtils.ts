@@ -118,7 +118,7 @@ export function importFlowChainToExecutor(flowChainData: any) {
     (flowData.nodes || []).forEach((node: any) => {
       nodeMap[node.id] = {
         ...node,
-        ...(flowChainData.contents?.[node.id] || {})
+        property: flowChainData.contents?.[node.id] || flowData.contents?.[node.id] || node.data || {}
       };
     });
     const flowName = flowData.name || `Flow-${newFlowId}`;
@@ -145,14 +145,46 @@ export function importFlowChainToExecutor(flowChainData: any) {
 // 단일 Flow를 Executor에 import (새 flowId)
 export function importFlowToFlowChain(flowChainId: string, flowData: FlowData) {
   const store = useFlowExecutorStore.getState();
+  const nodeFactory = store.nodeFactory;
   const newFlowId = `flow-${uuidv4()}`;
-  const nodeMap: Record<string, any> = {};
-  (flowData.nodes || []).forEach((node: any) => {
-    nodeMap[node.id] = {
+  
+  console.log(`[importFlowToFlowChain] Importing flow with ${flowData.nodes?.length || 0} nodes`);
+  console.log(`[importFlowToFlowChain] flowData.contents keys:`, Object.keys(flowData.contents || {}));
+  
+  // 노드의 data 필드를 contents에서 가져온 property로 교체
+  const nodesWithUpdatedData = (flowData.nodes || []).map((node: any) => {
+    const contentsProperty = flowData.contents?.[node.id];
+    const nodeDataProperty = node.data;
+    const finalProperty = contentsProperty || nodeDataProperty || {};
+    
+    console.log(`[importFlowToFlowChain] Node ${node.id} (${node.type}):`, {
+      contentsProperty: contentsProperty ? Object.keys(contentsProperty) : 'none',
+      nodeDataProperty: nodeDataProperty ? Object.keys(nodeDataProperty) : 'none',
+      finalProperty: finalProperty ? Object.keys(finalProperty) : 'none',
+      // ✅ HTML Parser의 경우 extractionRules 상세 정보 추가
+      ...(node.type === 'html-parser' && {
+        contentsExtractionRules: contentsProperty?.extractionRules?.length || 0,
+        nodeDataExtractionRules: nodeDataProperty?.extractionRules?.length || 0,
+        finalExtractionRules: finalProperty?.extractionRules?.length || 0,
+        actualContentsProperty: contentsProperty,
+        actualNodeDataProperty: nodeDataProperty,
+        actualFinalProperty: finalProperty
+      })
+    });
+    
+    return {
       ...node,
-      ...(flowData.contents?.[node.id] || {})
+      data: finalProperty  // ✅ data 필드에 최종 property 설정
     };
   });
+  
+  // buildGraphStructure를 사용하여 완전한 Flow 객체 생성
+  const { nodeMap, graphRelations, nodeInstances, rootIds, leafIds } = buildGraphStructure(
+    nodesWithUpdatedData,
+    flowData.edges || [],
+    nodeFactory
+  );
+  
   const flowName = flowData.name || `Flow-${newFlowId}`;
   store.addFlowToFlowChain(flowChainId, {
     id: newFlowId,
@@ -160,15 +192,16 @@ export function importFlowToFlowChain(flowChainId: string, flowData: FlowData) {
     name: flowName,
     flowJson: flowData,
     nodeMap,
+    graphMap: graphRelations,
+    nodeInstances,
+    rootIds,
+    leafIds,
     inputs: [],
     lastResults: null,
     status: 'idle',
     error: undefined,
-    graphMap: {},
-    nodeInstances: {},
-    rootIds: [],
-    leafIds: [],
     nodeStates: {},
   });
+  
   return newFlowId;
 } 
