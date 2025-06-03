@@ -198,7 +198,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
           </button>
           </div>
         {expanded && (
-          <div className="p-2 bg-gray-50 rounded border border-gray-200 max-h-80 overflow-y-auto mt-1">
+          <div className="p-2 bg-white rounded border border-gray-200 max-h-80 overflow-y-auto mt-1">
             <button
               onClick={() => toggleNodeViewMode(nodeId)}
               className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-xs mr-2"
@@ -300,7 +300,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
               )}
             </button>
           </div>
-          <div className="p-3 bg-gray-50 rounded border border-gray-200 max-h-96 overflow-y-auto">
+          <div className="p-3 bg-white rounded border border-gray-200 max-h-96 overflow-y-auto">
             {joinViewMode === 'markdown' ? (
               <div className="markdown-content"><ReactMarkdown>{joined}</ReactMarkdown></div>
             ) : (
@@ -336,7 +336,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
             )}
           </button>
         </div>
-        <pre className="p-3 bg-gray-50 rounded border border-gray-200 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
+        <pre className="p-3 bg-white rounded border border-gray-200 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
           {JSON.stringify(result, null, 2)}
         </pre>
       </>

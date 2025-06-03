@@ -6,6 +6,7 @@ import { NodeFactory, globalNodeFactory } from '../core/NodeFactory';
 import { Node as BaseNode } from '../core/Node';
 import { buildGraphStructure } from '../utils/flow/flowExecutorUtils';
 import { deepClone } from '../utils/helpers';
+import { type InputRow } from '../types/flow/InputRow';
 
 // 실행 상태 타입
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error';
@@ -37,6 +38,13 @@ export interface FlowNodeExecutionState {
   error?: string;
 }
 
+// 실행 모드 설정
+export interface FlowExecutionConfig {
+  mode: 'batch' | 'forEach';
+  commonInputs: InputRow[];
+  forEachItems: InputRow[];
+}
+
 // Flow 하나의 정보 (그래프 정보 포함)
 export interface Flow {
   id: string;
@@ -47,6 +55,7 @@ export interface Flow {
   lastResults: any[] | null;
   status: ExecutionStatus;
   error?: string;
+  executionConfig?: FlowExecutionConfig; // 실행 모드 설정 추가
   // 그래프 구조 정보
   nodeMap: Record<string, GraphNode>;
   graphMap: Record<string, NodeRelation>;
@@ -93,6 +102,7 @@ export interface FlowExecutorState {
   setFlowResult: (flowChainId: string, flowId: string, results: any[]) => void;
   moveFlow: (flowChainId: string, flowId: string, direction: 'up' | 'down') => void;
   setFlowName: (flowChainId: string, flowId: string, name: string) => void;
+  setFlowExecutionConfig: (flowChainId: string, flowId: string, config: FlowExecutionConfig) => void;
   
   // 노드 상태 관련 액션
   setFlowNodeState: (flowChainId: string, flowId: string, nodeId: string, nodeState: FlowNodeExecutionState) => void;
@@ -559,6 +569,27 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
         if (!state.focusedFlowChainId) return undefined;
         
         return state.flowChainMap[state.focusedFlowChainId];
+      },
+      
+      setFlowExecutionConfig: (flowChainId, flowId, config) => {
+        set((state) => {
+          if (!state.flowChainMap[flowChainId] || !state.flowChainMap[flowChainId].flowMap[flowId]) return state;
+          return {
+            flowChainMap: {
+              ...state.flowChainMap,
+              [flowChainId]: {
+                ...state.flowChainMap[flowChainId],
+                flowMap: {
+                  ...state.flowChainMap[flowChainId].flowMap,
+                  [flowId]: {
+                    ...state.flowChainMap[flowChainId].flowMap[flowId],
+                    executionConfig: config
+                  }
+                }
+              }
+            }
+          };
+        });
       }
     }),
     {
@@ -585,4 +616,5 @@ export const resetFlowGraphs = () => useFlowExecutorStore.getState().resetFlowGr
 export const getFlow = (flowChainId: string, flowId: string) => useFlowExecutorStore.getState().getFlow(flowChainId, flowId);
 export const getFlowChain = (flowChainId: string) => useFlowExecutorStore.getState().getFlowChain(flowChainId);
 export const getFocusedFlowChain = () => useFlowExecutorStore.getState().getFocusedFlowChain();
-export const setFlowChainStatus = (flowChainId: string, status: ExecutionStatus, error?: string) => useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, status, error); 
+export const setFlowChainStatus = (flowChainId: string, status: ExecutionStatus, error?: string) => useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, status, error);
+export const setFlowExecutionConfig = (flowChainId: string, flowId: string, config: FlowExecutionConfig) => useFlowExecutorStore.getState().setFlowExecutionConfig(flowChainId, flowId, config); 

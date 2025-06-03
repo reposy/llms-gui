@@ -24,16 +24,42 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
     try {
       store.setFlowStatus(flowChainId, flowId, 'running');
       
-      // FlowInputForm에서 실행용 입력 데이터 가져오기 (flow-result -> 실제 데이터 변환됨)
-      const executableInputs = flowInputFormRef.current?.getFinalInputData() || flow.inputs;
-      console.log('[FlowDetailModal] 실행용 입력:', executableInputs);
+      // FlowInputForm에서 실행 모드 정보 가져오기 (현재 편집 중인 경우)
+      let executionMode = flowInputFormRef.current?.getExecutionMode();
+      let commonInputs = flowInputFormRef.current?.getCommonInputs();
+      let forEachItems = flowInputFormRef.current?.getForEachItems();
+      let executableInputs = flowInputFormRef.current?.getExecutableInputs();
+      
+      // FlowInputForm에서 데이터를 가져올 수 없는 경우, 저장된 설정 사용
+      if (!executionMode && flow.executionConfig) {
+        executionMode = flow.executionConfig.mode;
+        commonInputs = flow.executionConfig.commonInputs || [];
+        forEachItems = flow.executionConfig.forEachItems || [];
+      }
+      
+      // 기본값 설정
+      executionMode = executionMode || 'batch';
+      commonInputs = commonInputs || [];
+      forEachItems = forEachItems || [];
+      executableInputs = executableInputs || flow.inputs;
+      
+      console.log('[FlowDetailModal] 실행 모드:', executionMode);
+      console.log('[FlowDetailModal] 실행용 입력:', { 
+        mode: executionMode, 
+        executableInputs, 
+        commonInputs, 
+        forEachItems 
+      });
       
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: executableInputs, // 변환된 입력 데이터 사용
+        inputs: executionMode === 'forEach' ? forEachItems : executableInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
       });
+      
       if (response.status === 'success') {
         store.setFlowStatus(flowChainId, flowId, 'success');
         store.setFlowResult(flowChainId, flowId, response.outputs);
@@ -92,7 +118,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
           </div>
         </div>
         {/* 모달 내용 */}
-        <div className="flex-grow overflow-auto p-4">
+        <div className="flex-grow overflow-auto p-4 bg-gray-50">
           <div className="grid grid-cols-1 gap-4">
             {/* Flow 입력 폼 */}
             <div className="col-span-1">

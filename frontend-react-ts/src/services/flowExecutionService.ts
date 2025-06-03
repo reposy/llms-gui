@@ -16,6 +16,9 @@ export interface NodeResult {
   result?: any;
 }
 
+// 실행 모드 타입 정의
+export type ExecutionMode = 'batch' | 'forEach';
+
 // 코드 흐름 개선: 실행을 위한 공통 인터페이스 정의
 export interface ExecuteFlowParams {
   flowJson: FlowData;
@@ -24,6 +27,9 @@ export interface ExecuteFlowParams {
   flowChainId?: string;
   onComplete?: (outputs: any) => void;
   onNodeStateChange?: (nodeId: string, status: string, result?: any, error?: string) => void;
+  // ForEach 실행 모드 지원
+  executionMode?: ExecutionMode; // 기본값: 'batch'
+  commonInputs?: any[]; // forEach 모드에서 사용할 공통 입력
 }
 
 export interface ExecutionResponse {
@@ -225,11 +231,11 @@ class FlowExecutor {
    * @returns 실행 응답
    */
   async execute(params: ExecuteFlowParams): Promise<ExecutionResponse> {
-    const { flowJson, inputs, flowId, flowChainId: chainId } = params;
+    const { flowJson, inputs, flowId, flowChainId: chainId, executionMode = 'batch', commonInputs = [] } = params;
     const executionId = `exec-${uuidv4()}`;
     
     try {
-      console.log(`[FlowExecutor] Executing flow: ${flowId}${chainId ? ` (chain: ${chainId})` : ''}`);
+      console.log(`[FlowExecutor] Executing flow: ${flowId}${chainId ? ` (chain: ${chainId})` : ''}, mode: ${executionMode}`);
       
       // 루트 노드 찾기
       const rootNodes = this.findRootNodes(flowJson);
@@ -237,32 +243,83 @@ class FlowExecutor {
       if (rootNodes.length === 0) {
         throw new Error("No root nodes found in flow");
       }
-      
-      // 실행 컨텍스트 생성
-      const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
-      
-      // 입력 설정
-      context.setInputs(inputs);
-      
-      // 루트 노드부터 실행
-      await this.executeRootNodes(rootNodes, inputs, context);
-      
-      // 결과 수집 및 반환
-      const outputs = getAllOutputs(context);
-      
-      // 콜백 알림
-      if (params.onComplete) {
-        params.onComplete(outputs);
+
+      if (executionMode === 'forEach') {
+        // ForEach 모드: 각 input에 대해 순차적으로 플로우 실행
+        console.log(`[FlowExecutor] ForEach mode: processing ${inputs.length} inputs sequentially`);
+        const allResults: any[] = [];
+        
+        for (let i = 0; i < inputs.length; i++) {
+          const currentInput = inputs[i];
+          const combinedInputs = [...commonInputs, currentInput];
+          
+          console.log(`[FlowExecutor] Processing item ${i + 1}/${inputs.length}:`, { currentInput, combinedInputs });
+          
+          // 실행 컨텍스트 생성 (각 실행마다 새로운 컨텍스트)
+          const context = this.createExecutionContext(`${executionId}-${i}`, flowJson, chainId, flowId);
+          
+          // 입력 설정
+          context.setInputs(combinedInputs);
+          
+          // 루트 노드부터 실행
+          await this.executeRootNodes(rootNodes, combinedInputs, context);
+          
+          // 결과 수집
+          const outputs = getAllOutputs(context);
+          
+          // 결과를 flat하게 수집: [...result1, ...result2, ...result3]
+          if (Array.isArray(outputs)) {
+            allResults.push(...outputs);
+          } else if (outputs) {
+            allResults.push(outputs);
+          }
+        }
+        
+        console.log(`[FlowExecutor] ForEach mode completed. Total results: ${allResults.length}`);
+        
+        // 콜백 알림
+        if (params.onComplete) {
+          params.onComplete(allResults);
+        }
+        
+        // 등록된 콜백에 알림
+        notifyResultCallbacks(flowId, allResults);
+        
+        return {
+          executionId,
+          outputs: allResults,
+          status: 'success'
+        };
+      } else {
+        // Batch 모드: 기존 방식
+        console.log(`[FlowExecutor] Batch mode: processing all inputs together`);
+        
+        // 실행 컨텍스트 생성
+        const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
+        
+        // 입력 설정
+        context.setInputs(inputs);
+        
+        // 루트 노드부터 실행
+        await this.executeRootNodes(rootNodes, inputs, context);
+        
+        // 결과 수집 및 반환
+        const outputs = getAllOutputs(context);
+        
+        // 콜백 알림
+        if (params.onComplete) {
+          params.onComplete(outputs);
+        }
+        
+        // 등록된 콜백에 알림
+        notifyResultCallbacks(flowId, outputs);
+        
+        return {
+          executionId,
+          outputs,
+          status: 'success'
+        };
       }
-      
-      // 등록된 콜백에 알림
-      notifyResultCallbacks(flowId, outputs);
-      
-      return {
-        executionId,
-        outputs,
-        status: 'success'
-      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[FlowExecutor] Error executing flow ${flowId}:`, errorMessage);

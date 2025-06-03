@@ -15,6 +15,33 @@ interface FlowChainDetailsViewProps {
   onImportFlow: () => void;
 }
 
+// Execution Mode Badge Component
+const ExecutionModeBadge: React.FC<{ mode: 'batch' | 'forEach' }> = ({ mode }) => {
+  if (mode === 'forEach') {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+        ForEach
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+      Batch
+    </span>
+  );
+};
+
+// Helper function to determine execution mode from flow inputs
+const getFlowExecutionMode = (flow: any): 'batch' | 'forEach' => {
+  // Check if flow has execution mode configuration stored in executionConfig
+  if (flow.executionConfig && flow.executionConfig.mode) {
+    return flow.executionConfig.mode;
+  }
+  
+  // Default to batch mode
+  return 'batch';
+};
+
 // Reusable, extensible large checkbox component using SVG
 const ExecutorCheckbox = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => {
   const { checked, className, ...rest } = props;
@@ -119,13 +146,22 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
       });
     }
     
+    // 실행 모드 정보 가져오기
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
+    
+    console.log(`[FlowChainDetailsView] Executing flow ${flowId} in ${executionMode} mode`);
+    
     useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, 'running');
     try {
       const result = await executeFlowExecutor({
         flowId: flowId,
         flowChainId: flowChainId,
         flowJson: flow.flowJson,
-        inputs: execInputs
+        inputs: executionMode === 'forEach' ? forEachItems : execInputs,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
       });
       useFlowExecutorStore.getState().setFlowResult(flowChainId, flowId, result.outputs || []);
       useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, result.status === 'success' ? 'success' : 'error', result.error);
@@ -282,12 +318,15 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                         </button>
                       </div>
                     )}
-                    <p className="text-xs text-gray-500 truncate">
-                      {flow.status === 'error' && flow.error ? <span className="text-red-500">Error: {flow.error}</span> : 
-                        (flow.lastResults ? `${Array.isArray(flow.lastResults) ? flow.lastResults.length : 1} result(s)` : 'No results')}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-gray-500 truncate">
+                        {flow.status === 'error' && flow.error ? <span className="text-red-500">Error: {flow.error}</span> : 
+                          (flow.lastResults ? `${Array.isArray(flow.lastResults) ? flow.lastResults.length : 1} result(s)` : 'No results')}
+                      </p>
+                    </div>
                   </div>
                   <div className="ml-2 flex-shrink-0 flex items-center space-x-1 opacity-100 transition-opacity duration-150">
+                    <ExecutionModeBadge mode={getFlowExecutionMode(flow)} />
                     <button
                       onClick={e => { e.stopPropagation(); handleExecuteFlow(flowId); }}
                       className={`p-1.5 rounded-md transition-colors duration-150 ${executingFlowId === flowId ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-100'}`}
