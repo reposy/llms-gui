@@ -143,7 +143,7 @@ export function importFlowChainToExecutor(flowChainData: any) {
 }
 
 // 단일 Flow를 Executor에 import (새 flowId)
-export function importFlowToFlowChain(flowChainId: string, flowData: FlowData) {
+export function importFlowToFlowChain(flowChainId: string, flowData: FlowData, filename?: string) {
   const store = useFlowExecutorStore.getState();
   const nodeFactory = store.nodeFactory;
   const newFlowId = `flow-${uuidv4()}`;
@@ -185,7 +185,19 @@ export function importFlowToFlowChain(flowChainId: string, flowData: FlowData) {
     nodeFactory
   );
   
-  const flowName = flowData.name || `Flow-${newFlowId}`;
+  // ✅ Flow 이름을 "Flow - {파일이름}, {시간대}" 형태로 생성
+  let flowName: string;
+  if (filename) {
+    // 파일 확장자 제거
+    const nameWithoutExtension = filename.replace(/\.[^/.]+$/, '');
+    // 현재 시간을 로케일 형식으로 포맷
+    const timestamp = new Date().toLocaleString();
+    flowName = `Flow - ${nameWithoutExtension}, ${timestamp}`;
+  } else {
+    // 기존 로직 유지 (filename이 없는 경우)
+    flowName = flowData.name || `Flow-${newFlowId}`;
+  }
+  
   store.addFlowToFlowChain(flowChainId, {
     id: newFlowId,
     flowChainId,

@@ -6,12 +6,13 @@ import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import ExportModal from '../components/executor/ExportModal';
 import ExecutorPanel from '../components/executor/ExecutorPanel';
 import StageNavigationBar from '../components/executor/stages/StageNavigationBar';
-import { importFlowToFlowChain } from '../utils/flow/flowExecutorUtils';
 import FlowDetailModal from '../components/executor/FlowDetailModal';
 import { executeChain } from '../services/flowExecutionService';
+import { useImportService } from '../hooks/useImportService';
 
 const FlowExecutorPage: React.FC = () => {
   const store = useFlowExecutorStore();
+  const { openFileImport } = useImportService();
   const flowChainIds = store.flowChainIds;
   const flowChainMap = store.flowChainMap;
   const focusedFlowChainId = store.focusedFlowChainId;
@@ -39,27 +40,23 @@ const FlowExecutorPage: React.FC = () => {
   };
 
   const handleImportFlow = () => {
-    if (!focusedFlowChainId) return;
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const json = event.target?.result as string;
-          const flowData = JSON.parse(json);
-          importFlowToFlowChain(focusedFlowChainId, flowData);
-        } catch (error) {
-          console.error('Flow 가져오기 오류:', error);
-          alert('Flow 파일을 처리하는 중 오류가 발생했습니다.');
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
+    if (!focusedFlowChainId) {
+      alert('Flow를 추가할 FlowChain을 먼저 선택해주세요.');
+      return;
+    }
+    
+    // ✅ 중앙화된 Import 서비스 사용
+    openFileImport({
+      targetChainId: focusedFlowChainId,
+      onSuccess: (result) => {
+        console.log(`[FlowExecutorPage] Import 성공:`, result);
+        // 성공 시 추가 로직 (예: 토스트 알림)
+      },
+      onError: (error) => {
+        console.error('[FlowExecutorPage] Import 실패:', error);
+        alert(`Flow 가져오기 실패: ${error.message}`);
+      }
+    });
   };
 
   const handleClearAll = () => {

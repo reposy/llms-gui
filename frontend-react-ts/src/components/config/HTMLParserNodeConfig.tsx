@@ -373,17 +373,17 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     if (!temporaryRule) return;
     
     // 임시 룰 저장
-    if (editingRuleIndex !== null) {
+      if (editingRuleIndex !== null) {
       // 기존 룰 업데이트
-      updateExtractionRule(editingRuleIndex, temporaryRule);
-    } else {
+        updateExtractionRule(editingRuleIndex, temporaryRule);
+      } else {
       // 새 룰 추가
-      addExtractionRule(temporaryRule);
-    }
+        addExtractionRule(temporaryRule);
+      }
     
     // 임시 상태 정리
-    setTemporaryRule(null);
-    setEditingRuleIndex(null);
+      setTemporaryRule(null);
+      setEditingRuleIndex(null);
   };
 
   const handleEditRule = (index: number) => {
@@ -1277,9 +1277,9 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
               <p><strong>🔗 속성 추출:</strong> href, src, alt 등의 속성명을 입력하세요.</p>
               <p><strong>📊 다중 선택:</strong> 체크하면 매칭된 모든 요소를 배열로 반환합니다.</p>
               <p><strong>🎨 HTML 탐색:</strong> 실제 DOM 구조를 보면서 정확한 요소를 선택할 수 있습니다.</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
           {/* Rule List (Always Visible) */}
           {!content?.extractionRules || content.extractionRules.length === 0 ? (
