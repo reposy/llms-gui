@@ -90,22 +90,42 @@ const FlowExecutorPage: React.FC = () => {
 
   const handleExportWithFilename = (filename: string, includeData: boolean) => {
     try {
+      // 모든 Flow Chain 데이터를 export 형식으로 변환
       const exportData = {
-        version: '1.1',
-        chains: flowChainMap,
-        flows: selectedChain?.flowMap || {}
+        version: '1.2',
+        timestamp: new Date().toISOString(),
+        flowChains: Object.keys(flowChainMap).map(chainId => {
+          const chain = flowChainMap[chainId];
+          
+          // Flow 데이터 준비 - includeData 플래그에 따라 lastResults 포함/제외
+          const flowMap: Record<string, any> = {};
+          chain.flowIds.forEach(flowId => {
+            const flow = chain.flowMap[flowId];
+            if (flow) {
+              flowMap[flowId] = {
+                id: flow.id,
+                name: flow.name,
+                flowJson: flow.flowJson,
+                inputs: flow.inputs || [],
+                status: flow.status,
+                ...(includeData && { lastResults: flow.lastResults }),
+                ...(flow.error && { error: flow.error })
+              };
+            }
+          });
+          
+          return {
+            id: chain.id,
+            name: chain.name,
+            status: chain.status,
+            flowIds: chain.flowIds,
+            selectedFlowIds: chain.selectedFlowIds || [],
+            flowMap,
+            ...(chain.inputs && { inputs: chain.inputs }),
+            ...(chain.error && { error: chain.error })
+          };
+        })
       };
-      
-      if (!includeData) {
-        // 데이터 제외 시 복사본 생성하여 결과 데이터 제거
-        const dataWithoutResults = JSON.parse(JSON.stringify(exportData));
-        Object.keys(dataWithoutResults.flows).forEach(flowId => {
-          dataWithoutResults.flows[flowId].results = null;
-          dataWithoutResults.flows[flowId].inputs = [];
-        });
-        exportData.chains = dataWithoutResults.chains;
-        exportData.flows = dataWithoutResults.flows;
-      }
       
       const json = JSON.stringify(exportData, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -120,10 +140,10 @@ const FlowExecutorPage: React.FC = () => {
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      console.log(`[ExecutorPage] Flows exported successfully with ${includeData ? '' : 'no '}data`);
+      console.log(`[ExecutorPage] Flow Chains exported successfully with ${includeData ? '' : 'no '}data`);
     } catch (err) {
       console.error(`[ExecutorPage] Error exporting flows:`, err);
-      alert('Flows 내보내기 중 오류가 발생했습니다.');
+      alert('Flow Chain 내보내기 중 오류가 발생했습니다.');
     }
   };
 

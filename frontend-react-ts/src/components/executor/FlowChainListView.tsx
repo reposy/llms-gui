@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { useFlowExecutorStore, type FlowChain } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TrashIcon } from '@heroicons/react/20/solid';
 import { PlayIcon, PenLineIcon } from '../Icons';
@@ -52,7 +52,24 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
       alert('선택된 체인 정보를 찾을 수 없습니다.');
       return;
     }
-    const dataStr = JSON.stringify(flowChain, null, 2);
+    
+    // 새로운 export 형식으로 데이터 구성
+    const exportData = {
+      version: '1.2',
+      timestamp: new Date().toISOString(),
+      flowChains: [{
+        id: flowChain.id,
+        name: flowChain.name,
+        status: flowChain.status,
+        flowIds: flowChain.flowIds,
+        selectedFlowIds: flowChain.selectedFlowIds || [],
+        flowMap: flowChain.flowMap, // lastResults 포함된 전체 flow 데이터
+        ...(flowChain.inputs && { inputs: flowChain.inputs }),
+        ...(flowChain.error && { error: flowChain.error })
+      }]
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -77,10 +94,86 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
+        
+        // 새로운 형식 (v1.2) 처리
+        if (json.version === '1.2' && Array.isArray(json.flowChains)) {
+          console.log(`[FlowChainListView] 새로운 형식 (v${json.version}) 파일 가져오기`);
+          
+          json.flowChains.forEach((chainData: any) => {
+            try {
+              // ID 중복 확인 및 처리
+              let newId = chainData.id || `flowChain-${Date.now()}`;
+              if (flowChainMap[newId]) {
+                newId = `${chainData.id}-copy-${Date.now()}`;
+              }
+              
+              // 이름 중복 확인 및 처리
+              let newName = chainData.name || '가져온 체인';
+              if (Object.values(flowChainMap).some(c => c.name === newName)) {
+                newName = `${chainData.name} (복사본)`;
+              }
+              
+              // FlowChain 생성
+              const newFlowChain: FlowChain = {
+                id: newId,
+                name: newName,
+                status: 'idle', // 가져온 후엔 idle 상태로 초기화
+                selectedFlowIds: chainData.selectedFlowIds || [],
+                flowIds: chainData.flowIds || [],
+                flowMap: {},
+                inputs: chainData.inputs || []
+              };
+              
+              // Flow 데이터 처리
+              if (chainData.flowMap && typeof chainData.flowMap === 'object') {
+                Object.keys(chainData.flowMap).forEach(flowId => {
+                  const flowData = chainData.flowMap[flowId];
+                  if (flowData && flowData.flowJson) {
+                    newFlowChain.flowMap[flowId] = {
+                      id: flowData.id || flowId,
+                      flowChainId: newId,
+                      name: flowData.name || '가져온 Flow',
+                      flowJson: flowData.flowJson,
+                      inputs: flowData.inputs || [],
+                      lastResults: flowData.lastResults || null, // 실행 결과 포함
+                      status: 'idle', // 가져온 후엔 idle 상태로 초기화
+                      error: flowData.error,
+                      nodeMap: {},
+                      graphMap: {},
+                      nodeInstances: {},
+                      rootIds: [],
+                      leafIds: [],
+                      nodeStates: {}
+                    };
+                  }
+                });
+              }
+              
+              // Store에 추가
+              setStore(state => ({
+                flowChainMap: { ...state.flowChainMap, [newId]: newFlowChain },
+                flowChainIds: [...state.flowChainIds, newId],
+                focusedFlowChainId: newId
+              }));
+              
+              // 새로 추가된 체인 선택
+              onFlowChainSelect(newId);
+              
+            } catch (chainError) {
+              console.error(`[FlowChainListView] FlowChain 가져오기 실패:`, chainError);
+            }
+          });
+          
+          alert('Flow Chain이 성공적으로 가져왔습니다.');
+          return;
+        }
+        
+        // 기존 형식 처리 (단일 FlowChain 객체)
         if (!json.id || !json.name || !Array.isArray(json.flowIds) || typeof json.flowMap !== 'object') {
           alert('유효하지 않은 Flow Chain 데이터입니다.');
           return;
         }
+        
         let newId = json.id;
         if (flowChainMap[newId]) {
           newId = `${json.id}-copy-${Date.now()}`;
