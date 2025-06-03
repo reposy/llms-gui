@@ -93,8 +93,23 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     setEditMode(true);
   }, [flowId, propInputs]);
 
-  // 입력 변경 핸들러
+  // 입력 변경 핸들러 - editMode일 때는 draftInputs만 업데이트, 아닐 때는 store에도 반영
   const updateRows = (newRows: InputRow[]) => {
+    if (editMode) {
+      // 수정 모드일 때는 임시 상태만 업데이트
+      setDraftInputs(newRows);
+    } else {
+      // 수정 모드가 아닐 때는 바로 store에 반영
+      setRows(newRows);
+      if (onInputChange) onInputChange(newRows);
+      if (focusedFlowChainId && flowId) {
+        store.setFlowInputData(focusedFlowChainId, flowId, newRows);
+      }
+    }
+  };
+
+  // 수정 모드가 아닐 때 rows 직접 업데이트용 (저장 완료 후 사용)
+  const updateRowsToStore = (newRows: InputRow[]) => {
     setRows(newRows);
     if (onInputChange) onInputChange(newRows);
     if (focusedFlowChainId && flowId) {
@@ -104,18 +119,21 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   // Row 추가
   const addRow = (row?: InputRow) => {
-    updateRows([...rows, row || { type: 'text', value: '' }]);
+    const currentRows = editMode ? draftInputs : rows;
+    updateRows([...currentRows, row || { type: 'text', value: '' }]);
   };
 
   // Row 삭제
   const removeRow = (idx: number) => {
-    if (rows.length === 1) return;
-    updateRows(rows.filter((_, i) => i !== idx));
+    const currentRows = editMode ? draftInputs : rows;
+    if (currentRows.length === 1) return;
+    updateRows(currentRows.filter((_, i) => i !== idx));
   };
 
   // Row 이동
   const moveRow = (idx: number, dir: 'up' | 'down') => {
-    const newRows = [...rows];
+    const currentRows = editMode ? draftInputs : rows;
+    const newRows = [...currentRows];
     if (dir === 'up' && idx > 0) {
       [newRows[idx - 1], newRows[idx]] = [newRows[idx], newRows[idx - 1]];
     } else if (dir === 'down' && idx < newRows.length - 1) {
@@ -126,7 +144,8 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   // 타입 전환
   const setType = (idx: number, type: InputType) => {
-    const newRows = [...rows];
+    const currentRows = editMode ? draftInputs : rows;
+    const newRows = [...currentRows];
     if (type === 'file') newRows[idx] = { type, value: null };
     else if (type === 'flow-result') newRows[idx] = {
       type,
@@ -147,14 +166,16 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   // 파일 선택
   const handleFileChange = (idx: number, file: File | null) => {
-    const newRows = [...rows];
+    const currentRows = editMode ? draftInputs : rows;
+    const newRows = [...currentRows];
     newRows[idx] = { type: 'file', value: file };
     updateRows(newRows);
   };
 
   // 텍스트 입력
   const handleTextChange = (idx: number, value: string) => {
-    const newRows = [...rows];
+    const currentRows = editMode ? draftInputs : rows;
+    const newRows = [...currentRows];
     // 기존 row의 타입과 다른 속성들을 유지하면서 value만 업데이트
     newRows[idx] = { ...newRows[idx], value };
     updateRows(newRows);
@@ -162,7 +183,8 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   // Property 타입의 nodeType 변경 핸들러
   const handlePropertyNodeTypeChange = (idx: number, nodeType: string) => {
-    const newRows = [...rows];
+    const currentRows = editMode ? draftInputs : rows;
+    const newRows = [...currentRows];
     const template = getPropertyTemplate(nodeType);
     const newValue = createPropertyValue(nodeType, template);
     newRows[idx] = { ...newRows[idx], value: newValue };
@@ -182,7 +204,8 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      const newRows = [...rows];
+      const currentRows = editMode ? draftInputs : rows;
+      const newRows = [...currentRows];
       files.forEach((file, i) => {
         if (i === 0) newRows[idx] = { type: 'file', value: file };
         else newRows.push({ type: 'file', value: file });
@@ -194,20 +217,23 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   // 저장 버튼 클릭 시 store에 반영
   const handleSave = () => {
     setEditMode(false);
+    
+    // draftInputs를 실제 rows와 store에 반영
+    updateRowsToStore(draftInputs);
+    
     if (focusedFlowChainId && flowId) {
       console.log('[FlowInputForm] 저장 시점:', { chainId: focusedFlowChainId, flowId, draftInputs });
-      store.setFlowInputData(focusedFlowChainId, flowId, draftInputs);
       // 저장 직후 상태 확인
       setTimeout(() => {
         const updated = store.flowChainMap[focusedFlowChainId]?.flowMap[flowId]?.inputs;
         console.log('[FlowInputForm] 저장 후 store 상태:', updated);
       }, 100);
     }
-    if (onInputChange) onInputChange(draftInputs);
   };
 
   const handleCancel = () => {
     setEditMode(false);
+    // draftInputs를 원래 rows 상태로 되돌림
     setDraftInputs(rows);
   };
 
@@ -229,7 +255,10 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   // 실행을 위한 입력 데이터 변환 함수 (flow-result를 실제 데이터로 변환)
   const getExecutableInputs = (): any[] => {
-    return rows.map((row) => {
+    // editMode일 때는 draftInputs, 아닐 때는 rows 사용
+    const currentRows = editMode ? draftInputs : rows;
+    
+    return currentRows.map((row) => {
       if (row.type === 'flow-result') {
         return extractFlowResultText(row, flowChainMap);
       } else if (row.type === 'property') {
@@ -288,7 +317,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
         <div className="text-gray-400 text-sm flex-1">입력값을 추가하세요</div>
       </div>
       <div className="space-y-2 mb-4">
-      {rows.map((row, idx) => (
+      {(editMode ? draftInputs : rows).map((row, idx) => (
           <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
           {/* 타입 토글 */}
           <div className="flex gap-1">
