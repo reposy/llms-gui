@@ -193,7 +193,17 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
+    else if (type === 'property') newInputs[idx] = { type, value: '' };
     else newInputs[idx] = { type, value: '' };
+    updateRegularInputs(newInputs);
+  };
+
+  // Regular input Property 변경 핸들러
+  const handleRegularInputPropertyChange = (idx: number, nodeType: string, propertyValue: any) => {
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const newInputs = [...currentRegularInputs];
+    const newValue = serializeProperty(nodeType, propertyValue);
+    newInputs[idx] = { ...newInputs[idx], value: newValue };
     updateRegularInputs(newInputs);
   };
 
@@ -403,6 +413,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
+    else if (type === 'property') newInputs[idx] = { type, value: '' };
     else newInputs[idx] = { type, value: '' };
     setCommonInputs(newInputs);
   };
@@ -418,6 +429,14 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     if (!editMode) return;
     const newInputs = [...commonInputs];
     newInputs[idx] = { type: 'file', value: file };
+    setCommonInputs(newInputs);
+  };
+
+  const handleCommonInputPropertyChange = (idx: number, nodeType: string, propertyValue: any) => {
+    if (!editMode) return;
+    const newInputs = [...commonInputs];
+    const newValue = serializeProperty(nodeType, propertyValue);
+    newInputs[idx] = { ...newInputs[idx], value: newValue };
     setCommonInputs(newInputs);
   };
 
@@ -441,6 +460,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
+    else if (type === 'property') newItems[idx] = { type, value: '' };
     else newItems[idx] = { type, value: '' };
     setForEachItems(newItems);
   };
@@ -456,6 +476,14 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     if (!editMode) return;
     const newItems = [...forEachItems];
     newItems[idx] = { type: 'file', value: file };
+    setForEachItems(newItems);
+  };
+
+  const handleForEachItemPropertyChange = (idx: number, nodeType: string, propertyValue: any) => {
+    if (!editMode) return;
+    const newItems = [...forEachItems];
+    const newValue = serializeProperty(nodeType, propertyValue);
+    newItems[idx] = { ...newItems[idx], value: newValue };
     setForEachItems(newItems);
   };
 
@@ -560,6 +588,25 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                     >
                       + Flow Result
                     </button>
+                    <div className="border-l border-gray-300 mx-2"></div>
+                    <button 
+                      className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200 transition-colors"
+                      onClick={() => addCommonInput({ type: 'property', value: serializeProperty('llm', createDefaultProperty('llm')) })}
+                    >
+                      + LLM
+                    </button>
+                    <button 
+                      className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors"
+                      onClick={() => addCommonInput({ type: 'property', value: serializeProperty('api', createDefaultProperty('api')) })}
+                    >
+                      + API
+                    </button>
+                    <button 
+                      className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200 transition-colors"
+                      onClick={() => addCommonInput({ type: 'property', value: serializeProperty('web-crawler', createDefaultProperty('web-crawler')) })}
+                    >
+                      + Web Crawler
+                    </button>
                   </div>
                 )}
               </div>
@@ -576,6 +623,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                         <button type="button" className={`px-2 py-1 rounded text-xs ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setCommonInputType(idx, 'text')} disabled={!editMode}>Text</button>
                         <button type="button" className={`px-2 py-1 rounded text-xs ${row.type === 'file' ? 'bg-green-100 text-green-700' : 'bg-white border'}`} onClick={() => editMode && setCommonInputType(idx, 'file')} disabled={!editMode}>File</button>
                         <button type="button" className={`px-2 py-1 rounded text-xs ${row.type === 'flow-result' ? 'bg-purple-100 text-purple-700' : 'bg-white border'}`} onClick={() => editMode && setCommonInputType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+                        <button type="button" className={`px-2 py-1 rounded text-xs ${row.type === 'property' ? 'bg-orange-100 text-orange-700' : 'bg-white border'}`} onClick={() => editMode && setCommonInputType(idx, 'property')} disabled={!editMode}>Property</button>
                       </div>
                       
                       {/* 입력 UI */}
@@ -691,6 +739,49 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                         </div>
                       )}
                       
+                      {row.type === 'property' && (
+                        <div className="flex-1">
+                          {(() => {
+                            const parsed = parseProperty(row.value as string);
+                            if (!parsed) {
+                              return (
+                                <div className="text-red-600 text-sm p-2 border border-red-200 rounded bg-red-50">
+                                  잘못된 Property 형식
+                                </div>
+                              );
+                            }
+                            
+                            const { nodeType, property: propertyValue } = parsed;
+                            
+                            return (
+                              <div className="p-2 border border-gray-200 rounded bg-gray-50">
+                                {nodeType === 'llm' && (
+                                  <LLMPropertyForm
+                                    value={propertyValue as LLMProperty}
+                                    onChange={(newValue) => handleCommonInputPropertyChange(idx, 'llm', newValue)}
+                                    disabled={!editMode}
+                                  />
+                                )}
+                                {nodeType === 'api' && (
+                                  <APIPropertyForm
+                                    value={propertyValue as APIProperty}
+                                    onChange={(newValue) => handleCommonInputPropertyChange(idx, 'api', newValue)}
+                                    disabled={!editMode}
+                                  />
+                                )}
+                                {nodeType === 'web-crawler' && (
+                                  <WebCrawlerPropertyForm
+                                    value={propertyValue as WebCrawlerProperty}
+                                    onChange={(newValue) => handleCommonInputPropertyChange(idx, 'web-crawler', newValue)}
+                                    disabled={!editMode}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      
                       {editMode && (
                         <button 
                           onClick={() => removeCommonInput(idx)}
@@ -734,6 +825,25 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                     >
                       + Flow Result
                     </button>
+                    <div className="border-l border-gray-300 mx-2"></div>
+                    <button 
+                      className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200 transition-colors"
+                      onClick={() => addForEachItem({ type: 'property', value: serializeProperty('llm', createDefaultProperty('llm')) })}
+                    >
+                      + LLM
+                    </button>
+                    <button 
+                      className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200 transition-colors"
+                      onClick={() => addForEachItem({ type: 'property', value: serializeProperty('api', createDefaultProperty('api')) })}
+                    >
+                      + API
+                    </button>
+                    <button 
+                      className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200 transition-colors"
+                      onClick={() => addForEachItem({ type: 'property', value: serializeProperty('web-crawler', createDefaultProperty('web-crawler')) })}
+                    >
+                      + Web Crawler
+                    </button>
                   </div>
                 )}
               </div>
@@ -750,6 +860,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                         <button type="button" className={`px-2 py-1 rounded text-xs ${item.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setForEachItemType(idx, 'text')} disabled={!editMode}>Text</button>
                         <button type="button" className={`px-2 py-1 rounded text-xs ${item.type === 'file' ? 'bg-green-100 text-green-700' : 'bg-white border'}`} onClick={() => editMode && setForEachItemType(idx, 'file')} disabled={!editMode}>File</button>
                         <button type="button" className={`px-2 py-1 rounded text-xs ${item.type === 'flow-result' ? 'bg-purple-100 text-purple-700' : 'bg-white border'}`} onClick={() => editMode && setForEachItemType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+                        <button type="button" className={`px-2 py-1 rounded text-xs ${item.type === 'property' ? 'bg-orange-100 text-orange-700' : 'bg-white border'}`} onClick={() => editMode && setForEachItemType(idx, 'property')} disabled={!editMode}>Property</button>
                       </div>
                       
                       {/* 입력 UI */}
@@ -865,6 +976,49 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                         </div>
                       )}
                       
+                      {item.type === 'property' && (
+                        <div className="flex-1">
+                          {(() => {
+                            const parsed = parseProperty(item.value as string);
+                            if (!parsed) {
+                              return (
+                                <div className="text-red-600 text-sm p-2 border border-red-200 rounded bg-red-50">
+                                  잘못된 Property 형식
+                                </div>
+                              );
+                            }
+                            
+                            const { nodeType, property: propertyValue } = parsed;
+                            
+                            return (
+                              <div className="p-2 border border-gray-200 rounded bg-gray-50">
+                                {nodeType === 'llm' && (
+                                  <LLMPropertyForm
+                                    value={propertyValue as LLMProperty}
+                                    onChange={(newValue) => handleForEachItemPropertyChange(idx, 'llm', newValue)}
+                                    disabled={!editMode}
+                                  />
+                                )}
+                                {nodeType === 'api' && (
+                                  <APIPropertyForm
+                                    value={propertyValue as APIProperty}
+                                    onChange={(newValue) => handleForEachItemPropertyChange(idx, 'api', newValue)}
+                                    disabled={!editMode}
+                                  />
+                                )}
+                                {nodeType === 'web-crawler' && (
+                                  <WebCrawlerPropertyForm
+                                    value={propertyValue as WebCrawlerProperty}
+                                    onChange={(newValue) => handleForEachItemPropertyChange(idx, 'web-crawler', newValue)}
+                                    disabled={!editMode}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      
                       {editMode && (
                         <button 
                           onClick={() => removeForEachItem(idx)}
@@ -883,98 +1037,100 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
       </div>
       
       {/* ========== Property Section ========== */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-md font-medium text-gray-800">Node Properties</h3>
-          {editMode && (
-            <div className="flex gap-2">
-              <button 
-                className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm"
-                onClick={() => addProperty('llm')}
-              >
-                + LLM
-              </button>
-              <button 
-                className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm"
-                onClick={() => addProperty('api')}
-              >
-                + API
-              </button>
-              <button 
-                className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm"
-                onClick={() => addProperty('web-crawler')}
-              >
-                + Web Crawler
-              </button>
+      {executionMode === 'batch' && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-md font-medium text-gray-800">Node Properties</h3>
+            {editMode && (
+              <div className="flex gap-2">
+                <button 
+                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm"
+                  onClick={() => addProperty('llm')}
+                >
+                  + LLM
+                </button>
+                <button 
+                  className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm"
+                  onClick={() => addProperty('api')}
+                >
+                  + API
+                </button>
+                <button 
+                  className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm"
+                  onClick={() => addProperty('web-crawler')}
+                >
+                  + Web Crawler
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {(editMode ? draftProperties : properties).length === 0 ? (
+            <div className="text-gray-400 text-sm p-4 border-2 border-dashed border-gray-200 rounded text-center">
+              노드 속성이 없습니다. 위의 버튼을 클릭하여 추가하세요.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {(editMode ? draftProperties : properties).map((property, idx) => {
+                const parsed = parseProperty(property.value as string);
+                if (!parsed) {
+                  return (
+                    <div key={idx} className="p-4 border border-red-200 rounded bg-red-50">
+                      <div className="flex justify-between items-center">
+                        <span className="text-red-600 text-sm">잘못된 Property 형식</span>
+                        {editMode && (
+                          <button 
+                            onClick={() => removeProperty(idx)}
+                            className="text-red-600 hover:bg-red-100 p-1 rounded"
+                          >
+                            {TrashIcon}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const { nodeType, property: propertyValue } = parsed;
+                
+                return (
+                  <div key={idx} className="relative">
+                    {editMode && (
+                      <button 
+                        onClick={() => removeProperty(idx)}
+                        className="absolute top-2 right-2 z-10 text-red-600 hover:bg-red-100 p-1 rounded"
+                      >
+                        {TrashIcon}
+                      </button>
+                    )}
+                    {nodeType === 'llm' && (
+                      <LLMPropertyForm
+                        value={propertyValue as LLMProperty}
+                        onChange={(newValue) => handlePropertyChange(idx, 'llm', newValue)}
+                        disabled={!editMode}
+                      />
+                    )}
+                    {nodeType === 'api' && (
+                      <APIPropertyForm
+                        value={propertyValue as APIProperty}
+                        onChange={(newValue) => handlePropertyChange(idx, 'api', newValue)}
+                        disabled={!editMode}
+                      />
+                    )}
+                    {nodeType === 'web-crawler' && (
+                      <WebCrawlerPropertyForm
+                        value={propertyValue as WebCrawlerProperty}
+                        onChange={(newValue) => handlePropertyChange(idx, 'web-crawler', newValue)}
+                        disabled={!editMode}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-        
-        {(editMode ? draftProperties : properties).length === 0 ? (
-          <div className="text-gray-400 text-sm p-4 border-2 border-dashed border-gray-200 rounded text-center">
-            노드 속성이 없습니다. 위의 버튼을 클릭하여 추가하세요.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {(editMode ? draftProperties : properties).map((property, idx) => {
-              const parsed = parseProperty(property.value as string);
-              if (!parsed) {
-                return (
-                  <div key={idx} className="p-4 border border-red-200 rounded bg-red-50">
-                    <div className="flex justify-between items-center">
-                      <span className="text-red-600 text-sm">잘못된 Property 형식</span>
-                      {editMode && (
-                        <button 
-                          onClick={() => removeProperty(idx)}
-                          className="text-red-600 hover:bg-red-100 p-1 rounded"
-                        >
-                          {TrashIcon}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
-              const { nodeType, property: propertyValue } = parsed;
-              
-              return (
-                <div key={idx} className="relative">
-                  {editMode && (
-                    <button 
-                      onClick={() => removeProperty(idx)}
-                      className="absolute top-2 right-2 z-10 text-red-600 hover:bg-red-100 p-1 rounded"
-                    >
-                      {TrashIcon}
-                    </button>
-                  )}
-                  {nodeType === 'llm' && (
-                    <LLMPropertyForm
-                      value={propertyValue as LLMProperty}
-                      onChange={(newValue) => handlePropertyChange(idx, 'llm', newValue)}
-                      disabled={!editMode}
-                    />
-                  )}
-                  {nodeType === 'api' && (
-                    <APIPropertyForm
-                      value={propertyValue as APIProperty}
-                      onChange={(newValue) => handlePropertyChange(idx, 'api', newValue)}
-                      disabled={!editMode}
-                    />
-                  )}
-                  {nodeType === 'web-crawler' && (
-                    <WebCrawlerPropertyForm
-                      value={propertyValue as WebCrawlerProperty}
-                      onChange={(newValue) => handlePropertyChange(idx, 'web-crawler', newValue)}
-                      disabled={!editMode}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* ========== Input Data Section ========== */}
       {executionMode === 'batch' ? (
@@ -991,6 +1147,10 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                   flowChainId: focusedFlowChainId || undefined, 
                   sourceFlowId: flowId 
                 })} className="px-3 py-1 bg-purple-500 text-white rounded text-sm hover:bg-purple-600 transition-colors">+ Flow Result</button>
+                <div className="border-l border-gray-300 mx-2"></div>
+                <button type="button" onClick={() => addRegularInput({ type: 'property', value: serializeProperty('llm', createDefaultProperty('llm')) })} className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 transition-colors">+ LLM</button>
+                <button type="button" onClick={() => addRegularInput({ type: 'property', value: serializeProperty('api', createDefaultProperty('api')) })} className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200 transition-colors">+ API</button>
+                <button type="button" onClick={() => addRegularInput({ type: 'property', value: serializeProperty('web-crawler', createDefaultProperty('web-crawler')) })} className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm hover:bg-purple-200 transition-colors">+ Web Crawler</button>
               </div>
             )}
           </div>
@@ -1008,6 +1168,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                     setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
                   }} disabled={!editMode}>File</button>
                   <button type="button" className={`px-2 py-1 rounded text-sm ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setRegularInputType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
+                  <button type="button" className={`px-2 py-1 rounded text-sm ${row.type === 'property' ? 'bg-orange-100 text-orange-700' : 'bg-white border'}`} onClick={() => editMode && setRegularInputType(idx, 'property')} disabled={!editMode}>Property</button>
                 </div>
                 
                 {/* 입력 UI */}
@@ -1126,6 +1287,49 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
                         })()}
                       </select>
                     )}
+                  </div>
+                )}
+                
+                {row.type === 'property' && (
+                  <div className="flex-1">
+                    {(() => {
+                      const parsed = parseProperty(row.value as string);
+                      if (!parsed) {
+                        return (
+                          <div className="text-red-600 text-sm p-2 border border-red-200 rounded bg-red-50">
+                            잘못된 Property 형식
+                          </div>
+                        );
+                      }
+                      
+                      const { nodeType, property: propertyValue } = parsed;
+                      
+                      return (
+                        <div className="p-2 border border-gray-200 rounded bg-gray-50">
+                          {nodeType === 'llm' && (
+                            <LLMPropertyForm
+                              value={propertyValue as LLMProperty}
+                              onChange={(newValue) => handleRegularInputPropertyChange(idx, 'llm', newValue)}
+                              disabled={!editMode}
+                            />
+                          )}
+                          {nodeType === 'api' && (
+                            <APIPropertyForm
+                              value={propertyValue as APIProperty}
+                              onChange={(newValue) => handleRegularInputPropertyChange(idx, 'api', newValue)}
+                              disabled={!editMode}
+                            />
+                          )}
+                          {nodeType === 'web-crawler' && (
+                            <WebCrawlerPropertyForm
+                              value={propertyValue as WebCrawlerProperty}
+                              onChange={(newValue) => handleRegularInputPropertyChange(idx, 'web-crawler', newValue)}
+                              disabled={!editMode}
+                            />
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 
