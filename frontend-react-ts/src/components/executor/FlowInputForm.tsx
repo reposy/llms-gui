@@ -245,53 +245,53 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
                       );
                     })}
                 </select>
-                {/* 2단계: Flow 선택 (해당 체인에 selectedFlowIds가 있으면) */}
+                {/* 2단계: Flow 선택 */}
                 {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && (
-                  flowChainMap[String(row.flowChainId || '')].selectedFlowIds.length === 0 ? (
-                    <span className="text-gray-400 text-sm">해당 flow chain에 선택된 flow가 없습니다</span>
-                  ) : (
-            <select
-                      className="border border-gray-300 rounded px-2 py-1 bg-white"
-                      value={typeof row.sourceFlowId === 'string' ? row.sourceFlowId : ''}
-                      onChange={e => {
-                        if (!editMode) return;
-                        const sourceFlowId = e.target.value;
-                        const newRows = [...rows];
-                        newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
-                        updateRows(newRows);
-                      }}
-                      disabled={!editMode}
-                    >
-                      <option value="">[FlowChain] 전체 결과</option>
-                      {Array.from(new Set([
-                        ...flowChainMap[String(row.flowChainId || '')].selectedFlowIds,
-                        flowId // 자기 자신을 반드시 포함
-                      ])).map(fid => {
-                        const isCurrent = fid === flowId;
+                  <select
+                    className="border border-gray-300 rounded px-2 py-1 bg-white"
+                    value={typeof row.sourceFlowId === 'string' ? row.sourceFlowId : ''}
+                    onChange={e => {
+                      if (!editMode) return;
+                      const sourceFlowId = e.target.value;
+                      const newRows = [...rows];
+                      newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
+                      updateRows(newRows);
+                    }}
+                    disabled={!editMode}
+                  >
+                    <option value="">Flow 선택</option>
+                    <option value="__all__">[Flow Chain 전체 결과]</option>
+                    <option value="__selected__">[Flow Chain 선택 결과]</option>
+                    <option disabled>────────────</option>
+                    {flowChainMap[String(row.flowChainId || '')].flowIds
+                      .filter(fid => fid !== flowId)
+                      .map(fid => {
                         const name = flowChainMap[String(row.flowChainId || '')].flowMap[fid]?.name || fid;
                         return (
-                          <option key={fid} value={fid}>
-                            {isCurrent ? `${name} (현재)` : name}
-                          </option>
+                          <option key={fid} value={fid}>{name}</option>
                         );
                       })}
-            </select>
-                  )
+                  </select>
                 )}
                 {/* 결과 없음 안내 */}
-                {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && flowChainMap[String(row.flowChainId || '')].selectedFlowIds.length > 0 && (
+                {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && (
                   (() => {
                     const chain = flowChainMap[String(row.flowChainId || '')];
-                    if (row.sourceFlowId) {
+                    let results: any[] = [];
+                    if (row.sourceFlowId === '__all__') {
+                      results = chain.flowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
+                      if (results.length === 0) {
+                        return <span className="text-gray-400 text-sm ml-2">전체 결과 없음</span>;
+                      }
+                    } else if (row.sourceFlowId === '__selected__') {
+                      results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
+                      if (results.length === 0) {
+                        return <span className="text-gray-400 text-sm ml-2">선택 결과 없음</span>;
+                      }
+                    } else if (row.sourceFlowId) {
                       const flow = chain.flowMap[String(row.sourceFlowId || '')];
                       if (!flow || !Array.isArray(flow.lastResults) || flow.lastResults.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
-                      }
-                    } else {
-                      // FlowChain 전체 결과
-                      const results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
-                      if (results.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
+                        return <span className="text-gray-400 text-sm ml-2">해당 Flow 결과 없음</span>;
                       }
                     }
                     return null;

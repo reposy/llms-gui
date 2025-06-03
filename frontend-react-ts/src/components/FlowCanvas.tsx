@@ -12,8 +12,7 @@ import {
   ConnectionLineType,
   ReactFlowInstance,
   OnInit,
-  OnSelectionChangeParams,
-  NodeProps
+  OnSelectionChangeParams
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 

@@ -7,7 +7,6 @@ import { InputSummaryBar } from '../input/InputSummaryBar';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Import the utility function
 import clsx from 'clsx';
 import { InputNodeProperty } from '../../types/nodes';
-import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { ExclamationTriangleIcon, XCircleIcon } from '@heroicons/react/20/solid';
 
 interface InputNodeConfigProps {

@@ -1,15 +1,5 @@
 import React from 'react';
-import { Node } from '@xyflow/react';
-import { 
-  LlmNodeProperty, 
-  APINodeProperty, 
-  OutputNodeProperty, 
-  InputNodeProperty,
-  ConditionalNodeProperty,
-  GroupNodeProperty,
-  MergerNodeProperty,
-  WebCrawlerNodeProperty
-} from '../../types/nodes';
+import { ConditionalNodeProperty, GroupNodeProperty } from '../../types/nodes';
 
 // Import components directly with relative path
 import { LLMConfig } from './LLMConfig';
@@ -74,11 +64,11 @@ export const ConfigFactory: React.FC<ConfigFactoryProps> = React.memo(({ selecte
     
     case 'conditional':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering ConditionalNodeConfig');
-      return <ConditionalNodeConfig nodeId={id} data={data as ConditionalNodeProperty} />;
+      return <ConditionalNodeConfig nodeId={id} />;
     
     case 'group':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering GroupNodeConfig');
-      return <GroupNodeConfig nodeId={id} data={data as GroupNodeProperty} />;
+      return <GroupNodeConfig nodeId={id} />;
     
     case 'merger':
       if (DEBUG_LOGS) console.log('[ConfigFactory] Rendering MergerConfig');

@@ -6,10 +6,9 @@ import { useNodes } from '../../store/useFlowStructureStore';
 
 interface GroupNodeConfigProps {
   nodeId: string;
-  data: GroupNodeProperty;
 }
 
-export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }) => {
+export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId }) => {
   const executionState = useNodeState(nodeId);
   const allNodes = useNodes();
   

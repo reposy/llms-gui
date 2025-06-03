@@ -29,8 +29,6 @@ const ConfigLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const MergerNodeConfig: React.FC<MergerNodeConfigProps> = ({ nodeId }) => {
-  console.log(`[MergerNodeConfig] Rendering for node ID: ${nodeId}`);
-  
   const nodeState = useNodeState(nodeId);
   const { items, itemCount, mergeMode, joinSeparator, resetItems } = useMergerNodeData({ nodeId });
   

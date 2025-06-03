@@ -3,13 +3,11 @@ import { Button } from "../ui/button";
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, ChevronUpIcon } from "../Icons";
 import { ExtractionRule } from "../../types/nodes";
 import { useHtmlParserNodeData } from "../../hooks/useHtmlParserNodeData";
-import { NodeHeader } from "../nodes/shared/NodeHeader";
-import { useFlowStructureStore, setNodes } from "../../store/useFlowStructureStore";
+import { useFlowStructureStore} from "../../store/useFlowStructureStore";
 import { useNodeState } from "../../store/useNodeStateStore";
-import { safeGetTagName, safeGetClassList, safeGetChildren, generateSelector } from "../../utils/domUtils";
+import { safeGetTagName, safeGetChildren, generateSelector } from "../../utils/domUtils";
 import DOMTreeNode from './DOMTreeView';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Input } from "../ui/input";
 
 // Define structure for path steps
 interface PathStep {
@@ -184,7 +182,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       const firstPart = pathParts[0];
       const firstMatch = firstPart.match(/^(\d+)-(.+)$/);
       if (!firstMatch) {
-        console.warn("Invalid first path part format:", firstPart);
+        // console.warn("Invalid first path part format:", firstPart);
         return null;
       }
       const firstIndex = parseInt(firstMatch[1], 10);
@@ -192,7 +190,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
       // Basic check: Does the root element's tag match the first part's tag?
       if (safeGetTagName(currentElement)?.toLowerCase() !== firstTag?.toLowerCase()) {
-         console.warn(`Root element tag mismatch. Path starts with ${firstTag}, root is ${safeGetTagName(currentElement)}`);
+         // console.warn(`Root element tag mismatch. Path starts with ${firstTag}, root is ${safeGetTagName(currentElement)}`);
          // If root doesn't match the very first tag, the path is invalid for this root.
          return null;
       }
@@ -200,12 +198,12 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       if (currentElement.parentElement) {
           const siblings: Element[] = Array.from(currentElement.parentElement.children).filter((node: Node) => node.nodeType === Node.ELEMENT_NODE) as Element[];
           if (siblings.indexOf(currentElement) !== firstIndex) {
-              console.warn(`Root element index mismatch. Path expects index ${firstIndex}, root is at index ${siblings.indexOf(currentElement)}`);
+              // console.warn(`Root element index mismatch. Path expects index ${firstIndex}, root is at index ${siblings.indexOf(currentElement)}`);
               return null;
           }
       } else if (firstIndex !== 0) {
           // Root element without a parent must have index 0
-           console.warn(`Root element has no parent, but path expects index ${firstIndex}`);
+           // console.warn(`Root element has no parent, but path expects index ${firstIndex}`);
            return null;
       }
   
@@ -217,7 +215,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
           const part = pathParts[i];
           const match = part.match(/^(\d+)-(.+)$/);
           if (!match) {
-              console.warn("Invalid path part format:", part);
+              // console.warn("Invalid path part format:", part);
               return null; // Invalid path part format
           }
   
@@ -228,7 +226,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
           const children: Element[] = Array.from(safeGetChildren(currentElement)).filter((node: Node) => node.nodeType === Node.ELEMENT_NODE) as Element[];
   
           if (childIndex >= children.length) {
-              console.warn(`Child index out of bounds for part ${part}. Index: ${childIndex}, Children count: ${children.length}, Parent:`, currentElement);
+              // console.warn(`Child index out of bounds for part ${part}. Index: ${childIndex}, Children count: ${children.length}, Parent:`, currentElement);
               return null; // Index out of bounds
           }
   
@@ -236,7 +234,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   
           // Optional but recommended: Verify the tag name matches
           if (safeGetTagName(nextElement)?.toLowerCase() !== childTagName?.toLowerCase()) {
-             console.warn(`Tag mismatch at step ${i}. Expected ${childTagName}, found ${safeGetTagName(nextElement)}`);
+             // console.warn(`Tag mismatch at step ${i}. Expected ${childTagName}, found ${safeGetTagName(nextElement)}`);
              // Decide if this should be a fatal error or just a warning
              // return null; // Make it fatal for now
           }
@@ -286,10 +284,10 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                     renderedElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     // Highlighting is handled by passing selectedElementPath to DOMTreeNode
                 } else {
-                    console.warn("Could not find rendered element for path:", path);
+                    // console.warn("Could not find rendered element for path:", path);
                 }
             } else {
-                 console.warn("Could not find target DOM element for path:", path);
+                 // console.warn("Could not find target DOM element for path:", path);
             }
         }
         // --- End Scrolling Logic ---
@@ -438,7 +436,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setSearchResults(uniqueResults);
     const newIndex = uniqueResults.length > 0 ? 0 : -1;
     setCurrentSearchResultIndex(newIndex);
-    console.log(`[Search Results: ${searchTarget}]`, uniqueResults); 
+    // console.log(`[Search Results: ${searchTarget}]`, uniqueResults); 
 
     // Auto-select the first result if found
     if (newIndex !== -1 && uniqueResults.length > 0) {
@@ -449,7 +447,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
           const preview = targetElement.outerHTML || '';
           handleElementSelect(firstResultPath, selector, preview); 
       } else {
-         console.warn("Could not find element for path:", firstResultPath); 
+         // console.warn("Could not find element for path:", firstResultPath); 
          handleElementSelect("", "", ""); 
       }
     } else {
@@ -518,7 +516,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         const preview: string = element.outerHTML.substring(0, 100); // Simple preview
         handleElementSelect(firstResultPath, selector, preview);
       } else {
-          console.warn("Could not find element for first search result path:", firstResultPath);
+          // console.warn("Could not find element for first search result path:", firstResultPath);
       }
     } else {
       setCurrentSearchResultIndex(-1);
@@ -549,7 +547,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
             // Call handleElementSelect to update selection and trigger expansion
             handleElementSelect(nextPath, selector, preview); 
         } else {
-            console.warn("Could not find element for path during navigation:", nextPath);
+            // console.warn("Could not find element for path during navigation:", nextPath);
             handleElementSelect("", "", ""); // Clear selection if element not found
         }
     } else {
@@ -627,7 +625,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
           const preview: string = parentElement.outerHTML || '';
           handleElementSelect(parentPath, selector, preview);
       } else {
-          console.warn("Could not find parent element for path:", parentPath);
+          // console.warn("Could not find parent element for path:", parentPath);
       }
   };
   // --- END NEW Handler ---

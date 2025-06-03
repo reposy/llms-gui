@@ -6,8 +6,6 @@ import { useNodeConnections } from '../../hooks/useNodeConnections';
 
 interface LLMConfigProps {
   nodeId: string;
-  // data prop is no longer needed as data is fetched by the hook
-  // data: LlmNodeProperty; 
 }
 
 // Reusable label component

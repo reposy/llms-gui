@@ -6,8 +6,6 @@ import { useApiNodeData } from '../../hooks/useApiNodeData';
 
 interface APIConfigProps {
   nodeId: string;
-  // data prop is no longer needed as data is fetched by the hook
-  // data: APINodeData;
 }
 
 interface KeyValuePair {

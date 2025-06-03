@@ -4,13 +4,9 @@ import { useConditionalNodeData } from '../../hooks/useConditionalNodeData';
 
 interface ConditionalNodeConfigProps {
   nodeId: string;
-  data: ConditionalNodeProperty;
 }
 
-export const ConditionalNodeConfig: React.FC<ConditionalNodeConfigProps> = ({ 
-  nodeId,
-  data
-}) => {
+export const ConditionalNodeConfig: React.FC<ConditionalNodeConfigProps> = ({ nodeId }) => {
   // Use Zustand hook for state management
   const {
     conditionType,
