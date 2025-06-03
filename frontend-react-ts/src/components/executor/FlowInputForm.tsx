@@ -3,6 +3,17 @@ import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowResultDisplay from './FlowResultDisplay';
 import type { InputRow, InputType } from '../../types/flow/InputRow';
 import { extractFlowResultText } from '../../utils/flowResultUtils';
+import { 
+  LLMPropertyForm, 
+  APIPropertyForm, 
+  WebCrawlerPropertyForm,
+  parseProperty,
+  serializeProperty,
+  createDefaultProperty,
+  type LLMProperty,
+  type APIProperty,
+  type WebCrawlerProperty
+} from './PropertyForms';
 
 interface FlowInputFormProps {
   flowId: string;
@@ -16,53 +27,6 @@ export interface FlowInputFormRef {
   getExecutableInputs: () => any[];
 }
 
-// Property 템플릿 정의
-const getPropertyTemplate = (nodeType: string): Record<string, any> => {
-  switch (nodeType) {
-    case 'llm':
-      return {
-        provider: 'ollama',
-        model: '',
-        prompt: '{{input}}',
-        temperature: 0.7,
-        mode: 'text'
-      };
-    case 'api':
-      return {
-        url: '',
-        method: 'GET',
-        headers: {},
-        contentType: 'application/json'
-      };
-    case 'web-crawler':
-      return {
-        url: '',
-        timeout: 30000,
-        waitForSelectorOnPage: '',
-        outputFormat: 'html'
-      };
-    default:
-      return {};
-  }
-};
-
-// Property 객체 파싱 및 생성 헬퍼
-const parsePropertyValue = (value: string): { nodeType: string; property: Record<string, any> } | null => {
-  try {
-    const parsed = JSON.parse(value || '{}');
-    if (parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed) {
-      return parsed;
-    }
-  } catch (error) {
-    // 파싱 실패는 무시
-  }
-  return null;
-};
-
-const createPropertyValue = (nodeType: string, property: Record<string, any>): string => {
-  return JSON.stringify({ nodeType, property }, null, 2);
-};
-
 const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId, inputs: propInputs, onInputChange }, ref) => {
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
@@ -71,131 +35,177 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flow = chain && flowId ? chain.flowMap[flowId] : undefined;
 
-  // store의 값을 직접 구독 (propInputs가 없으면)
-  const initialRows = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
-  const [rows, setRows] = useState<InputRow[]>(initialRows);
+  // 초기 데이터 분리
+  const separateInputs = (inputs: InputRow[]) => {
+    const properties: InputRow[] = [];
+    const regularInputs: InputRow[] = [];
+    
+    inputs.forEach(input => {
+      if (input.type === 'property') {
+        properties.push(input);
+      } else {
+        regularInputs.push(input);
+      }
+    });
+    
+    return { properties, regularInputs };
+  };
+
+  const initialInputs = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
+  const { properties: initialProperties, regularInputs: initialRegularInputs } = separateInputs(initialInputs);
+  
+  const [properties, setProperties] = useState<InputRow[]>(initialProperties);
+  const [regularInputs, setRegularInputs] = useState<InputRow[]>(initialRegularInputs.length > 0 ? initialRegularInputs : [{ type: 'text', value: '' }]);
   const [editMode, setEditMode] = useState(true);
-  const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
+  const [draftProperties, setDraftProperties] = useState<InputRow[]>(properties);
+  const [draftRegularInputs, setDraftRegularInputs] = useState<InputRow[]>(regularInputs);
 
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // 전체 inputs 배열 생성 (properties + regularInputs)
+  const getCombinedInputs = (props: InputRow[], regular: InputRow[]) => [...props, ...regular];
+
   useEffect(() => {
-    if (propInputs) setRows(propInputs);
-    else if (flow && flow.inputs) setRows(flow.inputs);
+    if (propInputs) {
+      const { properties: newProperties, regularInputs: newRegularInputs } = separateInputs(propInputs);
+      setProperties(newProperties);
+      setRegularInputs(newRegularInputs.length > 0 ? newRegularInputs : [{ type: 'text', value: '' }]);
+    } else if (flow && flow.inputs) {
+      const { properties: newProperties, regularInputs: newRegularInputs } = separateInputs(flow.inputs);
+      setProperties(newProperties);
+      setRegularInputs(newRegularInputs.length > 0 ? newRegularInputs : [{ type: 'text', value: '' }]);
+    }
   }, [propInputs, flow]);
 
   useEffect(() => {
-    setDraftInputs(rows);
-  }, [rows]);
+    setDraftProperties(properties);
+    setDraftRegularInputs(regularInputs);
+  }, [properties, regularInputs]);
 
-  // 모달이 열릴 때마다(즉, flowId, propInputs 등 주요 prop이 바뀔 때마다) editMode를 true로 리셋
+  // ✅ flowId가 변경될 때만 editMode를 true로 리셋
   useEffect(() => {
     setEditMode(true);
-  }, [flowId, propInputs]);
+  }, [flowId]);
 
-  // 입력 변경 핸들러 - editMode일 때는 draftInputs만 업데이트, 아닐 때는 store에도 반영
-  const updateRows = (newRows: InputRow[]) => {
+  // Property 업데이트 헬퍼
+  const updateProperties = (newProperties: InputRow[]) => {
     if (editMode) {
-      // 수정 모드일 때는 임시 상태만 업데이트
-      setDraftInputs(newRows);
+      setDraftProperties(newProperties);
     } else {
-      // 수정 모드가 아닐 때는 바로 store에 반영
-      setRows(newRows);
-      if (onInputChange) onInputChange(newRows);
-      if (focusedFlowChainId && flowId) {
-        store.setFlowInputData(focusedFlowChainId, flowId, newRows);
-      }
+      setProperties(newProperties);
+      updateStoreWithCombined(newProperties, regularInputs);
     }
   };
 
-  // 수정 모드가 아닐 때 rows 직접 업데이트용 (저장 완료 후 사용)
-  const updateRowsToStore = (newRows: InputRow[]) => {
-    setRows(newRows);
-    if (onInputChange) onInputChange(newRows);
+  // Regular inputs 업데이트 헬퍼
+  const updateRegularInputs = (newRegularInputs: InputRow[]) => {
+    if (editMode) {
+      setDraftRegularInputs(newRegularInputs);
+    } else {
+      setRegularInputs(newRegularInputs);
+      updateStoreWithCombined(properties, newRegularInputs);
+    }
+  };
+
+  // Store 업데이트 헬퍼
+  const updateStoreWithCombined = (props: InputRow[], regular: InputRow[]) => {
+    const combined = getCombinedInputs(props, regular);
+    if (onInputChange) onInputChange(combined);
     if (focusedFlowChainId && flowId) {
-      store.setFlowInputData(focusedFlowChainId, flowId, newRows);
+      store.setFlowInputData(focusedFlowChainId, flowId, combined);
     }
   };
 
-  // Row 추가
-  const addRow = (row?: InputRow) => {
-    const currentRows = editMode ? draftInputs : rows;
-    updateRows([...currentRows, row || { type: 'text', value: '' }]);
+  // Property 추가
+  const addProperty = (nodeType: string) => {
+    if (!editMode) return;
+    
+    const defaultProperty = createDefaultProperty(nodeType);
+    const newPropertyValue = serializeProperty(nodeType, defaultProperty);
+    const newProperty: InputRow = { type: 'property', value: newPropertyValue };
+    
+    const currentProperties = editMode ? draftProperties : properties;
+    updateProperties([...currentProperties, newProperty]);
   };
 
-  // Row 삭제
-  const removeRow = (idx: number) => {
-    const currentRows = editMode ? draftInputs : rows;
-    if (currentRows.length === 1) return;
-    updateRows(currentRows.filter((_, i) => i !== idx));
+  // Property 제거
+  const removeProperty = (idx: number) => {
+    const currentProperties = editMode ? draftProperties : properties;
+    updateProperties(currentProperties.filter((_, i) => i !== idx));
   };
 
-  // Row 이동
-  const moveRow = (idx: number, dir: 'up' | 'down') => {
-    const currentRows = editMode ? draftInputs : rows;
-    const newRows = [...currentRows];
+  // Regular input 추가
+  const addRegularInput = (row?: InputRow) => {
+    if (!editMode) return;
+    
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    updateRegularInputs([...currentRegularInputs, row || { type: 'text', value: '' }]);
+  };
+
+  // Regular input 제거
+  const removeRegularInput = (idx: number) => {
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    if (currentRegularInputs.length === 1) return;
+    updateRegularInputs(currentRegularInputs.filter((_, i) => i !== idx));
+  };
+
+  // Regular input 이동
+  const moveRegularInput = (idx: number, dir: 'up' | 'down') => {
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const newInputs = [...currentRegularInputs];
     if (dir === 'up' && idx > 0) {
-      [newRows[idx - 1], newRows[idx]] = [newRows[idx], newRows[idx - 1]];
-    } else if (dir === 'down' && idx < newRows.length - 1) {
-      [newRows[idx], newRows[idx + 1]] = [newRows[idx + 1], newRows[idx]];
+      [newInputs[idx - 1], newInputs[idx]] = [newInputs[idx], newInputs[idx - 1]];
+    } else if (dir === 'down' && idx < newInputs.length - 1) {
+      [newInputs[idx], newInputs[idx + 1]] = [newInputs[idx + 1], newInputs[idx]];
     }
-    updateRows(newRows);
+    updateRegularInputs(newInputs);
   };
 
-  // 타입 전환
-  const setType = (idx: number, type: InputType) => {
-    const currentRows = editMode ? draftInputs : rows;
-    const newRows = [...currentRows];
-    if (type === 'file') newRows[idx] = { type, value: null };
-    else if (type === 'flow-result') newRows[idx] = {
+  // Regular input 타입 변경
+  const setRegularInputType = (idx: number, type: InputType) => {
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const newInputs = [...currentRegularInputs];
+    if (type === 'file') newInputs[idx] = { type, value: null };
+    else if (type === 'flow-result') newInputs[idx] = {
       type,
       value: flowId,
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
-    else if (type === 'property') newRows[idx] = { 
-      type, 
-      value: JSON.stringify({
-        nodeType: '',
-        property: {}
-      }, null, 2)
-    };
-    else newRows[idx] = { type, value: '' };
-    updateRows(newRows);
+    else newInputs[idx] = { type, value: '' };
+    updateRegularInputs(newInputs);
+  };
+
+  // Property 값 변경 (Form UI 용)
+  const handlePropertyChange = (idx: number, nodeType: string, propertyValue: any) => {
+    const currentProperties = editMode ? draftProperties : properties;
+    const newProperties = [...currentProperties];
+    const newValue = serializeProperty(nodeType, propertyValue);
+    newProperties[idx] = { ...newProperties[idx], value: newValue };
+    updateProperties(newProperties);
   };
 
   // 파일 선택
   const handleFileChange = (idx: number, file: File | null) => {
-    const currentRows = editMode ? draftInputs : rows;
-    const newRows = [...currentRows];
-    newRows[idx] = { type: 'file', value: file };
-    updateRows(newRows);
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const newInputs = [...currentRegularInputs];
+    newInputs[idx] = { type: 'file', value: file };
+    updateRegularInputs(newInputs);
   };
 
   // 텍스트 입력
   const handleTextChange = (idx: number, value: string) => {
-    const currentRows = editMode ? draftInputs : rows;
-    const newRows = [...currentRows];
-    // 기존 row의 타입과 다른 속성들을 유지하면서 value만 업데이트
-    newRows[idx] = { ...newRows[idx], value };
-    updateRows(newRows);
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const newInputs = [...currentRegularInputs];
+    newInputs[idx] = { ...newInputs[idx], value };
+    updateRegularInputs(newInputs);
   };
 
-  // Property 타입의 nodeType 변경 핸들러
-  const handlePropertyNodeTypeChange = (idx: number, nodeType: string) => {
-    const currentRows = editMode ? draftInputs : rows;
-    const newRows = [...currentRows];
-    const template = getPropertyTemplate(nodeType);
-    const newValue = createPropertyValue(nodeType, template);
-    newRows[idx] = { ...newRows[idx], value: newValue };
-    updateRows(newRows);
-  };
-
-  // Shift+Enter로 Row 추가
+  // Shift+Enter로 Regular input 추가
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
-      addRow();
+      addRegularInput();
     }
   };
 
@@ -204,13 +214,13 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      const currentRows = editMode ? draftInputs : rows;
-      const newRows = [...currentRows];
+      const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+      const newInputs = [...currentRegularInputs];
       files.forEach((file, i) => {
-        if (i === 0) newRows[idx] = { type: 'file', value: file };
-        else newRows.push({ type: 'file', value: file });
+        if (i === 0) newInputs[idx] = { type: 'file', value: file };
+        else newInputs.push({ type: 'file', value: file });
       });
-      updateRows(newRows);
+      updateRegularInputs(newInputs);
     }
   };
 
@@ -218,12 +228,13 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   const handleSave = () => {
     setEditMode(false);
     
-    // draftInputs를 실제 rows와 store에 반영
-    updateRowsToStore(draftInputs);
+    // Draft 데이터를 실제 상태와 store에 반영
+    setProperties(draftProperties);
+    setRegularInputs(draftRegularInputs);
+    updateStoreWithCombined(draftProperties, draftRegularInputs);
     
     if (focusedFlowChainId && flowId) {
-      console.log('[FlowInputForm] 저장 시점:', { chainId: focusedFlowChainId, flowId, draftInputs });
-      // 저장 직후 상태 확인
+      console.log('[FlowInputForm] 저장 시점:', { chainId: focusedFlowChainId, flowId, properties: draftProperties, regularInputs: draftRegularInputs });
       setTimeout(() => {
         const updated = store.flowChainMap[focusedFlowChainId]?.flowMap[flowId]?.inputs;
         console.log('[FlowInputForm] 저장 후 store 상태:', updated);
@@ -233,11 +244,12 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   const handleCancel = () => {
     setEditMode(false);
-    // draftInputs를 원래 rows 상태로 되돌림
-    setDraftInputs(rows);
+    // Draft를 원래 상태로 되돌림
+    setDraftProperties(properties);
+    setDraftRegularInputs(regularInputs);
   };
 
-  // SVG 아이콘 (프로젝트 내 선언된 것 사용 예시)
+  // SVG 아이콘
   const TrashIcon = (
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
   );
@@ -248,24 +260,23 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
   );
 
-  // Flow 결과 가져오기 (store에서)
+  // Flow 결과 가져오기
   const flowResult = flow && Array.isArray(flow.lastResults)
     ? { status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id }
     : null;
 
-  // 실행을 위한 입력 데이터 변환 함수 (flow-result를 실제 데이터로 변환)
+  // 실행을 위한 입력 데이터 변환 함수
   const getExecutableInputs = (): any[] => {
-    // editMode일 때는 draftInputs, 아닐 때는 rows 사용
-    const currentRows = editMode ? draftInputs : rows;
+    const currentProperties = editMode ? draftProperties : properties;
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const combined = getCombinedInputs(currentProperties, currentRegularInputs);
     
-    return currentRows.map((row) => {
+    return combined.map((row) => {
       if (row.type === 'flow-result') {
         return extractFlowResultText(row, flowChainMap);
       } else if (row.type === 'property') {
-        // JSON 문자열을 동적 속성 객체로 파싱
         try {
           const parsed = JSON.parse(row.value as string || '{}');
-          // DynamicPropertyInput 형태인지 검증
           if (parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed) {
             return parsed;
           } else {
@@ -277,16 +288,13 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
           return row.value;
         }
       } else if (row.type === 'file') {
-        // File 객체 그대로 반환
         return row.value;
       } else {
-        // 텍스트 값 그대로 반환
         return row.value;
       }
     });
   };
 
-  // Flow 실행을 위한 최종 입력 데이터 생성
   const getFinalInputData = () => {
     const executableInputs = getExecutableInputs();
     console.log('[FlowInputForm] 실행용 입력 데이터:', executableInputs);
@@ -300,8 +308,8 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
 
   return (
     <div className="mb-6 p-3 border border-gray-200 rounded-lg bg-white relative">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-medium">Input Data</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-medium">Flow Configuration</h2>
         <div className="flex gap-2 items-center">
           {editMode ? (
             <>
@@ -313,228 +321,252 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2 mb-4">
-        <div className="text-gray-400 text-sm flex-1">입력값을 추가하세요</div>
-      </div>
-      <div className="space-y-2 mb-4">
-      {(editMode ? draftInputs : rows).map((row, idx) => (
-          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
-          {/* 타입 토글 */}
-          <div className="flex gap-1">
-            <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
-              <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => {
-                if (!editMode) return;
-                setType(idx, 'file');
-                setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
-              }} disabled={!editMode}>File</button>
-            <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
-            <button type="button" className={`px-2 py-1 rounded ${row.type === 'property' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'property')} disabled={!editMode}>Property</button>
+      
+      {/* ========== Property Section ========== */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-md font-medium text-gray-800">Node Properties</h3>
+          {editMode && (
+            <div className="flex gap-2">
+              <button 
+                className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm"
+                onClick={() => addProperty('llm')}
+              >
+                + LLM
+              </button>
+              <button 
+                className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm"
+                onClick={() => addProperty('api')}
+              >
+                + API
+              </button>
+              <button 
+                className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm"
+                onClick={() => addProperty('web-crawler')}
+              >
+                + Web Crawler
+              </button>
+            </div>
+          )}
+        </div>
+        
+        {(editMode ? draftProperties : properties).length === 0 ? (
+          <div className="text-gray-400 text-sm p-4 border-2 border-dashed border-gray-200 rounded text-center">
+            노드 속성이 없습니다. 위의 버튼을 클릭하여 추가하세요.
           </div>
-          {/* 입력 UI */}
-          {row.type === 'text' && (
-              <textarea
-                className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white resize-none"
-                rows={2}
-                maxLength={500}
-              value={typeof row.value === 'string' ? row.value : ''}
-              onChange={e => editMode && handleTextChange(idx, e.target.value)}
-              onKeyDown={e => editMode && handleKeyDown(e)}
-              placeholder="입력값을 입력하세요"
-              readOnly={!editMode}
-                style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
-            />
-          )}
-          {row.type === 'property' && (
-            <div className="flex-1 flex flex-col gap-2">
-              {/* nodeType 선택 */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700 min-w-0 flex-shrink-0">Node Type:</label>
-                <select
-                  className="border border-gray-300 rounded px-2 py-1 bg-white text-sm"
-                  value={(() => {
-                    const parsed = parsePropertyValue(row.value as string);
-                    return parsed?.nodeType || '';
-                  })()}
-                  onChange={e => editMode && handlePropertyNodeTypeChange(idx, e.target.value)}
-                  disabled={!editMode}
-                >
-                  <option value="">선택하세요</option>
-                  <option value="llm">LLM</option>
-                  <option value="api">API</option>
-                  <option value="web-crawler">Web Crawler</option>
-                </select>
+        ) : (
+          <div className="space-y-4">
+            {(editMode ? draftProperties : properties).map((property, idx) => {
+              const parsed = parseProperty(property.value as string);
+              if (!parsed) {
+                return (
+                  <div key={idx} className="p-4 border border-red-200 rounded bg-red-50">
+                    <div className="flex justify-between items-center">
+                      <span className="text-red-600 text-sm">잘못된 Property 형식</span>
+                      {editMode && (
+                        <button 
+                          onClick={() => removeProperty(idx)}
+                          className="text-red-600 hover:bg-red-100 p-1 rounded"
+                        >
+                          {TrashIcon}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              const { nodeType, property: propertyValue } = parsed;
+              
+              return (
+                <div key={idx} className="relative">
+                  {editMode && (
+                    <button 
+                      onClick={() => removeProperty(idx)}
+                      className="absolute top-2 right-2 z-10 text-red-600 hover:bg-red-100 p-1 rounded"
+                    >
+                      {TrashIcon}
+                    </button>
+                  )}
+                  {nodeType === 'llm' && (
+                    <LLMPropertyForm
+                      value={propertyValue as LLMProperty}
+                      onChange={(newValue) => handlePropertyChange(idx, 'llm', newValue)}
+                      disabled={!editMode}
+                    />
+                  )}
+                  {nodeType === 'api' && (
+                    <APIPropertyForm
+                      value={propertyValue as APIProperty}
+                      onChange={(newValue) => handlePropertyChange(idx, 'api', newValue)}
+                      disabled={!editMode}
+                    />
+                  )}
+                  {nodeType === 'web-crawler' && (
+                    <WebCrawlerPropertyForm
+                      value={propertyValue as WebCrawlerProperty}
+                      onChange={(newValue) => handlePropertyChange(idx, 'web-crawler', newValue)}
+                      disabled={!editMode}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ========== Input Data Section ========== */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-md font-medium text-gray-800">Input Data</h3>
+        </div>
+        <div className="text-gray-400 text-sm mb-4">입력값을 추가하세요</div>
+        
+        <div className="space-y-2 mb-4">
+          {(editMode ? draftRegularInputs : regularInputs).map((row, idx) => (
+            <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
+              {/* 타입 토글 */}
+              <div className="flex gap-1">
+                <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setRegularInputType(idx, 'text')} disabled={!editMode}>Text</button>
+                <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => {
+                  if (!editMode) return;
+                  setRegularInputType(idx, 'file');
+                  setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
+                }} disabled={!editMode}>File</button>
+                <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setRegularInputType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
               </div>
-              {/* JSON 입력 */}
-              <textarea
-                className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white font-mono text-sm"
-                rows={6}
-                value={typeof row.value === 'string' ? row.value : ''}
-                onChange={e => editMode && handleTextChange(idx, e.target.value)}
-                placeholder="위에서 Node Type을 선택하면 템플릿이 자동으로 생성됩니다.&#10;&#10;수동 입력 예시:&#10;{&#10;  &quot;nodeType&quot;: &quot;llm&quot;,&#10;  &quot;property&quot;: {&#10;    &quot;model&quot;: &quot;gpt-4&quot;,&#10;    &quot;prompt&quot;: &quot;{{input}}&quot;&#10;  }&#10;}"
-                readOnly={!editMode}
-                style={{ minHeight: '8rem', maxHeight: '12rem', overflow: 'auto' }}
-              />
-              {/* JSON 검증 상태 표시 */}
-              {(() => {
-                const parsed = parsePropertyValue(row.value as string);
-                if (!row.value || (row.value as string).trim() === '') {
-                  return null;
-                } else if (parsed) {
-                  return (
-                    <div className="text-xs text-green-600 flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      유효한 동적 속성 JSON입니다
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div className="text-xs text-red-600 flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      JSON 형식이 올바르지 않거나 구조가 맞지 않습니다
-                    </div>
-                  );
-                }
-              })()}
-            </div>
-          )}
-          {row.type === 'file' && (
-            <div className="flex-1 flex items-center gap-2">
-              <input
-                type="file"
-                className="hidden"
-                id={`file-input-${idx}`}
-                  ref={el => fileInputRefs.current[idx] = el}
-                onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
-                disabled={!editMode}
-              />
-              {row.value && typeof row.value !== 'string' && (
-                <span className="text-sm text-gray-700">{(row.value as File).name}</span>
+              
+              {/* 입력 UI */}
+              {row.type === 'text' && (
+                <textarea
+                  className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white resize-none"
+                  rows={2}
+                  maxLength={500}
+                  value={typeof row.value === 'string' ? row.value : ''}
+                  onChange={e => editMode && handleTextChange(idx, e.target.value)}
+                  onKeyDown={e => editMode && handleKeyDown(e)}
+                  placeholder="입력값을 입력하세요"
+                  readOnly={!editMode}
+                  style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
+                />
               )}
-              {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
-            </div>
-          )}
-          {row.type === 'flow-result' && (
-              <div className="flex-1 flex gap-2">
-                {/* 1단계: FlowChain 선택 */}
-                <select
-                  className="border border-gray-300 rounded px-2 py-1 bg-white"
-                  value={typeof row.flowChainId === 'string' ? row.flowChainId : ''}
-                  onChange={e => {
-                    if (!editMode) return;
-                    const flowChainId = e.target.value;
-                    const newRows = [...rows];
-                    newRows[idx] = { ...row, flowChainId, sourceFlowId: '', value: '' };
-                    updateRows(newRows);
-                  }}
-                  disabled={!editMode || flowChainIds.length === 0}
-                >
-                  <option value="">FlowChain 선택</option>
-                  {flowChainIds
-                    .filter(id => {
-                      // 현재 chain이거나 이전 chain들만 선택 가능
-                      const currentChainIndex = flowChainIds.indexOf(String(focusedFlowChainId));
-                      const targetChainIndex = flowChainIds.indexOf(id);
-                      return targetChainIndex <= currentChainIndex;
-                    })
-                    .map(id => {
-                      const isCurrentChain = id === focusedFlowChainId;
-                      const name = flowChainMap[String(id)]?.name || id;
-                      return (
-                        <option key={id} value={id}>
-                          {isCurrentChain ? `(현재)${name}` : name}
-                        </option>
-                      );
-                    })}
-                </select>
-                {/* 2단계: Flow 선택 */}
-                {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && (
+              
+              {row.type === 'file' && (
+                <div className="flex-1 flex items-center gap-2">
+                  <input
+                    type="file"
+                    className="hidden"
+                    id={`file-input-${idx}`}
+                    ref={el => fileInputRefs.current[idx] = el}
+                    onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                    disabled={!editMode}
+                  />
+                  {row.value && typeof row.value !== 'string' && (
+                    <span className="text-sm text-gray-700">{(row.value as File).name}</span>
+                  )}
+                  {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
+                </div>
+              )}
+              
+              {row.type === 'flow-result' && (
+                <div className="flex-1 flex gap-2">
+                  {/* FlowChain 선택 */}
                   <select
                     className="border border-gray-300 rounded px-2 py-1 bg-white"
-                    value={typeof row.sourceFlowId === 'string' ? row.sourceFlowId : ''}
+                    value={typeof row.flowChainId === 'string' ? row.flowChainId : ''}
                     onChange={e => {
                       if (!editMode) return;
-                      const sourceFlowId = e.target.value;
-                      const newRows = [...rows];
-                      newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
-                      updateRows(newRows);
+                      const flowChainId = e.target.value;
+                      const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+                      const newInputs = [...currentRegularInputs];
+                      newInputs[idx] = { ...row, flowChainId, sourceFlowId: '', value: '' };
+                      updateRegularInputs(newInputs);
                     }}
-                    disabled={!editMode}
+                    disabled={!editMode || flowChainIds.length === 0}
                   >
-                    <option value="">Flow 선택</option>
-                    <option value="__all__">[Flow Chain 전체 결과]</option>
-                    <option value="__selected__">[Flow Chain 선택 결과]</option>
-                    <option disabled>────────────</option>
-                    {(() => {
-                      const selectedChain = flowChainMap[String(row.flowChainId || '')];
-                      const isCurrentChain = row.flowChainId === focusedFlowChainId;
-                      
-                      return selectedChain.flowIds
-                        .filter(fid => {
-                          if (isCurrentChain) {
-                            // 현재 chain인 경우, 현재 flow보다 이전에 실행된 flow들만 선택 가능
-                            const currentFlowIndex = selectedChain.flowIds.indexOf(flowId);
-                            const targetFlowIndex = selectedChain.flowIds.indexOf(fid);
-                            return targetFlowIndex < currentFlowIndex;
-                          } else {
-                            // 이전 chain인 경우, 모든 flow 선택 가능
-                            return true;
-                          }
-                        })
-                        .map(fid => {
-                          const name = selectedChain.flowMap[fid]?.name || fid;
-                          return (
-                            <option key={fid} value={fid}>{name}</option>
-                          );
-                        });
-                    })()}
+                    <option value="">FlowChain 선택</option>
+                    {flowChainIds
+                      .filter(id => {
+                        const currentChainIndex = flowChainIds.indexOf(String(focusedFlowChainId));
+                        const targetChainIndex = flowChainIds.indexOf(id);
+                        return targetChainIndex <= currentChainIndex;
+                      })
+                      .map(id => {
+                        const isCurrentChain = id === focusedFlowChainId;
+                        const name = flowChainMap[String(id)]?.name || id;
+                        return (
+                          <option key={id} value={id}>
+                            {isCurrentChain ? `(현재)${name}` : name}
+                          </option>
+                        );
+                      })}
                   </select>
-                )}
-                {/* 결과 없음 안내 */}
-                {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && (
-                  (() => {
-                    const chain = flowChainMap[String(row.flowChainId || '')];
-                    let results: any[] = [];
-                    if (row.sourceFlowId === '__all__') {
-                      results = chain.flowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
-                      if (results.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">전체 결과 없음</span>;
-                      }
-                    } else if (row.sourceFlowId === '__selected__') {
-                      results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
-                      if (results.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">선택 결과 없음</span>;
-                      }
-                    } else if (row.sourceFlowId) {
-                      const flow = chain.flowMap[String(row.sourceFlowId || '')];
-                      if (!flow || !Array.isArray(flow.lastResults) || flow.lastResults.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">해당 Flow 결과 없음</span>;
-                      }
-                    }
-                    return null;
-                  })()
-                )}
+                  
+                  {/* Flow 선택 */}
+                  {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && (
+                    <select
+                      className="border border-gray-300 rounded px-2 py-1 bg-white"
+                      value={typeof row.sourceFlowId === 'string' ? row.sourceFlowId : ''}
+                      onChange={e => {
+                        if (!editMode) return;
+                        const sourceFlowId = e.target.value;
+                        const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+                        const newInputs = [...currentRegularInputs];
+                        newInputs[idx] = { ...row, sourceFlowId, value: sourceFlowId };
+                        updateRegularInputs(newInputs);
+                      }}
+                      disabled={!editMode}
+                    >
+                      <option value="">Flow 선택</option>
+                      <option value="__all__">[Flow Chain 전체 결과]</option>
+                      <option value="__selected__">[Flow Chain 선택 결과]</option>
+                      <option disabled>────────────</option>
+                      {(() => {
+                        const selectedChain = flowChainMap[String(row.flowChainId || '')];
+                        const isCurrentChain = row.flowChainId === focusedFlowChainId;
+                        
+                        return selectedChain.flowIds
+                          .filter(fid => {
+                            if (isCurrentChain) {
+                              const currentFlowIndex = selectedChain.flowIds.indexOf(flowId);
+                              const targetFlowIndex = selectedChain.flowIds.indexOf(fid);
+                              return targetFlowIndex < currentFlowIndex;
+                            } else {
+                              return true;
+                            }
+                          })
+                          .map(fid => {
+                            const name = selectedChain.flowMap[fid]?.name || fid;
+                            return (
+                              <option key={fid} value={fid}>{name}</option>
+                            );
+                          });
+                      })()}
+                    </select>
+                  )}
+                </div>
+              )}
+              
+              {/* 위/아래/삭제 */}
+              <div className="flex gap-1 ml-2">
+                <button type="button" onClick={() => moveRegularInput(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
+                <button type="button" onClick={() => moveRegularInput(idx, 'down')} disabled={!editMode || idx === regularInputs.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
+                <button type="button" onClick={() => removeRegularInput(idx)} disabled={!editMode || regularInputs.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
               </div>
-          )}
-          {/* 위/아래/삭제 */}
-          <div className="flex gap-1 ml-2">
-            <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
-            <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
-            <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
+            </div>
+          ))}
+        </div>
+        
+        {/* 입력 추가 버튼 */}
+        {editMode && (
+          <div className="flex justify-end mb-2">
+            <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRegularInput()}>+ 입력 추가</button>
           </div>
-        </div>
-      ))}
+        )}
       </div>
-      {/* 입력 추가 버튼: row 하단 우측 정렬 */}
-      {editMode && (
-        <div className="flex justify-end mb-2">
-          <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRow()}>+ 입력 추가</button>
-        </div>
-      )}
-      {/* FlowResultDisplay 항상 표시 */}
+
+      {/* FlowResultDisplay */}
       <div className="mt-6">
         <FlowResultDisplay
           result={flowResult}
