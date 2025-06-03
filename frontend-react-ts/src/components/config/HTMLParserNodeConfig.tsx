@@ -91,6 +91,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
   const [selectedElementPath, setSelectedElementPath] = useState<string>("");
   const [generatedSelector, setGeneratedSelector] = useState<string>("");
   const [selectedElementPreview, setSelectedElementPreview] = useState<string>("");
+  const [selectedElementTextPreview, setSelectedElementTextPreview] = useState<string>("");
   const [domError, setDomError] = useState<string>("");
   const [selectedElementPathSteps, setSelectedElementPathSteps] = useState<PathStep[]>([]); // New state for path steps
   
@@ -252,6 +253,46 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
     setSelectedElementPath(path);
     setGeneratedSelector(selector);
     setSelectedElementPreview(preview);
+
+    // 텍스트 미리보기 추출
+    if (parsedDOM?.documentElement && path) {
+      const targetElement = findElementByPath(parsedDOM.documentElement, path);
+      if (targetElement) {
+        // 요소에서 텍스트 추출 (인라인으로 구현)
+        const textParts: string[] = [];
+        
+        // 직접 텍스트 노드들을 먼저 수집
+        const directTextNodes = Array.from(targetElement.childNodes).filter(node => 
+          node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
+        );
+        
+        if (directTextNodes.length > 0) {
+          const directText = directTextNodes.map(node => node.textContent?.trim()).filter(Boolean).join(' ');
+          if (directText) {
+            textParts.push(directText);
+          }
+        }
+        
+        // 자식 요소들의 텍스트를 수집
+        const childElements = Array.from(targetElement.children);
+        childElements.forEach(child => {
+          const childText = child.textContent?.trim();
+          if (childText && childText !== directTextNodes.map(n => n.textContent?.trim()).join(' ').trim()) {
+            textParts.push(childText);
+          }
+        });
+        
+        // 중복 제거 및 정리
+        const uniqueTextParts = [...new Set(textParts)].filter(text => text && text.length > 0);
+        const textPreview = uniqueTextParts.join('\n\n');
+        
+        setSelectedElementTextPreview(textPreview);
+      } else {
+        setSelectedElementTextPreview('');
+      }
+    } else {
+      setSelectedElementTextPreview('');
+    }
 
     // Calculate path steps with correct level based on path depth
     const steps: PathStep[] = [];
@@ -972,9 +1013,99 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                               <span className="mr-1">HTML 미리보기</span>
                               <ChevronRightIcon className="h-3 w-3 transition-transform group-open:rotate-90" />
                             </summary>
-                            <div className="mt-2 p-2 text-xs font-mono bg-white border rounded max-h-32 overflow-y-auto text-gray-600">
-                              {selectedElementPreview.substring(0, 300)}
-                              {selectedElementPreview.length > 300 && '...'}
+                            <div className="mt-2 space-y-2">
+                              {/* 전체 HTML 표시 */}
+                              <div className="p-3 text-xs font-mono bg-white border rounded max-h-64 overflow-y-auto text-gray-600 whitespace-pre-wrap break-all">
+                                {selectedElementPreview || '선택된 요소가 없습니다.'}
+                              </div>
+                              
+                              {/* HTML 복사 및 다운로드 버튼 */}
+                              {selectedElementPreview && (
+                                <div className="flex items-center space-x-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => navigator.clipboard.writeText(selectedElementPreview)}
+                                    className="h-7 px-2 text-xs"
+                                    title="HTML 복사"
+                                  >
+                                    📋 복사
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const blob = new Blob([selectedElementPreview], { type: 'text/html' });
+                                      const url = URL.createObjectURL(blob);
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = 'selected-element.html';
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      document.body.removeChild(a);
+                                      URL.revokeObjectURL(url);
+                                    }}
+                                    className="h-7 px-2 text-xs"
+                                    title="HTML 다운로드"
+                                  >
+                                    💾 다운로드
+                                  </Button>
+                                  <span className="text-xs text-gray-500">
+                                    크기: {selectedElementPreview.length.toLocaleString()}자
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </details>
+
+                          {/* Text Preview */}
+                          <details className="group" open>
+                            <summary className="text-xs font-medium text-gray-600 cursor-pointer hover:text-gray-800 flex items-center">
+                              <span className="mr-1">텍스트 미리보기</span>
+                              <ChevronRightIcon className="h-3 w-3 transition-transform group-open:rotate-90" />
+                            </summary>
+                            <div className="mt-2 space-y-2">
+                              {/* 텍스트 내용 표시 */}
+                              <div className="p-3 text-xs bg-white border rounded max-h-64 overflow-y-auto text-gray-800 whitespace-pre-wrap break-words">
+                                {selectedElementTextPreview || '추출된 텍스트가 없습니다.'}
+                              </div>
+                              
+                              {/* 텍스트 복사 및 다운로드 버튼 */}
+                              {selectedElementTextPreview && (
+                                <div className="flex items-center space-x-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => navigator.clipboard.writeText(selectedElementTextPreview)}
+                                    className="h-7 px-2 text-xs"
+                                    title="텍스트 복사"
+                                  >
+                                    📋 복사
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const blob = new Blob([selectedElementTextPreview], { type: 'text/plain' });
+                                      const url = URL.createObjectURL(blob);
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = 'selected-element.txt';
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      document.body.removeChild(a);
+                                      URL.revokeObjectURL(url);
+                                    }}
+                                    className="h-7 px-2 text-xs"
+                                    title="텍스트 다운로드"
+                                  >
+                                    💾 다운로드
+                                  </Button>
+                                  <span className="text-xs text-gray-500">
+                                    크기: {selectedElementTextPreview.length.toLocaleString()}자
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </details>
                         </div>
