@@ -1,6 +1,7 @@
 // src/components/config/InputNodeConfig.tsx
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
