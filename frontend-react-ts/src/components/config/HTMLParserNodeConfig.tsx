@@ -750,20 +750,20 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
                               variant="outline" 
                               onClick={() => navigateResults('prev')} 
                               disabled={searchResults.length <= 1 || currentSearchResultIndex <= 0}
-                              className="h-7 w-7 p-0 border-blue-300 hover:bg-blue-100"
+                              className="h-7 w-7 p-0 border-blue-300 hover:bg-blue-100 text-blue-600 font-medium"
                               title="이전 결과 (↑)"
                             >
-                              <ChevronLeftIcon className="h-3 w-3 text-blue-600" />
+                              &lt;
                             </Button>
                             <Button 
                               size="sm" 
                               variant="outline" 
                               onClick={() => navigateResults('next')} 
                               disabled={searchResults.length <= 1 || currentSearchResultIndex >= searchResults.length - 1}
-                              className="h-7 w-7 p-0 border-blue-300 hover:bg-blue-100"
+                              className="h-7 w-7 p-0 border-blue-300 hover:bg-blue-100 text-blue-600 font-medium"
                               title="다음 결과 (↓)"
                             >
-                              <ChevronRightIcon className="h-3 w-3 text-blue-600" />
+                              &gt;
                             </Button>
                           </div>
                         </div>
