@@ -68,10 +68,30 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     onCommonInputsChange(newInputs);
   };
 
-  const handleCommonInputFileChange = (idx: number, file: File | null) => {
-    if (!editMode) return;
+  const handleCommonInputFileChange = (idx: number, files: FileList | null) => {
+    if (!editMode || !files) return;
+    
     const newInputs = [...commonInputs];
-    newInputs[idx] = { type: 'file', value: file };
+    const fileArray = Array.from(files);
+    
+    if (fileArray.length === 0) {
+      // 파일이 선택되지 않은 경우
+      newInputs[idx] = { type: 'file', value: null };
+    } else if (fileArray.length === 1) {
+      // 단일 파일 선택
+      newInputs[idx] = { type: 'file', value: fileArray[0] };
+    } else {
+      // 다중 파일 선택: 첫 번째 파일로 현재 row 업데이트, 나머지는 새 row 추가
+      newInputs[idx] = { type: 'file', value: fileArray[0] };
+      
+      const additionalRows = fileArray.slice(1).map(file => ({
+        type: 'file' as const,
+        value: file
+      }));
+      
+      newInputs.splice(idx + 1, 0, ...additionalRows);
+    }
+    
     onCommonInputsChange(newInputs);
   };
 
@@ -116,10 +136,30 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     onForEachItemsChange(newItems);
   };
 
-  const handleForEachItemFileChange = (idx: number, file: File | null) => {
-    if (!editMode) return;
+  const handleForEachItemFileChange = (idx: number, files: FileList | null) => {
+    if (!editMode || !files) return;
+    
     const newItems = [...forEachItems];
-    newItems[idx] = { type: 'file', value: file };
+    const fileArray = Array.from(files);
+    
+    if (fileArray.length === 0) {
+      // 파일이 선택되지 않은 경우
+      newItems[idx] = { type: 'file', value: null };
+    } else if (fileArray.length === 1) {
+      // 단일 파일 선택
+      newItems[idx] = { type: 'file', value: fileArray[0] };
+    } else {
+      // 다중 파일 선택: 첫 번째 파일로 현재 row 업데이트, 나머지는 새 row 추가
+      newItems[idx] = { type: 'file', value: fileArray[0] };
+      
+      const additionalRows = fileArray.slice(1).map(file => ({
+        type: 'file' as const,
+        value: file
+      }));
+      
+      newItems.splice(idx + 1, 0, ...additionalRows);
+    }
+    
     onForEachItemsChange(newItems);
   };
 
@@ -138,7 +178,8 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
       </div>
       <div className="text-xs text-blue-600 mb-4">
         ForEach 모드에서는 입력을 CommonInputs와 Items로 분리합니다. 
-        각 Item은 CommonInputs와 결합되어 순차적으로 실행됩니다.
+        각 Item은 CommonInputs와 결합되어 순차적으로 실행됩니다.<br/>
+        <span className="text-blue-700">💡 파일 선택 시 여러 파일을 선택하면 각 파일마다 별도의 Input Row가 생성됩니다.</span>
       </div>
       
       {/* Common Inputs Section */}
@@ -226,8 +267,9 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                       type="file"
                       className="hidden"
                       id={`common-file-input-${idx}`}
-                      onChange={e => editMode && handleCommonInputFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                      onChange={e => editMode && handleCommonInputFileChange(idx, e.target.files)}
                       disabled={!editMode}
+                      multiple
                     />
                     <button
                       type="button"
@@ -235,7 +277,7 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                       className="px-3 py-2 bg-gray-50 border border-gray-300 rounded text-sm hover:bg-gray-100"
                       disabled={!editMode}
                     >
-                      파일 선택
+                      파일 선택 (다중 가능)
                     </button>
                     {row.value && typeof row.value !== 'string' && (
                       <span className="text-sm text-gray-700">{(row.value as File).name}</span>
@@ -463,8 +505,9 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                       type="file"
                       className="hidden"
                       id={`foreach-file-input-${idx}`}
-                      onChange={e => editMode && handleForEachItemFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                      onChange={e => editMode && handleForEachItemFileChange(idx, e.target.files)}
                       disabled={!editMode}
+                      multiple
                     />
                     <button
                       type="button"
@@ -472,7 +515,7 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                       className="px-3 py-2 bg-gray-50 border border-gray-300 rounded text-sm hover:bg-gray-100"
                       disabled={!editMode}
                     >
-                      파일 선택
+                      파일 선택 (다중 가능)
                     </button>
                     {item.value && typeof item.value !== 'string' && (
                       <span className="text-sm text-gray-700">{(item.value as File).name}</span>

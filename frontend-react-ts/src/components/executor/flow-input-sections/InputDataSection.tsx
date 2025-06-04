@@ -74,10 +74,31 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
     onInputsChange(newInputs);
   };
 
-  const handleFileChange = (idx: number, file: File | null) => {
-    if (!editMode) return;
+  const handleFileChange = (idx: number, files: FileList | null) => {
+    if (!editMode || !files) return;
+    
     const newInputs = [...inputs];
-    newInputs[idx] = { type: 'file', value: file };
+    const fileArray = Array.from(files);
+    
+    if (fileArray.length === 0) {
+      // 파일이 선택되지 않은 경우 기존 로직 유지
+      newInputs[idx] = { type: 'file', value: null };
+    } else if (fileArray.length === 1) {
+      // 단일 파일 선택: 기존 InputRow 업데이트
+      newInputs[idx] = { type: 'file', value: fileArray[0] };
+    } else {
+      // 다중 파일 선택: 첫 번째 파일로 현재 row 업데이트, 나머지는 새 row 추가
+      newInputs[idx] = { type: 'file', value: fileArray[0] };
+      
+      // 나머지 파일들을 현재 위치 다음에 추가
+      const additionalRows = fileArray.slice(1).map(file => ({
+        type: 'file' as const,
+        value: file
+      }));
+      
+      newInputs.splice(idx + 1, 0, ...additionalRows);
+    }
+    
     onInputsChange(newInputs);
   };
 
@@ -143,7 +164,10 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
           </div>
         )}
       </div>
-      <div className="text-gray-500 text-sm mb-4">배치 모드에서는 모든 입력을 한 번에 처리합니다.</div>
+      <div className="text-gray-500 text-sm mb-4">
+        배치 모드에서는 모든 입력을 한 번에 처리합니다.<br/>
+        <span className="text-blue-600">💡 파일 선택 시 Ctrl(Cmd) + 클릭으로 여러 파일을 선택할 수 있습니다. 각 파일마다 별도의 Input Row가 생성됩니다.</span>
+      </div>
       
       <div className="space-y-3">
         {inputs.map((row, idx) => (
@@ -207,8 +231,9 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
                   className="hidden"
                   id={`file-input-${idx}`}
                   ref={el => fileInputRefs.current[idx] = el}
-                  onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
+                  onChange={e => editMode && handleFileChange(idx, e.target.files)}
                   disabled={!editMode}
+                  multiple
                 />
                 <button
                   type="button"
@@ -216,7 +241,7 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
                   className="px-3 py-2 bg-gray-50 border border-gray-300 rounded text-sm hover:bg-gray-100"
                   disabled={!editMode}
                 >
-                  파일 선택
+                  파일 선택 (다중 가능)
                 </button>
                 {row.value && typeof row.value !== 'string' && (
                   <span className="text-sm text-gray-700">{(row.value as File).name}</span>
