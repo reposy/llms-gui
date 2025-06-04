@@ -99,8 +99,7 @@ export const LLMPropertyForm: React.FC<LLMPropertyFormProps> = ({ value, onChang
           disabled={disabled}
         >
           <option value="text">Text</option>
-          <option value="json">JSON</option>
-          <option value="stream">Stream</option>
+          <option value="vision">Vision</option>
         </select>
       </div>
 
