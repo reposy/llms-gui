@@ -429,7 +429,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
         }
       } catch (e) {
         console.error("Invalid CSS selector:", query, e);
-        setDomError(`Invalid CSS selector: ${query}`); // Show error to user
+        setDomError(`Invalid CSS selector: ${query} - ${e instanceof Error ? e.message : 'Unknown error'}`); // Show error to user
         setSearchResults([]);
         setCurrentSearchResultIndex(-1);
         return; // Stop search if selector is invalid
@@ -484,7 +484,7 @@ export const HTMLParserNodeConfig: React.FC<HTMLParserNodeConfigProps> = ({ node
       const firstResultPath = uniqueResults[newIndex];
       const targetElement = findElementByPath(rootElement, firstResultPath);
       if (targetElement) {
-          const selector = generateSelector(targetElement); // Use utility function
+          const selector = generateSelector(targetElement);
           const preview = targetElement.outerHTML || '';
           handleElementSelect(firstResultPath, selector, preview); 
       } else {

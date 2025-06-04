@@ -10,11 +10,27 @@
 export const safeGetTagName = (element: Element | null): string => {
   if (!element) return "";
   try {
+    // Use localName for namespaced elements (like SVG) to avoid namespace URLs
+    // localName gives us the actual tag name without namespace prefix
+    if (element.localName) {
+      return element.localName.toLowerCase();
+    }
+    // Fallback to tagName if localName is not available
     if (element.tagName) {
-      return element.tagName.toLowerCase();
+      const tagName = element.tagName.toLowerCase();
+      // If tagName contains a colon (namespace prefix) or looks like a URL, extract the local part
+      if (tagName.includes(':')) {
+        return tagName.split(':').pop() || tagName;
+      }
+      // If it looks like a URL (contains ://), this is likely a namespace issue
+      if (tagName.includes('://')) {
+        console.warn(`Detected namespace URL in tagName: ${tagName}, using fallback`);
+        return 'unknown';
+      }
+      return tagName;
     }
   } catch (e) {
-    console.error("Error accessing tagName:", e);
+    console.error("Error accessing tagName/localName:", e);
   }
   return "";
 };
