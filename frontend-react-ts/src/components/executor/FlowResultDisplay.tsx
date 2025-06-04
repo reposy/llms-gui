@@ -187,7 +187,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
     const expanded = isExpanded(nodeId);
     return (
       <>
-        <div key={nodeId || index} className="flex items-center gap-2 py-1 border-b last:border-b-0 text-sm group hover:bg-gray-50 transition">
+        <div key={`${nodeId}-${index}`} className="flex items-center gap-2 py-1 border-b last:border-b-0 text-sm group hover:bg-gray-50 transition">
           <span className="font-semibold text-blue-700 mr-2">{nodeName}</span>
           {!expanded && <span className="truncate flex-1" title={resultText}>{resultText}</span>}
           <button onClick={() => copyToClipboard(resultText, nodeId)} className="p-1 hover:text-blue-600" title="복사">
@@ -258,7 +258,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
             {result.outputs.map((nodeResult, idx) => {
               const nodeId = nodeResult.nodeId || `node-${idx}`;
               return (
-                <React.Fragment key={nodeId}>
+                <React.Fragment key={`${nodeId}-${idx}`}>
                   {renderNodeResult(nodeResult, idx)}
                 </React.Fragment>
               );
