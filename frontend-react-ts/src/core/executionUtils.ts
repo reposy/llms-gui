@@ -108,9 +108,7 @@ const _startExecutionProcess = async (
          const nodeContent = context.getNodePropertyFunc(nodeId, 'llm') as LlmNodeProperty;
          if (nodeContent) {
             combinedNodeProperty = { ...combinedNodeProperty, ...nodeContent };
-            context.log(`Combined property for LLM node ${nodeId}`);
-         } else {
-             context.log(`LLM node content for ${nodeId} not found, using structure property only.`);
+            context.log(`Applied dynamic LLM properties for node ${nodeId}`);
          }
       }
       // --- End Special Data Preparation ---

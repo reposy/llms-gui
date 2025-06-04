@@ -30,21 +30,18 @@ export class LlmNode extends Node {
   /**
    * Replace template variables in the prompt with actual values
    */
-  private resolvePrompt(input: any): string {
-    // context가 있으면 context의 getNodePropertyFunc를, 없으면 this.property를 사용
+  private resolvePrompt(input: any, effectiveProperty?: LlmNodeProperty): string {
     let prompt = '';
-    let nodeContent: LlmNodeProperty | undefined = undefined;
-    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
-      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as LlmNodeProperty;
-      console.log('[LLMNode] resolvePrompt - context.getNodePropertyFunc:', nodeContent);
-      console.log('[LLMNode] resolvePrompt - this.property.prompt:', this.property.prompt);
+    
+    // effectiveProperty가 전달되면 우선 사용, 없으면 기존 로직 사용
+    if (effectiveProperty) {
+      prompt = effectiveProperty.prompt ?? '';
+    } else if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      const nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as LlmNodeProperty;
       prompt = nodeContent?.prompt ?? this.property.prompt ?? '';
     } else {
       prompt = this.property.prompt ?? '';
-      console.log('[LLMNode] resolvePrompt - no context, this.property.prompt:', this.property.prompt);
     }
-    console.log('[LLMNode] resolvePrompt - final prompt:', prompt);
-    console.log('[LLMNode] resolvePrompt - input:', input);
     
     // 파일 또는 파일 메타데이터인 경우 파일명을 사용
     if (input instanceof File) {
@@ -59,10 +56,7 @@ export class LlmNode extends Node {
     else if (Array.isArray(input)) {
       const textItems = input.filter(item => typeof item === 'string');
       const joined = textItems.join('\n\n');
-      console.log('[LLMNode] resolvePrompt - prompt (raw):', JSON.stringify(prompt));
-      console.log('[LLMNode] resolvePrompt - joined (raw):', JSON.stringify(joined));
       const replaced = prompt.replace(/\{\{input\}\}/g, joined);
-      console.log('[LLMNode] resolvePrompt - replaced (raw):', JSON.stringify(replaced));
       return replaced;
     }
     // 문자열인 경우 그대로 사용
@@ -164,7 +158,7 @@ export class LlmNode extends Node {
       this._log(`Config - Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
       
       // 프롬프트 템플릿 처리 (기존 로직 유지, actualInput 사용)
-      const finalPrompt = this.resolvePrompt(actualInput);
+      const finalPrompt = this.resolvePrompt(actualInput, effectiveProperty as LlmNodeProperty);
       console.log('[LLMNode] final prompt after input replace:', finalPrompt);
       
       // 이미지 추출 (actualInput 사용)
