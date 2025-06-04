@@ -214,6 +214,42 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
     setEditingChainId(null);
   }
 
+  // 상태 표시기 렌더링 함수
+  const renderStatusIndicator = (status: string) => {
+    switch (status) {
+      case 'idle':
+        return (
+          <div className="flex items-center gap-1 text-gray-500">
+            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+            <span className="text-xs">대기</span>
+          </div>
+        );
+      case 'running':
+        return (
+          <div className="flex items-center gap-1 text-blue-600">
+            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+            <span className="text-xs">실행중</span>
+          </div>
+        );
+      case 'success':
+        return (
+          <div className="flex items-center gap-1 text-green-600">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span className="text-xs">완료</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex items-center gap-1 text-red-600">
+            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            <span className="text-xs">오류</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
@@ -283,35 +319,38 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                   onClick={() => handleFlowChainClick(flowChainId)}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="flex items-center gap-1">
-                      {editingChainId === flowChainId ? (
-                        <InlineEditInput
-                          value={flowChain.name}
-                          onSave={newName => handleSaveChainName(flowChainId, newName)}
-                          onCancel={handleCancelEdit}
-                          validate={v => validateChainName(v, flowChainId)}
-                        />
-                      ) : (
-                        <>
-                          <span
-                            className="font-medium cursor-pointer"
-                            onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
-                            tabIndex={0}
-                            aria-label="체인 이름 편집"
-                          >
-                            {flowChain.name}
-                          </span>
-                          <button
-                            className="ml-1 p-1 rounded hover:bg-gray-100"
-                            onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
-                            title="이름 편집"
-                            tabIndex={0}
-                          >
-                            <PenLineIcon size={16} />
-                          </button>
-                        </>
-                      )}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {renderStatusIndicator(flowChain.status)}
+                      <span className="flex items-center gap-1">
+                        {editingChainId === flowChainId ? (
+                          <InlineEditInput
+                            value={flowChain.name}
+                            onSave={newName => handleSaveChainName(flowChainId, newName)}
+                            onCancel={handleCancelEdit}
+                            validate={v => validateChainName(v, flowChainId)}
+                          />
+                        ) : (
+                          <>
+                            <span
+                              className="font-medium cursor-pointer"
+                              onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
+                              tabIndex={0}
+                              aria-label="체인 이름 편집"
+                            >
+                              {flowChain.name}
+                            </span>
+                            <button
+                              className="ml-1 p-1 rounded hover:bg-gray-100"
+                              onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
+                              title="이름 편집"
+                              tabIndex={0}
+                            >
+                              <PenLineIcon size={16} />
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={async e => {
