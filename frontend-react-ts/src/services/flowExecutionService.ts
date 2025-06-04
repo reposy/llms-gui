@@ -52,6 +52,10 @@ export interface ExecuteChainParams {
    * 기본값: sequential
    */
   executionStrategy?: ChainExecutionStrategy;
+  // 새로운 기능들
+  stopAtFlowId?: string; // 특정 Flow에서 실행 중단
+  maxIterations?: number; // 최대 반복 실행 횟수
+  contextStorage?: any[]; // Context 저장소
 }
 
 /**
@@ -83,6 +87,12 @@ async function executeChainSequential(params: ExecuteChainParams, store: any, fl
     }
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
+    
+    // 실행 모드와 입력 데이터를 저장된 executionConfig에서 가져오기 (단일 진입점 원칙)
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
+    
     let currentFlowInputs = flow.inputs;
     if ((!currentFlowInputs || currentFlowInputs.length === 0) && flowChain.flowIds.indexOf(flowId) > 0) {
       const previousFlowId = flowChain.flowIds[flowChain.flowIds.indexOf(flowId) - 1];
@@ -92,12 +102,16 @@ async function executeChainSequential(params: ExecuteChainParams, store: any, fl
         store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
       }
     }
+    
     try {
+      // 단일 진입점: FlowDetailModal과 동일한 방식으로 실행
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: currentFlowInputs,
+        inputs: executionMode === 'forEach' ? forEachItems : currentFlowInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
         onComplete: (outputs) => {
           store.setFlowResult(flowChainId, flowId, outputs);
           chainResults.push({ flowId, outputs });
@@ -143,13 +157,22 @@ async function executeChainParallel(params: ExecuteChainParams, store: any, flow
     }
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
+    
+    // 실행 모드와 입력 데이터를 저장된 executionConfig에서 가져오기 (단일 진입점 원칙)
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
+    
     let currentFlowInputs = flow.inputs;
     try {
+      // 단일 진입점: FlowDetailModal과 동일한 방식으로 실행
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: currentFlowInputs,
+        inputs: executionMode === 'forEach' ? forEachItems : currentFlowInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
         onComplete: (outputs) => {
           store.setFlowResult(flowChainId, flowId, outputs);
           chainResults.push({ flowId, outputs });

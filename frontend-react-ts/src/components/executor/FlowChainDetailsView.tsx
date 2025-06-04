@@ -125,11 +125,16 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     if (!flow) return;
     setExecutingFlowId(flowId);
     
-    // flow.inputs에서 flow-result 타입을 실제 데이터로 변환
-    let execInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
+    // 실행 모드와 입력 데이터를 저장된 executionConfig에서 가져오기
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
     
-    // flow-result 타입이 있는지 확인하고 변환
-    const hasFlowResultType = execInputs.some((input: any) => 
+    // Flow inputs에서 실행 가능한 입력 생성 (FlowDetailModal과 동일한 로직)
+    let executableInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
+    
+    // flow-result 타입 변환
+    const hasFlowResultType = executableInputs.some((input: any) => 
       input && typeof input === 'object' && input.type === 'flow-result'
     );
     
@@ -137,32 +142,34 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
       const store = useFlowExecutorStore.getState();
       const flowChainMap = store.flowChainMap;
       
-      execInputs = execInputs.map((input: any) => {
+      executableInputs = executableInputs.map((input: any) => {
         if (input && typeof input === 'object' && input.type === 'flow-result') {
           return extractFlowResultText(input, flowChainMap);
         }
-        // 일반 입력은 그대로 반환
         return input;
       });
     }
     
-    // 실행 모드 정보 가져오기
-    const executionMode = flow.executionConfig?.mode || 'batch';
-    const commonInputs = flow.executionConfig?.commonInputs || [];
-    const forEachItems = flow.executionConfig?.forEachItems || [];
-    
     console.log(`[FlowChainDetailsView] Executing flow ${flowId} in ${executionMode} mode`);
+    console.log(`[FlowChainDetailsView] Execution inputs:`, { 
+      mode: executionMode, 
+      executableInputs, 
+      commonInputs, 
+      forEachItems 
+    });
     
     useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, 'running');
     try {
+      // FlowDetailModal과 동일한 방식으로 실행 (단일 진입점)
       const result = await executeFlowExecutor({
-        flowId: flowId,
-        flowChainId: flowChainId,
         flowJson: flow.flowJson,
-        inputs: executionMode === 'forEach' ? forEachItems : execInputs,
+        inputs: executionMode === 'forEach' ? forEachItems : executableInputs,
+        flowId: flow.id,
+        flowChainId: flowChainId,
         executionMode: executionMode,
         commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
       });
+      
       useFlowExecutorStore.getState().setFlowResult(flowChainId, flowId, result.outputs || []);
       useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, result.status === 'success' ? 'success' : 'error', result.error);
     } catch (error) {

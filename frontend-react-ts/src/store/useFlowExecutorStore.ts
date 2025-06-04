@@ -43,6 +43,9 @@ export interface FlowExecutionConfig {
   mode: 'batch' | 'forEach';
   commonInputs: InputRow[];
   forEachItems: InputRow[];
+  repeatCount?: number; // Flow 반복 실행 횟수 (기본값: 1)
+  stopAtCurrentFlow?: boolean; // 현재 Flow에서 중단할지 여부
+  executionContext?: any[]; // Context에 저장된 값들
 }
 
 // Flow 하나의 정보 (그래프 정보 포함)
