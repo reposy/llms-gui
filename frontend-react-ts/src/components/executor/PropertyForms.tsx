@@ -7,6 +7,7 @@ export interface LLMProperty {
   prompt: string;
   temperature: number;
   mode: string;
+  openaiApiKey?: string;
 }
 
 export interface APIProperty {
@@ -102,6 +103,21 @@ export const LLMPropertyForm: React.FC<LLMPropertyFormProps> = ({ value, onChang
           <option value="stream">Stream</option>
         </select>
       </div>
+
+      {/* OpenAI API Key - OpenAI provider일 때만 표시 */}
+      {value.provider === 'openai' && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <label className="text-sm font-medium text-gray-700 min-w-[100px]">API Key:</label>
+          <input
+            type="password"
+            className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={value.openaiApiKey || ''}
+            onChange={e => updateField('openaiApiKey', e.target.value)}
+            placeholder="sk-..."
+            disabled={disabled}
+          />
+        </div>
+      )}
 
       {/* Prompt */}
       <div className="flex flex-col gap-2">
@@ -370,7 +386,8 @@ export const createDefaultProperty = (nodeType: string): any => {
         model: '',
         prompt: '{{input}}',
         temperature: 0.7,
-        mode: 'text'
+        mode: 'text',
+        openaiApiKey: ''
       };
     case 'api':
       return {
