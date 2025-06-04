@@ -237,11 +237,11 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => editMode && fileInputRefs.current[idx]?.click()}
+                  onClick={() => fileInputRefs.current[idx]?.click()}
                   className="px-3 py-2 bg-gray-50 border border-gray-300 rounded text-sm hover:bg-gray-100"
                   disabled={!editMode}
                 >
-                  파일 선택 (다중 가능)
+                  파일 선택
                 </button>
                 {row.value && typeof row.value !== 'string' && (
                   <span className="text-sm text-gray-700">{(row.value as File).name}</span>

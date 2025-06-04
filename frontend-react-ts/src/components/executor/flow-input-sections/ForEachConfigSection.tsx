@@ -68,6 +68,13 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     onCommonInputsChange(newInputs);
   };
 
+  const handleCommonInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      addCommonInput();
+    }
+  };
+
   const handleCommonInputFileChange = (idx: number, files: FileList | null) => {
     if (!editMode || !files) return;
     
@@ -134,6 +141,13 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     const newItems = [...forEachItems];
     newItems[idx] = { ...newItems[idx], value };
     onForEachItemsChange(newItems);
+  };
+
+  const handleForEachItemKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      addForEachItem();
+    }
   };
 
   const handleForEachItemFileChange = (idx: number, files: FileList | null) => {
@@ -251,13 +265,16 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                 
                 {/* 입력 UI */}
                 {row.type === 'text' && (
-                  <input
-                    type="text"
-                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                  <textarea
+                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50 resize-none"
+                    rows={2}
+                    maxLength={500}
                     value={typeof row.value === 'string' ? row.value : ''}
                     onChange={(e) => handleCommonInputTextChange(idx, e.target.value)}
+                    onKeyDown={e => editMode && handleCommonInputKeyDown(e)}
                     placeholder="공통 입력값"
                     readOnly={!editMode}
+                    style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
                   />
                 )}
                 
@@ -273,11 +290,11 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => editMode && document.getElementById(`common-file-input-${idx}`)?.click()}
+                      onClick={() => document.getElementById(`common-file-input-${idx}`)?.click()}
                       className="px-3 py-2 bg-gray-50 border border-gray-300 rounded text-sm hover:bg-gray-100"
                       disabled={!editMode}
                     >
-                      파일 선택 (다중 가능)
+                      파일 선택
                     </button>
                     {row.value && typeof row.value !== 'string' && (
                       <span className="text-sm text-gray-700">{(row.value as File).name}</span>
@@ -489,13 +506,16 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                 
                 {/* 입력 UI */}
                 {item.type === 'text' && (
-                  <input
-                    type="text"
-                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-gray-50"
+                  <textarea
+                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-gray-50 resize-none"
+                    rows={2}
+                    maxLength={500}
                     value={typeof item.value === 'string' ? item.value : ''}
                     onChange={(e) => handleForEachItemTextChange(idx, e.target.value)}
+                    onKeyDown={e => editMode && handleForEachItemKeyDown(e)}
                     placeholder="ForEach 아이템"
                     readOnly={!editMode}
+                    style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
                   />
                 )}
                 
@@ -511,11 +531,11 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => editMode && document.getElementById(`foreach-file-input-${idx}`)?.click()}
+                      onClick={() => document.getElementById(`foreach-file-input-${idx}`)?.click()}
                       className="px-3 py-2 bg-gray-50 border border-gray-300 rounded text-sm hover:bg-gray-100"
                       disabled={!editMode}
                     >
-                      파일 선택 (다중 가능)
+                      파일 선택
                     </button>
                     {item.value && typeof item.value !== 'string' && (
                       <span className="text-sm text-gray-700">{(item.value as File).name}</span>
