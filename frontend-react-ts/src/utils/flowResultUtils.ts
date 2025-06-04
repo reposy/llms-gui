@@ -11,15 +11,8 @@ export const extractFlowResultText = (
   inputRow: InputRow,
   flowChainMap: Record<string, any>
 ): string => {
-  console.log('[extractFlowResultText] 입력 데이터:', { inputRow, availableChains: Object.keys(flowChainMap) });
-  
   // flow-result 타입이 아니거나 필수 데이터가 없으면 빈 문자열 반환
   if (inputRow.type !== 'flow-result' || !inputRow.flowChainId || !inputRow.sourceFlowId) {
-    console.log('[extractFlowResultText] 필수 조건 미충족:', {
-      type: inputRow.type,
-      flowChainId: inputRow.flowChainId,
-      sourceFlowId: inputRow.sourceFlowId
-    });
     return '';
   }
 
@@ -29,13 +22,6 @@ export const extractFlowResultText = (
     return '';
   }
 
-  console.log('[extractFlowResultText] 찾은 체인:', {
-    chainId: inputRow.flowChainId,
-    flowIds: chain.flowIds,
-    selectedFlowIds: chain.selectedFlowIds,
-    sourceFlowId: inputRow.sourceFlowId
-  });
-
   try {
     let nodeResults: any[] = [];
     
@@ -43,41 +29,53 @@ export const extractFlowResultText = (
       // Flow Chain 전체 결과: flowIds의 모든 lastResults를 하나의 배열로 합침
       nodeResults = chain.flowIds.flatMap((fid: string) => {
         const flow = chain.flowMap[fid];
-        console.log(`[extractFlowResultText] __all__ - 플로우 ${fid} 결과:`, flow?.lastResults);
         return flow?.lastResults || [];
       });
     } else if (inputRow.sourceFlowId === '__selected__') {
       // Flow Chain 선택 결과: selectedFlowIds의 lastResults를 하나의 배열로 합침
       nodeResults = chain.selectedFlowIds.flatMap((fid: string) => {
         const flow = chain.flowMap[fid];
-        console.log(`[extractFlowResultText] __selected__ - 플로우 ${fid} 결과:`, flow?.lastResults);
         return flow?.lastResults || [];
       });
     } else {
       // 개별 Flow 결과: 해당 flow의 lastResults
       const flow = chain.flowMap[inputRow.sourceFlowId];
       nodeResults = flow?.lastResults || [];
-      console.log(`[extractFlowResultText] 개별 플로우 ${inputRow.sourceFlowId} 결과:`, nodeResults);
     }
     
-    console.log('[extractFlowResultText] 수집된 노드 결과들:', nodeResults);
-    
-    // NodeResult 객체들에서 result 필드만 추출하고 "\n\n"로 조인
+    // NodeResult 객체들에서 outputs 배열 데이터를 추출하고 "\n\n"로 조인
     const resultTexts = nodeResults
-      .map((nodeResult: any) => {
+      .flatMap((nodeResult: any) => {
         if (typeof nodeResult === 'string') {
-          return nodeResult;
+          return [nodeResult];
         } else if (nodeResult && typeof nodeResult === 'object') {
-          return nodeResult.result || '';
+          // outputs 배열이 있는 경우 우선 사용
+          if (Array.isArray(nodeResult.outputs) && nodeResult.outputs.length > 0) {
+            return nodeResult.outputs.map((output: any) => {
+              if (typeof output === 'string') {
+                return output;
+              } else if (output && typeof output === 'object') {
+                // 객체인 경우 JSON 문자열로 변환
+                return JSON.stringify(output, null, 2);
+              }
+              return String(output || '');
+            });
+          }
+          // outputs가 없거나 비어있으면 result 필드 사용 (fallback)
+          else if (nodeResult.result) {
+            if (typeof nodeResult.result === 'string') {
+              return [nodeResult.result];
+            } else if (typeof nodeResult.result === 'object') {
+              return [JSON.stringify(nodeResult.result, null, 2)];
+            }
+            return [String(nodeResult.result)];
+          }
         }
-        return '';
+        return [];
       })
-      .filter(text => typeof text === 'string' && text.trim() !== ''); // 문자열인지 확인 후 빈 문자열 제거
+      .filter(text => typeof text === 'string' && text.trim() !== ''); // 빈 문자열 제거
     
-    const finalResult = resultTexts.join('\n\n');
-    console.log('[extractFlowResultText] 최종 결과:', finalResult);
-    
-    return finalResult;
+    return resultTexts.join('\n\n');
   } catch (error) {
     console.error('[extractFlowResultText] Flow result 데이터 추출 오류:', error);
     return '';
