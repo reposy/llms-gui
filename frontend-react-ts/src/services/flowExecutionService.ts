@@ -260,89 +260,56 @@ class FlowExecutor {
     try {
       console.log(`[FlowExecutor] Executing flow: ${flowId}${chainId ? ` (chain: ${chainId})` : ''}, mode: ${executionMode}`);
       
-      // 루트 노드 찾기
-      const rootNodes = this.findRootNodes(flowJson);
+      // repeatCount 처리 (기본값: 1)
+      let repeatCount = 1;
+      if (chainId && flowId) {
+        const store = useFlowExecutorStore.getState();
+        const flow = store.getFlow(chainId, flowId);
+        repeatCount = flow?.executionConfig?.repeatCount || 1;
+      }
       
-      if (rootNodes.length === 0) {
-        throw new Error("No root nodes found in flow");
+      console.log(`[FlowExecutor] Repeat count: ${repeatCount}`);
+      
+      // 반복 실행을 위한 전체 결과 배열
+      const allRepeatResults: any[] = [];
+      
+      // repeatCount만큼 반복 실행
+      for (let repeat = 0; repeat < repeatCount; repeat++) {
+        console.log(`[FlowExecutor] Executing iteration ${repeat + 1}/${repeatCount}`);
+        
+        // 각 반복마다 새로운 실행 ID 생성
+        const iterationExecutionId = `${executionId}-repeat-${repeat}`;
+        
+        // 단일 반복 실행
+        const iterationResults = await this.executeSingleIteration({
+          ...params,
+          executionId: iterationExecutionId
+        });
+        
+        // 결과를 flat하게 쌓기
+        if (Array.isArray(iterationResults)) {
+          allRepeatResults.push(...iterationResults);
+        } else if (iterationResults) {
+          allRepeatResults.push(iterationResults);
+        }
       }
-
-      if (executionMode === 'forEach') {
-        // ForEach 모드: 각 input에 대해 순차적으로 플로우 실행
-        console.log(`[FlowExecutor] ForEach mode: processing ${inputs.length} inputs sequentially`);
-        const allResults: any[] = [];
-        
-        for (let i = 0; i < inputs.length; i++) {
-          const currentInput = inputs[i];
-          const combinedInputs = [...commonInputs, currentInput];
-          
-          console.log(`[FlowExecutor] Processing item ${i + 1}/${inputs.length}:`, { currentInput, combinedInputs });
-          
-          // 실행 컨텍스트 생성 (각 실행마다 새로운 컨텍스트)
-          const context = this.createExecutionContext(`${executionId}-${i}`, flowJson, chainId, flowId);
-          
-          // 입력 설정
-          context.setInputs(combinedInputs);
-          
-          // 루트 노드부터 실행
-          await this.executeRootNodes(rootNodes, combinedInputs, context);
-          
-          // 결과 수집
-          const outputs = getAllOutputs(context);
-          
-          // 결과를 flat하게 수집: [...result1, ...result2, ...result3]
-          if (Array.isArray(outputs)) {
-            allResults.push(...outputs);
-          } else if (outputs) {
-            allResults.push(outputs);
-          }
-        }
-        
-        console.log(`[FlowExecutor] ForEach mode completed. Total results: ${allResults.length}`);
-        
-        // 콜백 알림
-        if (params.onComplete) {
-          params.onComplete(allResults);
-        }
-        
-        // 등록된 콜백에 알림
-        notifyResultCallbacks(flowId, allResults);
-        
-        return {
-          executionId,
-          outputs: allResults,
-          status: 'success'
-        };
-      } else {
-        // Batch 모드: 기존 방식
-        console.log(`[FlowExecutor] Batch mode: processing all inputs together`);
-        
-        // 실행 컨텍스트 생성
-        const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
-        
-        // 입력 설정
-        context.setInputs(inputs);
-        
-        // 루트 노드부터 실행
-        await this.executeRootNodes(rootNodes, inputs, context);
-        
-        // 결과 수집 및 반환
-        const outputs = getAllOutputs(context);
-        
-        // 콜백 알림
-        if (params.onComplete) {
-          params.onComplete(outputs);
-        }
-        
-        // 등록된 콜백에 알림
-        notifyResultCallbacks(flowId, outputs);
-        
-        return {
-          executionId,
-          outputs,
-          status: 'success'
-        };
+      
+      console.log(`[FlowExecutor] All repeat iterations completed. Total results: ${allRepeatResults.length}`);
+      
+      // 콜백 알림
+      if (params.onComplete) {
+        params.onComplete(allRepeatResults);
       }
+      
+      // 등록된 콜백에 알림
+      notifyResultCallbacks(flowId, allRepeatResults);
+      
+      return {
+        executionId,
+        outputs: allRepeatResults,
+        status: 'success'
+      };
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[FlowExecutor] Error executing flow ${flowId}:`, errorMessage);
@@ -353,6 +320,76 @@ class FlowExecutor {
         status: 'error',
         error: errorMessage
       };
+    }
+  }
+  
+  /**
+   * 단일 반복 실행 (기존 execute 로직)
+   */
+  private async executeSingleIteration(params: ExecuteFlowParams & { executionId: string }): Promise<any> {
+    const { flowJson, inputs, flowId, flowChainId: chainId, executionMode = 'batch', commonInputs = [], executionId } = params;
+    
+    // 루트 노드 찾기
+    const rootNodes = this.findRootNodes(flowJson);
+    
+    if (rootNodes.length === 0) {
+      throw new Error("No root nodes found in flow");
+    }
+
+    if (executionMode === 'forEach') {
+      // ForEach 모드: 각 input에 대해 순차적으로 플로우 실행
+      console.log(`[FlowExecutor] ForEach mode: processing ${inputs.length} inputs sequentially`);
+      const allResults: any[] = [];
+      
+      for (let i = 0; i < inputs.length; i++) {
+        const currentInput = inputs[i];
+        const combinedInputs = [...commonInputs, currentInput];
+        
+        console.log(`[FlowExecutor] Processing item ${i + 1}/${inputs.length}:`, { currentInput, combinedInputs });
+        
+        // 실행 컨텍스트 생성 (각 실행마다 새로운 컨텍스트)
+        const context = this.createExecutionContext(`${executionId}-${i}`, flowJson, chainId, flowId);
+        
+        // 입력 설정
+        context.setInputs(combinedInputs);
+        
+        // 루트 노드부터 실행 (중단 체크 포함)
+        const shouldContinue = await this.executeRootNodes(rootNodes, combinedInputs, context);
+        if (!shouldContinue) {
+          console.log(`[FlowExecutor] Execution stopped at iteration ${i + 1}`);
+          break;
+        }
+        
+        // 결과 수집
+        const outputs = getAllOutputs(context);
+        
+        // 결과를 flat하게 수집: [...result1, ...result2, ...result3]
+        if (Array.isArray(outputs)) {
+          allResults.push(...outputs);
+        } else if (outputs) {
+          allResults.push(outputs);
+        }
+      }
+      
+      console.log(`[FlowExecutor] ForEach mode completed. Total results: ${allResults.length}`);
+      return allResults;
+      
+    } else {
+      // Batch 모드: 기존 방식
+      console.log(`[FlowExecutor] Batch mode: processing all inputs together`);
+      
+      // 실행 컨텍스트 생성
+      const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
+      
+      // 입력 설정
+      context.setInputs(inputs);
+      
+      // 루트 노드부터 실행 (중단 체크 포함)
+      await this.executeRootNodes(rootNodes, inputs, context);
+      
+      // 결과 수집 및 반환
+      const outputs = getAllOutputs(context);
+      return outputs;
     }
   }
   
@@ -395,7 +432,7 @@ class FlowExecutor {
    * @param inputs 입력 데이터
    * @param context 실행 컨텍스트
    */
-  private async executeRootNodes(rootNodes: FlowData['nodes'], inputs: any[], context: FlowExecutionContext): Promise<void> {
+  private async executeRootNodes(rootNodes: FlowData['nodes'], inputs: any[], context: FlowExecutionContext): Promise<boolean> {
     // 모든 루트 노드에 대해 병렬 실행
     const promises = rootNodes.map(async (rootNode) => {
       const node = context.createNodeInstance(rootNode.id, rootNode.type || '', rootNode.data);
@@ -405,6 +442,13 @@ class FlowExecutor {
     });
     
     await Promise.all(promises);
+    
+    // 중단 체크
+    const shouldContinue = !context.isStopRequested_();
+    if (!shouldContinue) {
+      console.log(`[FlowExecutor] Execution stopped by user request`);
+    }
+    return shouldContinue;
   }
 }
 
@@ -679,6 +723,13 @@ export const executeNode = async (
   }
 
   const nodeId = node.id;
+  
+  // 실행 전 중단 체크
+  if (context.isStopRequested_()) {
+    console.log(`[executeNode] Execution stopped before executing node: ${nodeId}`);
+    throw new Error("Execution stopped by user request");
+  }
+  
   try {
     console.log(`[flowExecutionService] Executing node: ${nodeId} (type: ${node.type})`);
     
@@ -687,6 +738,13 @@ export const executeNode = async (
     
     // 노드 실행
     const result = await node.process(input, context);
+    
+    // 실행 후 중단 체크
+    if (context.isStopRequested_()) {
+      console.log(`[executeNode] Execution stopped after executing node: ${nodeId}`);
+      context.markNodeError(nodeId, "Execution stopped by user request");
+      throw new Error("Execution stopped by user request");
+    }
     
     // 성공 처리
     context.markNodeSuccess(nodeId, result);

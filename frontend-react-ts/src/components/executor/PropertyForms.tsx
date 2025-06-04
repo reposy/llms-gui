@@ -386,21 +386,21 @@ export const createDefaultProperty = (nodeType: string): any => {
         prompt: '{{input}}',
         temperature: 0.7,
         mode: 'text',
-        openaiApiKey: ''
+        openaiApiKey: '',
       };
     case 'api':
       return {
         url: '',
         method: 'GET',
         headers: {},
-        contentType: 'application/json'
+        contentType: 'application/json',
       };
     case 'web-crawler':
       return {
         url: '',
         timeout: 30000,
         waitForSelectorOnPage: '',
-        outputFormat: 'html'
+        outputFormat: 'html',
       };
     default:
       return {};

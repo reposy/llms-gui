@@ -63,6 +63,7 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
   const [executionMode, setExecutionMode] = useState<ExecutionMode>('batch');
   const [commonInputs, setCommonInputs] = useState<InputRow[]>([]);
   const [forEachItems, setForEachItems] = useState<InputRow[]>([]);
+  const [repeatCount, setRepeatCount] = useState<number>(1);
 
   // 전체 inputs 배열 생성 (properties + regularInputs)
   const getCombinedInputs = (props: InputRow[], regular: InputRow[]) => [...props, ...regular];
@@ -78,16 +79,21 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
       setRegularInputs(newRegularInputs.length > 0 ? newRegularInputs : [{ type: 'text', value: '' }]);
     }
 
-    // 기존 실행 설정 불러오기
-    if (flow && flow.executionConfig) {
-      setExecutionMode(flow.executionConfig.mode);
-      setCommonInputs(flow.executionConfig.commonInputs || []);
-      setForEachItems(flow.executionConfig.forEachItems || []);
-    } else {
-      // 기본값으로 초기화
-      setExecutionMode('batch');
-      setCommonInputs([]);
-      setForEachItems([]);
+    // Flow 변경 시 기존 설정 로드
+    if (flow) {
+      console.log('[FlowInputForm] Flow 변경 감지, 기존 설정 로드:', flow.executionConfig);
+      if (flow.executionConfig) {
+        setExecutionMode(flow.executionConfig.mode);
+        setCommonInputs(flow.executionConfig.commonInputs || []);
+        setForEachItems(flow.executionConfig.forEachItems || []);
+        setRepeatCount(flow.executionConfig.repeatCount || 1);
+      } else {
+        // 기본값으로 초기화
+        setExecutionMode('batch');
+        setCommonInputs([]);
+        setForEachItems([]);
+        setRepeatCount(1);
+      }
     }
   }, [propInputs, flow]);
 
@@ -128,14 +134,16 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
         regularInputs: draftRegularInputs,
         executionMode,
         commonInputs,
-        forEachItems
+        forEachItems,
+        repeatCount
       });
       
       // Flow의 실행 모드 설정 저장
       store.setFlowExecutionConfig(focusedFlowChainId, flowId, {
         mode: executionMode,
         commonInputs: executionMode === 'forEach' ? commonInputs : [],
-        forEachItems: executionMode === 'forEach' ? forEachItems : []
+        forEachItems: executionMode === 'forEach' ? forEachItems : [],
+        repeatCount
       });
       
       setTimeout(() => {
@@ -265,6 +273,8 @@ const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId
         executionMode={executionMode}
         onExecutionModeChange={setExecutionMode}
         editMode={editMode}
+        repeatCount={repeatCount}
+        onRepeatCountChange={setRepeatCount}
       />
 
       {/* ForEach Configuration */}

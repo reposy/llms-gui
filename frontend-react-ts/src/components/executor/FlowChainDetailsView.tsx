@@ -16,17 +16,19 @@ interface FlowChainDetailsViewProps {
 }
 
 // Execution Mode Badge Component
-const ExecutionModeBadge: React.FC<{ mode: 'batch' | 'forEach' }> = ({ mode }) => {
+const ExecutionModeBadge: React.FC<{ mode: 'batch' | 'forEach'; repeatCount?: number }> = ({ mode, repeatCount = 1 }) => {
+  const displayText = repeatCount > 1 ? `${mode === 'forEach' ? 'ForEach' : 'Batch'} | ${repeatCount}` : (mode === 'forEach' ? 'ForEach' : 'Batch');
+  
   if (mode === 'forEach') {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-        ForEach
+        {displayText}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-      Batch
+      {displayText}
     </span>
   );
 };
@@ -76,6 +78,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
+  const [currentExecutionContext, setCurrentExecutionContext] = useState<any>(null);
 
   if (!flowChain) { 
     return (
@@ -217,6 +220,17 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     setEditingFlowId(null);
   }
 
+  const handleStopExecution = () => {
+    console.log('[FlowChainDetailsView] Stop execution requested');
+    if (currentExecutionContext && typeof currentExecutionContext.requestStop === 'function') {
+      currentExecutionContext.requestStop();
+    }
+    // Flow Chain 상태를 idle로 변경
+    useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, 'idle');
+    setIsExecuting(false);
+    setExecutingFlowId(null);
+  };
+
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
       <div className="p-3 border-b border-gray-200 flex justify-between items-center">
@@ -254,6 +268,18 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
               </>
             )}
           </button>
+          {(flowChain.status === 'running' || isExecuting) && (
+            <button
+              onClick={handleStopExecution}
+              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
+              title="실행 중단"
+            >
+              <svg className="mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Stop
+            </button>
+          )}
         </div>
       </div>
       {flowIds.length === 0 ? (
@@ -333,7 +359,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                     </div>
                   </div>
                   <div className="ml-2 flex-shrink-0 flex items-center space-x-1 opacity-100 transition-opacity duration-150">
-                    <ExecutionModeBadge mode={getFlowExecutionMode(flow)} />
+                    <ExecutionModeBadge mode={getFlowExecutionMode(flow)} repeatCount={flow.executionConfig?.repeatCount} />
                     <button
                       onClick={e => { e.stopPropagation(); handleExecuteFlow(flowId); }}
                       className={`p-1.5 rounded-md transition-colors duration-150 ${executingFlowId === flowId ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-100'}`}

@@ -106,6 +106,16 @@ export class FlowExecutionContext implements ExecutionContext {
   private onStoreOutput?: (nodeId: string, output: any) => void;
 
   /**
+   * 실행 중단 요청 플래그
+   */
+  private isStopRequested: boolean = false;
+
+  /**
+   * 중단 요청 콜백 함수
+   */
+  private onStopRequested?: () => void;
+
+  /**
    * Create a new flow execution context
    * @param executionId Unique ID for this execution
    * @param getNodePropertyFunc Function to get a node's content
@@ -491,5 +501,36 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   setStoreOutputCallback(callback: (nodeId: string, output: any) => void): void {
     this.onStoreOutput = callback;
+  }
+
+  /**
+   * 실행 중단을 요청합니다
+   */
+  requestStop(): void {
+    this.isStopRequested = true;
+    if (this.onStopRequested) {
+      this.onStopRequested();
+    }
+  }
+
+  /**
+   * 실행 중단이 요청되었는지 확인합니다
+   */
+  isStopRequested_(): boolean {
+    return this.isStopRequested;
+  }
+
+  /**
+   * 중단 요청 콜백을 설정합니다
+   */
+  setStopRequestedCallback(callback: () => void): void {
+    this.onStopRequested = callback;
+  }
+
+  /**
+   * 중단 플래그를 초기화합니다
+   */
+  resetStopFlag(): void {
+    this.isStopRequested = false;
   }
 }
