@@ -1,3 +1,14 @@
+backend-fastapi-py/static/*
+
+frontend-react-ts/node_modules/
+frontend-react-ts/dist/
+frontend-react-ts/.turbo/
+frontend-react-ts/.vite/
+frontend-react-ts/.next/
+frontend-react-ts/build/
+frontend-react-ts/.cache/
+frontend-react-ts/coverage/
+
 # Node.js and Build artifacts
 node_modules/
 dist/
