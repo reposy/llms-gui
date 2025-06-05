@@ -63,12 +63,8 @@ export class NodeFactory {
     // 3. 속성 준비 - 전달된 props를 우선으로 하여 병합
     // 기본값 -> 스토어 값 -> 전달된 props -> 동적 Property 순으로 우선순위
     const defaultProperty = createDefaultNodeProperty(type, id);
-    const typeDefaults = this.typeDefaults[type] || {};
     
-    let nodeContent = { ...defaultProperty };
-    if (factoryFn.nodeTypeDefaults && typeof factoryFn.nodeTypeDefaults === 'object') {
-      nodeContent = { ...nodeContent, ...factoryFn.nodeTypeDefaults };
-    }
+    let nodeContent: any = { ...defaultProperty };
     if (storedContent && typeof storedContent === 'object') {
       nodeContent = { ...nodeContent, ...storedContent };
     }

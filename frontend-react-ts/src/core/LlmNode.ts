@@ -196,7 +196,7 @@ export class LlmNode extends Node {
         throw new Error('LLM service returned null or undefined unexpectedly.');
       }
       
-      // 비전 모드 결과 형식화 (기존 로직 유지)
+      // 비전 모드 결과 형식화 - 마크다운 이미지 표시를 위한 파일 경로 형식
       let resultText = result.response;
       
       // 응답이 undefined인 경우 빈 문자열로 대체
@@ -206,24 +206,45 @@ export class LlmNode extends Node {
       }
       
       if (mode === 'vision') {
-        let metadataInfo = '';
+        const imagePaths: string[] = [];
         
+        // LocalFileMetadata에서 파일 경로 추출
         if (localImageMetadata.length > 0) {
-          // 각 이미지마다 한 줄의 메타데이터 추가
-          metadataInfo = localImageMetadata.map((img, index) => {
-            return `IMAGE[${index+1}]=${img.originalName}|${img.contentType || 'unknown'}|${this._formatSize(img.size)}|${img.objectUrl}`;
-          }).join('\n') + '\n\n';
+          localImageMetadata.forEach((img) => {
+            // originalName을 사용하되, 경로가 없으면 images/ 프리픽스 추가
+            const filePath = img.originalName?.includes('/') 
+              ? img.originalName 
+              : `images/${img.originalName}`;
+            imagePaths.push(filePath);
+          });
+        }
+        
+        // File 객체에서 파일 경로 추출
+        if (imageFiles.length > 0) {
+          imageFiles.forEach((file) => {
+            // 파일명을 사용하되, 경로가 없으면 images/ 프리픽스 추가
+            const filePath = file.name?.includes('/') 
+              ? file.name 
+              : `images/${file.name}`;
+            imagePaths.push(filePath);
+          });
+        }
+        
+        // 파일 경로 정보를 응답 첫 줄에 추가
+        if (imagePaths.length > 0) {
+          let pathInfo = '';
+          if (imagePaths.length === 1) {
+            // 단일 파일: [파일경로]
+            pathInfo = `[${imagePaths[0]}]`;
+          } else {
+            // 다중 파일: ["파일경로1", "파일경로2", ...]
+            const quotedPaths = imagePaths.map(path => `"${path}"`);
+            pathInfo = `[${quotedPaths.join(', ')}]`;
+          }
           
-          // 메타데이터를 결과 앞에 추가
-          resultText = metadataInfo + resultText;
-        } else if (imageFiles.length > 0) {
-          // File 객체의 경우 객체 정보 추출
-          metadataInfo = imageFiles.map((file, index) => {
-            const url = URL.createObjectURL(file); // 임시 URL 생성
-            return `IMAGE[${index+1}]=${file.name}|${file.type}|${this._formatSize(file.size)}|${url}`;
-          }).join('\n') + '\n\n';
-          
-          resultText = metadataInfo + resultText;
+          // 파일 경로 정보를 결과 앞에 추가
+          resultText = pathInfo + '\n\n' + resultText;
+          this._log(`Added image path info: ${pathInfo}`);
         }
       }
       
@@ -247,20 +268,5 @@ export class LlmNode extends Node {
         this._log(`Restored original property: ${JSON.stringify(originalProperty)}`);
       }
     }
-  }
-  
-  /**
-   * 파일 크기를 읽기 쉬운 형식으로 변환
-   */
-  private _formatSize(bytes: number): string {
-    if (!bytes) return 'N/A';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let size = bytes;
-    let unitIndex = 0;
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-    return `${size.toFixed(1)}${units[unitIndex]}`;
   }
 } 
