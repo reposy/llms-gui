@@ -711,7 +711,7 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
  * 노드 및 자식 노드 실행 함수
  * 노드 실행 및 자식 노드 체인 처리를 담당
  * @param node 실행할 노드 인스턴스
- * @param input 입력 데이터
+ * @param input 입력 데이터 (원본)
  * @param context 실행 컨텍스트
  * @returns 노드 실행 결과
  */
@@ -738,8 +738,13 @@ export const executeNode = async (
     // 노드 실행 상태 설정
     context.markNodeRunning(nodeId);
     
-    // 노드 실행
-    const result = await node.process(input, context);
+    // FlowExecutionContext에서 변환된 입력을 가져와서 사용
+    // 변환된 입력이 없으면 원본 입력 사용
+    const contextInputs = context.getInputs();
+    const actualInput = contextInputs.length > 0 ? contextInputs : input;
+    
+    // 노드 실행 (변환된 입력 전달)
+    const result = await node.process(actualInput, context);
     
     // 실행 후 중단 체크
     if (context.isStopRequested_()) {

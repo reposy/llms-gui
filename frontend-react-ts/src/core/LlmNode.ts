@@ -4,7 +4,6 @@ import { LlmNodeProperty } from '../types/nodes';
 import { runLLM } from '../services/llmService';
 import { LLMRequestParams } from '../services/llm/types';
 import { LocalFileMetadata } from '../types/files';
-import { extractDynamicProperty, mergeDynamicProperty, removeActualInputFromDynamic } from '../utils/dynamicPropertyUtils';
 
 /**
  * LLM node for generating text via LLM providers
@@ -128,22 +127,16 @@ export class LlmNode extends Node {
     console.log('[LLMNode] execute input:', input);
     this._log('Executing LLMNode');
 
-    // 동적 속성 추출 및 적용
-    const dynamicProperty = extractDynamicProperty(input, 'llm');
-    const effectiveProperty = mergeDynamicProperty(this.property, dynamicProperty);
-    
-    // 동적 속성이 있다면 임시로 this.property 업데이트
-    const originalProperty = this.property;
-    if (dynamicProperty) {
-      this.property = effectiveProperty as LlmNodeProperty;
-      this._log(`Applied dynamic property: ${JSON.stringify(dynamicProperty)}`);
-    }
-
-    // 동적 속성 객체를 제거한 실제 입력 추출
-    const actualInput = removeActualInputFromDynamic(input, 'llm');
-
     try {
-      // 필수 속성 확인 (이제 effectiveProperty 사용)
+      // 속성 가져오기 (컨텍스트 우선, fallback으로 this.property)
+      let effectiveProperty: LlmNodeProperty;
+      if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+        effectiveProperty = this.context.getNodePropertyFunc(this.id, this.type) as LlmNodeProperty;
+      } else {
+        effectiveProperty = this.property as LlmNodeProperty;
+      }
+
+      // 필수 속성 확인
       const provider = effectiveProperty?.provider;
       const model = effectiveProperty?.model;
       if (!provider || !model) {
@@ -153,16 +146,16 @@ export class LlmNode extends Node {
         return null;
       }
 
-      // 모드 및 프롬프트 설정 (effectiveProperty 사용)
+      // 모드 및 프롬프트 설정
       const mode = effectiveProperty.mode || 'text';
       this._log(`Config - Mode: ${mode}, Provider: ${provider}, Model: ${model}`);
       
-      // 프롬프트 템플릿 처리 (기존 로직 유지, actualInput 사용)
-      const finalPrompt = this.resolvePrompt(actualInput, effectiveProperty as LlmNodeProperty);
+      // 프롬프트 템플릿 처리
+      const finalPrompt = this.resolvePrompt(input, effectiveProperty);
       console.log('[LLMNode] final prompt after input replace:', finalPrompt);
       
-      // 이미지 추출 (actualInput 사용)
-      const { files: imageFiles, metaData: localImageMetadata } = this.extractImages(actualInput);
+      // 이미지 추출
+      const { files: imageFiles, metaData: localImageMetadata } = this.extractImages(input);
       this._log(`Found ${imageFiles.length} image files and ${localImageMetadata.length} local image metadata`);
       
       // 비전 모드 검증
@@ -174,7 +167,7 @@ export class LlmNode extends Node {
         return null;
       }
       
-      // API 요청 파라미터 구성 (effectiveProperty 사용)
+      // API 요청 파라미터 구성
       const params: LLMRequestParams = {
         provider,
         model,
@@ -188,7 +181,7 @@ export class LlmNode extends Node {
         openaiApiKey: effectiveProperty.openaiApiKey,
       };
 
-      // LLM 서비스 호출 (기존 로직 유지)
+      // LLM 서비스 호출
       this._log(`Calling LLM service with: ${params.mode} mode, ${imageFiles.length + localImageMetadata.length} images`);
       console.log('[LLMNode] Sending to LLM service:', params);
       const result = await runLLM(params);
@@ -261,12 +254,6 @@ export class LlmNode extends Node {
       this.context?.markNodeError(this.id, errorMessage);
       this._log(`Error during LLM service call: ${errorMessage}`);
       return null;
-    } finally {
-      // 동적 속성이 있다면 원래의 property로 복원
-      if (dynamicProperty) {
-        this.property = originalProperty as LlmNodeProperty;
-        this._log(`Restored original property: ${JSON.stringify(originalProperty)}`);
-      }
     }
   }
 } 
