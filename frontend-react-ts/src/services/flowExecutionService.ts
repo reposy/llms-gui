@@ -471,14 +471,10 @@ class ExecutorFlowExecutor extends FlowExecutor {
     chainId?: string,
     flowId?: string
   ): FlowExecutionContext {
-    if (!chainId || !flowId) {
-      throw new Error('chainId and flowId are required for ExecutorFlowExecutor context');
-    }
-    
     // ✅ Flow Executor store에서 실제 노드 데이터를 미리 가져와서 flowJson.nodes를 업데이트
     try {
       const store = useFlowExecutorStore.getState();
-      const nodeMap = store.flowChainMap?.[chainId]?.flowMap?.[flowId]?.nodeMap;
+      const nodeMap = chainId && flowId ? store.flowChainMap?.[chainId]?.flowMap?.[flowId]?.nodeMap : null;
       
       if (nodeMap) {
         // flowJson.nodes의 data 필드를 store의 data로 업데이트
@@ -514,12 +510,13 @@ class ExecutorFlowExecutor extends FlowExecutor {
     
     // ✅ 수정: 항상 globalNodeFactory를 사용하여 단일 인스턴스 보장
     // 업데이트된 flowJson으로 실행기용 컨텍스트 생성
+    // chainId나 flowId가 없어도 작동하도록 수정
     return FlowExecutionContext.createForExecutor(
       executionId, 
       flowJson, 
       globalNodeFactory,  // ✅ 수정: nodeFactory 매개변수 대신 globalNodeFactory 직접 사용
-      chainId, 
-      flowId
+      chainId,  // undefined일 수 있음
+      flowId    // undefined일 수 있음
     );
   }
 }
@@ -838,13 +835,17 @@ export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<Ex
     const flowChainMap = store.flowChainMap;
     resolvedInputs = resolveFlowResultInputs(params.inputs, flowChainMap);
   }
-  if (!params.flowChainId || !params.flowId) {
-    return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
-  }
+  
+  // 단일 진입점 보장: 항상 executorFlowExecutor 사용
+  // flowChainId/flowId가 없어도 ExecutorFlowExecutor가 처리 가능
   const response = await executorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
+  
   if (response.status === 'success') {
     const safeOutputs = response.outputs || [];
-    useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
+    // flowChainId와 flowId가 있는 경우에만 결과 저장
+    if (params.flowChainId && params.flowId) {
+      useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
+    }
   }
   if (params.onComplete && response.status === 'success') {
     params.onComplete(response.outputs);

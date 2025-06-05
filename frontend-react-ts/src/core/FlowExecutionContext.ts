@@ -151,13 +151,13 @@ export class FlowExecutionContext implements ExecutionContext {
     this.edges = edges;
     this.nodeFactory = nodeFactory || globalNodeFactory;
     this.isExecutorCtx = isExecutorContext;
-    if (this.isExecutorCtx) {
-      if (!chainId || !flowId) {
-        throw new Error('chainId and flowId are required for Executor context');
-      }
+    
+    // Executor 컨텍스트이지만 chainId/flowId가 없어도 허용
+    if (this.isExecutorCtx && chainId && flowId) {
       this.currentChainId = chainId;
       this.currentFlowId = flowId;
     }
+    
     this.onNodeStateChange = onNodeStateChange;
     this.onStoreOutput = onStoreOutput;
   }
@@ -247,9 +247,9 @@ export class FlowExecutionContext implements ExecutionContext {
           }
         }
         
-        // 2. Executor 모드: Flow Executor store에서 data 필드를 property로 사용
-        try {
-          if (flowChainId && flowId) {
+        // 2. Executor 모드: Flow Executor store에서 data 필드를 property로 사용 (chainId/flowId가 있는 경우만)
+        if (flowChainId && flowId) {
+          try {
             const store = useFlowExecutorStore.getState();
             const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
             const storeProperty = nodeMap?.[nodeId]?.data;
@@ -257,9 +257,9 @@ export class FlowExecutionContext implements ExecutionContext {
             if (storeProperty && typeof storeProperty === 'object') {
               return storeProperty;
             }
+          } catch (e) {
+            console.error(`[createForExecutor] Error retrieving node ${nodeId}:`, e);
           }
-        } catch (e) {
-          console.error(`[createForExecutor] Error retrieving node ${nodeId}:`, e);
         }
         
         // 3. fallback을 buildGraphStructure에서 설정한 데이터로 변경
@@ -272,7 +272,7 @@ export class FlowExecutionContext implements ExecutionContext {
       flowData.nodes,
       flowData.edges,
       factory,
-      true,
+      true,  // isExecutorContext
       flowChainId,
       flowId,
       undefined,
@@ -382,7 +382,7 @@ export class FlowExecutionContext implements ExecutionContext {
     if (flowResultInputs.length > 0) {
       this.log(`flow-result 입력 ${flowResultInputs.length}개를 실제 데이터로 변환`);
       
-      // Flow Executor store에서 flowChainMap 가져오기
+      // Flow Executor store에서 flowChainMap 가져오기 (chainId가 있는 경우만)
       const flowChainMap = this.isExecutorCtx && this.currentChainId ? 
         (() => {
           try {

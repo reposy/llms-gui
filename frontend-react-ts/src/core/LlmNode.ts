@@ -204,22 +204,21 @@ export class LlmNode extends Node {
         // LocalFileMetadata에서 파일 경로 추출
         if (localImageMetadata.length > 0) {
           localImageMetadata.forEach((img) => {
-            // originalName을 사용하되, 경로가 없으면 images/ 프리픽스 추가
-            const filePath = img.originalName?.includes('/') 
-              ? img.originalName 
-              : `images/${img.originalName}`;
+            // originalName을 그대로 사용 (경로 정보가 포함되어 있으면 그대로, 파일명만 있어도 그대로)
+            const filePath = img.originalName || img.file?.name || 'unknown';
             imagePaths.push(filePath);
+            this._log(`Using LocalFileMetadata path: ${filePath}`);
           });
         }
         
         // File 객체에서 파일 경로 추출
         if (imageFiles.length > 0) {
           imageFiles.forEach((file) => {
-            // 파일명을 사용하되, 경로가 없으면 images/ 프리픽스 추가
-            const filePath = file.name?.includes('/') 
-              ? file.name 
-              : `images/${file.name}`;
+            // webkitRelativePath가 있으면 우선 사용, 없으면 file.name 사용
+            // 임의로 images/ 프리픽스를 추가하지 않음
+            const filePath = (file as any).webkitRelativePath || file.name;
             imagePaths.push(filePath);
+            this._log(`Using File path: ${filePath} (webkitRelativePath: ${(file as any).webkitRelativePath || 'none'})`);
           });
         }
         
