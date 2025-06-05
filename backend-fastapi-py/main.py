@@ -132,15 +132,19 @@ async def parse_html(request: HtmlParseRequest):
 
 # 파일 업로드 API 엔드포인트
 @app.post("/api/files/upload", response_model=Dict[str, Any])
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), context: str = "default"):
     """
     파일을 서버에 업로드합니다. 현재는 이미지 파일만 지원합니다.
     최대 파일 크기는 10MB입니다.
+    
+    Args:
+        file: 업로드할 파일
+        context: 파일 저장 컨텍스트 (기본값: 'default')
     """
     try:
-        logger.info(f"File upload request received: {file.filename}")
-        result = await save_uploaded_file(file)
-        logger.info(f"File uploaded successfully: {result['filename']}")
+        logger.info(f"File upload request received: {file.filename}, context: {context}")
+        result = await save_uploaded_file(file, context)
+        logger.info(f"File uploaded successfully: {result['fileId']} in context: {context}")
         return result
     except HTTPException as e:
         # HTTPException은 이미 적절한 형식이므로 그대로 발생시킴
@@ -150,23 +154,27 @@ async def upload_file(file: UploadFile = File(...)):
         logger.error(f"Unexpected error during file upload: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
-@app.get("/api/files/{filename}")
-async def get_file(filename: str):
+@app.get("/api/files/{context}/{filename}")
+async def get_file(context: str, filename: str):
     """
-    업로드된 파일을 가져옵니다.
+    컨텍스트별 업로드된 파일을 가져옵니다.
     """
-    if not file_exists(filename):
-        logger.warning(f"File not found: {filename}")
+    if not file_exists(context, filename):
+        logger.warning(f"File not found: {context}/{filename}")
         raise HTTPException(status_code=404, detail="File not found")
     
-    file_path = get_file_path(filename)
+    file_path = get_file_path(context, filename)
     logger.info(f"Serving file: {file_path}")
     return FileResponse(file_path)
 
-@app.get("/api/files", response_model=List[Dict[str, Any]])
-async def get_files(limit: Optional[int] = 100):
+@app.get("/api/files")
+async def get_files(context: Optional[str] = None, limit: Optional[int] = 100):
     """
     업로드된 파일 목록을 반환합니다.
+    
+    Args:
+        context: 특정 컨텍스트의 파일만 조회 (선택사항)
+        limit: 반환할 파일 수 제한 (기본값: 100)
     """
-    logger.info(f"Listing files with limit: {limit}")
-    return list_files(limit) 
+    logger.info(f"Listing files with context: {context}, limit: {limit}")
+    return list_files(context, limit) 
