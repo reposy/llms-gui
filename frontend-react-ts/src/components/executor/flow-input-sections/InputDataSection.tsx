@@ -1,5 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import type { InputRow, InputType } from '../../../types/flow/InputRow';
+import { useUnifiedFileUpload } from '../../../hooks/useUnifiedFileUpload';
+import { FILE_CONTEXTS, BackendFileMetadata } from '../../../types/files';
 
 interface InputDataSectionProps {
   inputs: InputRow[];
@@ -21,6 +23,16 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
   flowChainMap
 }) => {
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  
+  // 통합 파일 업로드 훅 사용
+  const { 
+    uploading, 
+    error: uploadError, 
+    progress, 
+    uploadedFiles,
+    handleFileChange: unifiedFileChange,
+    clearError 
+  } = useUnifiedFileUpload(FILE_CONTEXTS.FLOW_EXECUTOR);
 
   // SVG 아이콘들
   const TrashIcon = (
@@ -74,32 +86,56 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
     onInputsChange(newInputs);
   };
 
-  const handleFileChange = (idx: number, files: FileList | null) => {
-    if (!editMode || !files) return;
+  const handleFileChange = async (idx: number, files: FileList | null) => {
+    if (!files || !editMode) return;
     
-    const newInputs = [...inputs];
-    const fileArray = Array.from(files);
+    console.log(`Flow Executor - File selection at index ${idx}:`, Array.from(files).map(f => f.name));
     
-    if (fileArray.length === 0) {
-      // 파일이 선택되지 않은 경우 기존 로직 유지
-      newInputs[idx] = { type: 'file', value: null };
-    } else if (fileArray.length === 1) {
-      // 단일 파일 선택: 기존 InputRow 업데이트
-      newInputs[idx] = { type: 'file', value: fileArray[0] };
-    } else {
-      // 다중 파일 선택: 첫 번째 파일로 현재 row 업데이트, 나머지는 새 row 추가
-      newInputs[idx] = { type: 'file', value: fileArray[0] };
-      
-      // 나머지 파일들을 현재 위치 다음에 추가
-      const additionalRows = fileArray.slice(1).map(file => ({
-        type: 'file' as const,
-        value: file
-      }));
-      
-      newInputs.splice(idx + 1, 0, ...additionalRows);
+    try {
+      // 통합 파일 업로드 사용
+      const result = await unifiedFileChange({
+        target: { files, value: '' }
+      } as React.ChangeEvent<HTMLInputElement>);
+
+      if (result.success && result.files.length > 0) {
+        const newInputs = [...inputs];
+        
+        // 업로드된 파일들을 BackendFileMetadata로 처리
+        result.files.forEach((fileMetadata: BackendFileMetadata, fileIndex) => {
+          console.log(`Flow Executor - Processing uploaded file ${fileIndex}:`, {
+            fileId: fileMetadata.fileId,
+            originalFileName: fileMetadata.originalFileName,
+            filePath: fileMetadata.filePath,
+            url: fileMetadata.url,
+            backendPath: fileMetadata.backendPath
+          });
+          
+          if (fileIndex === 0) {
+            // 첫 번째 파일은 현재 행에 설정
+            newInputs[idx] = { 
+              type: 'file', 
+              value: fileMetadata,  // BackendFileMetadata 저장
+              fileMetadata: fileMetadata
+            };
+          } else {
+            // 나머지 파일들은 새 행으로 추가
+            newInputs.push({ 
+              type: 'file', 
+              value: fileMetadata,
+              fileMetadata: fileMetadata
+            });
+          }
+        });
+        
+        onInputsChange(newInputs);
+        console.log(`Flow Executor - Updated inputs:`, newInputs);
+        console.log(`Flow Executor - Successfully uploaded ${result.files.length} files`);
+      } else {
+        console.error('Flow Executor - File upload failed:', result.error);
+      }
+    } catch (error) {
+      console.error('Flow Executor - File upload error:', error);
     }
-    
-    onInputsChange(newInputs);
   };
 
   const handleTextChange = (idx: number, value: string) => {
@@ -127,6 +163,33 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
       });
       onInputsChange(newInputs);
     }
+  };
+
+  // 파일 이름 표시 함수
+  const getFileDisplayName = (value: any): string => {
+    if (!value) return '';
+    
+    if (value instanceof File) {
+      return value.name;
+    } else if (typeof value === 'object' && 'originalFileName' in value) {
+      // BackendFileMetadata
+      return value.originalFileName;
+    }
+    
+    return '';
+  };
+
+  // 파일 상태 표시 함수
+  const getFileStatus = (value: any): string => {
+    if (!value) return '';
+    
+    if (value instanceof File) {
+      return '로컬 파일';
+    } else if (typeof value === 'object' && 'fileId' in value) {
+      return '백엔드 저장완료';
+    }
+    
+    return '';
   };
 
   return (
@@ -164,6 +227,38 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
           </div>
         )}
       </div>
+      
+      {/* 업로드 상태 표시 */}
+      {uploading && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-blue-700">파일 업로드 중...</span>
+            <span className="text-sm text-blue-700">{progress}%</span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+      
+      {/* 업로드 에러 표시 */}
+      {uploadError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-red-700">{uploadError}</span>
+            <button 
+              onClick={clearError}
+              className="text-red-500 hover:text-red-700"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="text-gray-500 text-sm mb-4">
         배치 모드에서는 모든 입력을 한 번에 처리합니다.<br/>
         <span className="text-blue-600">💡 파일 선택 시 Ctrl(Cmd) + 클릭으로 여러 파일을 선택할 수 있습니다. 각 파일마다 별도의 Input Row가 생성됩니다.</span>
@@ -243,8 +338,17 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
                 >
                   파일 선택
                 </button>
-                {row.value && typeof row.value !== 'string' && (
-                  <span className="text-sm text-gray-700">{(row.value as File).name}</span>
+                {row.value && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-700">{getFileDisplayName(row.value)}</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      getFileStatus(row.value) === '백엔드 저장완료' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {getFileStatus(row.value)}
+                    </span>
+                  </div>
                 )}
                 {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
               </div>

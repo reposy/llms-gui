@@ -13,6 +13,8 @@ import { VIEW_MODES } from '../../store/viewModeStore';
 import { TrashIcon, PhotoIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
 import { runSingleNodeExecution } from '../../core/executionUtils';
+import { BackendFileMetadata } from '../../types/files';
+import { useFlowExecutor } from '../../hooks/useFlowExecutor';
 
 // Node component
 export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
@@ -30,14 +32,19 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     commonItems,
     items,
     textBuffer,
+    iterateEachRow,
     chainingUpdateMode,
     handleTextChange,
     handleAddText,
     handleFileChange,
+    handleDeleteItem,
+    updateInputContent,
     handleClearItems,
-    label,
-    fileProcessing,
-    resetError,
+    fileUploading,
+    uploadError,
+    uploadProgress,
+    clearUploadError,
+    serverConnected
   } = useInputNodeData({ nodeId: id });
   
   // Format items for display
@@ -107,7 +114,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
           {/* Node Header */} 
           <NodeHeader 
              nodeId={id} 
-             label={label || 'Input'} 
+             label={nodeContent?.label || 'Input'} 
              placeholderLabel="Input"
              isRootNode={isRootNode}
              isRunning={isRunning}
@@ -199,7 +206,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
             <div className="px-4 py-2 border-t border-gray-200">
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-xs font-medium text-gray-500">
-                  Add Files (Images only, max 10MB):
+                  파일 업로드 (이미지만, 최대 10MB):
                 </label>
                 <div className="flex space-x-1">
                   <input
@@ -209,6 +216,7 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                     className="hidden"
                     accept="image/*"
                     multiple
+                    disabled={fileUploading}
                   />
                   <input
                     type="file"
@@ -217,55 +225,67 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
                     className="hidden"
                     accept="image/*"
                     multiple
+                    disabled={fileUploading}
                   />
                   <label
                     htmlFor={`common-file-input-${id}`}
-                    className="cursor-pointer px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-800 hover:bg-purple-200 flex items-center"
+                    className={`cursor-pointer px-2 py-1 text-xs font-medium rounded flex items-center transition-colors ${
+                      fileUploading 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                    }`}
                   >
                     <PhotoIcon className="h-3 w-3 mr-1" />
-                    Common
+                    {fileUploading ? '업로드중...' : 'Common'}
                   </label>
                   <label
                     htmlFor={`element-file-input-${id}`}
-                    className="cursor-pointer px-2 py-1 text-xs font-medium rounded bg-orange-100 text-orange-800 hover:bg-orange-200 flex items-center"
+                    className={`cursor-pointer px-2 py-1 text-xs font-medium rounded flex items-center transition-colors ${
+                      fileUploading 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                    }`}
                   >
                     <PhotoIcon className="h-3 w-3 mr-1" />
-                    Element
+                    {fileUploading ? '업로드중...' : 'Element'}
                   </label>
                 </div>
               </div>
               
-              {/* 새로고침 경고 메시지 */}
-              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+              {/* 백엔드 파일 시스템 상태 표시 */}
+              <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
                 <div className="flex items-start">
-                  <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500 mr-1" />
-                  <p className="text-xs text-yellow-700 flex-grow">
-                    페이지 새로 고침 시 추가된 파일이 손실됩니다. 실행 전 작업을 완료하세요.
+                  <div className="h-4 w-4 text-green-500 mr-1">✅</div>
+                  <p className="text-xs text-green-700 flex-grow">
+                    백엔드 파일 시스템 연결됨 - 새로고침 시에도 파일이 유지됩니다
                   </p>
                 </div>
               </div>
               
-              {/* File Processing Status */}
-              {fileProcessing.uploading && (
+              {/* 업로드 진행률 */}
+              {fileUploading && uploadProgress > 0 && (
                 <div className="mt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div 
-                      className="bg-blue-600 h-2.5 rounded-full" 
-                      style={{ width: `${fileProcessing.progress}%` }}
-                    ></div>
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                    <span>백엔드에 업로드 중...</span>
+                    <span>{uploadProgress}%</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Uploading... {fileProcessing.progress}%</p>
+                  <div className="w-full h-2 bg-gray-200 rounded">
+                    <div 
+                      className="h-full bg-blue-500 rounded transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
                 </div>
               )}
               
-              {/* File Processing Error */}
-              {fileProcessing.error && (
+              {/* 업로드 에러 */}
+              {uploadError && (
                 <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                  <div className="flex items-start">
-                    <p className="text-xs text-red-600 flex-grow">{fileProcessing.error}</p>
+                  <div className="flex items-start justify-between">
+                    <p className="text-xs text-red-600 flex-grow">❌ {uploadError}</p>
                     <button 
-                      onClick={resetError}
-                      className="text-gray-400 hover:text-gray-600"
+                      onClick={clearUploadError}
+                      className="text-red-400 hover:text-red-600 ml-2"
                     >
                       <XCircleIcon className="h-4 w-4" />
                     </button>

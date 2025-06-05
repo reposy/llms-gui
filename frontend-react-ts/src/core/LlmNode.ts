@@ -3,7 +3,7 @@ import { FlowExecutionContext } from './FlowExecutionContext';
 import { LlmNodeProperty } from '../types/nodes';
 import { runLLM } from '../services/llmService';
 import { LLMRequestParams } from '../services/llm/types';
-import { LocalFileMetadata } from '../types/files';
+import { LocalFileMetadata, BackendFileMetadata } from '../types/files';
 
 /**
  * LLM node for generating text via LLM providers
@@ -78,21 +78,28 @@ export class LlmNode extends Node {
   }
 
   /**
-   * 입력에서 이미지 파일과 메타데이터 추출
+   * 입력에서 이미지 파일과 메타데이터 추출 (통합 파일 시스템 지원)
    */
   private extractImages(input: any): {
     files: File[],
-    metaData: LocalFileMetadata[]
+    metaData: LocalFileMetadata[],
+    backendFiles: BackendFileMetadata[]
   } {
     const files: File[] = [];
     const metaData: LocalFileMetadata[] = [];
+    const backendFiles: BackendFileMetadata[] = [];
     
     // 단일 File 객체
     if (input instanceof File && input.type.startsWith('image/')) {
       files.push(input);
       this._log(`Found single image file: ${input.name}`);
     }
-    // 단일 LocalFileMetadata 객체
+    // 단일 BackendFileMetadata 객체 (새로운 통합 시스템)
+    else if (input && typeof input === 'object' && 'fileId' in input && 'originalFileName' in input) {
+      backendFiles.push(input as BackendFileMetadata);
+      this._log(`Found single backend file metadata: ${input.originalFileName}`);
+    }
+    // 단일 LocalFileMetadata 객체 (레거시)
     else if (input && typeof input === 'object' && 'file' in input && 'objectUrl' in input) {
       if (input.file?.type?.startsWith('image/')) {
         metaData.push(input as LocalFileMetadata);
@@ -101,11 +108,14 @@ export class LlmNode extends Node {
     }
     // 배열 입력
     else if (Array.isArray(input)) {
-      // 배열에서 이미지 파일 추출
       for (const item of input) {
         if (item instanceof File && item.type.startsWith('image/')) {
           files.push(item);
           this._log(`Found image file in array: ${item.name}`);
+        }
+        else if (item && typeof item === 'object' && 'fileId' in item && 'originalFileName' in item) {
+          backendFiles.push(item as BackendFileMetadata);
+          this._log(`Found backend file metadata in array: ${item.originalFileName}`);
         }
         else if (item && typeof item === 'object' && 'file' in item && 'objectUrl' in item) {
           const localImage = item as LocalFileMetadata;
@@ -117,7 +127,7 @@ export class LlmNode extends Node {
       }
     }
     
-    return { files, metaData };
+    return { files, metaData, backendFiles };
   }
   
   /**
@@ -155,8 +165,8 @@ export class LlmNode extends Node {
       console.log('[LLMNode] final prompt after input replace:', finalPrompt);
       
       // 이미지 추출
-      const { files: imageFiles, metaData: localImageMetadata } = this.extractImages(input);
-      this._log(`Found ${imageFiles.length} image files and ${localImageMetadata.length} local image metadata`);
+      const { files: imageFiles, metaData: localImageMetadata, backendFiles } = this.extractImages(input);
+      this._log(`Found ${imageFiles.length} image files, ${localImageMetadata.length} local image metadata, and ${backendFiles.length} backend files`);
       
       // 비전 모드 검증
       if (mode === 'vision' && imageFiles.length === 0 && localImageMetadata.length === 0 && 
