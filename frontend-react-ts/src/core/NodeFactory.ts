@@ -75,6 +75,11 @@ export class NodeFactory {
       nodeContent = { ...nodeContent, ...props };
     }
     
+    // [스키마 변환] WebCrawler 노드의 레거시 스키마를 현재 스키마로 변환
+    if (type === 'web-crawler') {
+      nodeContent = this.convertWebCrawlerSchema(nodeContent);
+    }
+    
     console.log(`[NodeFactory] Creating ${type} node ${id} with final properties:`, nodeContent);
 
     // 4. 항상 라벨이 있는지 확인
@@ -120,6 +125,95 @@ export class NodeFactory {
    */
   clear(): void {
     this.nodes.clear();
+  }
+
+  /**
+   * WebCrawler 노드의 레거시 스키마를 현재 스키마로 변환
+   * Store 데이터에서 올바른 필드를 우선적으로 찾아 사용
+   */
+  private convertWebCrawlerSchema(nodeContent: Record<string, any>): Record<string, any> {
+    const converted = { ...nodeContent };
+    
+    console.log(`[NodeFactory] Original WebCrawler schema:`, nodeContent);
+    
+    // 1단계: Store에서 현재 스키마 필드들이 이미 있다면 우선 사용
+    const hasCurrentSchema = 
+      converted.waitForSelectorOnPage || 
+      converted.iframeSelector || 
+      converted.waitForSelectorInIframe || 
+      converted.extractElementSelector;
+    
+    if (hasCurrentSchema) {
+      console.log(`[NodeFactory] Current schema already present, using existing values:`, {
+        waitForSelectorOnPage: converted.waitForSelectorOnPage,
+        iframeSelector: converted.iframeSelector,
+        waitForSelectorInIframe: converted.waitForSelectorInIframe,
+        extractElementSelector: converted.extractElementSelector
+      });
+      return converted;
+    }
+    
+    // 2단계: 레거시 스키마가 있다면 변환
+    let hasConversions = false;
+    
+    // 레거시 waitForSelector -> waitForSelectorOnPage
+    if ('waitForSelector' in converted && converted.waitForSelector && !converted.waitForSelectorOnPage) {
+      converted.waitForSelectorOnPage = converted.waitForSelector;
+      hasConversions = true;
+      console.log(`[NodeFactory] Converted waitForSelector: "${converted.waitForSelector}" -> waitForSelectorOnPage`);
+    }
+    
+    // 레거시 extractSelectors 객체 처리
+    if ('extractSelectors' in converted && typeof converted.extractSelectors === 'object') {
+      const extractSelectors = converted.extractSelectors;
+      console.log(`[NodeFactory] Processing extractSelectors:`, extractSelectors);
+      
+      // extractSelectors 내부의 다양한 필드들을 현재 스키마로 매핑
+      const mappings = [
+        { from: 'iframeSelector', to: 'iframeSelector' },
+        { from: 'waitForSelectorInIframe', to: 'waitForSelectorInIframe' },
+        { from: 'extractElementSelector', to: 'extractElementSelector' },
+        { from: 'selector', to: 'extractElementSelector' },
+        { from: 'waitForSelectorOnPage', to: 'waitForSelectorOnPage' },
+        { from: 'waitSelector', to: 'waitForSelectorOnPage' }
+      ];
+      
+      for (const { from, to } of mappings) {
+        if (extractSelectors[from] && !converted[to]) {
+          converted[to] = extractSelectors[from];
+          hasConversions = true;
+          console.log(`[NodeFactory] Converted extractSelectors.${from}: "${extractSelectors[from]}" -> ${to}`);
+        }
+      }
+    }
+    
+    // 다른 가능한 레거시 필드들 처리
+    const directMappings = [
+      { from: 'waitSelector', to: 'waitForSelectorOnPage' },
+      { from: 'selector', to: 'extractElementSelector' }
+    ];
+    
+    for (const { from, to } of directMappings) {
+      if (converted[from] && !converted[to]) {
+        converted[to] = converted[from];
+        hasConversions = true;
+        console.log(`[NodeFactory] Converted ${from}: "${converted[from]}" -> ${to}`);
+      }
+    }
+    
+    // 스키마 변환 후 로그
+    if (hasConversions) {
+      console.log(`[NodeFactory] WebCrawler schema conversion completed:`, {
+        waitForSelectorOnPage: converted.waitForSelectorOnPage,
+        iframeSelector: converted.iframeSelector,
+        waitForSelectorInIframe: converted.waitForSelectorInIframe,
+        extractElementSelector: converted.extractElementSelector
+      });
+    } else {
+      console.log(`[NodeFactory] No WebCrawler schema conversions needed or applied`);
+    }
+    
+    return converted;
   }
 
   /**

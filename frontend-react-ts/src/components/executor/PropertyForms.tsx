@@ -21,6 +21,9 @@ export interface WebCrawlerProperty {
   url: string;
   timeout: number;
   waitForSelectorOnPage: string;
+  iframeSelector: string;
+  waitForSelectorInIframe: string;
+  extractElementSelector: string;
   outputFormat: string;
 }
 
@@ -348,9 +351,48 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
         <input
           type="text"
           className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          value={value.waitForSelectorOnPage}
+          value={value.waitForSelectorOnPage || ''}
           onChange={e => updateField('waitForSelectorOnPage', e.target.value)}
           placeholder="CSS 선택자 (예: .content, #main)"
+          disabled={disabled}
+        />
+      </div>
+
+      {/* IFrame Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 min-w-[100px]">IFrame Selector:</label>
+        <input
+          type="text"
+          className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          value={value.iframeSelector || ''}
+          onChange={e => updateField('iframeSelector', e.target.value)}
+          placeholder="#entryIframe, iframe[name='content']"
+          disabled={disabled}
+        />
+      </div>
+
+      {/* Wait For Selector in IFrame */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 min-w-[100px]">Wait in IFrame:</label>
+        <input
+          type="text"
+          className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          value={value.waitForSelectorInIframe || ''}
+          onChange={e => updateField('waitForSelectorInIframe', e.target.value)}
+          placeholder="#_title, .article-body"
+          disabled={disabled}
+        />
+      </div>
+
+      {/* Extract Element Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 min-w-[100px]">Extract Element:</label>
+        <input
+          type="text"
+          className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          value={value.extractElementSelector || ''}
+          onChange={e => updateField('extractElementSelector', e.target.value)}
+          placeholder=".content-area, #main-article"
           disabled={disabled}
         />
       </div>
@@ -358,9 +400,66 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
   );
 };
 
-// Property 값을 JSON 문자열로 변환
+// Property 값을 JSON 문자열로 변환 (빈 값 필터링)
 export const serializeProperty = (nodeType: string, property: any): string => {
-  return JSON.stringify({ nodeType, property }, null, 2);
+  console.log(`[PropertyForms] serializeProperty called for ${nodeType}:`, property);
+  
+  // 빈 값을 제거하는 헬퍼 함수
+  const filterEmptyValues = (obj: any): any => {
+    if (obj === null || obj === undefined) {
+      return {};
+    }
+    
+    const filtered: any = {};
+    
+    for (const [key, value] of Object.entries(obj)) {
+      // 문자열인 경우 빈 문자열이 아닌 경우만 포함
+      if (typeof value === 'string') {
+        const trimmedValue = value.trim();
+        if (trimmedValue !== '') {
+          filtered[key] = trimmedValue;
+        }
+      }
+      // 숫자인 경우 0이 아닌 유효한 값만 포함 (0도 유효한 값으로 처리)
+      else if (typeof value === 'number') {
+        // temperature나 timeout 같은 경우 0도 유효할 수 있으므로 모든 숫자 포함
+        filtered[key] = value;
+      }
+      // 불린인 경우 항상 포함
+      else if (typeof value === 'boolean') {
+        filtered[key] = value;
+      }
+      // 객체인 경우 (headers 등) 빈 객체가 아닌 경우만 포함
+      else if (typeof value === 'object' && value !== null) {
+        if (Array.isArray(value)) {
+          if (value.length > 0) {
+            filtered[key] = value;
+          }
+        } else {
+          const filteredObj = filterEmptyValues(value);
+          if (Object.keys(filteredObj).length > 0) {
+            filtered[key] = filteredObj;
+          }
+        }
+      }
+      // 기타 null이 아닌 값들
+      else if (value !== null && value !== undefined) {
+        filtered[key] = value;
+      }
+    }
+    
+    return filtered;
+  };
+
+  const filteredProperty = filterEmptyValues(property);
+  
+  // 로그로 필터링 결과 확인
+  console.log(`[PropertyForms] serializeProperty for ${nodeType}:`, {
+    original: property,
+    filtered: filteredProperty
+  });
+  
+  return JSON.stringify({ nodeType, property: filteredProperty }, null, 2);
 };
 
 // JSON 문자열을 Property 값으로 파싱
@@ -399,8 +498,10 @@ export const createDefaultProperty = (nodeType: string): any => {
       return {
         url: '',
         timeout: 30000,
-        waitForSelectorOnPage: '',
         outputFormat: 'html',
+        // 입력하지 않은 필드는 기본값에서 제외
+        // waitForSelectorOnPage, iframeSelector, waitForSelectorInIframe, extractElementSelector는 
+        // 사용자가 실제로 입력한 경우에만 포함됨
       };
     default:
       return {};

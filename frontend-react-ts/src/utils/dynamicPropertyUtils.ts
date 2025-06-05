@@ -86,10 +86,11 @@ function extractDynamicPropertyFromItem(
 
 /**
  * 동적 속성과 기본 속성을 병합하는 함수
+ * 원칙: 빈 값은 기존 값을 덮어쓰지 않음 (프로젝트 원칙 준수)
  * 
  * @param baseProperty - 기본 노드 속성
  * @param dynamicProperty - 동적으로 주입된 속성
- * @returns 병합된 속성 (동적 속성이 우선순위)
+ * @returns 병합된 속성 (의미있는 동적 속성만 적용)
  */
 export const mergeDynamicProperty = (
   baseProperty: Record<string, any>,
@@ -97,15 +98,42 @@ export const mergeDynamicProperty = (
 ): Record<string, any> => {
   if (!dynamicProperty) return baseProperty;
 
-  // 전체 교체 방식: 동적 속성이 기본 속성을 덮어씀
+  /**
+   * 빈 값 판단 함수
+   * 문자열: 빈 문자열, 공백만 있는 문자열
+   * 숫자: 0도 유효한 값으로 간주
+   * 불린: 항상 유효
+   * 객체: 빈 객체
+   * 배열: 빈 배열
+   */
+  const isEmpty = (value: any): boolean => {
+    if (value === null || value === undefined) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (typeof value === 'number') return false; // 0도 유효한 값
+    if (typeof value === 'boolean') return false; // 불린은 항상 유효
+    if (Array.isArray(value)) return value.length === 0;
+    if (typeof value === 'object') return Object.keys(value).length === 0;
+    return false;
+  };
+
+  // 의미있는 값만 포함하는 필터링된 동적 속성 생성
+  const filteredDynamicProperty: Record<string, any> = {};
+  for (const [key, value] of Object.entries(dynamicProperty)) {
+    if (!isEmpty(value)) {
+      filteredDynamicProperty[key] = value;
+    }
+  }
+
+  // 기본 속성에 필터링된 동적 속성만 적용
   const mergedProperty = {
     ...baseProperty,
-    ...dynamicProperty
+    ...filteredDynamicProperty
   };
 
   console.log(`[DynamicProperty] Merged properties:`, {
     base: baseProperty,
     dynamic: dynamicProperty,
+    filtered: filteredDynamicProperty,
     merged: mergedProperty
   });
 

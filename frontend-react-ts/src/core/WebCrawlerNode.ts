@@ -30,6 +30,13 @@ export class WebCrawlerNode extends Node {
     const dynamicProperty = extractDynamicProperty(input, 'web-crawler');
     const effectiveProperty = mergeDynamicProperty(this.property, dynamicProperty);
     
+    // [DEBUG] 실행 시점 property 상세 로깅
+    this._log(`[DEBUG] Execution time properties: ${JSON.stringify({
+      originalProperty: this.property,
+      dynamicProperty: dynamicProperty,
+      effectiveProperty: effectiveProperty
+    }, null, 2)}`);
+    
     // 동적 속성이 있다면 임시로 this.property 업데이트
     const originalProperty = this.property;
     if (dynamicProperty) {
@@ -61,9 +68,8 @@ export class WebCrawlerNode extends Node {
         return null;
       }
 
-      this._log(`Calling backend crawler service for URL: ${targetUrl}`);
-      
-      const result = await crawling({
+      // [DEBUG] Backend로 전달될 파라미터들 상세 로깅
+      const crawlingParams = {
         url: targetUrl,
         waitForSelectorOnPage: nodeContent.waitForSelectorOnPage,
         iframeSelector: nodeContent.iframeSelector,
@@ -72,7 +78,12 @@ export class WebCrawlerNode extends Node {
         headers: nodeContent.headers || {},
         extract_element_selector: nodeContent.extractElementSelector,
         output_format: nodeContent.outputFormat || 'html'
-      });
+      };
+      
+      this._log(`[DEBUG] Backend crawling parameters: ${JSON.stringify(crawlingParams, null, 2)}`);
+      this._log(`Calling backend crawler service for URL: ${targetUrl}`);
+      
+      const result = await crawling(crawlingParams);
 
       if (result === null) {
           this._log(`Frontend crawling utility failed (e.g., network error).`);
