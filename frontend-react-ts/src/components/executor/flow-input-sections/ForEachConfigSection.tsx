@@ -56,7 +56,7 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
-    else if (type === 'property') newInputs[idx] = { type, value: '' };
+    else if (type === 'property') newInputs[idx] = { type, value: serializeProperty('llm', createDefaultProperty('llm')) };
     else newInputs[idx] = { type, value: '' };
     onCommonInputsChange(newInputs);
   };
@@ -110,6 +110,21 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     onCommonInputsChange(newInputs);
   };
 
+  // 순서 변경 헬퍼 함수들
+  const moveCommonInputUp = (idx: number) => {
+    if (!editMode || idx === 0) return;
+    const newInputs = [...commonInputs];
+    [newInputs[idx], newInputs[idx - 1]] = [newInputs[idx - 1], newInputs[idx]];
+    onCommonInputsChange(newInputs);
+  };
+
+  const moveCommonInputDown = (idx: number) => {
+    if (!editMode || idx === commonInputs.length - 1) return;
+    const newInputs = [...commonInputs];
+    [newInputs[idx], newInputs[idx + 1]] = [newInputs[idx + 1], newInputs[idx]];
+    onCommonInputsChange(newInputs);
+  };
+
   // ForEach Items 헬퍼 함수들
   const addForEachItem = (row?: InputRow) => {
     if (!editMode) return;
@@ -131,7 +146,7 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
       flowChainId: focusedFlowChainId || undefined,
       sourceFlowId: flowId
     };
-    else if (type === 'property') newItems[idx] = { type, value: '' };
+    else if (type === 'property') newItems[idx] = { type, value: serializeProperty('llm', createDefaultProperty('llm')) };
     else newItems[idx] = { type, value: '' };
     onForEachItemsChange(newItems);
   };
@@ -182,6 +197,20 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     const newItems = [...forEachItems];
     const newValue = serializeProperty(nodeType, propertyValue);
     newItems[idx] = { ...newItems[idx], value: newValue };
+    onForEachItemsChange(newItems);
+  };
+
+  const moveForEachItemUp = (idx: number) => {
+    if (!editMode || idx === 0) return;
+    const newItems = [...forEachItems];
+    [newItems[idx], newItems[idx - 1]] = [newItems[idx - 1], newItems[idx]];
+    onForEachItemsChange(newItems);
+  };
+
+  const moveForEachItemDown = (idx: number) => {
+    if (!editMode || idx === forEachItems.length - 1) return;
+    const newItems = [...forEachItems];
+    [newItems[idx], newItems[idx + 1]] = [newItems[idx + 1], newItems[idx]];
     onForEachItemsChange(newItems);
   };
 
@@ -431,6 +460,27 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                     삭제
                   </button>
                 )}
+                
+                {editMode && commonInputs.length > 1 && (
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => moveCommonInputUp(idx)}
+                      disabled={idx === 0}
+                      className="text-gray-600 hover:bg-gray-100 px-1 py-1 rounded text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="위로 이동"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveCommonInputDown(idx)}
+                      disabled={idx === commonInputs.length - 1}
+                      className="text-gray-600 hover:bg-gray-100 px-1 py-1 rounded text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="아래로 이동"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -671,6 +721,27 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                   >
                     삭제
                   </button>
+                )}
+                
+                {editMode && forEachItems.length > 1 && (
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => moveForEachItemUp(idx)}
+                      disabled={idx === 0}
+                      className="text-gray-600 hover:bg-gray-100 px-1 py-1 rounded text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="위로 이동"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveForEachItemDown(idx)}
+                      disabled={idx === forEachItems.length - 1}
+                      className="text-gray-600 hover:bg-gray-100 px-1 py-1 rounded text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="아래로 이동"
+                    >
+                      ↓
+                    </button>
+                  </div>
                 )}
               </div>
             ))

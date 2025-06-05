@@ -82,7 +82,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-4/5 h-4/5 flex flex-col max-w-6xl">
+      <div className="bg-white rounded-lg shadow-lg w-[90%] h-[85%] flex flex-col max-w-7xl">
         {/* 모달 헤더 */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center">

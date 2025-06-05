@@ -10,6 +10,7 @@ export class NodeFactory {
   private nodes: Map<string, Node>;
   private readonly typeDefaults: Record<string, any> = {};
   private nodeTypes: Record<string, (id: string, property: Record<string, any>, context?: FlowExecutionContext) => Node> = {};
+  private dynamicProperties: Map<string, any> = new Map(); // 동적으로 적용될 Property 저장
 
   constructor() {
     this.nodes = new Map<string, Node>();
@@ -60,7 +61,7 @@ export class NodeFactory {
     const storedContent = getNodeProperty(id, type);
     
     // 3. 속성 준비 - 전달된 props를 우선으로 하여 병합
-    // 기본값 -> 스토어 값 -> 전달된 props 순으로 우선순위
+    // 기본값 -> 스토어 값 -> 전달된 props -> 동적 Property 순으로 우선순위
     const defaultProperty = createDefaultNodeProperty(type, id);
     const typeDefaults = this.typeDefaults[type] || {};
     
@@ -73,6 +74,13 @@ export class NodeFactory {
     }
     if (props && typeof props === 'object') {
       nodeContent = { ...nodeContent, ...props };
+    }
+    
+    // [ForEach 동적 Property 적용] 
+    const dynamicProperty = this.getDynamicProperties(type);
+    if (dynamicProperty && typeof dynamicProperty === 'object') {
+      nodeContent = { ...nodeContent, ...dynamicProperty };
+      console.log(`[NodeFactory] Applied dynamic property for ${type}:`, dynamicProperty);
     }
     
     // [스키마 변환] WebCrawler 노드의 레거시 스키마를 현재 스키마로 변환
@@ -221,6 +229,32 @@ export class NodeFactory {
    */
   getRegisteredTypes(): string[] {
     return Object.keys(this.nodeTypes);
+  }
+
+  /**
+   * 동적 Property 설정 (ForEach 모드에서 사용)
+   * @param nodeType 노드 타입
+   * @param property 적용할 Property
+   */
+  setDynamicProperties(nodeType: string, property: any): void {
+    this.dynamicProperties.set(nodeType, property);
+    console.log(`[NodeFactory] Dynamic property set for ${nodeType}:`, property);
+  }
+
+  /**
+   * 동적 Property 가져오기
+   * @param nodeType 노드 타입
+   * @returns 동적 Property 또는 undefined
+   */
+  getDynamicProperties(nodeType: string): any {
+    return this.dynamicProperties.get(nodeType);
+  }
+
+  /**
+   * 동적 Property 초기화
+   */
+  clearDynamicProperties(): void {
+    this.dynamicProperties.clear();
   }
 }
 

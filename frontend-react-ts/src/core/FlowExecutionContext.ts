@@ -115,6 +115,9 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   private onStopRequested?: () => void;
 
+  // 동적으로 적용된 Property 저장
+  private dynamicNodeProperties: Map<string, any> = new Map();
+
   /**
    * Create a new flow execution context
    * @param executionId Unique ID for this execution
@@ -240,7 +243,7 @@ export class FlowExecutionContext implements ExecutionContext {
         // fallback을 buildGraphStructure에서 설정한 데이터로 변경
         const node = flowData.nodes.find(n => n.id === nodeId);
         // buildGraphStructure에서 이미 올바른 데이터가 node.data에 설정되어 있어야 함
-        const fallbackData = node && node.data && typeof node.data === 'object' ? node.data : {};
+        const fallbackData = node && node.data && typeof node.data === 'object' ? node.data : {} as any;
         
         return fallbackData;
       },
@@ -262,6 +265,51 @@ export class FlowExecutionContext implements ExecutionContext {
   setInputs(inputs: any[]): void {
     this.inputs = Array.isArray(inputs) ? [...inputs] : [inputs];
     this.log(`설정된 입력: ${this.inputs.length}개 항목`);
+    
+    // 기존 동적 Property 초기화
+    if (this.nodeFactory) {
+      this.nodeFactory.clearDynamicProperties();
+    }
+    
+    // ForEach 모드에서 Property 타입의 입력을 노드 속성에 적용
+    this.applyPropertyInputsToNodes();
+  }
+
+  /**
+   * Property 타입의 입력을 노드 속성에 적용
+   * ForEach 모드에서 Common Inputs의 Property가 노드에 반영되도록 함
+   */
+  private applyPropertyInputsToNodes(): void {
+    if (!this.inputs || !Array.isArray(this.inputs)) return;
+    
+    // Property 타입의 입력들을 찾아서 처리
+    const propertyInputs = this.inputs.filter(input => 
+      input && typeof input === 'object' && 
+      'nodeType' in input && 'property' in input
+    );
+    
+    if (propertyInputs.length === 0) return;
+    
+    this.log(`Property 입력 ${propertyInputs.length}개를 NodeFactory에 전달하여 적용`);
+    
+    // Property를 NodeFactory에 전달하여 노드 생성 시 적용되도록 함
+    propertyInputs.forEach(propertyInput => {
+      const { nodeType, property } = propertyInput;
+      if (nodeType && property && this.nodeFactory) {
+        // NodeFactory에 동적 Property 설정
+        this.nodeFactory.setDynamicProperties(nodeType, property);
+      }
+    });
+  }
+
+  /**
+   * 특정 노드에 Property 적용
+   * @param nodeId 노드 ID 
+   * @param property 적용할 Property
+   */
+  private applyPropertyToNode(nodeId: string, property: any): void {
+    // 이 메서드는 더 이상 사용하지 않음 - NodeFactory에서 처리
+    this.log(`노드 ${nodeId}에 Property 적용 요청: ${Object.keys(property).join(', ')}`);
   }
 
   /**
