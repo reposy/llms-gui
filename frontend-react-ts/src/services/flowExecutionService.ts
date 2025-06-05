@@ -645,13 +645,32 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
       } else if (nodeType) {
         nodeName = nodeType;
       }
-      results.push({
-        nodeId,
-        nodeName,
-        nodeType,
-        outputs: nodeOutputs,
-        result: nodeOutputs && nodeOutputs.length === 1 ? nodeOutputs[0] : nodeOutputs
-      });
+
+      // 배열 결과를 flat하게 처리
+      if (nodeOutputs && nodeOutputs.length > 0) {
+        nodeOutputs.forEach((output, index) => {
+          // 각 output을 개별 NodeResult로 생성
+          const resultNodeName = nodeOutputs.length > 1 ? `${nodeName} [${index + 1}]` : nodeName;
+          const resultNodeId = nodeOutputs.length > 1 ? `${nodeId}_${index}` : nodeId;
+          
+          results.push({
+            nodeId: resultNodeId,
+            nodeName: resultNodeName,
+            nodeType,
+            outputs: [output],
+            result: output
+          });
+        });
+      } else {
+        // 출력이 없는 경우 기존 방식 유지
+        results.push({
+          nodeId,
+          nodeName,
+          nodeType,
+          outputs: nodeOutputs || [],
+          result: nodeOutputs && nodeOutputs.length === 1 ? nodeOutputs[0] : nodeOutputs
+        });
+      }
     } catch (error) {
       console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);
     }
@@ -673,26 +692,25 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
           nodeName = nodeType;
         }
         if (nodeOutputs && nodeOutputs.length > 0) {
-          for (const output of nodeOutputs) {
+          nodeOutputs.forEach((output, index) => {
+            // 각 output을 개별 NodeResult로 생성
+            const resultNodeName = nodeOutputs.length > 1 ? `${nodeName} [${index + 1}]` : nodeName;
+            const resultNodeId = nodeOutputs.length > 1 ? `${nodeId}_${index}` : nodeId;
+            
             // 파일 객체인 경우 파일명/경로만 남김
+            let processedResult = output;
             if (output && typeof output === 'object' && (output.name || output.path)) {
-              results.push({
-                nodeId,
-                nodeName,
-                nodeType,
-                outputs: [output],
-                result: output.name ? `${output.name}${output.path ? ` (${output.path})` : ''}` : JSON.stringify(output)
-              });
-            } else {
-              results.push({
-                nodeId,
-                nodeName,
-                nodeType,
-                outputs: [output],
-                result: output
-              });
+              processedResult = output.name ? `${output.name}${output.path ? ` (${output.path})` : ''}` : JSON.stringify(output);
             }
-          }
+            
+            results.push({
+              nodeId: resultNodeId,
+              nodeName: resultNodeName,
+              nodeType,
+              outputs: [output],
+              result: processedResult
+            });
+          });
         }
       } catch (error) {
         console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);

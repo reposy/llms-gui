@@ -306,13 +306,20 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
           <ul className="overflow-y-auto divide-y divide-gray-200 flex-grow">
             {flowIds.map((flowId, index) => {
               const flow = flowMap[flowId];
-              if (!flow) return null;
+              console.log('[FlowChainDetailsView] Rendering flow item:', { flowId, flow: !!flow, flowName: flow?.name });
+              if (!flow) {
+                console.warn('[FlowChainDetailsView] Flow not found in flowMap:', { flowId, availableFlowIds: Object.keys(flowMap) });
+                return null;
+              }
               const checked = selectedFlowIds.includes(flowId);
               return (
                 <li
                   key={flowId}
                   className="p-3 flex items-center transition-colors duration-150 group bg-white"
-                  onClick={() => onFlowSelect(flowId)}
+                  onClick={() => {
+                    console.log('[FlowChainDetailsView] Row clicked, calling onFlowSelect with flowId:', flowId);
+                    onFlowSelect(flowId);
+                  }}
                   style={{ cursor: 'pointer' }}
                 >
                   <ExecutorCheckbox

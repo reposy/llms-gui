@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { useImportService } from '../../hooks/useImportService';
 import ExportModal from './ExportModal';
-import FileSelector from './FileSelector';
 
 interface ExecutorPanelProps {
   onImportFlowChain: () => void;
@@ -24,10 +24,10 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   isExecuting
 }) => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const fileSelectorRef = useRef<{ openFileSelector: () => void }>(null);
 
   // 스토어에서 필요한 상태 가져오기
   const store = useFlowExecutorStore();
+  const { openFileImport } = useImportService();
   const focusedFlowChainId = store.focusedFlowChainId;
   const { 
     flowChainMap, 
@@ -39,159 +39,18 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
   const hasFlows = focusedFlowChain && focusedFlowChain.flowIds.length > 0;
   const flowChainIds = Object.keys(flowChainMap);
 
-  // Flow Chain 파일 선택 처리
-  const handleFlowChainFileSelected = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = event.target?.result as string;
-        let importData;
-        
-        try {
-          importData = JSON.parse(json);
-        } catch (parseError) {
-          console.error(`[ExecutorPanel] JSON 파싱 오류:`, parseError);
-          alert('JSON 파일 형식이 올바르지 않습니다.');
-          return;
-        }
-        
-        // 기본 유효성 검사
-        if (!importData || typeof importData !== 'object') {
-          throw new Error('유효하지 않은 Flow 체인 파일 형식입니다.');
-        }
-        
-        // 새로운 형식 (v1.2) 처리
-        if (importData.version === '1.2' && Array.isArray(importData.flowChains)) {
-          console.log(`[ExecutorPanel] 새로운 형식 (v${importData.version}) 파일 가져오기`);
-          
-          importData.flowChains.forEach((chainData: any) => {
-            try {
-              // 새 FlowChain 생성
-              const newChainId = store.addFlowChain(chainData.name || '가져온 체인');
-              
-              // Flow들을 체인에 추가
-              if (chainData.flowMap && typeof chainData.flowMap === 'object') {
-                Object.keys(chainData.flowMap).forEach(flowId => {
-                  const flowData = chainData.flowMap[flowId];
-                  if (flowData && flowData.flowJson) {
-                    try {
-                      // Flow 추가
-                      const addedFlowId = store.addFlowToFlowChain(newChainId, flowData.flowJson);
-                      
-                      // Flow 이름 설정
-                      if (flowData.name) {
-                        store.setFlowName(newChainId, addedFlowId, flowData.name);
-                      }
-                      
-                      // 입력 데이터 설정
-                      if (flowData.inputs && flowData.inputs.length > 0) {
-                        store.setFlowInputData(newChainId, addedFlowId, flowData.inputs);
-                      }
-                      
-                      // 실행 결과 설정 (데이터 포함 내보내기에서 가져온 경우)
-                      if (flowData.lastResults) {
-                        store.setFlowResult(newChainId, addedFlowId, flowData.lastResults);
-                      }
-                      
-                      // 상태 설정
-                      if (flowData.status && flowData.status !== 'idle') {
-                        store.setFlowStatus(newChainId, addedFlowId, flowData.status, flowData.error);
-                      }
-                    } catch (flowError) {
-                      console.warn(`[ExecutorPanel] Flow 추가 실패:`, flowError);
-                    }
-                  }
-                });
-              }
-              
-              // 체인 레벨 설정
-              if (chainData.selectedFlowIds && Array.isArray(chainData.selectedFlowIds)) {
-                store.setSelectedFlowIds(newChainId, chainData.selectedFlowIds);
-              }
-              
-              // 새로 생성된 체인을 포커스
-              store.setFocusedFlowChainId(newChainId);
-              
-            } catch (chainError) {
-              console.error(`[ExecutorPanel] FlowChain 가져오기 실패:`, chainError);
-            }
-          });
-          
-          return;
-        }
-        
-        // 기존 형식 처리 (v1.0, v1.1 등)
-        if (!Array.isArray(importData.flowChain)) {
-          // flowChain이 없으면 단일 Flow JSON으로 가정하고 변환 시도
-          importData = {
-            version: '1.0',
-            flowChain: [{
-              id: `flow-${Date.now()}`,
-              name: file.name.replace(/\.json$/, '') || '가져온 Flow',
-              flowJson: importData,
-              inputData: []
-            }]
-          };
-        }
-        
-        // 기존 형식: 현재 활성 체인에 Flow들 추가
-        const addFlowToFlowChain = store.addFlowToFlowChain;
-        const setFlowInputData = store.setFlowInputData;
-        const setStage = store.setStage;
-        const focusedFlowChain = focusedFlowChainId ? store.getFlowChain(focusedFlowChainId) : undefined;
-        const flowChainId = focusedFlowChain?.id || '';
-        
-        // 활성 체인이 없으면 새로 생성
-        let targetChainId = flowChainId;
-        if (!targetChainId) {
-          targetChainId = store.addFlowChain('가져온 체인');
-        }
-        
-        importData.flowChain.forEach((flow: any) => {
-          try {
-            // flowJson 유효성 검사
-            if (!flow.flowJson || typeof flow.flowJson !== 'object') {
-              return; // 이 Flow는 건너뛰고 계속 진행
-            }
-            
-            // Flow 추가
-            addFlowToFlowChain(targetChainId, flow.flowJson);
-            
-            // 새로 추가된 Flow ID 얻기
-            const updatedChain = store.getFlowChain(targetChainId);
-            if (updatedChain) {
-              const newFlowId = updatedChain.flowIds[updatedChain.flowIds.length - 1];
-              
-              // 입력 데이터 설정
-              if (flow.inputData && flow.inputData.length > 0) {
-                setFlowInputData(targetChainId, newFlowId, flow.inputData);
-              }
-            }
-          } catch (flowError) {
-            console.warn(`[ExecutorPanel] Flow 추가 실패:`, flowError);
-          }
-        });
-        
-        // 스테이지 업데이트
-        if (flowChainIds.length === 0) {
-          setStage('input');
-        }
-        
+  // ✅ 단일 진입점 원칙: useImportService 사용
+  const handleFlowChainFileSelected = () => {
+    openFileImport({
+      onSuccess: (result) => {
+        console.log(`[ExecutorPanel] Import 성공:`, result);
         alert('Flow Chain을 성공적으로 가져왔습니다.');
-        
-      } catch (error) {
-        console.error(`[ExecutorPanel] Flow Chain 가져오기 오류:`, error);
-        alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      },
+      onError: (error) => {
+        console.error('[ExecutorPanel] Import 실패:', error);
+        alert(`Flow 체인 파일을 파싱하는 도중 오류가 발생했습니다: ${error.message}`);
       }
-    };
-    
-    reader.readAsText(file);
-  };
-
-  const handleAddFlow = (flow: any) => {
-    if (focusedFlowChainId) {
-      store.addFlowToFlowChain(focusedFlowChainId, flow.flowJson);
-    }
+    });
   };
 
   return (
@@ -214,13 +73,13 @@ const ExecutorPanel: React.FC<ExecutorPanelProps> = ({
             모든 내용 초기화
           </button>
           
-          <FileSelector
-            onFileSelected={handleFlowChainFileSelected}
-            accept=".json"
-            buttonText="가져오기"
-            fileSelectorRef={fileSelectorRef}
-            buttonClassName="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center"
-          />
+          <button
+            onClick={handleFlowChainFileSelected}
+            className="px-3 py-1 text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors text-sm font-medium flex items-center"
+          >
+            <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+            가져오기
+          </button>
           
           <button
             onClick={() => {

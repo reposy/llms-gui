@@ -32,7 +32,10 @@ const FlowExecutorPage: React.FC = () => {
   };
 
   const handleFlowSelect = (flowId: string) => {
+    console.log('[FlowExecutorPage] handleFlowSelect called with flowId:', flowId);
+    console.log('[FlowExecutorPage] focusedFlowChainId:', focusedFlowChainId);
     setSelectedFlowIds([flowId]);
+    console.log('[FlowExecutorPage] selectedFlowIds updated to:', [flowId]);
   };
 
   const handleCloseFlowModal = () => {
@@ -87,42 +90,70 @@ const FlowExecutorPage: React.FC = () => {
 
   const handleExportWithFilename = (filename: string, includeData: boolean) => {
     try {
-      // 모든 Flow Chain 데이터를 export 형식으로 변환
+      // useFlowExecutorStore의 전체 상태를 가져오기
+      const storeState = useFlowExecutorStore.getState();
+      
+      console.log('[FlowExecutorPage] Export - current store state:', {
+        flowChainIds: storeState.flowChainIds,
+        flowChainMapKeys: Object.keys(storeState.flowChainMap),
+        focusedFlowChainId: storeState.focusedFlowChainId
+      });
+      
+      // export 데이터 구조
       const exportData = {
-        version: '1.2',
+        version: '1.3', // 새로운 export 형식 버전
         timestamp: new Date().toISOString(),
-        flowChains: Object.keys(flowChainMap).map(chainId => {
-          const chain = flowChainMap[chainId];
-          
-          // Flow 데이터 준비 - includeData 플래그에 따라 lastResults 포함/제외
-          const flowMap: Record<string, any> = {};
-          chain.flowIds.forEach(flowId => {
-            const flow = chain.flowMap[flowId];
-            if (flow) {
-              flowMap[flowId] = {
-                id: flow.id,
-                name: flow.name,
-                flowJson: flow.flowJson,
-                inputs: flow.inputs || [],
-                status: flow.status,
-                ...(includeData && { lastResults: flow.lastResults }),
-                ...(flow.error && { error: flow.error })
-              };
-            }
-          });
-          
-          return {
-            id: chain.id,
-            name: chain.name,
-            status: chain.status,
-            flowIds: chain.flowIds,
-            selectedFlowIds: chain.selectedFlowIds || [],
-            flowMap,
-            ...(chain.inputs && { inputs: chain.inputs }),
-            ...(chain.error && { error: chain.error })
-          };
-        })
+        storeSnapshot: {
+          flowChainMap: includeData ? storeState.flowChainMap : 
+            // 실행 데이터 제외하고 복사
+            Object.fromEntries(
+              Object.entries(storeState.flowChainMap).map(([chainId, chain]) => {
+                console.log(`[FlowExecutorPage] Export - processing chain ${chainId}:`, {
+                  name: chain.name,
+                  flowIds: chain.flowIds,
+                  flowMapKeys: Object.keys(chain.flowMap || {}),
+                  flowMapDetails: Object.entries(chain.flowMap || {}).map(([flowId, flow]) => ({
+                    flowId,
+                    flowName: flow?.name,
+                    flowType: typeof flow,
+                    hasFlowJson: !!flow?.flowJson
+                  }))
+                });
+                
+                return [
+                  chainId,
+                  {
+                    ...chain,
+                    status: undefined, // 실행 상태 제거
+                    error: undefined,
+                    flowMap: Object.fromEntries(
+                      Object.entries(chain.flowMap || {}).map(([flowId, flow]) => [
+                        flowId,
+                        {
+                          ...flow,
+                          status: undefined, // 실행 상태 제거
+                          lastResults: undefined, // 실행 결과 제거
+                          error: undefined
+                        }
+                      ])
+                    )
+                  }
+                ];
+              })
+            ),
+          flowChainIds: storeState.flowChainIds,
+          focusedFlowChainId: storeState.focusedFlowChainId,
+          stage: storeState.stage,
+          // 실행 관련 상태는 포함하지 않음
+          ...(includeData ? { error: storeState.error } : {})
+        }
       };
+      
+      console.log('[FlowExecutorPage] Export - final export data structure:', {
+        version: exportData.version,
+        storeSnapshotKeys: Object.keys(exportData.storeSnapshot),
+        flowChainMapKeys: Object.keys(exportData.storeSnapshot.flowChainMap || {})
+      });
       
       const json = JSON.stringify(exportData, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -137,10 +168,10 @@ const FlowExecutorPage: React.FC = () => {
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      console.log(`[ExecutorPage] Flow Chains exported successfully with ${includeData ? '' : 'no '}data`);
+      console.log(`[ExecutorPage] FlowExecutor store exported successfully ${includeData ? 'with execution data' : 'as clean state'}`);
     } catch (err) {
-      console.error(`[ExecutorPage] Error exporting flows:`, err);
-      alert('Flow Chain 내보내기 중 오류가 발생했습니다.');
+      console.error(`[ExecutorPage] Error exporting FlowExecutor store:`, err);
+      alert('FlowExecutor 상태 내보내기 중 오류가 발생했습니다.');
     }
   };
 
@@ -247,7 +278,16 @@ const FlowExecutorPage: React.FC = () => {
         defaultFilename="flows-export.json"
       />
       {/* Flow 상세 모달 */}
-      {focusedFlowChainId && selectedFlowIds.length > 0 && selectedFlowIds[0] && (
+      {(() => {
+        const shouldShowModal = focusedFlowChainId && selectedFlowIds.length > 0 && selectedFlowIds[0];
+        console.log('[FlowExecutorPage] Modal render condition:', {
+          focusedFlowChainId,
+          selectedFlowIdsLength: selectedFlowIds.length,
+          firstSelectedFlowId: selectedFlowIds[0],
+          shouldShowModal
+        });
+        return shouldShowModal;
+      })() && focusedFlowChainId && (
         <FlowDetailModal
           flowChainId={focusedFlowChainId}
           flowId={selectedFlowIds[0]}
