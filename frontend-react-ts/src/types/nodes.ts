@@ -1,5 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 import { NodeViewMode } from '../store/viewModeStore';
+import { BackendFileMetadata } from './files';
 // import { LLMMode } from '../api/llm'; // Remove deleted import
 
 // =========== 공통 타입 정의 ===========
@@ -130,9 +131,9 @@ export interface InputNodeProperty extends BaseNodeData {
   inputType?: 'text' | 'file' | 'list';
   text?: string;
   textBuffer?: string;
-  items?: (string | File)[];
-  commonItems?: (string | File)[];
-  chainingItems?: (string | File)[];
+  items?: (string | File | BackendFileMetadata)[];
+  commonItems?: (string | File | BackendFileMetadata)[];
+  chainingItems?: (string | File | BackendFileMetadata)[];
   iterateEachRow?: boolean;
   executionMode?: 'batch' | 'foreach';
   chainingUpdateMode?: 'common' | 'replaceCommon' | 'element' | 'replaceElement' | 'none';
