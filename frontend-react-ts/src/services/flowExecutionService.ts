@@ -1,11 +1,16 @@
+import { v4 as uuidv4 } from 'uuid';
 import { FlowData } from '../utils/data/importExportUtils';
 import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
-import { v4 as uuidv4 } from 'uuid';
-import { deepClone } from '../utils/helpers';
-import { ExecutionStatus } from '../store/useExecutorStateStore';
+import { globalNodeFactory } from '../core/NodeFactory';
+import { ExecutionContext } from '../types/executionContext';
+import { NodeProperty } from '../types/nodes';
 import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 import { resolveFlowResultInputs } from '../utils/flowResultUtils';
+import { deepClone } from '../utils/helpers';
+import { ExecutionStatus } from '../store/useExecutorStateStore';
+import { useFlowExecutorStore as useFlowExecutorStoreTypes } from '../store/useFlowExecutorStore';
+import { getNodeProperty } from '../store/useNodePropertyStore';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -511,11 +516,12 @@ class ExecutorFlowExecutor extends FlowExecutor {
       console.error('[ExecutorFlowExecutor] Error updating flowJson with store data:', error);
     }
     
+    // ✅ 수정: 항상 globalNodeFactory를 사용하여 단일 인스턴스 보장
     // 업데이트된 flowJson으로 실행기용 컨텍스트 생성
     return FlowExecutionContext.createForExecutor(
       executionId, 
       flowJson, 
-      undefined,
+      globalNodeFactory,  // ✅ 수정: nodeFactory 매개변수 대신 globalNodeFactory 직접 사용
       chainId, 
       flowId
     );
