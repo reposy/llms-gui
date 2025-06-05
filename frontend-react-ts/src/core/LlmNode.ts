@@ -4,6 +4,7 @@ import { LlmNodeProperty } from '../types/nodes';
 import { runLLM } from '../services/llmService';
 import { LLMRequestParams } from '../services/llm/types';
 import { LocalFileMetadata, BackendFileMetadata } from '../types/files';
+import { FileMetadata } from '../types/files';
 
 /**
  * LLM node for generating text via LLM providers
@@ -78,26 +79,48 @@ export class LlmNode extends Node {
   }
 
   /**
+   * BackendFileMetadata를 FileMetadata로 변환 (파일 객체화 책임)
+   */
+  private convertBackendFileToFileMetadata(backendFile: BackendFileMetadata): FileMetadata {
+    return {
+      id: backendFile.fileId, // fileId를 id로 매핑
+      originalName: backendFile.originalFileName,
+      filename: backendFile.originalFileName, // 원본 파일명을 filename으로도 사용
+      path: backendFile.backendPath, // 백엔드 경로를 path로 사용
+      url: backendFile.url, // 백엔드 URL을 그대로 사용
+      contentType: backendFile.contentType,
+      size: backendFile.size,
+      uploadedAt: backendFile.uploadedAt
+    };
+  }
+
+  /**
    * 입력에서 이미지 파일과 메타데이터 추출 (통합 파일 시스템 지원)
    */
   private extractImages(input: any): {
     files: File[],
     metaData: LocalFileMetadata[],
-    backendFiles: BackendFileMetadata[]
+    serverFiles: FileMetadata[]
   } {
     const files: File[] = [];
     const metaData: LocalFileMetadata[] = [];
-    const backendFiles: BackendFileMetadata[] = [];
+    const serverFiles: FileMetadata[] = [];
     
     // 단일 File 객체
     if (input instanceof File && input.type.startsWith('image/')) {
       files.push(input);
       this._log(`Found single image file: ${input.name}`);
     }
-    // 단일 BackendFileMetadata 객체 (새로운 통합 시스템)
+    // 단일 BackendFileMetadata 객체 (새로운 통합 시스템) - FileMetadata로 변환
     else if (input && typeof input === 'object' && 'fileId' in input && 'originalFileName' in input) {
-      backendFiles.push(input as BackendFileMetadata);
-      this._log(`Found single backend file metadata: ${input.originalFileName}`);
+      const converted = this.convertBackendFileToFileMetadata(input as BackendFileMetadata);
+      serverFiles.push(converted);
+      this._log(`Found single backend file metadata, converted to FileMetadata: ${converted.originalName}`);
+    }
+    // 단일 FileMetadata 객체
+    else if (input && typeof input === 'object' && 'originalName' in input && 'url' in input) {
+      serverFiles.push(input as FileMetadata);
+      this._log(`Found single file metadata: ${input.originalName}`);
     }
     // 단일 LocalFileMetadata 객체 (레거시)
     else if (input && typeof input === 'object' && 'file' in input && 'objectUrl' in input) {
@@ -114,8 +137,13 @@ export class LlmNode extends Node {
           this._log(`Found image file in array: ${item.name}`);
         }
         else if (item && typeof item === 'object' && 'fileId' in item && 'originalFileName' in item) {
-          backendFiles.push(item as BackendFileMetadata);
-          this._log(`Found backend file metadata in array: ${item.originalFileName}`);
+          const converted = this.convertBackendFileToFileMetadata(item as BackendFileMetadata);
+          serverFiles.push(converted);
+          this._log(`Found backend file metadata in array, converted to FileMetadata: ${converted.originalName}`);
+        }
+        else if (item && typeof item === 'object' && 'originalName' in item && 'url' in item) {
+          serverFiles.push(item as FileMetadata);
+          this._log(`Found file metadata in array: ${item.originalName}`);
         }
         else if (item && typeof item === 'object' && 'file' in item && 'objectUrl' in item) {
           const localImage = item as LocalFileMetadata;
@@ -127,7 +155,7 @@ export class LlmNode extends Node {
       }
     }
     
-    return { files, metaData, backendFiles };
+    return { files, metaData, serverFiles };
   }
   
   /**
@@ -165,11 +193,11 @@ export class LlmNode extends Node {
       console.log('[LLMNode] final prompt after input replace:', finalPrompt);
       
       // 이미지 추출
-      const { files: imageFiles, metaData: localImageMetadata, backendFiles } = this.extractImages(input);
-      this._log(`Found ${imageFiles.length} image files, ${localImageMetadata.length} local image metadata, and ${backendFiles.length} backend files`);
+      const { files: imageFiles, metaData: localImageMetadata, serverFiles } = this.extractImages(input);
+      this._log(`Found ${imageFiles.length} image files, ${localImageMetadata.length} local image metadata, and ${serverFiles.length} server files`);
       
       // 비전 모드 검증
-      if (mode === 'vision' && imageFiles.length === 0 && localImageMetadata.length === 0 && 
+      if (mode === 'vision' && imageFiles.length === 0 && localImageMetadata.length === 0 && serverFiles.length === 0 &&
           (finalPrompt.trim() === effectiveProperty.prompt?.trim() || !finalPrompt.trim())) {
         const errorMsg = "Vision mode requires at least one image or non-empty prompt.";
         this._log(`Error - ${errorMsg}`);
@@ -187,12 +215,13 @@ export class LlmNode extends Node {
         mode,
         inputFiles: imageFiles.length > 0 ? imageFiles : undefined,
         localImages: localImageMetadata.length > 0 ? localImageMetadata : undefined,
+        imageMetadata: serverFiles.length > 0 ? serverFiles : undefined,
         ollamaUrl: effectiveProperty.ollamaUrl,
         openaiApiKey: effectiveProperty.openaiApiKey,
       };
 
       // LLM 서비스 호출
-      this._log(`Calling LLM service with: ${params.mode} mode, ${imageFiles.length + localImageMetadata.length} images`);
+      this._log(`Calling LLM service with: ${params.mode} mode, ${imageFiles.length + localImageMetadata.length + serverFiles.length} images`);
       console.log('[LLMNode] Sending to LLM service:', params);
       const result = await runLLM(params);
       if (!result) {
@@ -210,6 +239,15 @@ export class LlmNode extends Node {
       
       if (mode === 'vision') {
         const imagePaths: string[] = [];
+        
+        // FileMetadata에서 파일 경로 추출
+        if (serverFiles.length > 0) {
+          serverFiles.forEach((file) => {
+            const filePath = file.originalName || 'unknown';
+            imagePaths.push(filePath);
+            this._log(`Using FileMetadata path: ${filePath}`);
+          });
+        }
         
         // LocalFileMetadata에서 파일 경로 추출
         if (localImageMetadata.length > 0) {

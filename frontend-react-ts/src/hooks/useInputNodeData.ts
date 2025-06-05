@@ -145,6 +145,16 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     setEditingText('');
   }, []);
 
+  // 텍스트 변경 핸들러
+  const handleTextChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    updateInputContent({ textBuffer: event.target.value });
+  }, [updateInputContent]);
+
+  // 에러 리셋 핸들러
+  const resetError = useCallback(() => {
+    clearUploadError();
+  }, [clearUploadError]);
+
   return {
     // 상태
     chainingItems,
@@ -156,18 +166,25 @@ export const useInputNodeData = ({ nodeId }: { nodeId: string }) => {
     editingItemId,
     editingText,
     
-    // 파일 업로드 상태
-    fileUploading,
-    uploadError,
-    uploadProgress,
+    // 파일 처리 상태 (InputNode와 호환성을 위한 객체 형태)
+    fileProcessing: {
+      uploading: fileUploading,
+      error: uploadError,
+      progress: uploadProgress
+    },
+    
+    // 레이블 (기본값)
+    label: content?.label || '',
     
     // 액션
     updateInputContent,
+    handleTextChange,
     handleAddText,
     handleFileChange,
     handleDeleteItem,
     handleMoveItem,
     handleClearItems,
+    resetError,
     
     // 텍스트 편집
     startEditing,
