@@ -130,7 +130,15 @@ export class GroupNode extends Node {
       const leafOutputs = currentContext.getOutput(leafNodeId);
       if (Array.isArray(leafOutputs) && leafOutputs.length > 0) {
         this._log(`Collecting ${leafOutputs.length} results for leaf node ${leafNodeId}`);
-        collectedItems.push(...leafOutputs);
+        // 각 output이 배열인지 확인하고 flat하게 처리
+        for (const output of leafOutputs) {
+          if (Array.isArray(output)) {
+            this._log(`Flattening array output from leaf node ${leafNodeId}: ${output.length} items`);
+            collectedItems.push(...output);
+          } else {
+            collectedItems.push(output);
+          }
+        }
       } else if (leafOutputs !== undefined && !Array.isArray(leafOutputs) && leafOutputs !== null) { 
         this._log(`Collecting single result for leaf node ${leafNodeId}`);
         collectedItems.push(leafOutputs);

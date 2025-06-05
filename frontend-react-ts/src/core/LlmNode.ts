@@ -161,7 +161,7 @@ export class LlmNode extends Node {
   /**
    * Main execution method for the LLMNode
    */
-  async execute(input: any): Promise<string | null> {
+  async execute(input: any): Promise<string | any[] | null> {
     console.log('[LLMNode] execute input:', input);
     this._log('Executing LLMNode');
 
@@ -228,7 +228,7 @@ export class LlmNode extends Node {
         throw new Error('LLM service returned null or undefined unexpectedly.');
       }
       
-      // 비전 모드 결과 형식화 - 마크다운 이미지 표시를 위한 파일 경로 형식
+      // 응답 처리
       let resultText = result.response;
       
       // 응답이 undefined인 경우 빈 문자열로 대체
@@ -237,63 +237,67 @@ export class LlmNode extends Node {
         resultText = '';
       }
       
+      // 비전 모드: [...fileMetadata, response] flat 배열 반환
       if (mode === 'vision') {
-        const imagePaths: string[] = [];
+        const fileMetadataList: any[] = [];
         
-        // FileMetadata에서 파일 경로 추출
+        // FileMetadata에서 메타데이터 수집
         if (serverFiles.length > 0) {
           serverFiles.forEach((file) => {
-            const filePath = file.originalName || 'unknown';
-            imagePaths.push(filePath);
-            this._log(`Using FileMetadata path: ${filePath}`);
+            const metadata = {
+              filename: file.originalName || 'unknown',
+              url: `http://localhost:8000${file.url}`,
+              contentType: file.contentType,
+              size: file.size,
+              uploadedAt: file.uploadedAt
+            };
+            fileMetadataList.push(metadata);
+            this._log(`Collected FileMetadata: ${file.originalName}`);
           });
         }
         
-        // LocalFileMetadata에서 파일 경로 추출
+        // LocalFileMetadata에서 메타데이터 수집
         if (localImageMetadata.length > 0) {
           localImageMetadata.forEach((img) => {
-            // originalName을 그대로 사용 (경로 정보가 포함되어 있으면 그대로, 파일명만 있어도 그대로)
-            const filePath = img.originalName || img.file?.name || 'unknown';
-            imagePaths.push(filePath);
-            this._log(`Using LocalFileMetadata path: ${filePath}`);
+            const metadata = {
+              filename: img.originalName || img.file?.name || 'unknown',
+              objectUrl: img.objectUrl,
+              contentType: img.file?.type,
+              size: img.file?.size,
+              isLocal: true
+            };
+            fileMetadataList.push(metadata);
+            this._log(`Collected LocalFileMetadata: ${img.originalName}`);
           });
         }
         
-        // File 객체에서 파일 경로 추출
+        // File 객체에서 메타데이터 수집
         if (imageFiles.length > 0) {
           imageFiles.forEach((file) => {
-            // webkitRelativePath가 있으면 우선 사용, 없으면 file.name 사용
-            // 임의로 images/ 프리픽스를 추가하지 않음
-            const filePath = (file as any).webkitRelativePath || file.name;
-            imagePaths.push(filePath);
-            this._log(`Using File path: ${filePath} (webkitRelativePath: ${(file as any).webkitRelativePath || 'none'})`);
+            const metadata = {
+              filename: (file as any).webkitRelativePath || file.name,
+              contentType: file.type,
+              size: file.size,
+              lastModified: file.lastModified,
+              isFileObject: true
+            };
+            fileMetadataList.push(metadata);
+            this._log(`Collected File object metadata: ${file.name}`);
           });
         }
         
-        // 파일 경로 정보를 응답 첫 줄에 추가
-        if (imagePaths.length > 0) {
-          let pathInfo = '';
-          if (imagePaths.length === 1) {
-            // 단일 파일: [파일경로]
-            pathInfo = `[${imagePaths[0]}]`;
-          } else {
-            // 다중 파일: ["파일경로1", "파일경로2", ...]
-            const quotedPaths = imagePaths.map(path => `"${path}"`);
-            pathInfo = `[${quotedPaths.join(', ')}]`;
-          }
-          
-          // 파일 경로 정보를 결과 앞에 추가
-          resultText = pathInfo + '\n\n' + resultText;
-          this._log(`Added image path info: ${pathInfo}`);
-        }
+        // 파일 메타데이터와 응답을 flat한 배열로 결합
+        const flatResult = [...fileMetadataList, resultText];
+        
+        this._log(`LLM vision call successful, returning flat array: [${fileMetadataList.length} file metadata, response]`);
+        console.log('[LLMNode] Vision mode flat result:', flatResult);
+        
+        return flatResult;
       }
       
-      this._log(`LLM call successful, result length: ${resultText?.length || 0}`);
-      
-      // 로그로 실제 결과 값 출력 (디버깅용)
-      this._log(`Result value: "${resultText}"`);
-      
-      console.log('[LLMNode] LLM service response:', resultText);
+      // 텍스트 모드: 문자열 반환
+      this._log(`LLM text call successful, result length: ${resultText?.length || 0}`);
+      console.log('[LLMNode] Text mode result:', resultText);
       
       return resultText;
     } catch (error) {
