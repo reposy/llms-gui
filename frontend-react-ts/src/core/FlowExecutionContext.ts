@@ -263,53 +263,120 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param inputs 입력 배열
    */
   setInputs(inputs: any[]): void {
-    this.inputs = Array.isArray(inputs) ? [...inputs] : [inputs];
-    this.log(`설정된 입력: ${this.inputs.length}개 항목`);
+    const allInputs = Array.isArray(inputs) ? [...inputs] : [inputs];
+    
+    // 디버깅: 입력 구조 확인
+    this.log(`🔍 [DEBUG] setInputs 호출됨. 전체 입력 개수: ${allInputs.length}`);
+    allInputs.forEach((input, index) => {
+      this.log(`🔍 [DEBUG] Input[${index}]: ${JSON.stringify(input, null, 2)}`);
+    });
     
     // 기존 동적 Property 초기화
     if (this.nodeFactory) {
       this.nodeFactory.clearDynamicProperties();
     }
     
-    // ForEach 모드에서 Property 타입의 입력을 노드 속성에 적용
-    this.applyPropertyInputsToNodes();
-  }
-
-  /**
-   * Property 타입의 입력을 노드 속성에 적용
-   * ForEach 모드에서 Common Inputs의 Property가 노드에 반영되도록 함
-   */
-  private applyPropertyInputsToNodes(): void {
-    if (!this.inputs || !Array.isArray(this.inputs)) return;
-    
-    // Property 타입의 입력들을 찾아서 처리
-    const propertyInputs = this.inputs.filter(input => 
-      input && typeof input === 'object' && 
-      'nodeType' in input && 'property' in input
-    );
-    
-    if (propertyInputs.length === 0) return;
-    
-    this.log(`Property 입력 ${propertyInputs.length}개를 NodeFactory에 전달하여 적용`);
-    
-    // Property를 NodeFactory에 전달하여 노드 생성 시 적용되도록 함
-    propertyInputs.forEach(propertyInput => {
-      const { nodeType, property } = propertyInput;
-      if (nodeType && property && this.nodeFactory) {
-        // NodeFactory에 동적 Property 설정
-        this.nodeFactory.setDynamicProperties(nodeType, property);
+    // Property 타입의 입력들을 찾아서 NodeFactory에 적용
+    // 1. 직접적인 Property 객체: { nodeType, property }
+    // 2. InputRow의 property 타입: { type: 'property', value: {...} } (JSON 문자열 파싱 필요)
+    const propertyInputs = allInputs.filter(input => {
+      if (!input || typeof input !== 'object') return false;
+      
+      // Case 1: 직접적인 Property 객체 형태
+      if ('nodeType' in input && 'property' in input) {
+        this.log(`🔍 [DEBUG] Found Case 1 Property: ${JSON.stringify(input)}`);
+        return true;
       }
+      
+      // Case 2: InputRow property 타입 (JSON 문자열 파싱 필요)  
+      if (input.type === 'property' && input.value) {
+        try {
+          // JSON 문자열인 경우 파싱 시도
+          const parsedValue = typeof input.value === 'string' 
+            ? JSON.parse(input.value) 
+            : input.value;
+          
+          if (parsedValue && typeof parsedValue === 'object' && 
+              'nodeType' in parsedValue && 'property' in parsedValue) {
+            this.log(`🔍 [DEBUG] Found Case 2 Property InputRow (parsed): ${JSON.stringify(parsedValue)}`);
+            return true;
+          }
+        } catch (error) {
+          this.log(`🔍 [DEBUG] Failed to parse Property JSON: ${error}`);
+        }
+      }
+      
+      return false;
     });
-  }
-
-  /**
-   * 특정 노드에 Property 적용
-   * @param nodeId 노드 ID 
-   * @param property 적용할 Property
-   */
-  private applyPropertyToNode(nodeId: string, property: any): void {
-    // 이 메서드는 더 이상 사용하지 않음 - NodeFactory에서 처리
-    this.log(`노드 ${nodeId}에 Property 적용 요청: ${Object.keys(property).join(', ')}`);
+    
+    // 실제 처리할 입력들 (Property 타입 제외)
+    const nonPropertyInputs = allInputs.filter(input => {
+      if (!input || typeof input !== 'object') return true;
+      
+      // Property 객체 형태 제외
+      if ('nodeType' in input && 'property' in input) {
+        return false;
+      }
+      
+      // InputRow property 타입 제외
+      if (input.type === 'property' && input.value) {
+        try {
+          const parsedValue = typeof input.value === 'string' 
+            ? JSON.parse(input.value) 
+            : input.value;
+          
+          if (parsedValue && typeof parsedValue === 'object' && 
+              'nodeType' in parsedValue && 'property' in parsedValue) {
+            return false;
+          }
+        } catch (error) {
+          // JSON 파싱 실패 시 일반 입력으로 처리
+        }
+      }
+      
+      return true;
+    });
+    
+    // Property 입력들을 NodeFactory에 적용
+    if (propertyInputs.length > 0) {
+      this.log(`Property 입력 ${propertyInputs.length}개를 NodeFactory에 전달하여 적용`);
+      propertyInputs.forEach(propertyInput => {
+        let nodeType: string;
+        let property: any;
+        
+        // Property 구조 파싱
+        if ('nodeType' in propertyInput && 'property' in propertyInput) {
+          // 직접적인 Property 객체
+          nodeType = propertyInput.nodeType;
+          property = propertyInput.property;
+        } else if (propertyInput.type === 'property' && propertyInput.value) {
+          // InputRow property 타입 (JSON 파싱 필요)
+          try {
+            const parsedValue = typeof propertyInput.value === 'string' 
+              ? JSON.parse(propertyInput.value) 
+              : propertyInput.value;
+            
+            nodeType = parsedValue.nodeType;
+            property = parsedValue.property;
+          } catch (error) {
+            this.log(`🔍 [DEBUG] Failed to parse Property JSON in application: ${error}`);
+            return; // 올바르지 않은 형태
+          }
+        } else {
+          return; // 올바르지 않은 형태
+        }
+        
+        if (nodeType && property && this.nodeFactory) {
+          // NodeFactory에 동적 Property 설정
+          this.nodeFactory.setDynamicProperties(nodeType, property);
+          this.log(`Applied dynamic property for ${nodeType}: ${Object.keys(property).join(', ')}`);
+        }
+      });
+    }
+    
+    // Property가 제거된 입력들만 실제 inputs로 설정
+    this.inputs = nonPropertyInputs;
+    this.log(`설정된 입력: ${this.inputs.length}개 항목 (Property ${propertyInputs.length}개 제외)`);
   }
 
   /**
