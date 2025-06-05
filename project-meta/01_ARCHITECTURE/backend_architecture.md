@@ -87,45 +87,67 @@ backend-fastapi-py/
     *   `data` (Dict[str, Any], 선택): 추출 성공 시, 규칙 이름(또는 고유 ID)을 키로 하고 추출된 데이터를 값으로 하는 딕셔너리.
     *   `error` (str, 선택): 오류 발생 시 오류 메시지.
 
-#### 3.2.4. 파일 API
+#### 3.2.4. 파일 API (통합 파일 관리 시스템)
+
+> **2024.12 업데이트**: Context 기반 파일 저장 시스템 및 BackendFileMetadata 지원
 
 *   **파일 업로드**
     *   **엔드포인트**: `POST /api/files/upload`
-    *   **설명**: 파일을 서버에 업로드합니다. (`file_service.py`에서 최대 파일 크기, 허용 확장자 등 유효성 검사 수행 가능)
-    *   **요청**: `file` (UploadFile, 필수): 업로드할 파일.
+    *   **설명**: 파일을 서버에 context별로 분류하여 업로드합니다. (`file_service.py`에서 최대 파일 크기, 허용 확장자 등 유효성 검사 수행)
+    *   **요청**: 
+        - `file` (UploadFile, 필수): 업로드할 파일
+        - `context` (str, 선택, 기본값: "default"): 파일 저장 컨텍스트 (flow_executor, flow_editor, input_node, default)
+    *   **저장 구조**: `static/{context}/{uuid_filename}` 형태로 저장
     *   **응답 (JSON)**:
         ```json
         {
-          "filename": "서버에_저장된_파일명.확장자",
-          "content_type": "파일의_MIME_타입",
-          "size": 파일_크기_바이트단위,
-          "url": "/api/files/서버에_저장된_파일명.확장자" // 파일을 직접 접근할 수 있는 URL
+          "fileId": "uuid-generated-file-id",
+          "originalFileName": "original_file.jpg",
+          "filePath": "flow_executor",
+          "backendPath": "static/flow_executor/uuid_filename.jpg",
+          "url": "/api/files/flow_executor/uuid_filename.jpg",
+          "contentType": "image/jpeg",
+          "size": 102400,
+          "uploadedAt": 1703123456789
         }
         ```
-        (실제 응답은 `file_service.py`의 `save_uploaded_file` 반환값에 따라 다름)
+
 *   **파일 조회**
-    *   **엔드포인트**: `GET /api/files/{filename}`
-    *   **설명**: 업로드된 특정 파일을 다운로드하거나 내용을 확인합니다.
-    *   **경로 파라미터**: `filename` (str, 필수): 조회할 파일의 서버 저장 이름.
-    *   **응답**: `FileResponse` (성공 시), 404 HTTPException (파일 없음).
+    *   **엔드포인트**: `GET /api/files/{context}/{filename}`
+    *   **설명**: 특정 context의 업로드된 파일을 조회합니다.
+    *   **경로 파라미터**: 
+        - `context` (str, 필수): 파일이 저장된 컨텍스트
+        - `filename` (str, 필수): 조회할 파일의 서버 저장 이름
+    *   **응답**: `FileResponse` (성공 시), 404 HTTPException (파일 없음)
+
 *   **파일 목록 조회**
     *   **엔드포인트**: `GET /api/files`
-    *   **설명**: 서버에 업로드된 파일 목록을 반환합니다.
-    *   **쿼리 파라미터**: `limit` (int, 선택, 기본값: 100): 반환할 최대 파일 수.
+    *   **설명**: 서버에 업로드된 파일 목록을 context별로 필터링하여 반환합니다.
+    *   **쿼리 파라미터**: 
+        - `context` (str, 선택): 특정 컨텍스트의 파일만 조회
+        - `limit` (int, 선택, 기본값: 100): 반환할 최대 파일 수
     *   **응답 (JSON List)**:
         ```json
         [
           {
-            "filename": "파일1.jpg",
-            "content_type": "image/jpeg",
+            "fileId": "uuid-file-id",
+            "originalFileName": "image1.jpg",
+            "filePath": "flow_executor",
+            "backendPath": "static/flow_executor/uuid_filename.jpg",
+            "url": "/api/files/flow_executor/uuid_filename.jpg",
+            "contentType": "image/jpeg",
             "size": 102400,
-            "url": "/api/files/파일1.jpg",
-            "uploaded_at": "업로드_시간_ISO_포맷"
+            "uploadedAt": 1703123456789
           }
           // ... 다른 파일 정보
         ]
         ```
-        (실제 응답은 `file_service.py`의 `list_files` 반환값에 따라 다름)
+
+**통합 파일 시스템 특징**:
+- **Context 기반 조직화**: 파일이 용도별로 분류되어 저장 (flow_executor, flow_editor, input_node, default)
+- **UUID 기반 파일명**: 중복 방지 및 보안을 위한 UUID 파일명 사용
+- **확장된 메타데이터**: BackendFileMetadata 구조로 풍부한 파일 정보 제공
+- **프론트엔드 통합**: UnifiedFileService를 통한 중앙화된 파일 관리
 
 ### 3.3. Flow Executor 지원 (현재 미구현)
 

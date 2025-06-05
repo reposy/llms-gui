@@ -201,4 +201,59 @@ frontend-react-ts/src/
 *   **명확한 책임 분리**: 각 컴포넌트, 훅, 스토어, 서비스는 가능한 단일 책임을 가지도록 설계합니다.
 *   **타입 안전성**: TypeScript를 적극적으로 활용하여 타입 정의를 명확히 하고, 개발 시점의 오류를 줄입니다.
 
-이 문서는 프론트엔드 아키텍처의 주요 측면을 다루며, 코드베이스가 발전함에 따라 지속적으로 업데이트되어야 합니다. 
+이 문서는 프론트엔드 아키텍처의 주요 측면을 다루며, 코드베이스가 발전함에 따라 지속적으로 업데이트되어야 합니다.
+
+## 7. 통합 파일 관리 시스템 (2024.12 추가)
+
+### 7.1. 개요
+통합 파일 관리 시스템은 애플리케이션 전반의 파일 업로드/관리 로직을 중앙화하여 일관성을 제공하고 백엔드 기반 영속성을 보장합니다.
+
+### 7.2. 핵심 컴포넌트
+
+#### 7.2.1. 타입 시스템 (`src/types/files.ts`)
+- **`BackendFileMetadata`**: 백엔드에 저장된 파일의 완전한 메타데이터
+- **`UnifiedFileMetadata`**: 프론트엔드에서 사용하는 통합 파일 메타데이터 인터페이스  
+- **`FILE_CONTEXTS`**: 파일 저장 컨텍스트 상수 (FLOW_EXECUTOR, FLOW_EDITOR, INPUT_NODE, DEFAULT)
+- **레거시 타입**: `LocalFileMetadata`, `FileMetadata` (하위 호환성 유지)
+
+#### 7.2.2. 서비스 클래스 (`src/services/unifiedFileService.ts`)
+- **`UnifiedFileService`**: 싱글톤 패턴으로 구현된 중앙화된 파일 관리 서비스
+- 주요 메서드:
+  - `uploadFile(file, context)`: 파일을 백엔드에 업로드
+  - `listFiles(context, limit)`: 컨텍스트별 파일 목록 조회
+  - `getFileUrl(metadata)`: 파일 접근 URL 생성
+  - `convertToLegacyFormat(metadata)`: 레거시 형식으로 변환
+
+#### 7.2.3. React 훅 (`src/hooks/useUnifiedFileUpload.ts`)
+- **`useUnifiedFileUpload(context)`**: 파일 업로드 상태 및 로직을 캡슐화한 커스텀 훅
+- 제공 기능:
+  - 업로드 진행률 추적
+  - 에러 상태 관리
+  - 드래그 앤 드롭 지원
+  - 다중 파일 업로드
+  - 자동 유효성 검증
+
+### 7.3. 적용 컴포넌트
+
+#### 7.3.1. InputNode (`src/components/input/InputNode.tsx`)
+- Flow Editor에서 사용되는 입력 노드
+- `FILE_CONTEXTS.FLOW_EDITOR` 컨텍스트 사용
+- `BackendFileMetadata` 타입으로 파일 저장
+
+#### 7.3.2. Flow Executor (`src/components/executor/flow-input-sections/InputDataSection.tsx`)
+- Flow Executor에서 사용되는 데이터 입력 섹션
+- `FILE_CONTEXTS.FLOW_EXECUTOR` 컨텍스트 사용
+- 업로드 진행률 및 상태 표시 UI 포함
+
+### 7.4. 상태 관리 통합
+- **`useNodePropertyStore`**: 노드별 설정에서 `BackendFileMetadata` 지원
+- **`InputRow` 타입**: `string | File | BackendFileMetadata | null` 지원으로 확장
+- **실행 컨텍스트**: `LlmNode` 등에서 `BackendFileMetadata` 처리 지원
+
+### 7.5. 주요 특징
+- **영속성**: 백엔드 저장으로 새로고침 시에도 파일 유지
+- **컨텍스트 분리**: 용도별 파일 조직화 (flow_executor, flow_editor, input_node)
+- **진행률 표시**: 실시간 업로드 진행률 및 상태 피드백
+- **에러 핸들링**: 중앙화된 에러 관리 및 사용자 피드백
+- **드래그 앤 드롭**: 직관적인 파일 업로드 UX
+- **다국어 지원**: 한국어 UI 메시지 
