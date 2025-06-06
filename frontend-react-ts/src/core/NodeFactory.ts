@@ -1,6 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { getNodeProperty, createDefaultNodeProperty } from '../store/useNodePropertyStore';
+import { mergeDynamicProperty } from '../utils/dynamicPropertyUtils';
 
 /**
  * 노드 팩토리 클래스
@@ -75,7 +76,7 @@ export class NodeFactory {
     // [ForEach 동적 Property 적용] 
     const dynamicProperty = this.getDynamicProperties(type);
     if (dynamicProperty && typeof dynamicProperty === 'object') {
-      nodeContent = { ...nodeContent, ...dynamicProperty };
+      nodeContent = mergeDynamicProperty(nodeContent, dynamicProperty);
       console.log(`[NodeFactory] Applied dynamic property for ${type}:`, dynamicProperty);
     }
     

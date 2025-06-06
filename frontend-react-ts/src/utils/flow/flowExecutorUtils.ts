@@ -169,6 +169,31 @@ export function importFlowToFlowChain(flowChainId: string, flowData: FlowData, f
         actualContentsProperty: contentsProperty,
         actualNodeDataProperty: nodeDataProperty,
         actualFinalProperty: finalProperty
+      }),
+      // 🔧 Web Crawler의 경우 iframe 관련 설정 상세 정보 추가
+      ...(node.type === 'web-crawler' && {
+        contentsIframeSettings: contentsProperty ? {
+          waitForSelectorOnPage: contentsProperty.waitForSelectorOnPage,
+          iframeSelector: contentsProperty.iframeSelector,
+          waitForSelectorInIframe: contentsProperty.waitForSelectorInIframe,
+          extractElementSelector: contentsProperty.extractElementSelector
+        } : 'none',
+        nodeDataIframeSettings: nodeDataProperty ? {
+          waitForSelectorOnPage: nodeDataProperty.waitForSelectorOnPage,
+          iframeSelector: nodeDataProperty.iframeSelector,
+          waitForSelectorInIframe: nodeDataProperty.waitForSelectorInIframe,
+          extractElementSelector: nodeDataProperty.extractElementSelector
+        } : 'none',
+        finalIframeSettings: finalProperty ? {
+          waitForSelectorOnPage: finalProperty.waitForSelectorOnPage,
+          iframeSelector: finalProperty.iframeSelector,
+          waitForSelectorInIframe: finalProperty.waitForSelectorInIframe,
+          extractElementSelector: finalProperty.extractElementSelector
+        } : 'none',
+        // 🔍 실제 전체 값들 출력
+        contentsPropertyFull: contentsProperty,
+        nodeDataPropertyFull: nodeDataProperty,
+        finalPropertyFull: finalProperty
       })
     });
     

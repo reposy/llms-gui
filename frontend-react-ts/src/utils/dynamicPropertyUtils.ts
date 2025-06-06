@@ -86,9 +86,9 @@ function extractDynamicPropertyFromItem(
 
 /**
  * 동적 속성과 기본 속성을 병합하는 함수
- * 원칙: 빈 값은 기존 값을 덮어쓰지 않음 (프로젝트 원칙 준수)
+ * 원칙: 빈 값 또는 기존 값과 동일한 값은 기존 값을 덮어쓰지 않음 (프로젝트 원칙 준수)
  * 
- * @param baseProperty - 기본 노드 속성
+ * @param baseProperty - 기본 노드 속성 (nodeMap에서 가져온 실제 저장된 값)
  * @param dynamicProperty - 동적으로 주입된 속성
  * @returns 병합된 속성 (의미있는 동적 속성만 적용)
  */
@@ -99,27 +99,43 @@ export const mergeDynamicProperty = (
   if (!dynamicProperty) return baseProperty;
 
   /**
-   * 빈 값 판단 함수
-   * 문자열: 빈 문자열, 공백만 있는 문자열
-   * 숫자: 0도 유효한 값으로 간주
-   * 불린: 항상 유효
-   * 객체: 빈 객체
-   * 배열: 빈 배열
+   * 빈 값 또는 기존 값과 동일한 값인지 판단하는 함수
+   * 
+   * @param key - 프로퍼티 키
+   * @param value - 동적 프로퍼티 값
+   * @param baseValue - 기존 저장된 값 (nodeMap에서)
+   * @returns 필터링해야 할 값인지 여부
    */
-  const isEmpty = (value: any): boolean => {
+  const shouldFilter = (key: string, value: any, baseValue: any): boolean => {
+    // null, undefined는 항상 필터링
     if (value === null || value === undefined) return true;
-    if (typeof value === 'string') return value.trim() === '';
-    if (typeof value === 'number') return false; // 0도 유효한 값
-    if (typeof value === 'boolean') return false; // 불린은 항상 유효
-    if (Array.isArray(value)) return value.length === 0;
-    if (typeof value === 'object') return Object.keys(value).length === 0;
-    return false;
+    
+    // 빈 문자열은 필터링
+    if (typeof value === 'string' && value.trim() === '') return true;
+    
+    // 빈 배열은 필터링
+    if (Array.isArray(value) && value.length === 0) return true;
+    
+    // 빈 객체는 필터링
+    if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return true;
+    
+    // 불린은 항상 유효 (false도 의미있는 값)
+    if (typeof value === 'boolean') return false;
+    
+    // 🔧 핵심: 동적 값이 기존 저장된 값과 동일하면 필터링
+    // 이렇게 하면 사용자가 실제로 변경한 값만 적용됨
+    if (baseValue !== undefined && value === baseValue) {
+      return true;
+    }
+    
+    return false; // 나머지는 유효한 값으로 간주
   };
 
   // 의미있는 값만 포함하는 필터링된 동적 속성 생성
   const filteredDynamicProperty: Record<string, any> = {};
   for (const [key, value] of Object.entries(dynamicProperty)) {
-    if (!isEmpty(value)) {
+    const baseValue = baseProperty[key];
+    if (!shouldFilter(key, value, baseValue)) {
       filteredDynamicProperty[key] = value;
     }
   }

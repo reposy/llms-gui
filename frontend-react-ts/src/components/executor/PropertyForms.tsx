@@ -295,6 +295,17 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
     onChange({ ...value, [field]: newValue });
   };
 
+  // 🔧 React 경고 방지: 모든 필드에 기본값 보장
+  const safeValue = {
+    url: value.url || '',
+    timeout: value.timeout || 30000,
+    waitForSelectorOnPage: value.waitForSelectorOnPage || '',
+    iframeSelector: value.iframeSelector || '',
+    waitForSelectorInIframe: value.waitForSelectorInIframe || '',
+    extractElementSelector: value.extractElementSelector || '',
+    outputFormat: value.outputFormat || 'html'
+  };
+
   return (
     <div className="space-y-4 p-4 border rounded-lg bg-purple-50">
       <h4 className="font-medium text-purple-800">Web Crawler 설정</h4>
@@ -305,7 +316,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
         <input
           type="url"
           className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          value={value.url}
+          value={safeValue.url}
           onChange={e => updateField('url', e.target.value)}
           placeholder="https://example.com"
           disabled={disabled}
@@ -320,7 +331,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
             <input
               type="number"
               className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              value={value.timeout}
+              value={safeValue.timeout}
               onChange={e => updateField('timeout', parseInt(e.target.value) || 30000)}
               min="1000"
               max="300000"
@@ -335,7 +346,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
           <label className="text-sm font-medium text-gray-700 min-w-[100px]">Output Format:</label>
           <select
             className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            value={value.outputFormat}
+            value={safeValue.outputFormat}
             onChange={e => updateField('outputFormat', e.target.value)}
             disabled={disabled}
           >
@@ -351,7 +362,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
         <input
           type="text"
           className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          value={value.waitForSelectorOnPage || ''}
+          value={safeValue.waitForSelectorOnPage}
           onChange={e => updateField('waitForSelectorOnPage', e.target.value)}
           placeholder="CSS 선택자 (예: .content, #main)"
           disabled={disabled}
@@ -364,7 +375,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
         <input
           type="text"
           className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          value={value.iframeSelector || ''}
+          value={safeValue.iframeSelector}
           onChange={e => updateField('iframeSelector', e.target.value)}
           placeholder="#entryIframe, iframe[name='content']"
           disabled={disabled}
@@ -377,7 +388,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
         <input
           type="text"
           className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          value={value.waitForSelectorInIframe || ''}
+          value={safeValue.waitForSelectorInIframe}
           onChange={e => updateField('waitForSelectorInIframe', e.target.value)}
           placeholder="#_title, .article-body"
           disabled={disabled}
@@ -390,7 +401,7 @@ export const WebCrawlerPropertyForm: React.FC<WebCrawlerPropertyFormProps> = ({ 
         <input
           type="text"
           className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          value={value.extractElementSelector || ''}
+          value={safeValue.extractElementSelector}
           onChange={e => updateField('extractElementSelector', e.target.value)}
           placeholder=".content-area, #main-article"
           disabled={disabled}
@@ -497,11 +508,8 @@ export const createDefaultProperty = (nodeType: string): any => {
     case 'web-crawler':
       return {
         url: '',
-        timeout: 30000,
-        outputFormat: 'html',
-        // 입력하지 않은 필드는 기본값에서 제외
-        // waitForSelectorOnPage, iframeSelector, waitForSelectorInIframe, extractElementSelector는 
-        // 사용자가 실제로 입력한 경우에만 포함됨
+        // 다른 필드들은 제거 - 사용자가 실제로 입력한 것만 포함되도록
+        // timeout, outputFormat 등은 Flow import 시 설정된 값 사용
       };
     default:
       return {};

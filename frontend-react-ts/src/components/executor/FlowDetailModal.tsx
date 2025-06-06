@@ -17,7 +17,20 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
   const flow = chain?.flowMap[flowId];
   const flowInputFormRef = useRef<FlowInputFormRef>(null);
 
-  if (!flow) return null;
+  // 🔍 디버깅 로그 추가
+  console.log('[FlowDetailModal] Debug info:', {
+    flowChainId,
+    flowId,
+    chainExists: !!chain,
+    flowMapKeys: chain ? Object.keys(chain.flowMap) : 'no chain',
+    flowExists: !!flow,
+    flowName: flow?.name
+  });
+
+  if (!flow) {
+    console.warn('[FlowDetailModal] Flow not found - returning null');
+    return null;
+  }
 
   const handleExecuteFlow = async () => {
     if (!flow) return;

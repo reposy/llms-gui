@@ -122,10 +122,13 @@ export const outputNodeSyncConfig = createSyncConfig<NodeProperty>([
  */
 export const webCrawlerNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'url', type: 'string', required: true, defaultValue: '' },
-  { propertyName: 'waitForSelector', type: 'string', defaultValue: 'body' },
-  { propertyName: 'extractSelectors', type: 'object', defaultValue: {} },
-  { propertyName: 'timeout', type: 'number', defaultValue: 3000 },
-  { propertyName: 'outputFormat', type: 'string', defaultValue: 'full' }
+  { propertyName: 'waitForSelectorOnPage', type: 'string', defaultValue: '' },
+  { propertyName: 'iframeSelector', type: 'string', defaultValue: '' },
+  { propertyName: 'waitForSelectorInIframe', type: 'string', defaultValue: '' },
+  { propertyName: 'extractElementSelector', type: 'string', defaultValue: '' },
+  { propertyName: 'timeout', type: 'number', defaultValue: 30000 },
+  { propertyName: 'outputFormat', type: 'string', defaultValue: 'html' },
+  { propertyName: 'headers', type: 'object', defaultValue: {} }
 ]);
 
 /**
