@@ -165,7 +165,13 @@ async def get_file(context: str, filename: str):
     
     file_path = get_file_path(context, filename)
     logger.info(f"Serving file: {file_path}")
-    return FileResponse(file_path)
+    
+    # CORS 헤더를 명시적으로 추가한 FileResponse 반환
+    response = FileResponse(file_path)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.get("/api/files")
 async def get_files(context: Optional[str] = None, limit: Optional[int] = 100):

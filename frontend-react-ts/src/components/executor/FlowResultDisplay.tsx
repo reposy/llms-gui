@@ -3,6 +3,7 @@ import { ExecutionStatus } from '../../store/useExecutorStateStore';
 import ReactMarkdown from 'react-markdown';
 import './markdown-style.css';
 import { ClipboardIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { usePDFExport } from '../../hooks/usePDFExport';
 
 // FlowExecutionResult 인터페이스 직접 정의
 interface FlowExecutionResult {
@@ -56,6 +57,9 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   // 🔍 모달 상태 추가
   const [isModalOpen, setIsModalOpen] = useState(false);
   
+  // 📄 PDF 내보내기 훅 추가
+  const { exportFlowResultToPDF, isExporting } = usePDFExport();
+
   useEffect(() => {
     // console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
   }, [flowId, result]);
@@ -266,6 +270,38 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
     });
   };
 
+  // 📄 PDF 다운로드 핸들러
+  const handlePDFDownload = async (mode: 'outputs' | 'join' | 'raw') => {
+    if (!result || !result.outputs || result.outputs.length === 0) {
+      alert('다운로드할 결과가 없습니다.');
+      return;
+    }
+
+    try {
+      const markdownMode = mode === 'join' ? joinViewMode : 'text';
+      const result = await exportFlowResultToPDF(mode, flowName, markdownMode, {
+        onStart: () => console.log(`[FlowResultDisplay] PDF 생성 시작: ${mode} 모드`),
+        onComplete: (result) => {
+          if (result.success) {
+            console.log(`[FlowResultDisplay] PDF 생성 완료: ${result.filename}`);
+            // 성공 시 특별한 처리는 없음 (파일이 자동 다운로드됨)
+          }
+        },
+        onError: (error) => {
+          console.error('[FlowResultDisplay] PDF 생성 실패:', error);
+          alert(`PDF 생성 중 오류가 발생했습니다: ${error.message}`);
+        }
+      });
+
+      if (!result.success) {
+        alert(`PDF 생성에 실패했습니다: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('[FlowResultDisplay] PDF 다운로드 오류:', error);
+      alert('PDF 다운로드 중 오류가 발생했습니다.');
+    }
+  };
+
   // 전체 결과 렌더링
   const renderAllResults = (mode: 'outputs' | 'join' | 'raw') => {
     if (!result || !result.outputs || result.outputs.length === 0) {
@@ -281,9 +317,34 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       return (
         <>
           {!hideHeader && (
-          <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-medium">{flowName} 결과 ({result.outputs.length} 항목)</h3>
+            <button
+              onClick={() => handlePDFDownload('outputs')}
+              disabled={isExporting}
+              className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300 transition-colors text-sm flex items-center disabled:opacity-50"
+              title="PDF 다운로드"
+            >
+              {isExporting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  생성중
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  PDF
+                </>
+              )}
+            </button>
+          </div>
           )}
-          <div>
+          <div id="flow-result-outputs">
             {result.outputs.map((nodeResult, idx) => {
               const nodeId = nodeResult.nodeId || `node-${idx}`;
               return (
@@ -309,6 +370,29 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
               {joinViewMode === 'markdown' ? 'text' : 'markdown'}
             </button>
             <button
+              onClick={() => handlePDFDownload('join')}
+              disabled={isExporting}
+              className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300 transition-colors text-sm mr-2 flex items-center disabled:opacity-50"
+              title="PDF 다운로드"
+            >
+              {isExporting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  생성중
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  PDF
+                </>
+              )}
+            </button>
+            <button
               onClick={() => handleCopy(joined)}
               className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
             >
@@ -329,11 +413,11 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
               )}
             </button>
           </div>
-          <div className={`${paddingClass} bg-white rounded border border-gray-200 ${maxHeightClass} overflow-y-auto`}>
+          <div id="flow-result-join" className={`${paddingClass} bg-white rounded border border-gray-200 ${maxHeightClass} overflow-y-auto`}>
             {joinViewMode === 'markdown' ? (
-              <div className="markdown-content"><ReactMarkdown>{joined}</ReactMarkdown></div>
+              <div id="flow-result-join-markdown" className="markdown-content"><ReactMarkdown>{joined}</ReactMarkdown></div>
             ) : (
-              <pre className="whitespace-pre-wrap text-sm">{joined}</pre>
+              <pre id="flow-result-join-text" className="whitespace-pre-wrap text-sm">{joined}</pre>
             )}
           </div>
         </>
@@ -344,6 +428,29 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
       <>
         <h3 className="font-medium mb-2">{flowName} 결과 ({result.outputs.length} 항목)</h3>
         <div className="flex justify-end mb-2">
+          <button
+            onClick={() => handlePDFDownload('raw')}
+            disabled={isExporting}
+            className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300 transition-colors text-sm mr-2 flex items-center disabled:opacity-50"
+            title="PDF 다운로드"
+          >
+            {isExporting ? (
+              <>
+                <svg className="animate-spin h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                생성중
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                PDF
+              </>
+            )}
+          </button>
           <button
             onClick={() => handleCopy(JSON.stringify(result, null, 2))}
             className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center"
@@ -365,7 +472,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
             )}
           </button>
         </div>
-        <pre className={`${paddingClass} bg-white rounded border border-gray-200 ${maxHeightClass} overflow-y-auto whitespace-pre-wrap text-sm`}>
+        <pre id="flow-result-raw" className={`${paddingClass} bg-white rounded border border-gray-200 ${maxHeightClass} overflow-y-auto whitespace-pre-wrap text-sm`}>
           {JSON.stringify(result, null, 2)}
         </pre>
       </>
