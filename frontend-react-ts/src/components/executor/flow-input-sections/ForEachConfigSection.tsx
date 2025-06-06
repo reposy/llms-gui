@@ -40,6 +40,7 @@ interface InputRowComponentProps {
   onMoveUp: (idx: number) => void;
   onMoveDown: (idx: number) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  onFlowResultChange: (idx: number, updates: Partial<InputRow>) => void;
   flowId: string;
   focusedFlowChainId?: string;
   flowChainIds: string[];
@@ -64,6 +65,7 @@ const InputRowComponent: React.FC<InputRowComponentProps> = ({
   onMoveUp,
   onMoveDown,
   onKeyDown,
+  onFlowResultChange,
   flowId,
   focusedFlowChainId,
   flowChainIds,
@@ -205,8 +207,12 @@ const InputRowComponent: React.FC<InputRowComponentProps> = ({
             onChange={e => {
               if (!editMode) return;
               const flowChainId = e.target.value;
-              // Flow result 업데이트를 위한 추가 핸들러 호출
-              onTextChange(idx, flowChainId); // 임시로 value를 flowChainId로 설정
+              // 🔧 FlowChain 변경 시 sourceFlowId 초기화
+              onFlowResultChange(idx, { 
+                flowChainId, 
+                sourceFlowId: '', 
+                value: flowChainId 
+              });
             }}
             disabled={!editMode || flowChainIds.length === 0}
           >
@@ -236,7 +242,11 @@ const InputRowComponent: React.FC<InputRowComponentProps> = ({
               onChange={e => {
                 if (!editMode) return;
                 const sourceFlowId = e.target.value;
-                onTextChange(idx, sourceFlowId); // 임시로 value를 sourceFlowId로 설정
+                // 🔧 Flow 변경 시 value도 함께 업데이트
+                onFlowResultChange(idx, { 
+                  sourceFlowId, 
+                  value: sourceFlowId 
+                });
               }}
               disabled={!editMode}
             >
@@ -428,19 +438,25 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     onCommonInputsChange(newInputs);
   }, [editMode, commonInputs, onCommonInputsChange]);
 
-  const handleCommonInputPropertyChange = useCallback((idx: number, nodeType: string, propertyValue: any) => {
+  // 🔧 Common Inputs FlowResult 변경 핸들러
+  const handleCommonInputFlowResultChange = useCallback((idx: number, updates: Partial<InputRow>) => {
     if (!editMode) return;
     const newInputs = [...commonInputs];
-    const newValue = serializeProperty(nodeType, propertyValue);
-    newInputs[idx] = { ...newInputs[idx], value: newValue };
+    newInputs[idx] = { ...newInputs[idx], ...updates };
     onCommonInputsChange(newInputs);
   }, [editMode, commonInputs, onCommonInputsChange]);
 
-  // 순서 변경 헬퍼 함수들
+  const handleCommonInputPropertyChange = useCallback((idx: number, nodeType: string, propertyValue: any) => {
+    if (!editMode) return;
+    const newInputs = [...commonInputs];
+    newInputs[idx] = { ...newInputs[idx], value: serializeProperty(nodeType, propertyValue) };
+    onCommonInputsChange(newInputs);
+  }, [editMode, commonInputs, onCommonInputsChange]);
+
   const moveCommonInputUp = useCallback((idx: number) => {
     if (!editMode || idx === 0) return;
     const newInputs = [...commonInputs];
-    [newInputs[idx], newInputs[idx - 1]] = [newInputs[idx - 1], newInputs[idx]];
+    [newInputs[idx - 1], newInputs[idx]] = [newInputs[idx], newInputs[idx - 1]];
     onCommonInputsChange(newInputs);
   }, [editMode, commonInputs, onCommonInputsChange]);
 
@@ -481,6 +497,14 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
     if (!editMode) return;
     const newItems = [...forEachItems];
     newItems[idx] = { ...newItems[idx], value };
+    onForEachItemsChange(newItems);
+  }, [editMode, forEachItems, onForEachItemsChange]);
+
+  // 🔧 ForEach Items FlowResult 변경 핸들러
+  const handleForEachItemFlowResultChange = useCallback((idx: number, updates: Partial<InputRow>) => {
+    if (!editMode) return;
+    const newItems = [...forEachItems];
+    newItems[idx] = { ...newItems[idx], ...updates };
     onForEachItemsChange(newItems);
   }, [editMode, forEachItems, onForEachItemsChange]);
 
@@ -619,6 +643,7 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                 onMoveUp={moveCommonInputUp}
                 onMoveDown={moveCommonInputDown}
                 onKeyDown={handleCommonInputKeyDown}
+                onFlowResultChange={handleCommonInputFlowResultChange}
                 flowId={flowId}
                 focusedFlowChainId={focusedFlowChainId}
                 flowChainIds={flowChainIds}
@@ -692,6 +717,7 @@ const ForEachConfigSection: React.FC<ForEachConfigSectionProps> = ({
                 onMoveUp={moveForEachItemUp}
                 onMoveDown={moveForEachItemDown}
                 onKeyDown={handleForEachItemKeyDown}
+                onFlowResultChange={handleForEachItemFlowResultChange}
                 flowId={flowId}
                 focusedFlowChainId={focusedFlowChainId}
                 flowChainIds={flowChainIds}

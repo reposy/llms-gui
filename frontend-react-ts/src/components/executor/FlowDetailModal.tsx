@@ -17,18 +17,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
   const flow = chain?.flowMap[flowId];
   const flowInputFormRef = useRef<FlowInputFormRef>(null);
 
-  // 🔍 디버깅 로그 추가
-  console.log('[FlowDetailModal] Debug info:', {
-    flowChainId,
-    flowId,
-    chainExists: !!chain,
-    flowMapKeys: chain ? Object.keys(chain.flowMap) : 'no chain',
-    flowExists: !!flow,
-    flowName: flow?.name
-  });
-
   if (!flow) {
-    console.warn('[FlowDetailModal] Flow not found - returning null');
     return null;
   }
 
@@ -55,14 +44,6 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
       commonInputs = commonInputs || [];
       forEachItems = forEachItems || [];
       executableInputs = executableInputs || flow.inputs;
-      
-      console.log('[FlowDetailModal] 실행 모드:', executionMode);
-      console.log('[FlowDetailModal] 실행용 입력:', { 
-        mode: executionMode, 
-        executableInputs, 
-        commonInputs, 
-        forEachItems 
-      });
       
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,

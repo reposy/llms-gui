@@ -148,54 +148,11 @@ export function importFlowToFlowChain(flowChainId: string, flowData: FlowData, f
   const nodeFactory = store.nodeFactory;
   const newFlowId = `flow-${uuidv4()}`;
   
-  console.log(`[importFlowToFlowChain] Importing flow with ${flowData.nodes?.length || 0} nodes`);
-  console.log(`[importFlowToFlowChain] flowData.contents keys:`, Object.keys(flowData.contents || {}));
-  
   // 노드의 data 필드를 contents에서 가져온 property로 교체
   const nodesWithUpdatedData = (flowData.nodes || []).map((node: any) => {
     const contentsProperty = flowData.contents?.[node.id];
     const nodeDataProperty = node.data;
     const finalProperty = contentsProperty || nodeDataProperty || {};
-    
-    console.log(`[importFlowToFlowChain] Node ${node.id} (${node.type}):`, {
-      contentsProperty: contentsProperty ? Object.keys(contentsProperty) : 'none',
-      nodeDataProperty: nodeDataProperty ? Object.keys(nodeDataProperty) : 'none',
-      finalProperty: finalProperty ? Object.keys(finalProperty) : 'none',
-      // ✅ HTML Parser의 경우 extractionRules 상세 정보 추가
-      ...(node.type === 'html-parser' && {
-        contentsExtractionRules: contentsProperty?.extractionRules?.length || 0,
-        nodeDataExtractionRules: nodeDataProperty?.extractionRules?.length || 0,
-        finalExtractionRules: finalProperty?.extractionRules?.length || 0,
-        actualContentsProperty: contentsProperty,
-        actualNodeDataProperty: nodeDataProperty,
-        actualFinalProperty: finalProperty
-      }),
-      // 🔧 Web Crawler의 경우 iframe 관련 설정 상세 정보 추가
-      ...(node.type === 'web-crawler' && {
-        contentsIframeSettings: contentsProperty ? {
-          waitForSelectorOnPage: contentsProperty.waitForSelectorOnPage,
-          iframeSelector: contentsProperty.iframeSelector,
-          waitForSelectorInIframe: contentsProperty.waitForSelectorInIframe,
-          extractElementSelector: contentsProperty.extractElementSelector
-        } : 'none',
-        nodeDataIframeSettings: nodeDataProperty ? {
-          waitForSelectorOnPage: nodeDataProperty.waitForSelectorOnPage,
-          iframeSelector: nodeDataProperty.iframeSelector,
-          waitForSelectorInIframe: nodeDataProperty.waitForSelectorInIframe,
-          extractElementSelector: nodeDataProperty.extractElementSelector
-        } : 'none',
-        finalIframeSettings: finalProperty ? {
-          waitForSelectorOnPage: finalProperty.waitForSelectorOnPage,
-          iframeSelector: finalProperty.iframeSelector,
-          waitForSelectorInIframe: finalProperty.waitForSelectorInIframe,
-          extractElementSelector: finalProperty.extractElementSelector
-        } : 'none',
-        // 🔍 실제 전체 값들 출력
-        contentsPropertyFull: contentsProperty,
-        nodeDataPropertyFull: nodeDataProperty,
-        finalPropertyFull: finalProperty
-      })
-    });
     
     return {
       ...node,
