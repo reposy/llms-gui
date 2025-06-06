@@ -121,7 +121,7 @@ const InputRowComponent: React.FC<InputRowComponentProps> = ({
         <textarea
           className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-gray-50 resize-none"
           rows={2}
-          maxLength={500}
+          maxLength={2000}
           value={typeof item.value === 'string' ? item.value : ''}
           onChange={(e) => onTextChange(idx, e.target.value)}
           onKeyDown={e => editMode && onKeyDown(e)}

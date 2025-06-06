@@ -307,13 +307,13 @@ const InputDataSection: React.FC<InputDataSectionProps> = ({
             {/* 입력 UI */}
             {row.type === 'text' && (
               <textarea
-                className="flex-1 border border-gray-300 rounded px-3 py-2 bg-gray-50 resize-none"
+                className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-gray-50 resize-none"
                 rows={2}
-                maxLength={500}
+                maxLength={2000}
                 value={typeof row.value === 'string' ? row.value : ''}
                 onChange={e => editMode && handleTextChange(idx, e.target.value)}
                 onKeyDown={e => editMode && handleKeyDown(e)}
-                placeholder="입력값을 입력하세요"
+                placeholder="입력값을 작성하세요"
                 readOnly={!editMode}
                 style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
               />

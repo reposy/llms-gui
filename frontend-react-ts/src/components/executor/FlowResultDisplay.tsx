@@ -21,6 +21,7 @@ interface ResultDisplayProps {
   onToggleNode?: (nodeId: string) => void;
   hideHeader?: boolean;
   defaultExpand?: boolean;
+  isModal?: boolean;
 }
 
 // 문자열이 마크다운 형식인지 대략 확인하는 함수
@@ -40,7 +41,7 @@ const isMarkdownLike = (text: string): boolean => {
   return markdownPatterns.some(pattern => pattern.test(text));
 };
 
-const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, compact = true, openNodes = {}, onToggleNode, hideHeader, defaultExpand = false }) => {
+const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowName, compact = true, openNodes = {}, onToggleNode, hideHeader, defaultExpand = false, isModal = false }) => {
   // 복사 상태 관리
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
   // 결과 표시 모드 상태 (일반 텍스트 vs 마크다운)
@@ -52,10 +53,32 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   // join 모드 text/markdown toggle
   const [joinViewMode, setJoinViewMode] = useState<'text' | 'markdown'>('text');
   const [localOpenNodes, setLocalOpenNodes] = useState<{ [nodeId: string]: boolean }>({});
+  // 🔍 모달 상태 추가
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   useEffect(() => {
     // console.log(`[ResultDisplay] Component received flowId: ${flowId}, entire result object:`, result);
   }, [flowId, result]);
+
+  // ESC 키로 모달 닫기
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isModalOpen) {
+        setIsModalOpen(false);
+      }
+    };
+    
+    if (isModalOpen) {
+      document.addEventListener('keydown', handleEscape);
+      // 모달이 열릴 때 body 스크롤 방지
+      document.body.style.overflow = 'hidden';
+    }
+    
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isModalOpen]);
 
   // defaultExpand가 true이고 result.outputs가 바뀔 때마다 모든 노드를 펼침 상태로 초기화
   useEffect(() => {
@@ -198,7 +221,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
           </button>
           </div>
         {expanded && (
-          <div className="p-2 bg-white rounded border border-gray-200 max-h-80 overflow-y-auto mt-1">
+          <div className={`${isModal ? 'p-4' : 'p-2'} bg-white rounded border border-gray-200 ${isModal ? 'max-h-[40vh]' : 'max-h-80'} overflow-y-auto mt-1`}>
             <button
               onClick={() => toggleNodeViewMode(nodeId)}
               className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-xs mr-2"
@@ -248,6 +271,12 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
     if (!result || !result.outputs || result.outputs.length === 0) {
       return <div className="text-gray-500 text-sm p-4">출력 결과가 없습니다.</div>;
     }
+    
+    // 모달에서 사용되는지 확인 (modal-results 클래스가 있는 부모 컨테이너에서 호출되는지)
+    const isInModal = isModal || document.querySelector('.modal-results') !== null;
+    const maxHeightClass = isInModal ? 'max-h-[60vh]' : 'max-h-80';
+    const paddingClass = isInModal ? 'p-4' : 'p-2';
+    
     if (mode === 'outputs') {
       return (
         <>
@@ -300,7 +329,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
               )}
             </button>
           </div>
-          <div className="p-3 bg-white rounded border border-gray-200 max-h-96 overflow-y-auto">
+          <div className={`${paddingClass} bg-white rounded border border-gray-200 ${maxHeightClass} overflow-y-auto`}>
             {joinViewMode === 'markdown' ? (
               <div className="markdown-content"><ReactMarkdown>{joined}</ReactMarkdown></div>
             ) : (
@@ -336,7 +365,7 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
             )}
           </button>
         </div>
-        <pre className="p-3 bg-white rounded border border-gray-200 max-h-96 overflow-y-auto whitespace-pre-wrap text-sm">
+        <pre className={`${paddingClass} bg-white rounded border border-gray-200 ${maxHeightClass} overflow-y-auto whitespace-pre-wrap text-sm`}>
           {JSON.stringify(result, null, 2)}
         </pre>
       </>
@@ -344,24 +373,96 @@ const FlowResultDisplay: React.FC<ResultDisplayProps> = ({ result, flowId, flowN
   };
 
   return (
-    <div className={compact ? "p-0 border-none bg-transparent" : "p-3 border border-gray-300 rounded-lg bg-white"}>
-      {/* 글로벌 결과 표시 모드 토글 */}
-      <div className="flex gap-2 mb-3">
-        <button
-          onClick={() => setViewMode('outputs')}
-          className={`px-2 py-1 rounded border text-sm ${viewMode === 'outputs' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
-        >outputs</button>
-        <button
-          onClick={() => setViewMode('join')}
-          className={`px-2 py-1 rounded border text-sm ${viewMode === 'join' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
-        >join</button>
-        <button
-          onClick={() => setViewMode('raw')}
-          className={`px-2 py-1 rounded border text-sm ${viewMode === 'raw' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
-        >raw</button>
+    <>
+      <div className={compact ? "p-0 border-none bg-transparent" : "p-3 border border-gray-300 rounded-lg bg-white"}>
+        {/* 글로벌 결과 표시 모드 토글 */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('outputs')}
+              className={`px-2 py-1 rounded border text-sm ${viewMode === 'outputs' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+            >outputs</button>
+            <button
+              onClick={() => setViewMode('join')}
+              className={`px-2 py-1 rounded border text-sm ${viewMode === 'join' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+            >join</button>
+            <button
+              onClick={() => setViewMode('raw')}
+              className={`px-2 py-1 rounded border text-sm ${viewMode === 'raw' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+            >raw</button>
+          </div>
+          
+          {/* 🔍 크게 보기 버튼 - 모달이 아닐 때만 표시 */}
+          {!isModal && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors text-sm flex items-center gap-1"
+              title="크게 보기"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+              </svg>
+              크게 보기
+            </button>
+          )}
+        </div>
+        {renderAllResults(viewMode)}
       </div>
-      {renderAllResults(viewMode)}
-    </div>
+
+      {/* 🔍 크게 보기 모달 */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          {/* 모달 오버레이 클릭으로 닫기 */}
+          <div 
+            className="absolute inset-0" 
+            onClick={() => setIsModalOpen(false)}
+          />
+          
+          {/* 모달 컨텐츠 */}
+          <div className="relative bg-white rounded-lg shadow-xl w-[90%] h-[90%] max-w-6xl flex flex-col">
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-800">
+                {flowName} 결과 - 크게 보기
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                title="닫기 (ESC)"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* 모달 바디 - 스크롤 가능 */}
+            <div className="flex-1 overflow-auto p-6">
+              {/* 모달용 탭 버튼들 */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setViewMode('outputs')}
+                  className={`px-3 py-2 rounded border text-sm ${viewMode === 'outputs' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+                >outputs</button>
+                <button
+                  onClick={() => setViewMode('join')}
+                  className={`px-3 py-2 rounded border text-sm ${viewMode === 'join' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+                >join</button>
+                <button
+                  onClick={() => setViewMode('raw')}
+                  className={`px-3 py-2 rounded border text-sm ${viewMode === 'raw' ? 'bg-blue-100 text-blue-700 border-blue-300 font-bold' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+                >raw</button>
+              </div>
+              
+              {/* 모달용 결과 컨텐츠 - 큰 영역 활용 */}
+              <div className="modal-results">
+                {renderAllResults(viewMode)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
