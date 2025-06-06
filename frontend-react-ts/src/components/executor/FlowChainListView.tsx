@@ -5,20 +5,19 @@ import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/s
 import { PlayIcon, PenLineIcon } from '../Icons';
 import { executeChain } from '../../services/flowExecutionService';
 import InlineEditInput from '../ui/InlineEditInput';
+import { useImportService } from '../../hooks/useImportService';
 
 interface FlowChainListViewProps {
   onFlowChainSelect: (flowChainId: string) => void;
 }
 
 const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect }) => {
-  const [newFlowChainName, setNewFlowChainName] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const store = useFlowExecutorStore();
-  const flowChainMap = store.flowChainMap;
-  const flowChainIds = store.flowChainIds;
-  const focusedFlowChainId = store.focusedFlowChainId;
-  const setStore = useFlowExecutorStore.setState;
+  const { openFileImport } = useImportService();
+  const [newFlowChainName, setNewFlowChainName] = useState('');
   const [editingChainId, setEditingChainId] = useState<string | null>(null);
+  const { flowChainMap, flowChainIds, focusedFlowChainId } = store;
+  const setStore = useFlowExecutorStore.setState;
 
   const handleAddFlowChain = () => {
     const name = newFlowChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;
@@ -89,119 +88,22 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
   };
 
   const handleImportFlowChain = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
+    openFileImport({
+      onSuccess: (result) => {
+        console.log(`[FlowChainListView] Import 성공:`, result);
         
-        // 새로운 형식 (v1.2) 처리
-        if (json.version === '1.2' && Array.isArray(json.flowChains)) {
-          console.log(`[FlowChainListView] 새로운 형식 (v${json.version}) 파일 가져오기`);
-          
-          json.flowChains.forEach((chainData: any) => {
-            try {
-              // ID 중복 확인 및 처리
-              let newId = chainData.id || `flowChain-${Date.now()}`;
-              if (flowChainMap[newId]) {
-                newId = `${chainData.id}-copy-${Date.now()}`;
-              }
-              
-              // 이름 중복 확인 및 처리
-              let newName = chainData.name || '가져온 체인';
-              if (Object.values(flowChainMap).some(c => c.name === newName)) {
-                newName = `${chainData.name} (복사본)`;
-              }
-              
-              // FlowChain 생성
-              const newFlowChain: FlowChain = {
-                id: newId,
-                name: newName,
-                status: 'idle', // 가져온 후엔 idle 상태로 초기화
-                selectedFlowIds: chainData.selectedFlowIds || [],
-                flowIds: chainData.flowIds || [],
-                flowMap: {},
-                inputs: chainData.inputs || []
-              };
-              
-              // Flow 데이터 처리
-              if (chainData.flowMap && typeof chainData.flowMap === 'object') {
-                Object.keys(chainData.flowMap).forEach(flowId => {
-                  const flowData = chainData.flowMap[flowId];
-                  if (flowData && flowData.flowJson) {
-                    newFlowChain.flowMap[flowId] = {
-                      id: flowData.id || flowId,
-                      flowChainId: newId,
-                      name: flowData.name || '가져온 Flow',
-                      flowJson: flowData.flowJson,
-                      inputs: flowData.inputs || [],
-                      lastResults: flowData.lastResults || null, // 실행 결과 포함
-                      status: 'idle', // 가져온 후엔 idle 상태로 초기화
-                      error: flowData.error,
-                      nodeMap: {},
-                      graphMap: {},
-                      nodeInstances: {},
-                      rootIds: [],
-                      leafIds: [],
-                      nodeStates: {}
-                    };
-                  }
-                });
-              }
-              
-              // Store에 추가
-              setStore(state => ({
-                flowChainMap: { ...state.flowChainMap, [newId]: newFlowChain },
-                flowChainIds: [...state.flowChainIds, newId],
-                focusedFlowChainId: newId
-              }));
-              
-              // 새로 추가된 체인 선택
-              onFlowChainSelect(newId);
-              
-            } catch (chainError) {
-              console.error(`[FlowChainListView] FlowChain 가져오기 실패:`, chainError);
-            }
-          });
-          
-          alert('Flow Chain이 성공적으로 가져왔습니다.');
-          return;
+        // 새로 생성된 FlowChain으로 포커스 이동
+        if (result.chainId) {
+          onFlowChainSelect(result.chainId);
         }
         
-        // 기존 형식 처리 (단일 FlowChain 객체)
-        if (!json.id || !json.name || !Array.isArray(json.flowIds) || typeof json.flowMap !== 'object') {
-          alert('유효하지 않은 Flow Chain 데이터입니다.');
-          return;
-        }
-        
-        let newId = json.id;
-        if (flowChainMap[newId]) {
-          newId = `${json.id}-copy-${Date.now()}`;
-        }
-        let newName = json.name;
-        if (Object.values(flowChainMap).some(c => c.name === newName)) {
-          newName = `${json.name} (복사본)`;
-        }
-        const newFlowChain = { ...json, id: newId, name: newName };
-        setStore(state => ({
-          flowChainMap: { ...state.flowChainMap, [newId]: newFlowChain },
-          flowChainIds: [...state.flowChainIds, newId],
-          focusedFlowChainId: newId
-        }));
-        onFlowChainSelect(newId);
-        alert('Flow Chain이 성공적으로 import되었습니다.');
-      } catch (err) {
-        alert('Flow Chain import 중 오류 발생: ' + (err instanceof Error ? err.message : String(err)));
-      } finally {
-        e.target.value = '';
+        alert('Flow Chain이 성공적으로 가져왔습니다.');
+      },
+      onError: (error) => {
+        console.error('[FlowChainListView] Import 실패:', error);
+        alert(`Flow Chain 가져오기 실패: ${error.message}`);
       }
-    };
-    reader.readAsText(file);
+    });
   };
 
   function validateChainName(newName: string, currentId: string) {
@@ -267,13 +169,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
             <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
             Import
           </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept="application/json"
-            className="hidden"
-            onChange={handleFileChange}
-          />
           <button
             onClick={handleExportFlowChain}
             className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
