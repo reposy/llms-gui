@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useFlowExecutorStore, type FlowChain } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import { TrashIcon } from '@heroicons/react/20/solid';
+import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon, PenLineIcon } from '../Icons';
 import { executeChain } from '../../services/flowExecutionService';
 import InlineEditInput from '../ui/InlineEditInput';
@@ -40,6 +40,11 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
   const handleFlowChainClick = (flowChainId: string) => {
     onFlowChainSelect(flowChainId);
     store.setFocusedFlowChainId(flowChainId);
+  };
+
+  const handleMoveFlowChain = (e: React.MouseEvent, flowChainId: string, direction: 'up' | 'down') => {
+    e.stopPropagation();
+    store.moveFlowChain(flowChainId, direction);
   };
 
   const handleExportFlowChain = () => {
@@ -363,6 +368,22 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                         disabled={flowChain.status === 'running'}
                       >
                         <PlayIcon size={18} />
+                      </button>
+                      <button
+                        onClick={e => handleMoveFlowChain(e, flowChainId, 'up')}
+                        disabled={flowChainIds.indexOf(flowChainId) === 0}
+                        className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="위로 이동"
+                      >
+                        <ChevronUpIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={e => handleMoveFlowChain(e, flowChainId, 'down')}
+                        disabled={flowChainIds.indexOf(flowChainId) === flowChainIds.length - 1}
+                        className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="아래로 이동"
+                      >
+                        <ChevronDownIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={e => handleRemoveFlowChain(e, flowChainId)}

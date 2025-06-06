@@ -96,6 +96,7 @@ export interface FlowExecutorState {
   setFlowChainStatus: (flowChainId: string, status: ExecutionStatus, error?: string) => void;
   setSelectedFlowIds: (flowChainId: string, selectedFlowIds: string[]) => void;
   setFocusedFlowChainId: (id: string | null) => void;
+  moveFlowChain: (flowChainId: string, direction: 'up' | 'down') => void; // FlowChain 순서 변경
   
   // Flow 관련 액션
   addFlowToFlowChain: (flowChainId: string, flow: Flow) => string; // 생성된 flow-id 반환
@@ -251,6 +252,33 @@ export const useFlowExecutorStore = create<FlowExecutorState>()(
       
       setFocusedFlowChainId: (id) => {
         set({ focusedFlowChainId: id });
+      },
+      
+      moveFlowChain: (flowChainId, direction) => {
+        set((state) => {
+          if (!state.flowChainMap[flowChainId]) return state;
+          
+          const flowChainIds = [...state.flowChainIds];
+          const currentIndex = flowChainIds.indexOf(flowChainId);
+          
+          if (currentIndex === -1) return state;
+          
+          let newIndex;
+          if (direction === 'up' && currentIndex > 0) {
+            newIndex = currentIndex - 1;
+          } else if (direction === 'down' && currentIndex < flowChainIds.length - 1) {
+            newIndex = currentIndex + 1;
+          } else {
+            return state; // 이동할 수 없는 경우
+          }
+          
+          // 배열에서 위치 교환
+          [flowChainIds[currentIndex], flowChainIds[newIndex]] = [flowChainIds[newIndex], flowChainIds[currentIndex]];
+          
+          return {
+            flowChainIds
+          };
+        });
       },
       
       // Flow 관련 액션
