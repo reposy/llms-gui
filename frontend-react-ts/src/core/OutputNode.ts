@@ -1,20 +1,11 @@
 import { Node } from '../core/Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { OutputNodeContent } from '../types/nodes';
-
-/**
- * Output node properties
- */
-interface OutputNodeProperty {
-  format: 'json' | 'text';
-  data: any;
-  lastContent?: string; // Track last content to avoid redundant updates
-}
+import { OutputNodeProperty } from '../types/nodes';
 
 /**
  * Interface for Output node content in the store
  */
-// interface OutputNodeContent {
+// interface OutputNodeProperty {
 //   content?: string;
 //   _forceUpdate?: number;
 // }
@@ -47,7 +38,7 @@ export class OutputNode extends Node {
    */
   constructor(
     id: string,
-    property: OutputNodeProperty = { format: 'text', data: null },
+    property: OutputNodeProperty = { type: 'output', format: 'text', content: '', mode: 'read' },
     context?: FlowExecutionContext
   ) {
     super(id, 'output', property);
@@ -65,35 +56,24 @@ export class OutputNode extends Node {
    */
   async execute(input: any): Promise<any> {
     this._log('Executing');
-
-    // context가 있으면 context의 getNodeContentFunc를, 없으면 this.property를 사용
-    let nodeContent: OutputNodeContent | undefined = undefined;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as OutputNodeContent;
-    } else {
-      nodeContent = this.property as OutputNodeContent;
+    let nodeContent: OutputNodeProperty = this.property;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as OutputNodeProperty;
     }
-    const format = nodeContent.format || 'text'; // Default to text if not set
-
+    const format = nodeContent.format || 'text';
     let outputData = input;
-    
     if (format === 'json' && typeof input !== 'string') {
       try {
-        // Attempt to stringify non-string input as JSON
         outputData = JSON.stringify(input, null, 2);
         this._log('Formatted input as JSON');
       } catch (error) {
-        // If stringify fails, fallback to string conversion
         outputData = String(input);
         this._log('Failed to format as JSON, using string representation');
       }
     } else {
-      // For text format or if input is already a string, ensure it's a string
       outputData = String(input);
       this._log(`Using string representation (format: ${format})`);
     }
-
-    // OutputNode는 형식화된 결과를 반환합니다.
     return outputData;
   }
 } 

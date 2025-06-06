@@ -1,26 +1,26 @@
 // src/components/nodes/MergerNode.tsx
 import React, { useState, useCallback, useEffect, Fragment, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { MergerNodeData } from '../../types/nodes';
+import { MergerNodeProperty } from '../../types/nodes';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { Listbox, Transition } from '@headlessui/react';
 import { EditableNodeLabel } from './shared/EditableNodeLabel';
-import { useNodeContentStore } from '../../store/useNodeContentStore';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 // Type for props
 interface MergerNodeProps {
   id: string;
-  data: MergerNodeData;
+  data: MergerNodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
 
-// We need to extend MergerNodeData for runtime properties
-interface RuntimeMergerNodeData extends MergerNodeData {
+// We need to extend MergerNodeProperty for runtime properties
+interface RuntimeMergerNodeData extends MergerNodeProperty {
   property?: {
     separator?: string;
     [key: string]: any;
@@ -51,7 +51,7 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
   const { items, itemCount, resetItems } = useMergerNodeData({ nodeId: id });
   
   // Get functions from stores
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const setNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
   const { nodes, setNodes } = useFlowStructureStore(state => ({ nodes: state.nodes, setNodes: state.setNodes }));
   
   // Cast data to runtime type for property access
@@ -103,8 +103,8 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
 
   // Handle label update (Implement the standard pattern)
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore
-    setNodeContent(updatedNodeId, { label: newLabel });
+    // 1. Update NodePropertyStore
+    setNodeProperty(updatedNodeId, { label: newLabel });
 
     // 2. Update FlowStructureStore
     const updatedNodes = nodes.map(node =>
@@ -119,12 +119,12 @@ const MergerNode: React.FC<MergerNodeProps> = ({ id, data, isConnectable, select
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[MergerNode] Updated label for node ${updatedNodeId} in both stores.`);
-  }, [nodes, setNodes, setNodeContent]);
+    // console.log(`[MergerNode] Updated label for node ${updatedNodeId} in both stores.`);
+  }, [nodes, setNodes, setNodeProperty]);
 
   // Handle reset button click
   const handleResetClick = useCallback(() => {
-    console.log(`MergerNode(${id}): Reset button clicked`);
+    // console.log(`MergerNode(${id}): Reset button clicked`);
     resetItems();
   }, [id, resetItems]);
 

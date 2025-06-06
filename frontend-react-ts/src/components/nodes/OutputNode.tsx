@@ -5,19 +5,19 @@ import { useNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { downloadFile } from '../../utils/data/downloadUtils';
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { NodeProps } from '@xyflow/react';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 
-import { OutputNodeContent } from '../../types/nodes';
+import { OutputNodeProperty } from '../../types/nodes';
 
 interface Props extends NodeProps {}
 
 const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRootNode = useIsRootNode(id);
-  const { content, setContent } = useNodeContent<OutputNodeContent>(id, 'output');
-  const format = content?.format || 'text';
+  const { content: property, setContent } = useNodeProperty<OutputNodeProperty>(id, 'output');
+  const format = property?.format || 'text';
   
   const handleFormatChange = useCallback((newFormat: 'json' | 'text') => {
     setContent({ format: newFormat });
@@ -86,7 +86,7 @@ const OutputNode: React.FC<Props> = ({ id, data, selected, isConnectable = true 
   // Handler for the download button
   const handleDownload = useCallback(() => {
     if (nodeState?.status !== 'success' || nodeState.result === null || nodeState.result === undefined) {
-      console.warn('No successful result to download.');
+      // console.warn('No successful result to download.');
       return;
     }
     const contentToDownload = formatResultBasedOnFormat(nodeState.result, format);

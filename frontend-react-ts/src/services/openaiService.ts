@@ -1,6 +1,6 @@
 import { LLMRequestParams, LLMServiceResponse, LLMProviderService } from './llm/types';
-import { readFileAsBase64 } from '../utils/data/fileUtils';
-import { getFullFileUrl, isImageFile } from '../types/files';
+import { readFileAsBase64, imageToBase64 } from '../utils/data/fileUtils';
+import { getFullFileUrl, isImageFile, FileMetadata, LocalFileMetadata } from '../types/files';
 
 /**
  * OpenAI API 호출 함수
@@ -19,7 +19,7 @@ class OpenAIService implements LLMProviderService {
       temperature,
       openaiApiKey: apiKey,
       inputFiles, // 기존 File[] | undefined
-      imageMetadata // 새로운 FileMetadata[] | undefined
+      imageMetadata // FileMetadata[] | undefined
     } = params;
 
     console.log(`OpenAI Service: Generating response for model ${model}`);
@@ -43,21 +43,40 @@ class OpenAIService implements LLMProviderService {
         console.log(`OpenAI Service: Preparing images for Vision API...`);
         let imageContentItems: Array<{ type: string; image_url: { url: string } }> = [];
         
-        // 1. 이미지 메타데이터 처리 (서버에 저장된 이미지)
+        // 1. 이미지 메타데이터 처리 (서버에 저장된 이미지) - Base64로 변환
         if (hasImageMetadata) {
           try {
-            const metadataImageItems = imageMetadata!.map(meta => ({
-              type: "image_url" as const,
-              image_url: { url: getFullFileUrl(meta.url) }
-            }));
-            imageContentItems = [...imageContentItems, ...metadataImageItems];
-            console.log(`OpenAI Service: Added ${metadataImageItems.length} images from metadata`);
+            const metadataImagePromises = imageMetadata!.map(async (meta) => {
+              // 서버 이미지는 contentType으로 이미지 여부 확인
+              if (!meta.contentType?.startsWith('image/')) {
+                console.warn(`이미지가 아닌 파일 무시: ${meta.originalName}`);
+                return null;
+              }
+              
+              try {
+                const fullUrl = getFullFileUrl(meta);
+                const base64DataUrl = await imageToBase64(fullUrl, meta.originalName);
+                console.log(`OpenAI Service: 서버 이미지 변환 성공: ${meta.originalName}`);
+                return {
+                  type: "image_url" as const,
+                  image_url: { url: base64DataUrl }
+                };
+              } catch (error) {
+                console.error(`OpenAI Service: 서버 이미지 변환 실패 (${meta.originalName}):`, error);
+                return null;
+              }
+            });
+            
+            const resolvedMetadataItems = await Promise.all(metadataImagePromises);
+            const validMetadataItems = resolvedMetadataItems.filter(item => item !== null);
+            imageContentItems = [...imageContentItems, ...validMetadataItems];
+            console.log(`OpenAI Service: Added ${validMetadataItems.length} images from metadata (base64 converted)`);
           } catch (error) {
             console.error('Error processing image metadata:', error);
           }
         }
         
-        // 2. 기존 File 객체 처리 (호환성 유지)
+        // 2. 기존 File 객체 처리 (호환성 유지) - 이미 base64 변환됨
         if (hasImageFiles) {
           try {
             const imagePromises = inputFiles!
@@ -71,7 +90,7 @@ class OpenAIService implements LLMProviderService {
               });
             const fileImageItems = await Promise.all(imagePromises);
             imageContentItems = [...imageContentItems, ...fileImageItems];
-            console.log(`OpenAI Service: Added ${fileImageItems.length} images from File objects`);
+            console.log(`OpenAI Service: Added ${fileImageItems.length} images from File objects (base64 converted)`);
           } catch (conversionError) {
             console.error('OpenAI Service: Error converting files:', conversionError);
           }
@@ -82,7 +101,7 @@ class OpenAIService implements LLMProviderService {
           { type: "text", text: prompt }, // 텍스트 부분 먼저
           ...imageContentItems // 이미지 객체 펼치기
         ];
-        console.log(`OpenAI Service: Constructed vision message with ${imageContentItems.length} images`);
+        console.log(`OpenAI Service: Constructed vision message with ${imageContentItems.length} images (all base64)`);
       } else {
         // 텍스트 전용 API 구조
         messagesContent = prompt;

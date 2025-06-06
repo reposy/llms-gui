@@ -1,6 +1,6 @@
 // src/components/nodes/LLMNodeCompactView.tsx
 import React from 'react';
-import { LLMNodeData } from '../../types/nodes';
+import { LlmNodeProperty } from '../../types/nodes';
 import { NodeState } from '../../types/execution';
 import { NodeViewMode } from '../../store/viewModeStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
@@ -8,16 +8,15 @@ import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 
 interface LLMNodeCompactViewProps {
   id: string;
-  data: LLMNodeData;
+  data: LlmNodeProperty;
   nodeState: NodeState | null;
-  viewMode: NodeViewMode;
   onToggleView: () => void;
 }
 
 // Temporary placeholder for isVisionModel logic (same as in LLMConfig.tsx)
 // TODO: Move this to a shared utility location (e.g., src/utils/llm/)
 const isVisionModel = (provider: 'ollama' | 'openai' | string, model: string): boolean => {
-  console.warn('[CompactView] Vision model detection is using a placeholder!');
+  // console.warn('[CompactView] Vision model detection is using a placeholder!');
   if (provider === 'ollama' && model?.includes('vision')) {
       return true;
   }
@@ -32,7 +31,6 @@ export const LLMNodeCompactView: React.FC<LLMNodeCompactViewProps> = ({
   id,
   data,
   nodeState,
-  viewMode,
   onToggleView
 }) => {
   // Use the LLM data hook to get content

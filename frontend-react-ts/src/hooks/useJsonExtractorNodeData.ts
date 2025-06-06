@@ -1,10 +1,10 @@
 import { createNodeDataHook } from './useNodeDataFactory';
-import { JSONExtractorNodeContent } from '../types/nodes';
+import { JSONExtractorNodeProperty } from '../types/nodes';
 
 /**
  * Default values for JSON Extractor node content
  */
-const JSON_EXTRACTOR_DEFAULTS: Partial<JSONExtractorNodeContent> = {
+const JSON_EXTRACTOR_DEFAULTS: Partial<JSONExtractorNodeProperty> = {
   path: '',
   label: 'JSON Extractor'
 };
@@ -13,14 +13,14 @@ const JSON_EXTRACTOR_DEFAULTS: Partial<JSONExtractorNodeContent> = {
  * Return type for useJsonExtractorNodeData hook
  */
 interface JsonExtractorNodeDataHook {
-  content: JSONExtractorNodeContent | undefined;
+  content: JSONExtractorNodeProperty | undefined;
   path: string;
   label: string;
   defaultValue: any;
   handlePathChange: (value: string) => void;
   handleLabelChange: (value: string) => void;
   handleDefaultValueChange: (value: any) => void;
-  updateContent: (updates: Partial<JSONExtractorNodeContent>) => void;
+  updateContent: (updates: Partial<JSONExtractorNodeProperty>) => void;
 }
 
 /**
@@ -29,7 +29,7 @@ interface JsonExtractorNodeDataHook {
  */
 export const useJsonExtractorNodeData = (nodeId: string): JsonExtractorNodeDataHook => {
   // Use the factory to create the base hook functionality
-  return createNodeDataHook<JSONExtractorNodeContent, JsonExtractorNodeDataHook>(
+  return createNodeDataHook<JSONExtractorNodeProperty, JsonExtractorNodeDataHook>(
     'json-extractor',
     (params) => {
       const { 

@@ -1,6 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
-import { NodeData, LLMNodeData, APINodeData, OutputNodeData, JSONExtractorNodeData, NodeType, InputNodeData, GroupNodeData, ConditionalNodeData, MergerNodeData, WebCrawlerNodeData, HTMLParserNodeData } from '../../types/nodes';
+import { NodeType, NodeProperty } from '../../types/nodes';
 import { ExecutableNode } from '../../core/ExecutableNode';
+import { createDefaultNodeProperty } from '../../store/useNodePropertyStore';
 
 // Constants for node positioning
 const NODE_WIDTH = 350; // Adjusted based on current node styling (w-[350px])
@@ -10,7 +11,7 @@ const NODE_SPACING_Y = 150; // Increased from 100 to 150 for more vertical space
 
 // Helper function to calculate position for a new node
 export const calculateNodePosition = (
-  nodes: Node<NodeData>[],
+  nodes: Node<NodeProperty>[],
   selectedNodeId: string | null,
   viewport?: { x: number; y: number; zoom: number }
 ) => {
@@ -54,126 +55,16 @@ export const calculateNodePosition = (
   return { x: 100, y: 100 };
 };
 
-// Helper function to create default data for a new node
-export const createDefaultNodeData = (type: NodeType): NodeData => {
-  const baseData = {
-    label: type.charAt(0).toUpperCase() + type.slice(1), // Capitalize first letter
-    isExecuting: false, // This might be managed by execution store, but good default
-  };
-
-  switch (type) {
-    case 'llm':
-      return {
-        ...baseData,
-        type: 'llm',
-        label: 'LLM', // Specific default label
-        provider: 'ollama',
-        model: 'llama3.1', // Updated from 'llama2' to 'llama3.1'
-        prompt: '',
-        temperature: 0.7,
-        ollamaUrl: 'http://localhost:11434' // Default Ollama URL
-      } as LLMNodeData;
-    case 'api':
-      return {
-        ...baseData,
-        type: 'api',
-        label: 'API', // Specific default label
-        method: 'GET',
-        url: '',
-        headers: {},
-        body: '', // Add default body field
-        useInputAsBody: false,
-      } as APINodeData;
-    case 'output':
-      return {
-        ...baseData,
-        type: 'output',
-        label: 'Output', // Specific default label
-        format: 'text',
-        content: '' // Add default content field
-      } as OutputNodeData;
-    case 'json-extractor':
-      return {
-        ...baseData,
-        type: 'json-extractor',
-        label: 'JSON Extractor',
-        path: '' // Add default path field
-      } as JSONExtractorNodeData;
-    case 'input':
-      return {
-        ...baseData,
-        type: 'input',
-        label: 'Input',
-        inputType: 'text', // Default to text input
-        text: '', 
-        items: [], // Default empty items array
-        iterateEachRow: false // Default to disabled
-      } as InputNodeData;
-    case 'group':
-      return {
-        ...baseData,
-        type: 'group',
-        label: 'Group', // Specific default label
-        isCollapsed: false, // Default to expanded
-      } as GroupNodeData; // Cast to GroupNodeData
-    case 'conditional': // Add case for conditional node
-      return {
-        ...baseData,
-        type: 'conditional',
-        label: 'Condition',
-        conditionType: 'contains', // Default type
-        conditionValue: '' // Default empty value/path
-        // lastEvaluationResult is initially undefined
-      } as ConditionalNodeData; // Cast to ConditionalNodeData
-    case 'merger': // Add case for merger node
-      return {
-        ...baseData,
-        type: 'merger',
-        label: 'Merger',
-        items: [], // Initialize items array
-        // result is initially null / handled by execution store
-      } as MergerNodeData; // Cast to MergerNodeData
-    case 'web-crawler': // Add case for web crawler node
-      return {
-        ...baseData,
-        type: 'web-crawler',
-        label: 'Web Crawler',
-        url: '',
-        waitForSelector: '',
-        extractSelectors: {},
-        timeout: 30000,
-        includeHtml: false,
-        outputFormat: 'text'
-      } as WebCrawlerNodeData; // Cast to WebCrawlerNodeData
-    case 'html-parser': // Add case for HTML parser node
-      return {
-        ...baseData,
-        type: 'html-parser',
-        label: 'HTML Parser',
-        extractionRules: [] // Initialize with empty extraction rules
-      } as HTMLParserNodeData; // Cast to HTMLParserNodeData
-    default:
-      // If an unknown type is passed, it's an error.
-      // This ensures the function always returns a valid NodeData type or throws.
-      // Using exhaustive check pattern with `never` type.
-      const exhaustiveCheck: never = type;
-      throw new Error(`Unhandled node type in createDefaultNodeData: ${exhaustiveCheck}`);
-  }
-};
-
 // Utility to resolve simple {{item}} templates
 export const resolveTemplate = (template: string | undefined, context: { item: any }): string => {
   if (template === undefined) return '';
-  // Basic replacement, can be extended for more complex templating
   try {
-    // Convert item to string for simple replacement. Handle objects if needed.
     const itemString = typeof context.item === 'object' 
                       ? JSON.stringify(context.item) 
                       : String(context.item);
     return template.replace(/\{\{\s*item\s*\}\}/g, itemString);
   } catch (e) {
-      console.error("Error resolving template:", e);
-      return template; // Return original template on error
+      return template;
   }
 };
 
@@ -181,39 +72,34 @@ export const resolveTemplate = (template: string | undefined, context: { item: a
 export const createNewNode = (
   type: NodeType,
   position: { x: number; y: number }
-): Node<NodeData> => {
+): Node<NodeProperty> => {
   console.log(`[createNewNode] Creating new node of type: ${type} at position:`, position);
-  
   // Generate a unique ID for the node
   const newNodeId = `${type}-${crypto.randomUUID()}`;
   console.log(`[createNewNode] Generated new node ID: ${newNodeId}`);
-  
-  // Get the default data for the node type
-  const defaultData = createDefaultNodeData(type);
+  // Get the default data for the node type from the store (type, id)
+  const defaultData = createDefaultNodeProperty(type, newNodeId);
   console.log(`[createNewNode] Created default data for ${type} node:`, defaultData);
-  
   // Create the base node
-  const newNode: Node<NodeData> = {
+  const newNode: Node<NodeProperty> = {
     id: newNodeId,
     type,
     position,
     data: defaultData,
   };
-
   // Apply special properties for specific node types
   if (type === 'group') {
-    newNode.style = { width: 1200, height: 700 }; // Increased from 1000x600 to 1200x700 for even more space
-    newNode.dragHandle = '.group-node-container'; // Allow dragging from the entire group node
+    newNode.style = { width: 1200, height: 700 };
+    newNode.dragHandle = '.group-node-container';
     console.log(`[createNewNode] Applied special properties for group node:`, newNode.style);
   }
-
   console.log(`[createNewNode] Final node object:`, newNode);
   return newNode;
 };
 
 // Helper function to remove edges connected to deleted nodes
 export const removeConnectedEdges = (
-  nodesToDelete: Node<NodeData>[],
+  nodesToDelete: Node<NodeProperty>[],
   edges: Edge[]
 ): Edge[] => {
   const nodeIds = new Set(nodesToDelete.map(n => n.id));
@@ -228,9 +114,9 @@ export const removeConnectedEdges = (
  * @returns A new array of nodes with updated selection states
  */
 export function syncVisualSelectionToReactFlow(
-  nodes: Node<NodeData>[],
+  nodes: Node<NodeProperty>[],
   selectedNodeIds: string[]
-): Node<NodeData>[] {
+): Node<NodeProperty>[] {
   // Create a Set for faster lookups
   const selectedIdsSet = new Set(selectedNodeIds);
   
@@ -252,7 +138,7 @@ export function syncVisualSelectionToReactFlow(
 }
 
 // Get a specific node by ID from a collection of nodes
-export function getNodeById(nodes: Node[], nodeId: string): Node | undefined {
+export function getNodeById(nodes: Node<NodeProperty>[], nodeId: string): Node<NodeProperty> | undefined {
   return nodes.find(node => node.id === nodeId);
 }
 
@@ -270,14 +156,14 @@ export function getConnectedEdges(edges: Edge[], nodeId: string): Edge[] {
 }
 
 // Get all direct child nodes connected to a specified node
-export function getChildNodes(nodes: Node[], edges: Edge[], nodeId: string): Node[] {
+export function getChildNodes(nodes: Node<NodeProperty>[], edges: Edge[], nodeId: string): Node<NodeProperty>[] {
   const outgoingEdges = getOutgoingEdges(edges, nodeId);
   const childNodeIds = outgoingEdges.map(edge => edge.target);
   return nodes.filter(node => childNodeIds.includes(node.id));
 }
 
 // Get child nodes connected via a specific handle (for conditional nodes)
-export function getChildNodesByHandle(nodes: Node[], edges: Edge[], nodeId: string, handle: string): Node[] {
+export function getChildNodesByHandle(nodes: Node<NodeProperty>[], edges: Edge[], nodeId: string, handle: string): Node<NodeProperty>[] {
   const outgoingEdges = edges.filter(edge => 
     edge.source === nodeId && edge.sourceHandle === handle
   );
@@ -286,13 +172,9 @@ export function getChildNodesByHandle(nodes: Node[], edges: Edge[], nodeId: stri
 }
 
 // Create executable nodes for all child nodes
-export function createExecutableChildNodes(nodes: Node[], edges: Edge[], nodeId: string): ExecutableNode[] {
-  // This function is deprecated as part of the transition to the new Node architecture
-  // Use buildExecutionGraph and getChildNodeIds instead
-  console.warn('createExecutableChildNodes is deprecated. Use buildExecutionGraph instead.');
+export function createExecutableChildNodes(nodes: Node<NodeProperty>[], edges: Edge[], nodeId: string): ExecutableNode[] {
   const childNodes = getChildNodes(nodes, edges, nodeId);
   return childNodes.map(node => {
-    // Return an empty ExecutableNode implementation
     return {
       nodeId: node.id,
       execute: async () => null,
@@ -304,17 +186,13 @@ export function createExecutableChildNodes(nodes: Node[], edges: Edge[], nodeId:
 
 // Create executable nodes for children connected via a specific handle
 export function createExecutableChildNodesByHandle(
-  nodes: Node[], 
+  nodes: Node<NodeProperty>[], 
   edges: Edge[], 
   nodeId: string, 
   handle: string
 ): ExecutableNode[] {
-  // This function is deprecated as part of the transition to the new Node architecture
-  // Use buildExecutionGraph and getChildNodeIds instead
-  console.warn('createExecutableChildNodesByHandle is deprecated. Use buildExecutionGraph instead.');
   const childNodes = getChildNodesByHandle(nodes, edges, nodeId, handle);
   return childNodes.map(node => {
-    // Return an empty ExecutableNode implementation
     return {
       nodeId: node.id,
       execute: async () => null,
@@ -326,7 +204,7 @@ export function createExecutableChildNodesByHandle(
 
 // Remove existing implementations of these functions and update with enhanced versions
 export function getNodeConnections(
-  nodes: Node[],
+  nodes: Node<NodeProperty>[],
   edges: Edge[],
   nodeId: string,
   direction: 'incoming' | 'outgoing' = 'outgoing'
@@ -342,7 +220,7 @@ export function getNodeConnections(
   }
 }
 
-export function findNodeById(nodeId: string, nodes: Node[]): Node | undefined {
+export function findNodeById(nodeId: string, nodes: Node<NodeProperty>[]): Node<NodeProperty> | undefined {
   return nodes.find(node => node.id === nodeId);
 }
 
@@ -381,7 +259,7 @@ export function getIncomingConnections(
 /**
  * Get all output nodes (nodes with no outgoing connections)
  */
-export function getOutputNodes(nodes: Node[], edges: Edge[]): Node[] {
+export function getOutputNodes(nodes: Node<NodeProperty>[], edges: Edge[]): Node<NodeProperty>[] {
   const nodesWithOutgoing = new Set(edges.map(edge => edge.source));
   return nodes.filter(node => !nodesWithOutgoing.has(node.id));
 }
@@ -389,7 +267,7 @@ export function getOutputNodes(nodes: Node[], edges: Edge[]): Node[] {
 /**
  * Get all input nodes (nodes with no incoming connections)
  */
-export function getInputNodes(nodes: Node[], edges: Edge[]): Node[] {
+export function getInputNodes(nodes: Node<NodeProperty>[], edges: Edge[]): Node<NodeProperty>[] {
   const nodesWithIncoming = new Set(edges.map(edge => edge.target));
   return nodes.filter(node => !nodesWithIncoming.has(node.id));
 }
@@ -403,7 +281,7 @@ export function getInputNodes(nodes: Node[], edges: Edge[]): Node[] {
  * @param edges Array of all edges
  * @returns Array of root node IDs
  */
-export function getRootNodeIds(nodes: Node<NodeData>[], edges: Edge[]): string[] {
+export function getRootNodeIds(nodes: Node<NodeProperty>[], edges: Edge[]): string[] {
   // Create a set of all target nodes
   const incomingTargets = new Set(edges.map(edge => edge.target));
 
@@ -435,7 +313,7 @@ export interface GraphNode {
  * @param edges Array of edges connecting the nodes
  * @returns Map of node IDs to GraphNode objects with relationship information
  */
-export function buildExecutionGraph(nodes: Node[], edges: Edge[]): Map<string, GraphNode> {
+export function buildExecutionGraph(nodes: Node<NodeProperty>[], edges: Edge[]): Map<string, GraphNode> {
   const graph = new Map<string, GraphNode>();
   
   // Initialize all nodes in the graph with empty relationships
@@ -545,7 +423,7 @@ export function getParentNodeIdsFromGraph(nodeId: string, graph: Map<string, Gra
 // findAllDescendantNodeIds 함수 구현체 추가
 export const findAllDescendantNodeIds = (
   startNodeId: string,
-  nodes: Node<NodeData>[],
+  nodes: Node<NodeProperty>[],
   edges: Edge[],
   allNodes: Set<string> = new Set()
 ): Set<string> => {
@@ -568,15 +446,15 @@ export const findAllDescendantNodeIds = (
   return allNodes;
 };
 
-// 타입 호환성 문제 수정 - Node[] 배열을 Node<NodeData>[] 타입으로 변환하는 방법 추가
-export const getRootNodeIdsWithTypeConversion = (nodes: Node[], edges: Edge[]): string[] => {
-  // 명시적인 타입 변환을 통해 Node[]를 Node<NodeData>[]로 처리
-  const typedNodes = nodes as Node<NodeData>[];
+// 타입 호환성 문제 수정 - Node[] 배열을 Node<NodeProperty>[] 타입으로 변환하는 방법 추가
+export const getRootNodeIdsWithTypeConversion = (nodes: Node<NodeProperty>[], edges: Edge[]): string[] => {
+  // 명시적인 타입 변환을 통해 Node[]를 Node<NodeProperty>[]로 처리
+  const typedNodes = nodes as Node<NodeProperty>[];
   return getRootNodeIds(typedNodes, edges);
 };
 
 // findRootNodes 함수에서 getRootNodeIds 호출 부분 변경
-export function findRootNodes(nodes: Node[], edges: Edge[]): Node[] {
+export function findRootNodes(nodes: Node<NodeProperty>[], edges: Edge[]): Node<NodeProperty>[] {
   // 타입 변환 함수 호출로 변경
   const rootNodeIds = getRootNodeIdsWithTypeConversion(nodes, edges);
   return nodes.filter(node => rootNodeIds.includes(node.id));

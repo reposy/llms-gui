@@ -1,8 +1,7 @@
 // src/components/nodes/LLMNode.tsx
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { VIEW_MODES, NodeViewMode } from '../../store/viewModeStore';
-import { LLMNodeData } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import clsx from 'clsx';
@@ -12,10 +11,11 @@ import { LLMNodeViewController } from './LLMNodeViewController';
 import { useLlmNodeData } from '../../hooks/useLlmNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
 import LLMNodeHeader from './LLMNodeHeader';
+import { LlmNodeProperty } from '../../types/nodes';
 
 interface Props {
   id: string;
-  data: LLMNodeData;
+  data: LlmNodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
@@ -41,7 +41,7 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
    * 
    * We've removed this hook because:
    * - The loadFromReduxNodes function is called when the flow is initially loaded
-   * - The useManagedNodeContent hook now properly handles bidirectional sync between Zustand and Redux
+   * - The useNodeProperty hook now properly handles bidirectional sync between Zustand and Redux
    * - State is managed consistently through that hook in both the node UI and sidebar components
    */
   
@@ -111,15 +111,12 @@ const LLMNode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
                   id={id}
                   data={data}
                   nodeState={nodeState}
-                  viewMode={viewMode}
                   onToggleView={toggleNodeView}
                 />
               ) : (
                 <LLMNodeExpandedView
                   id={id}
-                  data={data}
                   nodeState={nodeState}
-                  viewMode={viewMode}
                   onToggleView={toggleNodeView}
                 />
               )}

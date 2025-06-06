@@ -118,7 +118,7 @@ export function importFlowChainToExecutor(flowChainData: any) {
     (flowData.nodes || []).forEach((node: any) => {
       nodeMap[node.id] = {
         ...node,
-        ...(flowChainData.contents?.[node.id] || {})
+        property: flowChainData.contents?.[node.id] || flowData.contents?.[node.id] || node.data || {}
       };
     });
     const flowName = flowData.name || `Flow-${newFlowId}`;
@@ -143,32 +143,59 @@ export function importFlowChainToExecutor(flowChainData: any) {
 }
 
 // 단일 Flow를 Executor에 import (새 flowId)
-export function importFlowToFlowChain(flowChainId: string, flowData: FlowData) {
+export function importFlowToFlowChain(flowChainId: string, flowData: FlowData, filename?: string) {
   const store = useFlowExecutorStore.getState();
+  const nodeFactory = store.nodeFactory;
   const newFlowId = `flow-${uuidv4()}`;
-  const nodeMap: Record<string, any> = {};
-  (flowData.nodes || []).forEach((node: any) => {
-    nodeMap[node.id] = {
+  
+  // 노드의 data 필드를 contents에서 가져온 property로 교체
+  const nodesWithUpdatedData = (flowData.nodes || []).map((node: any) => {
+    const contentsProperty = flowData.contents?.[node.id];
+    const nodeDataProperty = node.data;
+    const finalProperty = contentsProperty || nodeDataProperty || {};
+    
+    return {
       ...node,
-      ...(flowData.contents?.[node.id] || {})
+      data: finalProperty  // ✅ data 필드에 최종 property 설정
     };
   });
-  const flowName = flowData.name || `Flow-${newFlowId}`;
+  
+  // buildGraphStructure를 사용하여 완전한 Flow 객체 생성
+  const { nodeMap, graphRelations, nodeInstances, rootIds, leafIds } = buildGraphStructure(
+    nodesWithUpdatedData,
+    flowData.edges || [],
+    nodeFactory
+  );
+  
+  // ✅ Flow 이름을 "Flow - {파일이름}, {시간대}" 형태로 생성
+  let flowName: string;
+  if (filename) {
+    // 파일 확장자 제거
+    const nameWithoutExtension = filename.replace(/\.[^/.]+$/, '');
+    // 현재 시간을 로케일 형식으로 포맷
+    const timestamp = new Date().toLocaleString();
+    flowName = `Flow - ${nameWithoutExtension}, ${timestamp}`;
+  } else {
+    // 기존 로직 유지 (filename이 없는 경우)
+    flowName = flowData.name || `Flow-${newFlowId}`;
+  }
+  
   store.addFlowToFlowChain(flowChainId, {
     id: newFlowId,
     flowChainId,
     name: flowName,
     flowJson: flowData,
     nodeMap,
+    graphMap: graphRelations,
+    nodeInstances,
+    rootIds,
+    leafIds,
     inputs: [],
     lastResults: null,
     status: 'idle',
     error: undefined,
-    graphMap: {},
-    nodeInstances: {},
-    rootIds: [],
-    leafIds: [],
     nodeStates: {},
   });
+  
   return newFlowId;
 } 

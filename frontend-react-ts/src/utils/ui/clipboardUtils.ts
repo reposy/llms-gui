@@ -1,22 +1,20 @@
 import { Node, Edge } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeData } from '../../types/nodes';
-import { getNodeContent, NodeContent } from '../../store/useNodeContentStore';
-import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { NodeProperty } from '../../types/nodes';
 import { cloneDeep } from 'lodash';
 
 // Interface for copied data
 export interface ClipboardData {
-  nodes: Node<NodeData>[];
+  nodes: Node<NodeProperty>[];
   edges: Edge[];
-  nodeContents: Record<string, NodeContent>;
+  nodeContents: Record<string, NodeProperty>;
 }
 
 // Interface for paste result
 export interface PasteResult {
-  newNodes: Node<NodeData>[];
+  newNodes: Node<NodeProperty>[];
   newEdges: Edge[];
-  nodeContents: Record<string, {content: NodeContent, nodeId: string, nodeType: string}>;
+  nodeContents: Record<string, {content: NodeProperty, nodeId: string, nodeType: string}>;
   oldToNewIdMap: Record<string, string>;
   newNodeIds: string[];
 }
@@ -45,33 +43,18 @@ const CLIPBOARD_STORAGE_KEY = 'flow-editor-clipboard';
  * @param allEdges Array of all edge objects from React Flow
  * @returns The number of nodes copied
  */
-export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], allEdges: Edge[]): number => {
-  console.log('[ClipboardUtils DEBUG] copyNodesAndEdgesFromInstance 호출됨');
-  console.log('[ClipboardUtils DEBUG] 선택된 노드 수:', selectedNodes.length);
-  
+export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeProperty>[], allEdges: Edge[]): number => {
   if (selectedNodes.length === 0) {
-    console.log('[Clipboard] No selected nodes provided to copy');
     return 0;
   }
-
-  // Collect node IDs for filtering edges
   const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
-  console.log('[ClipboardUtils DEBUG] 선택된 노드 ID들:', Array.from(selectedNodeIds));
-  
-  // Only copy edges where both source and target are selected nodes
   const relevantEdges = allEdges.filter(edge => 
     selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
   );
-  console.log('[ClipboardUtils DEBUG] 관련 엣지 수:', relevantEdges.length);
-
-  // Fetch and store the DEEP COPIED content for each selected node
-  const nodeContents: Record<string, NodeContent> = {};
+  const nodeContents: Record<string, NodeProperty> = {};
   selectedNodes.forEach(node => {
-    const content = getNodeContent(node.id); // useNodeContentStore에서 가져오기
-    console.log(`[ClipboardUtils DEBUG] 노드 ${node.id}의 콘텐츠:`, !!content);
-    if (content) {
-      // 콘텐츠 데이터 깊은 복사
-      nodeContents[node.id] = cloneDeep(content); 
+    if (node.data) {
+      nodeContents[node.id] = cloneDeep(node.data); 
     }
   });
 
@@ -82,20 +65,13 @@ export const copyNodesAndEdgesFromInstance = (selectedNodes: Node<NodeData>[], a
       edges: cloneDeep(relevantEdges), // 엣지 구조도 깊은 복사
       nodeContents // 콘텐츠는 이미 위에서 깊은 복사됨
     };
-    console.log('[ClipboardUtils DEBUG] clipboardMemory 설정 완료:', {
-      nodesCount: clipboardMemory.nodes.length,
-      edgesCount: clipboardMemory.edges.length,
-      contentsCount: Object.keys(clipboardMemory.nodeContents).length
-    });
 
     // Persist to localStorage if available
     localStorage.setItem(CLIPBOARD_STORAGE_KEY, JSON.stringify(clipboardMemory)); 
-    console.log('[ClipboardUtils DEBUG] localStorage에 저장 완료');
   } catch (error) {
     console.error('[Clipboard] Failed to save clipboard data:', error);
   }
 
-  console.log(`[Clipboard] Copied ${selectedNodes.length} nodes and ${relevantEdges.length} edges from instance state`);
   return selectedNodes.length;
 };
 
@@ -119,7 +95,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
   }
 
   if (!clipboardData || clipboardData.nodes.length === 0) {
-    console.log('[Clipboard] No data to paste');
     return null;
   }
 
@@ -151,7 +126,7 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     const nodeCopy = JSON.parse(JSON.stringify(copiedNode));
     
     // Update the node with new ID and position
-    const newNode: Node<NodeData> = {
+    const newNode: Node<NodeProperty> = {
       ...nodeCopy,
       id: newId,
       position: {
@@ -163,12 +138,16 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     
     // Ensure data property exists
     if (!newNode.data) {
-      newNode.data = { type: copiedNode.type || 'unknown' } as NodeData;
+      newNode.data = { type: copiedNode.type || 'unknown' } as NodeProperty;
     }
     
     // Ensure type consistency between node.type and node.data.type
     if (newNode.type && (!newNode.data.type || newNode.data.type !== newNode.type)) {
-      newNode.data.type = newNode.type;
+      // NodeType 유니언에 속하는 값만 허용
+      const allowedTypes = [
+        'llm', 'api', 'output', 'json-extractor', 'input', 'group', 'conditional', 'merger', 'web-crawler', 'html-parser'
+      ];
+      newNode.data.type = allowedTypes.includes(newNode.type) ? (newNode.type as import('../../types/nodes').NodeType) : 'output';
     }
     
     // Special handling for group nodes
@@ -188,15 +167,12 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
       if (oldToNewIdMap[newNode.parentId]) {
         // Parent was also copied, update the reference
         newNode.parentId = oldToNewIdMap[newNode.parentId];
-        console.log(`[Clipboard] Updated parentId reference for ${newId} to ${newNode.parentId}`);
         
         // For nodes within groups, position is already relative
         if (typeof copiedNode.parentId === 'string' && groupNodeIds.has(copiedNode.parentId)) {
-          console.log(`[Clipboard] Node ${newId} is within copied group ${newNode.parentId}, preserving relative position`);
         }
       } else {
         // If the parent wasn't copied, remove the parentId reference
-        console.log(`[Clipboard] Removing parentId reference for ${newId} as parent wasn't copied`);
         delete newNode.parentId;
       }
     }
@@ -216,7 +192,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     
     // Skip if either source or target wasn't copied or doesn't exist
     if (!newSource || !newTarget) {
-      console.warn(`[Clipboard] Skipping edge from ${copiedEdge.source} to ${copiedEdge.target} as one of the nodes wasn't copied`);
       return null;
     }
     
@@ -234,7 +209,7 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
   }).filter(Boolean) as Edge[]; // Remove null edges (skipped edges)
 
   // Prepare node contents with type information
-  const nodeContents: Record<string, {content: NodeContent, nodeId: string, nodeType: string}> = {};
+  const nodeContents: Record<string, {content: NodeProperty, nodeId: string, nodeType: string}> = {};
   for (const [oldNodeId, content] of Object.entries(clipboardData.nodeContents)) {
     const newNodeId = oldToNewIdMap[oldNodeId];
     if (!newNodeId) continue;
@@ -242,7 +217,6 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     // Find the newly created node to get its type
     const newNode = newNodes.find(node => node.id === newNodeId);
     if (!newNode || !newNode.data?.type) {
-      console.warn(`[Clipboard] Skipping content preparation for node ${newNodeId}: No valid type`);
       continue;
     }
     
@@ -269,14 +243,10 @@ export const pasteClipboardContents = (position?: { x: number, y: number }): Pas
     // Set a timeout to remove from tracking set after a short delay
     setTimeout(() => {
       recentlyPastedNodes.delete(newNodeId);
-      console.log(`[Clipboard] Removed ${newNodeId} from paste tracking`);
     }, 500); // 500ms should be enough to prevent re-initialization
   }
 
   const newNodeIds = newNodes.map(node => node.id);
-  
-  console.log(`[Clipboard] Prepared ${newNodes.length} nodes and ${newEdges.length} edges for pasting`);
-  console.log('[Clipboard] ID mapping:', oldToNewIdMap);
   
   return {
     newNodes,
@@ -316,7 +286,6 @@ export const clearClipboard = (): void => {
   try {
     localStorage.removeItem(CLIPBOARD_STORAGE_KEY);
   } catch (error) {
-    console.warn('[Clipboard] Failed to clear localStorage:', error);
+    // ignore
   }
-  console.log('[Clipboard] Clipboard cleared');
-}; 
+} 

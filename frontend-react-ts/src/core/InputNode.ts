@@ -1,16 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { InputNodeContent } from '../types/nodes';
-
-/**
- * Input node properties
- */
-export interface InputNodeProperty {
-  items: any[];
-  iterateEachRow: boolean;
-  nodeFactory?: any;
-  [key: string]: any;
-}
+import { InputNodeProperty } from '../types/nodes';
 
 /**
  * Input node that provides data to the flow
@@ -19,14 +9,14 @@ export class InputNode extends Node {
   /**
    * Type assertion for the property
    */
-  declare property: InputNodeContent;
+  declare property: InputNodeProperty;
   
   /**
    * Constructor for InputNode
    */
   constructor(
     id: string, 
-    property: InputNodeContent = { items: [], iterateEachRow: false } as InputNodeContent,
+    property: InputNodeProperty = { type: 'input', items: [], iterateEachRow: false } as InputNodeProperty,
     context?: FlowExecutionContext
   ) {
     super(id, 'input', property);
@@ -46,7 +36,7 @@ export class InputNode extends Node {
    */
   private _processChainedInput(
     input: any,
-    nodeContent: InputNodeContent,
+    nodeContent: InputNodeProperty,
     currentContext: FlowExecutionContext
   ): { newItems: any[]; newCommonItems: any[]; updatePerformed: boolean } {
     let newItems = [...(nodeContent.items || [])];
@@ -223,12 +213,12 @@ export class InputNode extends Node {
    */
   async execute(input?: any): Promise<any> {
     const currentContext = this.context;
-    if (!currentContext || !currentContext.getNodeContentFunc) {
-      console.error(`[InputNode:${this.id}] Critical: Execution context or getNodeContentFunc is missing. Cannot proceed robustly.`);
-      return (this.property as InputNodeContent)?.items || [];
+    if (!currentContext || !currentContext.getNodePropertyFunc) {
+      console.error(`[InputNode:${this.id}] Critical: Execution context or getNodePropertyFunc is missing. Cannot proceed robustly.`);
+      return (this.property as InputNodeProperty)?.items || [];
     }
 
-    const nodeContent = currentContext.getNodeContentFunc(this.id, 'input') as InputNodeContent;
+    const nodeContent = currentContext.getNodePropertyFunc(this.id, 'input') as InputNodeProperty;
     this._log('Executing Input Node');
 
     const { newItems, newCommonItems, updatePerformed } = this._processChainedInput(input, nodeContent, currentContext);

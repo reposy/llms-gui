@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { FlowCanvasApi } from './FlowCanvas';
-import { resetAllContent } from '../store/useNodeContentStore';
+import { resetAllContent } from '../store/useNodePropertyStore';
 import { useNodes, useEdges, setNodes, setEdges, useFlowStructureStore } from '../store/useFlowStructureStore';
 import { importFlowFromJson, exportFlowAsJson, FlowData } from '../utils/data/importExportUtils';
 import { useDirtyTracker, useMarkClean } from '../store/useDirtyTracker';

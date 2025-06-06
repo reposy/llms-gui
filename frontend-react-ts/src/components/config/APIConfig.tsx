@@ -1,13 +1,11 @@
 // src/components/config/APIConfig.tsx
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
-import { APINodeData, HTTPMethod, RequestBodyType } from '../../types/nodes';
+import { APINodeProperty, HTTPMethod, RequestBodyType } from '../../types/nodes';
 // Import our new hook
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 
 interface APIConfigProps {
   nodeId: string;
-  // data prop is no longer needed as data is fetched by the hook
-  // data: APINodeData;
 }
 
 interface KeyValuePair {

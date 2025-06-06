@@ -2,10 +2,10 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { ConfigFactory } from '../config/ConfigFactory';
 import { useNodes } from '../../store/useFlowStructureStore';
 import { Node } from '@xyflow/react'; // Import Node type
-import { NodeData } from '../../types/nodes'; // Import NodeData type
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { useNodeState } from '../../store/useNodeStateStore'; // Import useNodeState
 import { formatNodeHeaderText } from '../../utils/ui/textFormatUtils'; // Import the common utility function
+import { NodeProperty } from '../../types/nodes';
 
 // Enable debugging logs
 const DEBUG_LOGS = false; // Disable logs for cleaner output, enable if needed
@@ -19,13 +19,13 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   const [isOpen, setIsOpen] = useState(false);
 
   // Find all selected nodes
-  const selectedNodes: Node<NodeData>[] = useMemo(() => {
+  const selectedNodes: Node<NodeProperty>[] = useMemo(() => {
     if (!selectedNodeIds || selectedNodeIds.length === 0) return [];
     return nodes.filter(node => selectedNodeIds.includes(node.id));
   }, [nodes, selectedNodeIds]);
 
   // Get the first selected node for configuration when only one is selected
-  const primarySelectedNode: Node<NodeData> | undefined = useMemo(() => {
+  const primarySelectedNode: Node<NodeProperty> | undefined = useMemo(() => {
     return selectedNodes.length === 1 ? selectedNodes[0] : undefined;
   }, [selectedNodes]);
 
@@ -42,7 +42,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   }, [selectedNodes, selectedNodeIds]);
 
   // Get the latest content for the selected node from the store
-  const { content: selectedNodeContent } = useNodeContent(
+  const { content: selectedNodeProperty } = useNodeProperty(
     primarySelectedNode?.id || '',
     primarySelectedNode?.type
   );
@@ -92,7 +92,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
   // Generate header text using the common utility function
   const headerText = formatNodeHeaderText(
     primarySelectedNode?.type || '', 
-    selectedNodeContent?.label
+    selectedNodeProperty?.label
   );
 
   return (
@@ -101,7 +101,7 @@ export const NodeConfigSidebar: React.FC<NodeConfigSidebarProps> = ({ selectedNo
         {headerText}
       </h2>
       {/* Pass the correctly typed selectedNode */}
-      <ConfigFactory selectedNode={primarySelectedNode as Node<NodeData>} /> 
+      <ConfigFactory selectedNode={primarySelectedNode as Node<NodeProperty>} /> 
       
       {/* Section: Last Execution Result */}
       <div className="mt-6 pt-4 border-t border-gray-200">

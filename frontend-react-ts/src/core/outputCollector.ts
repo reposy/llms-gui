@@ -157,13 +157,28 @@ export const getAllOutputs = (): NodeResult[] => {
       const nodeName = node?.data?.label || 
                       `${node?.type || '노드'} ${nodeId.slice(-6)}`;
       
-      // 결과 객체 생성 - nodeState.result 사용
-      results.push({
-        nodeId,
-        nodeName,
-        nodeType: node?.type || 'unknown',
-        result: nodeState.result
-      });
+      // 결과가 배열인 경우 flat하게 처리
+      let nodeResult = nodeState.result;
+      if (Array.isArray(nodeResult)) {
+        console.log(`[outputCollector] Flattening array result from leaf node ${nodeId}: ${nodeResult.length} items`);
+        // 배열의 각 항목에 대해 개별 NodeResult 생성
+        nodeResult.forEach((item, index) => {
+          results.push({
+            nodeId: `${nodeId}_${index}`,
+            nodeName: `${nodeName} [${index + 1}]`,
+            nodeType: node?.type || 'unknown',
+            result: item
+          });
+        });
+      } else {
+        // 단일 결과인 경우 기존 방식 사용
+        results.push({
+          nodeId,
+          nodeName,
+          nodeType: node?.type || 'unknown',
+          result: nodeResult
+        });
+      }
       
       console.log(`[outputCollector] Added result from leaf node ${nodeId}: ${typeof nodeState.result}`);
     }
@@ -186,12 +201,28 @@ export const getAllOutputs = (): NodeResult[] => {
         const nodeName = node?.data?.label || 
                         `${node?.type || '노드'} ${node.id.slice(-6)}`;
         
-        results.push({
-          nodeId: node.id,
-          nodeName,
-          nodeType: node.type || 'unknown',
-          result: nodeState.result
-        });
+        // 결과가 배열인 경우 flat하게 처리
+        let nodeResult = nodeState.result;
+        if (Array.isArray(nodeResult)) {
+          console.log(`[outputCollector] Flattening array result from non-leaf node ${node.id}: ${nodeResult.length} items`);
+          // 배열의 각 항목에 대해 개별 NodeResult 생성
+          nodeResult.forEach((item, index) => {
+            results.push({
+              nodeId: `${node.id}_${index}`,
+              nodeName: `${nodeName} [${index + 1}]`,
+              nodeType: node.type || 'unknown',
+              result: item
+            });
+          });
+        } else {
+          // 단일 결과인 경우 기존 방식 사용
+          results.push({
+            nodeId: node.id,
+            nodeName,
+            nodeType: node.type || 'unknown',
+            result: nodeResult
+          });
+        }
         
         console.log(`[outputCollector] Added result from non-leaf node ${node.id}: ${typeof nodeState.result}`);
       }

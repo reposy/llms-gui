@@ -1,12 +1,11 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { FlowCanvas, FlowCanvasApi } from './FlowCanvas';
 import { NodeConfigSidebar } from './sidebars/NodeConfigSidebar';
-import { GroupDetailSidebar } from './sidebars/GroupDetailSidebar';
 import { FlowManager } from './FlowManager';
-import { NodeData, NodeType, NodeContent } from '../types/nodes';
+import { NodeType, NodeProperty } from '../types/nodes';
 import type { Node } from '@xyflow/react';
 import { createNewNode, calculateNodePosition, getRootNodeIdsWithTypeConversion } from '../utils/flow/flowUtils';
-import { useNodeContentStore } from '../store/useNodeContentStore';
+import { useNodePropertyStore } from '../store/useNodePropertyStore';
 import { 
   useNodes, 
   useEdges, 
@@ -18,7 +17,7 @@ import {
 import { useDirtyTracker } from '../store/useDirtyTracker';
 import { pushCurrentSnapshot } from '../utils/ui/historyUtils';
 import { StatusBar } from './StatusBar';
-import { runFlow } from '../core/FlowRunner';
+   import { runFlowEditorExecution } from '../core/executionUtils';
 import { addNodeToGroup } from '../utils/flow/nodeUtils';
 import { Link } from 'react-router-dom';
 
@@ -32,8 +31,8 @@ export const FlowEditor = () => {
   const hydrated = useFlowStructureStore.persist.hasHydrated();
 
   const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
-  const { getNodeContent, setNodeContent: setContent } = useNodeContentStore(
-    (state) => ({ getNodeContent: state.getNodeContent, setNodeContent: state.setNodeContent })
+  const { getNodeProperty, setNodeProperty: setContent } = useNodePropertyStore(
+    (state) => ({ getNodeProperty: state.getNodeProperty, setNodeProperty: state.setNodeProperty })
   );
 
   const [selectedNodeIdForSidebar, setSelectedNodeIdForSidebar] = useState<string[] | null>(null);
@@ -88,7 +87,7 @@ export const FlowEditor = () => {
     setStructureNodes(updatedNodes); 
     
     const initialContent = { ...newNode.data, isDirty: false };
-    setContent(newNode.id, initialContent as Partial<NodeContent>); 
+    setContent(newNode.id, initialContent as Partial<NodeProperty>); 
     // console.log(`[FlowEditor] Synced new node data to nodeContentStore:`, initialContent);
     
     pushCurrentSnapshot();
@@ -112,7 +111,7 @@ export const FlowEditor = () => {
     const executionPromises = rootNodeIds.map((rootId: string) => {
       console.log(`[FlowEditor] Initiating execution for root node: ${rootId}`);
       // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
-      return runFlow(rootId); 
+      return runFlowEditorExecution(rootId); 
     });
 
     // 3. Wait for all triggered executions to settle (complete or fail)
@@ -180,9 +179,9 @@ export const FlowEditor = () => {
     
     for (const node of selectedNodesToAdd) {
       updatedNodes = addNodeToGroup(
-        node as unknown as Node<NodeData>, 
-        selectedGroup as unknown as Node<NodeData>, 
-        updatedNodes as Node<NodeData>[]
+        node as unknown as Node<NodeProperty>, 
+        selectedGroup as unknown as Node<NodeProperty>, 
+        updatedNodes as Node<NodeProperty>[]
       );
     }
     
@@ -261,12 +260,7 @@ export const FlowEditor = () => {
         <div className="flex-none w-80 border-l border-gray-200 bg-white shadow-lg z-10 overflow-y-auto">
           {/* Render sidebar only if exactly one node is selected */}
           {singleSelectedNode ? (
-            // Decide which sidebar based on the single selected node's type
-            singleSelectedNode.type === 'group' ? (
-              <GroupDetailSidebar selectedNodeIds={selectedNodeIdForSidebar as string[]} /> // Assert as string[] since singleSelectedNode ensures it's not null
-            ) : (
-              <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} /> // Pass the array
-            )
+            <NodeConfigSidebar selectedNodeIds={selectedNodeIdForSidebar} />
           ) : (
             // Render a placeholder or nothing when no node or multiple nodes are selected
             <div className="p-4 text-center text-gray-500">

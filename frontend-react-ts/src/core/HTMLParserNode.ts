@@ -1,6 +1,6 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
-import { HTMLParserNodeContent } from '../types/nodes';
+import { HTMLParserNodeProperty } from '../types/nodes';
 
 /**
  * HTML 문자열에서 CSS 선택자를 사용하여 요소를 추출하는 함수
@@ -96,7 +96,7 @@ function getHtmlContentFromInput(input: any, log: (message: string) => void): st
  * WebCrawler 등에서 전달받은 HTML을 파싱하여 구조화된 데이터로 변환
  */
 export class HTMLParserNode extends Node {
-  declare property: HTMLParserNodeContent;
+  declare property: HTMLParserNodeProperty;
 
   constructor(id: string, property: Record<string, any> = {}, context?: FlowExecutionContext) {
     super(id, 'html-parser', property);
@@ -126,13 +126,16 @@ export class HTMLParserNode extends Node {
     }
 
     // 최신 노드 설정 가져오기
-    let nodeContent: HTMLParserNodeContent | undefined = undefined;
-    if (this.context && typeof this.context.getNodeContentFunc === 'function') {
-      nodeContent = this.context.getNodeContentFunc(this.id, this.type) as HTMLParserNodeContent;
+    let nodeContent: HTMLParserNodeProperty | undefined = undefined;
+    if (this.context && typeof this.context.getNodePropertyFunc === 'function') {
+      nodeContent = this.context.getNodePropertyFunc(this.id, this.type) as HTMLParserNodeProperty;
+      this._log(`Context에서 설정 로드됨: ${JSON.stringify(nodeContent, null, 2)}`);
     } else {
-      nodeContent = this.property as HTMLParserNodeContent;
+      nodeContent = this.property as HTMLParserNodeProperty;
+      this._log(`Property에서 설정 로드됨: ${JSON.stringify(nodeContent, null, 2)}`);
     }
     const extractionRules = nodeContent.extractionRules || [];
+    this._log(`추출 규칙 개수: ${extractionRules.length}`);
 
     // If no rules, maybe return the HTML itself or null?
     // Returning the HTML makes it act like a pass-through if no rules defined.
@@ -170,7 +173,12 @@ export class HTMLParserNode extends Node {
       if (rule.multiple) {
         result[rule.name] = extractedValues;
       } else {
-        result[rule.name] = extractedValues.length > 0 ? extractedValues[0] : '';
+        // ✅ 단일 선택 규칙이면서 text 타입인 경우, 여러 결과를 \n으로 조인
+        if (rule.target === 'text' && extractedValues.length > 1) {
+          result[rule.name] = extractedValues.join('\n');
+        } else {
+          result[rule.name] = extractedValues.length > 0 ? extractedValues[0] : '';
+        }
       }
     }
 

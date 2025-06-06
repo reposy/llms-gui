@@ -1,6 +1,6 @@
 import { Node } from '../../core/Node';
-import { getNodeContent } from '../../store/useNodeContentStore';
-import { NodeContent } from '../../types/nodes';
+import { getNodeProperty } from '../../store/useNodePropertyStore';
+import { NodeProperty } from '../../types/nodes';
 
 /**
  * 속성 타입별 동기화 처리 함수를 위한 타입 정의
@@ -42,7 +42,7 @@ export function syncNodeProperties(
   nodeType?: string
 ): void {
   // 스토어에서 노드 컨텐츠 가져오기 
-  const content = getNodeContent(node.id, nodeType || node.type);
+  const content = getNodeProperty(node.id, nodeType || node.type);
   if (!content) return;
 
   // 각 속성 설정에 대해 동기화 수행
@@ -82,14 +82,14 @@ export function syncNodeProperties(
 /**
  * 특정 노드 타입에 대한 속성 동기화 설정을 생성하는 헬퍼 함수
  */
-export function createSyncConfig<T extends NodeContent>(configs: PropertySyncConfig[]): PropertySyncConfig[] {
+export function createSyncConfig<T extends NodeProperty>(configs: PropertySyncConfig[]): PropertySyncConfig[] {
   return configs;
 }
 
 /**
  * 입력 노드의 속성 동기화 설정
  */
-export const inputNodeSyncConfig = createSyncConfig<NodeContent>([
+export const inputNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'items', type: 'array', defaultValue: [] },
   { propertyName: 'iterateEachRow', type: 'boolean', defaultValue: false },
   { propertyName: 'textBuffer', type: 'string' }
@@ -98,7 +98,7 @@ export const inputNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * LLM 노드의 속성 동기화 설정
  */
-export const llmNodeSyncConfig = createSyncConfig<NodeContent>([
+export const llmNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'prompt', type: 'string', required: true, defaultValue: '' },
   { propertyName: 'model', type: 'string', required: true, defaultValue: 'openhermes' },
   { propertyName: 'temperature', type: 'number', required: true, defaultValue: 0.7 },
@@ -111,7 +111,7 @@ export const llmNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * 출력 노드의 속성 동기화 설정
  */
-export const outputNodeSyncConfig = createSyncConfig<NodeContent>([
+export const outputNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'format', type: 'string', required: true, defaultValue: 'text' },
   { propertyName: 'content', type: 'string' },
   { propertyName: 'data', type: 'object' }
@@ -120,18 +120,21 @@ export const outputNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * 웹 크롤러 노드의 속성 동기화 설정
  */
-export const webCrawlerNodeSyncConfig = createSyncConfig<NodeContent>([
+export const webCrawlerNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'url', type: 'string', required: true, defaultValue: '' },
-  { propertyName: 'waitForSelector', type: 'string', defaultValue: 'body' },
-  { propertyName: 'extractSelectors', type: 'object', defaultValue: {} },
-  { propertyName: 'timeout', type: 'number', defaultValue: 3000 },
-  { propertyName: 'outputFormat', type: 'string', defaultValue: 'full' }
+  { propertyName: 'waitForSelectorOnPage', type: 'string', defaultValue: '' },
+  { propertyName: 'iframeSelector', type: 'string', defaultValue: '' },
+  { propertyName: 'waitForSelectorInIframe', type: 'string', defaultValue: '' },
+  { propertyName: 'extractElementSelector', type: 'string', defaultValue: '' },
+  { propertyName: 'timeout', type: 'number', defaultValue: 30000 },
+  { propertyName: 'outputFormat', type: 'string', defaultValue: 'html' },
+  { propertyName: 'headers', type: 'object', defaultValue: {} }
 ]);
 
 /**
  * Merger 노드의 속성 동기화 설정
  */
-export const mergerNodeSyncConfig = createSyncConfig<NodeContent>([
+export const mergerNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'items', type: 'array', defaultValue: [] },
   { propertyName: 'strategy', type: 'string', defaultValue: 'array' },
   { propertyName: 'keys', type: 'array' }
@@ -140,7 +143,7 @@ export const mergerNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * JSON 추출기 노드의 속성 동기화 설정
  */
-export const jsonExtractorNodeSyncConfig = createSyncConfig<NodeContent>([
+export const jsonExtractorNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'path', type: 'string', required: true, defaultValue: '' },
   { propertyName: 'defaultValue', type: 'string' }
 ]);
@@ -148,7 +151,7 @@ export const jsonExtractorNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * API 노드의 속성 동기화 설정
  */
-export const apiNodeSyncConfig = createSyncConfig<NodeContent>([
+export const apiNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'url', type: 'string', required: true, defaultValue: '' },
   { propertyName: 'method', type: 'string', required: true, defaultValue: 'GET' },
   { propertyName: 'headers', type: 'object', defaultValue: {} },
@@ -161,7 +164,7 @@ export const apiNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * 조건부 노드의 속성 동기화 설정
  */
-export const conditionalNodeSyncConfig = createSyncConfig<NodeContent>([
+export const conditionalNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'conditionType', type: 'string', defaultValue: 'contains' },
   { propertyName: 'conditionValue', type: 'string', defaultValue: '' }
 ]);
@@ -169,6 +172,6 @@ export const conditionalNodeSyncConfig = createSyncConfig<NodeContent>([
 /**
  * 그룹 노드의 속성 동기화 설정
  */
-export const groupNodeSyncConfig = createSyncConfig<NodeContent>([
+export const groupNodeSyncConfig = createSyncConfig<NodeProperty>([
   { propertyName: 'childNodes', type: 'array', defaultValue: [] }
 ]); 

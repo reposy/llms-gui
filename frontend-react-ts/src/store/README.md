@@ -10,16 +10,16 @@
 
 1. **기본 타입**
    - `BaseNodeData`: 모든 노드 데이터의 기본 인터페이스 (React Flow 노드 데이터용)
-   - `BaseNodeContent`: 모든 노드 컨텐츠의 기본 인터페이스 (상태 관리용)
+   - `BaseNodeProperty`: 모든 노드 컨텐츠의 기본 인터페이스 (상태 관리용)
 
 2. **노드 데이터 타입** (`NodeData`)
    - React Flow 노드에 직접 전달되는 데이터 구조
-   - 각 노드 타입별로 별도의 인터페이스가 정의됨 (예: `LLMNodeData`, `APINodeData` 등)
+   - 각 노드 타입별로 별도의 인터페이스가 정의됨 (예: `LlmNodeProperty`, `APINodeData` 등)
    - 항상 `type` 속성을 포함하여 노드 유형을 명시
 
-3. **노드 컨텐츠 타입** (`NodeContent`)
+3. **노드 컨텐츠 타입** (`NodeProperty`)
    - 스토어에 저장되는 노드의 상태 정보
-   - 각 노드 타입별로 별도의 인터페이스가 정의됨 (예: `LLMNodeContent`, `APINodeContent` 등)
+   - 각 노드 타입별로 별도의 인터페이스가 정의됨 (예: `LlmNodeProperty`, `APINodeProperty` 등)
    - `isDirty` 같은 UI 상태 정보 포함
 
 4. **타입 매핑**
@@ -71,9 +71,9 @@ export const useData = (id) => {
 
 ## 주요 스토어
 
-1. **useNodeContentStore**
+1. **useNodePropertyStore**
    - 노드 컨텐츠(상태) 관리
-   - `NodeContent` 타입 사용
+   - `NodeProperty` 타입 사용
 
 2. **useFlowStructureStore**
    - 노드와 엣지의 구조 관리
@@ -98,13 +98,13 @@ export const useData = (id) => {
 ## 모범 사례
 
 1. **타입 정의**
-   - 새로운 노드 타입을 추가할 때 `types/nodes.ts`에 `XxxNodeData`와 `XxxNodeContent` 인터페이스를 모두 정의
-   - `NodeData`와 `NodeContent` 유니온 타입에 추가
+   - 새로운 노드 타입을 추가할 때 `types/nodes.ts`에 `XxxNodeData`와 `XxxNodeProperty` 인터페이스를 모두 정의
+   - `NodeData`와 `NodeProperty` 유니온 타입에 추가
    - `NodeTypeMap`에 새 매핑 추가
 
 2. **스토어 접근**
-   - 컴포넌트 내부: 항상 커스텀 훅 사용 (`useNodeState`, `useNodeContent` 등)
-   - 컴포넌트 외부: 직접 접근 함수 사용 (`getNodeState`, `setNodeContent` 등)
+   - 컴포넌트 내부: 항상 커스텀 훅 사용 (`useNodeState`, `useNodeProperty` 등)
+   - 컴포넌트 외부: 직접 접근 함수 사용 (`getNodeState`, `setNodeProperty` 등)
 
 3. **타입 안전성**
    - 스토어 함수 사용 시 정확한 타입 지정
@@ -121,7 +121,7 @@ Flow 편집기(Editor)와 실행기(Executor)는 별도의 상태 관리 시스�
    - 편집기에서 Flow를 수정해도 실행기의 Flow에 영향 없음 (반대의 경우도 마찬가지)
 
 2. **스토어 구분**
-   - 편집기: `useFlowStructureStore`, `useNodeContentStore` 등 사용
+   - 편집기: `useFlowStructureStore`, `useNodePropertyStore` 등 사용
    - 실행기: `useExecutorStateStore`, `useExecutorGraphStore` 사용
 
 3. **ID 관리**

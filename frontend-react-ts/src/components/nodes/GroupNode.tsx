@@ -1,133 +1,30 @@
 // src/components/nodes/GroupNode.tsx
-import React, { useMemo, useCallback, memo, useRef, useEffect } from 'react';
-import { Handle, Position, NodeProps, NodeResizer, useReactFlow, Node } from '@xyflow/react';
+import React, { useCallback, memo } from 'react';
+import { Handle, Position, NodeProps, NodeResizer, useReactFlow } from '@xyflow/react';
 import clsx from 'clsx';
-import { GroupNodeData, NodeData } from '../../types/nodes';
+import { NodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { getRootNodesFromSubset } from '../../utils/flow/executionUtils';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
-import { useNodes, useEdges, useFlowStructureStore } from '../../store/useFlowStructureStore';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { v4 as uuidv4 } from 'uuid';
-import { useNodeStateStore } from '../../store/useNodeStateStore';
-import { runFlow } from '../../core/FlowRunner';
+import { useNodes, useFlowStructureStore } from '../../store/useFlowStructureStore';
 import { EditableNodeLabel } from './shared/EditableNodeLabel';
-import { useNodeContentStore, setNodeContent } from '../../store/useNodeContentStore';
 
 // Add CSS import back to handle z-index
 import './GroupNode.css';
 
-const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) => {
-  const groupData = data as GroupNodeData;
-  
-  const allNodes = useNodes();
-  const allEdges = useEdges();
+const GroupNode: React.FC<NodeProps> = ({ id, selected, isConnectable }) => {
+  const allNodes = useNodes() as any[];
   const nodeState = useNodeState(id);
   const isRunning = nodeState?.status === 'running';
   const { setNodes } = useReactFlow();
-  const executionContextRef = useRef<FlowExecutionContext | null>(null);
   
-  const { 
-    label,
-    isCollapsed, 
-  } = useGroupNodeData({ nodeId: id });
+  const { label, isCollapsed, items } = useGroupNodeData({ nodeId: id });
 
-  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
-
-  const { nodesInGroup, hasInternalRootNodes } = useMemo(() => {
-    // Check both parentId and parentNode properties to support both formats
-    const nodesWithParentId = allNodes.filter((node: Node<NodeData>) => 
-      node.parentId === id
-    );
-    
-    // React Flow v11+에서 사용되는 parentNode 속성도 체크 (호환성 보장)
-    const nodesWithParentNode = allNodes.filter((node: any) => 
-      node.parentNode === id && !node.parentId
-    );
-    
-    // 두 결과 결합 (중복 제거)
-    const combinedNodes = [...nodesWithParentId];
-    nodesWithParentNode.forEach(node => {
-      if (!combinedNodes.some(n => n.id === node.id)) {
-        combinedNodes.push(node);
-      }
-    });
-    
-    // 개발 모드에서만 로깅 - 성능 최적화
-    if (process.env.NODE_ENV === 'development') {
-      // console.log(`[GroupNode] ID: ${id}, 전체 노드 수: ${allNodes.length}, 그룹에 속한 노드 수: ${combinedNodes.length}`);
-    }
-    
-    const nodeIdsInGroup = new Set(combinedNodes.map(n => n.id));
-    const edgesInGroup = allEdges.filter(edge => nodeIdsInGroup.has(edge.source) && nodeIdsInGroup.has(edge.target));
-    const internalRoots = getRootNodesFromSubset(combinedNodes, edgesInGroup);
-    
-    return {
-      nodesInGroup: combinedNodes,
-      hasInternalRootNodes: internalRoots.length > 0,
-    };
-  }, [allNodes, allEdges, id]);
-
-  // Clean up any running executions when the component unmounts
-  useEffect(() => {
-    return () => {
-      if (executionContextRef.current) {
-        // Clean up logic if needed
-        executionContextRef.current = null;
-      }
-    };
-  }, []);
 
   const handleRunGroup = useCallback(() => {
     if (isRunning) return;
-    
-    console.log(`[GroupNode] ${id}: Triggering execution of group via runFlow`);
-    
-    // --- REPLACE complex internal logic with a call to runFlow --- 
-    // The runFlow function will handle creating the context, 
-    // finding the correct starting node (this group node), 
-    // creating its instance (with proper properties like nodes, edges, factory),
-    // and calling its process() method.
-    // Note: Now we pass the group's ID as the startNodeId.
-    runFlow(id).catch((error: Error) => {
-      console.error(`Error running flow triggered by group ${id}:`, error);
-      // Optionally, mark the group node as error in the UI state
-      // This requires access to FlowExecutionContext or similar mechanism outside runFlow
-      // For now, just log the error.
-    });
-    // -----------------------------------------------------------
-    
-    // // --- OLD LOGIC TO BE REMOVED --- 
-    // const executionId = `exec-${uuidv4()}`;
-    // const executionContext = new FlowExecutionContext(executionId);
-    // executionContextRef.current = executionContext;
-    
-    // // 그룹 노드 자신이 아닌 그룹 내부의 노드들을 실행하도록 설정
-    // executionContext.setTriggerNode(id);
-    
-    // buildExecutionGraphFromFlow(nodes, edges);
-    
-    // // 그룹 노드 자체는 항상 런닝 상태로 표시
-    // const groupNode = nodes.find(n => n.id === id);
-    // if (!groupNode) {
-    //   executionContext.log(`그룹 ${id}를 찾을 수 없습니다.`);
-    //   return;
-    // }
-    
-    // // 그룹 내부의 실제 루트 노드들을 직접 찾아서 실행
-    // if (nodesInGroup.length > 0) {
-    //   runNodesInGroup(executionContext, nodesInGroup, allEdges, nodes);
-    // } else {
-    //   // 그룹 내 노드가 없는 경우
-    //   executionContext.log(`그룹 ${id}에 실행할 노드가 없습니다.`);
-    //   executionContext.markNodeSuccess(id, { message: "그룹 내 노드 없음" });
-    // }
-    // --- END OF OLD LOGIC --- 
-
-  }, [id, isRunning]); // Removed dependencies related to old logic
+    // TODO: 그룹 실행 로직 구현 필요
+  }, [id, isRunning]);
   
   const handleSelectGroup = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -144,10 +41,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
 
   // --- Define LOCAL label update handler --- 
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore (config state)
-    setNodeContentLocal(updatedNodeId, { label: newLabel });
-
-    // 2. Update FlowStructureStore (React Flow rendering state)
+    // 1. Update FlowStructureStore (React Flow rendering state)
     const updatedNodes = allNodes.map(node => 
       node.id === updatedNodeId
         ? { 
@@ -160,8 +54,7 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         : node
     );
     setNodesLocal(updatedNodes); // Use the function obtained from the store hook
-    console.log(`[GroupNode] Updated label for node ${updatedNodeId} in both stores.`);
-  }, [allNodes, setNodesLocal, setNodeContentLocal]); // Add dependencies
+  }, [allNodes, setNodesLocal]); // Add dependencies
   // --- End LOCAL handler ---
 
   return (
@@ -231,17 +124,17 @@ const GroupNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable }) =
         >
           <div className="group-node-overlay"></div>
           
-          {nodesInGroup.length === 0 && (
+          {items && items.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-orange-300 text-xs placeholder">
               Drag nodes here
             </div>
           )}
           
           <div className="absolute top-2 right-2 p-2 bg-orange-50/70 rounded-md text-xs max-w-[80%] max-h-[75%] overflow-auto group-controls">
-            <div className="font-medium mb-1">Nodes in Group ({nodesInGroup.length})</div>
-            {nodesInGroup.length > 0 ? (
+            <div className="font-medium mb-1">Nodes in Group ({items ? items.length : 0})</div>
+            {items && items.length > 0 ? (
               <ul className="list-disc pl-4 text-xs text-gray-600">
-                {nodesInGroup.map(node => (
+                {items.map((node: any) => (
                   <li key={node.id} className="truncate">
                     {node.data?.label || node.type || node.id}
                   </li>

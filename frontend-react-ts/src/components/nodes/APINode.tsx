@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { VIEW_MODES } from '../../store/viewModeStore';
-import { APINodeData, HTTPMethod } from '../../types/nodes';
+import { APINodeProperty, HTTPMethod } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import NodeErrorBoundary from './NodeErrorBoundary';
@@ -11,12 +11,12 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useApiNodeData } from '../../hooks/useApiNodeData';
 import { useStore as useViewModeStore } from '../../store/viewModeStore';
-import { useNodeContentStore, setNodeContent } from '../../store/useNodeContentStore';
-import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
 
 interface Props {
   id: string;
-  data: APINodeData;
+  data: APINodeProperty;
   isConnectable: boolean;
   selected?: boolean;
 }
@@ -29,12 +29,9 @@ interface QueryParamDrafts {
 }
 
 const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
-  const apiData = data;
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
-  const { getZoom } = useReactFlow();
   const viewMode = useViewModeStore(state => state.getNodeEffectiveViewMode(id));
-  const globalViewMode = useViewModeStore(state => state.globalViewMode);
   const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
   const isCompactMode = viewMode === VIEW_MODES.COMPACT;
   
@@ -51,14 +48,9 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
     executionTime,
     errorMessage,
     isRunning,
-    isDirty,
     handleUrlChange,
     handleMethodChange,
-    handleRequestBodyTypeChange,
-    handleRequestBodyChange,
-    handleHeadersChange,
     updateContent,
-    setIsRunning,
     executeApiCall
   } = useApiNodeData({ nodeId: id });
 
@@ -66,18 +58,16 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
 
   const [urlDraft, setUrlDraft] = useState(url || '');
   const [paramDrafts, setParamDrafts] = useState<QueryParamDrafts>({});
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [testResponse, setTestResponse] = useState<any>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [isEditingUrl, setIsEditingUrl] = useState(false);
   const [isEditingParams, setIsEditingParams] = useState(false);
 
   const currentNodes = useFlowStructureStore(state => state.nodes);
-  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodePropertyLocal = useNodePropertyStore(state => state.setNodeProperty);
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
 
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    setNodeContentLocal(updatedNodeId, { label: newLabel });
+    setNodePropertyLocal(updatedNodeId, { label: newLabel });
 
     const updatedNodes = currentNodes.map(node => 
       node.id === updatedNodeId
@@ -91,8 +81,7 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
         : node
     );
     setNodesLocal(updatedNodes);
-    console.log(`[APINode] Updated label for node ${updatedNodeId} in both stores.`);
-  }, [currentNodes, setNodesLocal, setNodeContentLocal]);
+  }, [currentNodes, setNodesLocal, setNodePropertyLocal]);
 
   const buildParamDrafts = useCallback((params: Record<string, string> = {}) => {
     const drafts: QueryParamDrafts = {};
@@ -380,7 +369,6 @@ const APINode: React.FC<Props> = ({ id, data, isConnectable, selected }) => {
             placeholderLabel="API Call"
             isRootNode={isRootNode}
             isRunning={isRunning}
-            isContentDirty={isDirty}
             viewMode={viewMode}
             themeColor="purple"
             onRun={handleApiRun}

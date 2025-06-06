@@ -141,6 +141,72 @@ export const useFlowExecutor = () => {
   };
 
   /**
+   * 실행 모드 지원 Flow 실행 (Batch 또는 ForEach)
+   */
+  const handleExecuteFlowWithMode = async (
+    flowId: string, 
+    executionMode: 'batch' | 'forEach', 
+    batchInputs: any[], 
+    commonInputs: any[] = [], 
+    forEachItems: any[] = []
+  ) => {
+    if (!flowId) {
+      setError('실행할 Flow를 선택해주세요.');
+      return;
+    }
+    const flow = getFlowById(flowId);
+    if (!flow) {
+      setError('선택한 Flow를 찾을 수 없습니다.');
+      return;
+    }
+
+    setIsExecuting(true);
+    store.setStage('executing');
+    setError(null);
+
+    try {
+      const executionParams = {
+        flowId: flow.id,
+        flowChainId: flow.flowChainId,
+        flowJson: flow.flowJson,
+        executionMode,
+        onComplete: (result: any) => {
+          if (flowChainIds.length > 0) {
+            store.setFlowResult(flowChainIds[0], flow.id, result || []);
+          }
+          setIsExecuting(false);
+          store.setStage('result');
+        }
+      };
+
+      let response;
+      if (executionMode === 'forEach') {
+        console.log(`[useFlowExecutor] Executing ForEach mode with ${forEachItems.length} items and ${commonInputs.length} common inputs`);
+        response = await executeFlowExecutor({
+          ...executionParams,
+          inputs: forEachItems, // ForEach mode에서는 items를 inputs로 전달
+          commonInputs: commonInputs
+        });
+      } else {
+        console.log(`[useFlowExecutor] Executing Batch mode with ${batchInputs.length} inputs`);
+        response = await executeFlowExecutor({
+          ...executionParams,
+          inputs: batchInputs
+        });
+      }
+
+      if (response.status === 'error') {
+        setError(response.error || '플로우 실행 중 알 수 없는 오류가 발생했습니다.');
+        setIsExecuting(false);
+      }
+    } catch (err) {
+      setError('플로우 실행에 실패했습니다. 입력 데이터를 확인하고 다시 시도해주세요.');
+      setIsExecuting(false);
+      store.setStage('result');
+    }
+  };
+
+  /**
    * Flow Chain 가져오기
    */
   const handleImportFlowChain = () => {
@@ -320,6 +386,7 @@ export const useFlowExecutor = () => {
     handleImportFlowChain,
     handleExportFlowChain,
     handleExecuteSingleFlow,
+    handleExecuteFlowWithMode,
     handleExecuteChain,
     handleClearAll,
     flowChain,

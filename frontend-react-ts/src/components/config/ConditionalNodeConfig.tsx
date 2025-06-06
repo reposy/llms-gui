@@ -1,16 +1,12 @@
 import React from 'react';
-import { ConditionalNodeData } from '../../types/nodes';
+import { ConditionalNodeProperty } from '../../types/nodes';
 import { useConditionalNodeData } from '../../hooks/useConditionalNodeData';
 
 interface ConditionalNodeConfigProps {
   nodeId: string;
-  data: ConditionalNodeData;
 }
 
-export const ConditionalNodeConfig: React.FC<ConditionalNodeConfigProps> = ({ 
-  nodeId,
-  data  // Keep for compatibility with Redux
-}) => {
+export const ConditionalNodeConfig: React.FC<ConditionalNodeConfigProps> = ({ nodeId }) => {
   // Use Zustand hook for state management
   const {
     conditionType,

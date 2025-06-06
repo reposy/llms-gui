@@ -28,8 +28,6 @@ export const createIDBStorage = (): StateStorage => {
   // Initialize database lazily on first operation
   const dbPromise = openDB<LlmsGuiDBSchema>(DB_NAME, DB_VERSION, {
     upgrade(db) {
-      console.log(`[idbStorage] Creating object store: ${STORE_NAME}`);
-      // Ensure the store exists
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }
@@ -45,12 +43,10 @@ export const createIDBStorage = (): StateStorage => {
      */
     getItem: async (key: string): Promise<string | null> => {
       try {
-        console.log(`[idbStorage] Getting item: ${key}`);
         const db = await dbPromise;
         const value = await db.get(STORE_NAME, key);
         return value === undefined ? null : value;
       } catch (error) {
-        console.error(`[idbStorage] Error getting item ${key}:`, error);
         return null;
       }
     },
@@ -64,16 +60,13 @@ export const createIDBStorage = (): StateStorage => {
     setItem: async (key: string, value: string): Promise<void> => {
       // Runtime check: Ensure the value is a string before attempting to store.
       if (typeof value !== 'string') {
-        console.error(`[idbStorage] setItem error: Value for key "${key}" must be a string, but received type ${typeof value}. Value:`, value);
-        // Throw an error to prevent storing invalid data
         throw new TypeError(`[idbStorage] Value for key "${key}" must be a string.`);
       }
       try {
-        console.log(`[idbStorage] Setting item: ${key} (${Math.round(value.length / 1024)} KB)`);
         const db = await dbPromise;
         await db.put(STORE_NAME, value, key);
       } catch (error) {
-        console.error(`[idbStorage] Error setting item ${key}:`, error);
+        // ignore
       }
     },
 
@@ -84,11 +77,10 @@ export const createIDBStorage = (): StateStorage => {
      */
     removeItem: async (key: string): Promise<void> => {
       try {
-        console.log(`[idbStorage] Removing item: ${key}`);
         const db = await dbPromise;
         await db.delete(STORE_NAME, key);
       } catch (error) {
-        console.error(`[idbStorage] Error removing item ${key}:`, error);
+        // ignore
       }
     }
   };

@@ -176,7 +176,7 @@ class OllamaService implements LLMProviderService {
       }
       
       try {
-        const fullUrl = getFullFileUrl(metadata.url);
+        const fullUrl = getFullFileUrl(metadata);
         const base64DataUrl = await imageToBase64(fullUrl, metadata.originalName);
         
         // base64 데이터 추출 및 검증

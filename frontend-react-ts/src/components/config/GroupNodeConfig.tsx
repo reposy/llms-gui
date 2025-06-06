@@ -1,21 +1,22 @@
 import React, { useCallback } from 'react';
-import { GroupNodeData } from '../../types/nodes';
+import { GroupNodeProperty } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useGroupNodeData } from '../../hooks/useGroupNodeData';
+import { useNodes } from '../../store/useFlowStructureStore';
 
 interface GroupNodeConfigProps {
   nodeId: string;
-  data: GroupNodeData;
 }
 
-export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }) => {
+export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId }) => {
   const executionState = useNodeState(nodeId);
+  const allNodes = useNodes();
   
   // Group node data hook에서 모든 데이터 가져오기
   const {
     label,
     isCollapsed,
-    items, // NodeContent에서 직접 items 사용
+    items, // NodeProperty에서 직접 items 사용
     handleLabelChange,
     toggleCollapse
   } = useGroupNodeData({ nodeId });
@@ -45,6 +46,9 @@ export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }
   // Results are considered valid for display if the items array exists and has entries,
   // even if those entries are undefined or null.
   const hasResultsToDisplay = Array.isArray(items) && items.length > 0;
+
+  // 그룹에 소속된 자식 노드 목록
+  const childNodes = allNodes.filter((node) => node.parentId === nodeId);
 
   return (
     <div className="p-4">
@@ -77,6 +81,22 @@ export const GroupNodeConfig: React.FC<GroupNodeConfigProps> = ({ nodeId, data }
             Collapse group content
           </label>
         </div>
+      </div>
+      
+      {/* 소속 노드 목록 섹션 */}
+      <div className="mb-6">
+        <h4 className="font-medium text-sm text-gray-700 mb-2">Nodes in Group ({childNodes.length})</h4>
+        {childNodes.length > 0 ? (
+          <ul className="space-y-1 text-xs max-h-32 overflow-y-auto border rounded-md p-1 bg-gray-50">
+            {childNodes.map((node) => (
+              <li key={node.id} className="p-1 rounded-sm">
+                {node.data?.label || node.type || node.id} <span className="text-gray-500">({node.type})</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500 italic">No nodes defined in this group.</p>
+        )}
       </div>
       
       {/* 실행 결과 표시 섹션 */}

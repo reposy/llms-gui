@@ -1,29 +1,29 @@
 // src/components/nodes/InputNode.tsx
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { InputNodeContent } from '../../types/nodes';
+import { InputNodeProperty } from '../../types/nodes';
 import clsx from 'clsx';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { NodeHeader } from './shared/NodeHeader';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
 import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureStore';
-import { useNodeContentStore, useNodeContent } from '../../store/useNodeContentStore';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
 import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { VIEW_MODES } from '../../store/viewModeStore';
 import { TrashIcon, PhotoIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/20/solid';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems';
 import { runSingleNodeExecution } from '../../core/executionUtils';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 
 // Node component
-export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+export const InputNode: React.FC<NodeProps> = ({ id, selected, isConnectable = true }) => {
   const nodeState = useNodeState(id);
   const isRunning = nodeState.status === 'running';
-  const setZustandNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const setZustandNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
   const { incoming } = useNodeConnections(id);
   const isRootNode = incoming.length === 0;
   const currentNodes = useFlowStructureStore(state => state.nodes); 
-  const { content: nodeContent } = useNodeContent<InputNodeContent>(id, 'input');
 
   // Use the consolidated input node hook with all functionalities
   const {
@@ -39,7 +39,6 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
     label,
     fileProcessing,
     resetError,
-    serverConnected
   } = useInputNodeData({ nodeId: id });
   
   // Format items for display
@@ -49,19 +48,19 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
 
   // Label update handler
   const handleLabelUpdate = useCallback((updatedNodeId: string, newLabel: string) => {
-    setZustandNodeContent(updatedNodeId, { label: newLabel });
+    setZustandNodeProperty(updatedNodeId, { label: newLabel });
     const updatedNodes = currentNodes.map(node => 
       node.id === updatedNodeId ? { ...node, data: { ...node.data, label: newLabel } } : node
     );
     setNodes(updatedNodes);
-  }, [currentNodes, setZustandNodeContent]);
+  }, [currentNodes, setZustandNodeProperty]);
 
   // Run handler - Simplified
   const handleRun = useCallback(() => {
-    console.log(`[InputNode] Triggering single execution for node ${id}`);
+    // console.log(`[InputNode] Triggering single execution for node ${id}`);
     // Call the centralized execution utility
     runSingleNodeExecution(id).catch(error => {
-      console.error(`[InputNode] Error during single execution:`, error);
+      // console.error(`[InputNode] Error during single execution:`, error);
       // Optionally, update node state to show error feedback to the user here
     });
   }, [id]); // Dependency is only the node id now
@@ -82,6 +81,8 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
       {previewItems.length > 2 && <li className="text-gray-400">... (+{previewItems.length - 2} more)</li>}
     </ul>
   );
+
+  const { content: nodeContent } = useNodeProperty<InputNodeProperty>(id, 'input');
 
   return (
     <NodeErrorBoundary nodeId={id}>
@@ -161,10 +162,10 @@ export const InputNode: React.FC<NodeProps> = ({ id, data, selected, isConnectab
               >
                 {/* Map mode value to display text */}
                 {{
-                  'always': 'Always',
-                  'oncePerContext': 'Once',
-                  'none': 'None'
-                }[nodeContent?.accumulationMode || 'always'] /* Default to Always if undefined */}
+                  always: 'Always',
+                  oncePerContext: 'Once per Context',
+                  none: 'None'
+                }[(nodeContent?.accumulationMode as 'always' | 'oncePerContext' | 'none') || 'always'] /* Default to Always if undefined */}
               </span>
             </div>
             

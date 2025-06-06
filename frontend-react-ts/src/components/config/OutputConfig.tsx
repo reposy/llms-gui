@@ -1,8 +1,8 @@
 // src/components/config/OutputConfig.tsx
 import React, { useCallback } from 'react';
-import { OutputNodeData, OutputFormat } from '../../types/nodes';
+import { OutputNodeProperty, OutputFormat } from '../../types/nodes';
 import { useNodeState } from '../../store/useNodeStateStore';
-import { useOutputNodeData } from '../../hooks/useOutputNodeData';
+import { useOutputNodeProperty } from '../../hooks/useOutputNodeData';
 
 interface OutputConfigProps {
   nodeId: string;
@@ -44,7 +44,7 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId }) => {
     handleFormatChange, 
     formatResultBasedOnFormat,
     content
-  } = useOutputNodeData(nodeId);
+  } = useOutputNodeProperty(nodeId);
   
   // Event handler to prevent backspace from deleting nodes
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -55,6 +55,15 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId }) => {
     handleFormatChange(newFormat);
   }, [handleFormatChange]);
   
+  // 디버깅을 위한 로그 (개발 시에만)
+  console.log('[OutputConfig] Debug:', {
+    nodeId,
+    status: executionState?.status,
+    hasResult: executionState?.result !== null && executionState?.result !== undefined,
+    resultType: typeof executionState?.result,
+    result: executionState?.result
+  });
+  
   // Format the result for display
   let displayContent = 'Waiting for execution...';
   
@@ -62,8 +71,11 @@ export const OutputConfig: React.FC<OutputConfigProps> = ({ nodeId }) => {
     displayContent = 'Processing...';
   } else if (executionState?.status === 'error') {
     displayContent = `Error: ${executionState.error}`;
-  } else if (content !== undefined) {
-    displayContent = formatResultBasedOnFormat();
+  } else if (executionState?.result !== null && executionState?.result !== undefined) {
+    // 결과가 있으면 상태에 관계없이 표시
+    displayContent = formatResultBasedOnFormat(executionState.result);
+  } else if (executionState?.status === 'idle' || !executionState?.status) {
+    displayContent = 'No execution result available. Run the workflow to see results.';
   }
   
   return (

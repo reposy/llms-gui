@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useFlowStructureStore } from '../store/useFlowStructureStore';
 import { Node } from '@xyflow/react';
-import { NodeData, InputNodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 
 // NodeConnectionData 인터페이스 정의 추가
 export interface NodeConnectionData {

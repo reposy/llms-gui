@@ -1,174 +1,261 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
 import FlowResultDisplay from './FlowResultDisplay';
-import type { InputRow, InputType } from '../../types/flow/InputRow';
+import type { InputRow } from '../../types/flow/InputRow';
+import { extractFlowResultText } from '../../utils/flowResultUtils';
+import type { ExecutionMode } from '../../services/flowExecutionService';
+
+// 새로 분리한 섹션 컴포넌트들
+import ExecutionModeSection from './flow-input-sections/ExecutionModeSection';
+import NodePropertiesSection from './flow-input-sections/NodePropertiesSection';
+import InputDataSection from './flow-input-sections/InputDataSection';
+import ForEachConfigSection from './flow-input-sections/ForEachConfigSection';
 
 interface FlowInputFormProps {
   flowId: string;
   inputs?: any[];
   onInputChange?: (inputs: any[]) => void;
-  isChainInput?: boolean;
 }
 
-const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInputs, onInputChange, isChainInput = false }) => {
+// FlowInputForm에서 외부로 노출할 인터페이스
+export interface FlowInputFormRef {
+  getFinalInputData: () => any[];
+  getExecutableInputs: () => any[];
+  getExecutionMode: () => ExecutionMode;
+  getCommonInputs: () => any[];
+  getForEachItems: () => any[];
+}
+
+const FlowInputForm = forwardRef<FlowInputFormRef, FlowInputFormProps>(({ flowId, inputs: propInputs, onInputChange }, ref) => {
   const store = useFlowExecutorStore();
   const focusedFlowChainId = store.focusedFlowChainId;
   const flowChainMap = store.flowChainMap;
   const flowChainIds = store.flowChainIds;
   const chain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
   const flow = chain && flowId ? chain.flowMap[flowId] : undefined;
-  const prevFlows = chain ? chain.flowIds.filter(id => id !== flowId && chain.flowIds.indexOf(id) < chain.flowIds.indexOf(flowId)) : [];
 
-  // store의 값을 직접 구독 (propInputs가 없으면)
-  const initialRows = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
-  const [rows, setRows] = useState<InputRow[]>(initialRows);
+  // 초기 데이터 분리
+  const separateInputs = (inputs: InputRow[]) => {
+    const properties: InputRow[] = [];
+    const regularInputs: InputRow[] = [];
+    
+    inputs.forEach(input => {
+      if (input.type === 'property') {
+        properties.push(input);
+      } else {
+        regularInputs.push(input);
+      }
+    });
+    
+    return { properties, regularInputs };
+  };
+
+  const initialInputs = propInputs && propInputs.length > 0 ? propInputs : (flow?.inputs && flow.inputs.length > 0 ? flow.inputs : [{ type: 'text', value: '' }]);
+  const { properties: initialProperties, regularInputs: initialRegularInputs } = separateInputs(initialInputs);
+  
+  const [properties, setProperties] = useState<InputRow[]>(initialProperties);
+  const [regularInputs, setRegularInputs] = useState<InputRow[]>(initialRegularInputs.length > 0 ? initialRegularInputs : [{ type: 'text', value: '' }]);
   const [editMode, setEditMode] = useState(true);
-  const [draftInputs, setDraftInputs] = useState<InputRow[]>(rows);
+  const [draftProperties, setDraftProperties] = useState<InputRow[]>(properties);
+  const [draftRegularInputs, setDraftRegularInputs] = useState<InputRow[]>(regularInputs);
+  
+  // 실행 모드 관련 상태
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>('batch');
+  const [commonInputs, setCommonInputs] = useState<InputRow[]>([]);
+  const [forEachItems, setForEachItems] = useState<InputRow[]>([]);
+  const [repeatCount, setRepeatCount] = useState<number>(1);
 
-  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // 전체 inputs 배열 생성 (properties + regularInputs)
+  const getCombinedInputs = (props: InputRow[], regular: InputRow[]) => [...props, ...regular];
 
   useEffect(() => {
-    if (propInputs) setRows(propInputs);
-    else if (flow && flow.inputs) setRows(flow.inputs);
+    if (propInputs) {
+      const { properties: newProperties, regularInputs: newRegularInputs } = separateInputs(propInputs);
+      setProperties(newProperties);
+      setRegularInputs(newRegularInputs.length > 0 ? newRegularInputs : [{ type: 'text', value: '' }]);
+    } else if (flow && flow.inputs) {
+      const { properties: newProperties, regularInputs: newRegularInputs } = separateInputs(flow.inputs);
+      setProperties(newProperties);
+      setRegularInputs(newRegularInputs.length > 0 ? newRegularInputs : [{ type: 'text', value: '' }]);
+    }
+
+    // Flow 변경 시 기존 설정 로드
+    if (flow) {
+      console.log('[FlowInputForm] Flow 변경 감지, 기존 설정 로드:', flow.executionConfig);
+      if (flow.executionConfig) {
+        setExecutionMode(flow.executionConfig.mode);
+        setCommonInputs(flow.executionConfig.commonInputs || []);
+        setForEachItems(flow.executionConfig.forEachItems || []);
+        setRepeatCount(flow.executionConfig.repeatCount || 1);
+      } else {
+        // 기본값으로 초기화
+        setExecutionMode('batch');
+        setCommonInputs([]);
+        setForEachItems([]);
+        setRepeatCount(1);
+      }
+    }
   }, [propInputs, flow]);
 
   useEffect(() => {
-    setDraftInputs(rows);
-  }, [rows]);
+    setDraftProperties(properties);
+    setDraftRegularInputs(regularInputs);
+  }, [properties, regularInputs]);
 
-  // 모달이 열릴 때마다(즉, flowId, propInputs 등 주요 prop이 바뀔 때마다) editMode를 true로 리셋
+  // ✅ flowId가 변경될 때만 editMode를 true로 리셋
   useEffect(() => {
     setEditMode(true);
-  }, [flowId, propInputs]);
+  }, [flowId]);
 
-  // 입력 변경 핸들러
-  const updateRows = (newRows: InputRow[]) => {
-    setRows(newRows);
-    if (onInputChange) onInputChange(newRows);
+  // Store 업데이트 헬퍼
+  const updateStoreWithCombined = (props: InputRow[], regular: InputRow[]) => {
+    const combined = getCombinedInputs(props, regular);
+    if (onInputChange) onInputChange(combined);
     if (focusedFlowChainId && flowId) {
-      store.setFlowInputData(focusedFlowChainId, flowId, newRows);
-    }
-  };
-
-  // Row 추가
-  const addRow = (row?: InputRow) => {
-    updateRows([...rows, row || { type: 'text', value: '' }]);
-  };
-
-  // Row 삭제
-  const removeRow = (idx: number) => {
-    if (rows.length === 1) return;
-    updateRows(rows.filter((_, i) => i !== idx));
-  };
-
-  // Row 이동
-  const moveRow = (idx: number, dir: 'up' | 'down') => {
-    const newRows = [...rows];
-    if (dir === 'up' && idx > 0) {
-      [newRows[idx - 1], newRows[idx]] = [newRows[idx], newRows[idx - 1]];
-    } else if (dir === 'down' && idx < newRows.length - 1) {
-      [newRows[idx], newRows[idx + 1]] = [newRows[idx + 1], newRows[idx]];
-    }
-    updateRows(newRows);
-  };
-
-  // 타입 전환
-  const setType = (idx: number, type: InputType) => {
-    const newRows = [...rows];
-    if (type === 'file') newRows[idx] = { type, value: null };
-    else if (type === 'flow-result') newRows[idx] = {
-      type,
-      value: flowId,
-      flowChainId: focusedFlowChainId || undefined,
-      sourceFlowId: flowId
-    };
-    else newRows[idx] = { type, value: '' };
-    updateRows(newRows);
-  };
-
-  // 파일 선택
-  const handleFileChange = (idx: number, file: File | null) => {
-    const newRows = [...rows];
-    newRows[idx] = { type: 'file', value: file };
-    updateRows(newRows);
-  };
-
-  // Flow Result 선택
-  const handleFlowResultChange = (idx: number, flowId: string) => {
-    const newRows = [...rows];
-    newRows[idx] = { type: 'flow-result', value: flowId, sourceFlowId: flowId };
-    updateRows(newRows);
-  };
-
-  // 텍스트 입력
-  const handleTextChange = (idx: number, value: string) => {
-    const newRows = [...rows];
-    newRows[idx] = { type: 'text', value };
-    updateRows(newRows);
-  };
-
-  // Shift+Enter로 Row 추가
-  const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
-    if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault();
-      addRow();
-    }
-  };
-
-  // 파일 드래그&드롭 지원
-  const handleDrop = (idx: number, e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const files = Array.from(e.dataTransfer.files);
-      const newRows = [...rows];
-      files.forEach((file, i) => {
-        if (i === 0) newRows[idx] = { type: 'file', value: file };
-        else newRows.push({ type: 'file', value: file });
-      });
-      updateRows(newRows);
+      store.setFlowInputData(focusedFlowChainId, flowId, combined);
     }
   };
 
   // 저장 버튼 클릭 시 store에 반영
   const handleSave = () => {
     setEditMode(false);
+    
+    // Draft 데이터를 실제 상태와 store에 반영
+    setProperties(draftProperties);
+    setRegularInputs(draftRegularInputs);
+    updateStoreWithCombined(draftProperties, draftRegularInputs);
+    
+    // 실행 모드 설정을 Flow에 저장
     if (focusedFlowChainId && flowId) {
-      console.log('[FlowInputForm] 저장 시점:', { chainId: focusedFlowChainId, flowId, draftInputs });
-      store.setFlowInputData(focusedFlowChainId, flowId, draftInputs);
-      // 저장 직후 상태 확인
+      console.log('[FlowInputForm] 저장 시점:', { 
+        chainId: focusedFlowChainId, 
+        flowId, 
+        properties: draftProperties, 
+        regularInputs: draftRegularInputs,
+        executionMode,
+        commonInputs,
+        forEachItems,
+        repeatCount
+      });
+      
+      // Flow의 실행 모드 설정 저장
+      store.setFlowExecutionConfig(focusedFlowChainId, flowId, {
+        mode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : [],
+        forEachItems: executionMode === 'forEach' ? forEachItems : [],
+        repeatCount
+      });
+      
       setTimeout(() => {
         const updated = store.flowChainMap[focusedFlowChainId]?.flowMap[flowId]?.inputs;
         console.log('[FlowInputForm] 저장 후 store 상태:', updated);
       }, 100);
     }
-    if (onInputChange) onInputChange(draftInputs);
   };
 
   const handleCancel = () => {
     setEditMode(false);
-    setDraftInputs(rows);
+    // Draft를 원래 상태로 되돌림
+    setDraftProperties(properties);
+    setDraftRegularInputs(regularInputs);
   };
 
-  // SVG 아이콘 (프로젝트 내 선언된 것 사용 예시)
-  const TrashIcon = (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-  );
-  const UpIcon = (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" /></svg>
-  );
-  const DownIcon = (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-  );
-
-  // Flow 결과 가져오기 (store에서)
+  // Flow 결과 가져오기
   const flowResult = flow && Array.isArray(flow.lastResults)
     ? { status: flow.status, outputs: flow.lastResults, error: flow.error, flowId: flow.id }
     : null;
 
+  // 실행을 위한 입력 데이터 변환 함수
+  const getExecutableInputs = (): any[] => {
+    const currentProperties = editMode ? draftProperties : properties;
+    const currentRegularInputs = editMode ? draftRegularInputs : regularInputs;
+    const combined = getCombinedInputs(currentProperties, currentRegularInputs);
+    
+    return combined.map((row) => {
+      if (row.type === 'flow-result') {
+        return extractFlowResultText(row, flowChainMap);
+      } else if (row.type === 'property') {
+        try {
+          const parsed = JSON.parse(row.value as string || '{}');
+          if (parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed) {
+            return parsed;
+          } else {
+            console.warn('[FlowInputForm] Invalid property JSON structure:', parsed);
+            return row.value;
+          }
+        } catch (error) {
+          console.warn('[FlowInputForm] Failed to parse property JSON:', error);
+          return row.value;
+        }
+      } else if (row.type === 'file') {
+        return row.value;
+      } else {
+        return row.value;
+      }
+    });
+  };
+
+  const getFinalInputData = () => {
+    const executableInputs = getExecutableInputs();
+    console.log('[FlowInputForm] 실행용 입력 데이터:', executableInputs);
+    return executableInputs;
+  };
+
+  // 실행 모드 관련 메서드들
+  const getExecutionMode = (): ExecutionMode => executionMode;
+  
+  const getCommonInputs = (): any[] => {
+    if (executionMode !== 'forEach') return [];
+    return commonInputs.map((row) => {
+      if (row.type === 'flow-result') {
+        return extractFlowResultText(row, flowChainMap);
+      } else if (row.type === 'property') {
+        try {
+          const parsed = JSON.parse(row.value as string || '{}');
+          return parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed ? parsed : row.value;
+        } catch (error) {
+          return row.value;
+        }
+      } else if (row.type === 'file') {
+        return row.value;
+      } else {
+        return row.value;
+      }
+    });
+  };
+
+  const getForEachItems = (): any[] => {
+    if (executionMode !== 'forEach') return [];
+    return forEachItems.map((row) => {
+      if (row.type === 'flow-result') {
+        return extractFlowResultText(row, flowChainMap);
+      } else if (row.type === 'property') {
+        try {
+          const parsed = JSON.parse(row.value as string || '{}');
+          return parsed && typeof parsed === 'object' && 'nodeType' in parsed && 'property' in parsed ? parsed : row.value;
+        } catch (error) {
+          return row.value;
+        }
+      } else if (row.type === 'file') {
+        return row.value;
+      } else {
+        return row.value;
+      }
+    });
+  };
+
+  useImperativeHandle(ref, () => ({
+    getFinalInputData,
+    getExecutableInputs,
+    getExecutionMode,
+    getCommonInputs,
+    getForEachItems,
+  }));
+
   return (
     <div className="mb-6 p-3 border border-gray-200 rounded-lg bg-white relative">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-medium">Input Data</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-medium">Flow Configuration</h2>
         <div className="flex gap-2 items-center">
           {editMode ? (
             <>
@@ -180,150 +267,62 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2 mb-4">
-        <div className="text-gray-400 text-sm flex-1">입력값을 추가하세요</div>
-      </div>
-      <div className="space-y-2 mb-4">
-        {rows.map((row, idx) => (
-          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded" onDrop={e => handleDrop(idx, e)} onDragOver={e => e.preventDefault()}>
-            {/* 타입 토글 */}
-            <div className="flex gap-1">
-              <button type="button" className={`px-2 py-1 rounded ${row.type === 'text' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'text')} disabled={!editMode}>Text</button>
-              <button type="button" className={`px-2 py-1 rounded ${row.type === 'file' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => {
-                if (!editMode) return;
-                setType(idx, 'file');
-                setTimeout(() => fileInputRefs.current[idx]?.click(), 0);
-              }} disabled={!editMode}>File</button>
-              <button type="button" className={`px-2 py-1 rounded ${row.type === 'flow-result' ? 'bg-blue-100 text-blue-700' : 'bg-white border'}`} onClick={() => editMode && setType(idx, 'flow-result')} disabled={!editMode}>Flow Result</button>
-            </div>
-            {/* 입력 UI */}
-            {row.type === 'text' && (
-              <textarea
-                className="flex-1 border border-gray-300 rounded px-2 py-1 bg-white resize-none"
-                rows={2}
-                maxLength={500}
-                value={typeof row.value === 'string' ? row.value : ''}
-                onChange={e => editMode && handleTextChange(idx, e.target.value)}
-                onKeyDown={e => editMode && handleKeyDown(e, idx)}
-                placeholder="입력값을 입력하세요"
-                readOnly={!editMode}
-                style={{ minHeight: '2.5rem', maxHeight: '4.5rem', overflow: 'auto' }}
-              />
-            )}
-            {row.type === 'file' && (
-              <div className="flex-1 flex items-center gap-2">
-                <input
-                  type="file"
-                  className="hidden"
-                  id={`file-input-${idx}`}
-                  ref={el => fileInputRefs.current[idx] = el}
-                  onChange={e => editMode && handleFileChange(idx, e.target.files ? e.target.files[0] : null)}
-                  disabled={!editMode}
-                />
-                {row.value && typeof row.value !== 'string' && (
-                  <span className="text-sm text-gray-700">{(row.value as File).name}</span>
-                )}
-                {!row.value && <span className="text-gray-400 text-sm">파일을 선택하세요</span>}
-              </div>
-            )}
-            {row.type === 'flow-result' && (
-              <div className="flex-1 flex gap-2">
-                {/* 1단계: FlowChain 선택 */}
-                <select
-                  className="border border-gray-300 rounded px-2 py-1 bg-white"
-                  value={typeof row.flowChainId === 'string' ? row.flowChainId : ''}
-                  onChange={e => {
-                    if (!editMode) return;
-                    const flowChainId = e.target.value;
-                    const newRows = [...rows];
-                    newRows[idx] = { ...row, flowChainId, sourceFlowId: '', value: '' };
-                    updateRows(newRows);
-                  }}
-                  disabled={!editMode || flowChainIds.length === 0}
-                >
-                  <option value="">FlowChain 선택</option>
-                  {flowChainIds
-                    .filter(id => flowChainIds.indexOf(id) <= flowChainIds.indexOf(String(focusedFlowChainId)))
-                    .map(id => {
-                      const isCurrentChain = id === focusedFlowChainId;
-                      const name = flowChainMap[String(id)]?.name || id;
-                      return (
-                        <option key={id} value={id}>
-                          {isCurrentChain ? `(현재)${name}` : name}
-                        </option>
-                      );
-                    })}
-                </select>
-                {/* 2단계: Flow 선택 (해당 체인에 selectedFlowIds가 있으면) */}
-                {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && (
-                  flowChainMap[String(row.flowChainId || '')].selectedFlowIds.length === 0 ? (
-                    <span className="text-gray-400 text-sm">해당 flow chain에 선택된 flow가 없습니다</span>
-                  ) : (
-                    <select
-                      className="border border-gray-300 rounded px-2 py-1 bg-white"
-                      value={typeof row.sourceFlowId === 'string' ? row.sourceFlowId : ''}
-                      onChange={e => {
-                        if (!editMode) return;
-                        const sourceFlowId = e.target.value;
-                        const newRows = [...rows];
-                        newRows[idx] = { ...row, sourceFlowId, value: sourceFlowId };
-                        updateRows(newRows);
-                      }}
-                      disabled={!editMode}
-                    >
-                      <option value="">[FlowChain] 전체 결과</option>
-                      {Array.from(new Set([
-                        ...flowChainMap[String(row.flowChainId || '')].selectedFlowIds,
-                        flowId // 자기 자신을 반드시 포함
-                      ])).map(fid => {
-                        const isCurrent = fid === flowId;
-                        const name = flowChainMap[String(row.flowChainId || '')].flowMap[fid]?.name || fid;
-                        return (
-                          <option key={fid} value={fid}>
-                            {isCurrent ? `${name} (현재)` : name}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  )
-                )}
-                {/* 결과 없음 안내 */}
-                {row.flowChainId && flowChainMap[String(row.flowChainId || '')] && flowChainMap[String(row.flowChainId || '')].selectedFlowIds.length > 0 && (
-                  (() => {
-                    const chain = flowChainMap[String(row.flowChainId || '')];
-                    if (row.sourceFlowId) {
-                      const flow = chain.flowMap[String(row.sourceFlowId || '')];
-                      if (!flow || !Array.isArray(flow.lastResults) || flow.lastResults.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
-                      }
-                    } else {
-                      // FlowChain 전체 결과
-                      const results = chain.selectedFlowIds.flatMap(fid => chain.flowMap[fid]?.lastResults || []);
-                      if (results.length === 0) {
-                        return <span className="text-gray-400 text-sm ml-2">결과 없음</span>;
-                      }
-                    }
-                    return null;
-                  })()
-                )}
-              </div>
-            )}
-            {/* 위/아래/삭제 */}
-            <div className="flex gap-1 ml-2">
-              <button type="button" onClick={() => moveRow(idx, 'up')} disabled={!editMode || idx === 0} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{UpIcon}</button>
-              <button type="button" onClick={() => moveRow(idx, 'down')} disabled={!editMode || idx === rows.length - 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-50">{DownIcon}</button>
-              <button type="button" onClick={() => removeRow(idx)} disabled={!editMode || rows.length === 1} className="p-1 rounded hover:bg-red-100 disabled:opacity-50">{TrashIcon}</button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {/* 입력 추가 버튼: row 하단 우측 정렬 */}
-      {editMode && (
-        <div className="flex justify-end mb-2">
-          <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded" onClick={() => addRow()}>+ 입력 추가</button>
+
+      {/* Execution Mode Section */}
+      <ExecutionModeSection
+        executionMode={executionMode}
+        onExecutionModeChange={setExecutionMode}
+        editMode={editMode}
+        repeatCount={repeatCount}
+        onRepeatCountChange={setRepeatCount}
+      />
+
+      {/* ForEach Configuration */}
+      {executionMode === 'forEach' && (
+        <ForEachConfigSection
+          commonInputs={commonInputs}
+          forEachItems={forEachItems}
+          onCommonInputsChange={setCommonInputs}
+          onForEachItemsChange={setForEachItems}
+          editMode={editMode}
+          flowId={flowId}
+          focusedFlowChainId={focusedFlowChainId || undefined}
+          flowChainIds={flowChainIds}
+          flowChainMap={flowChainMap}
+        />
+      )}
+      
+      {/* Node Properties Section - Only in batch mode */}
+      {executionMode === 'batch' && (
+        <NodePropertiesSection
+          properties={editMode ? draftProperties : properties}
+          onPropertiesChange={editMode ? setDraftProperties : setProperties}
+          editMode={editMode}
+        />
+      )}
+
+      {/* Input Data Section - Only in batch mode */}
+      {executionMode === 'batch' ? (
+        <InputDataSection
+          inputs={editMode ? draftRegularInputs : regularInputs}
+          onInputsChange={editMode ? setDraftRegularInputs : setRegularInputs}
+          editMode={editMode}
+          flowId={flowId}
+          focusedFlowChainId={focusedFlowChainId || undefined}
+          flowChainIds={flowChainIds}
+          flowChainMap={flowChainMap}
+        />
+      ) : (
+        <div className="mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+          <h3 className="text-md font-medium text-yellow-800 mb-2">Input Data (ForEach Mode)</h3>
+          <p className="text-sm text-yellow-700">
+            ForEach 모드에서는 위의 Execution Mode 섹션에서 Common Inputs와 ForEach Items를 설정하세요.
+            각 Item은 Common Inputs와 결합되어 순차적으로 실행됩니다.
+          </p>
         </div>
       )}
-      {/* FlowResultDisplay 항상 표시 */}
+
+      {/* FlowResultDisplay */}
       <div className="mt-6">
         <FlowResultDisplay
           result={flowResult}
@@ -335,6 +334,6 @@ const FlowInputForm: React.FC<FlowInputFormProps> = ({ flowId, inputs: propInput
       </div>
     </div>
   );
-};
+});
 
 export default FlowInputForm; 

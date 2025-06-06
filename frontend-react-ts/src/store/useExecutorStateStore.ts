@@ -462,10 +462,8 @@ export const useExecutorStateStore = create<ExecutorState>()(
       setFlowResults: (chainId, flowId, results) => set((state) => {
         const flow = state.flows[flowId];
         if (!flow) return state;
-        
         // Handle null/undefined results case
         if (results === null || results === undefined) {
-          console.warn(`[useExecutorStateStore] 결과가 null/undefined입니다: Flow ${flowId} (${flow.name})`);
           return {
             flows: {
               ...state.flows,
@@ -476,34 +474,22 @@ export const useExecutorStateStore = create<ExecutorState>()(
             }
           };
         }
-        
         // 결과가 객체인지 확인하고 필요한 구조로 변환
         let normalizedResults = results;
-        
-        // 결과가 배열이 아니고 객체인 경우, 배열로 변환
         if (!Array.isArray(normalizedResults) && typeof normalizedResults === 'object' && normalizedResults !== null) {
-          // 타입 단언을 사용하여 'outputs' 속성에 안전하게 접근
           const resultObj = normalizedResults as {outputs?: any};
           if (resultObj.outputs !== undefined) {
-            // If outputs exists but is null, use empty array
             if (resultObj.outputs === null) {
               normalizedResults = [];
             } else {
-              // 이미 적절한 구조인 경우 그대로 사용
               normalizedResults = resultObj.outputs;
             }
           } else {
-            // 기타 객체인 경우 배열로 변환
             normalizedResults = [normalizedResults];
           }
         } else if (!Array.isArray(normalizedResults)) {
-          // 배열이 아닌 기본 값인 경우 배열로 감싸기
           normalizedResults = [normalizedResults];
         }
-        
-        // 결과 로그 출력
-        console.log(`[useExecutorStateStore] 결과 저장: Flow ${flowId} (${flow.name}), 결과:`, normalizedResults);
-        
         return {
           flows: {
             ...state.flows,
@@ -553,8 +539,6 @@ export const useExecutorStateStore = create<ExecutorState>()(
       // 모든 플로우의 결과 초기화
       resetResults: () => set((state) => {
         const updatedFlows = { ...state.flows };
-        
-        // 모든 플로우의 lastResults를 null로 설정
         Object.keys(updatedFlows).forEach(flowId => {
           updatedFlows[flowId] = {
             ...updatedFlows[flowId],
@@ -563,8 +547,6 @@ export const useExecutorStateStore = create<ExecutorState>()(
             error: undefined
           };
         });
-        
-        // 모든 체인의 상태도 초기화
         const updatedFlowChainMap = { ...state.flowChainMap };
         Object.keys(updatedFlowChainMap).forEach(chainId => {
           updatedFlowChainMap[chainId] = {
@@ -573,9 +555,6 @@ export const useExecutorStateStore = create<ExecutorState>()(
             error: undefined
           };
         });
-        
-        console.log('[useExecutorStateStore] 모든 플로우 결과 초기화 완료');
-        
         return {
           flows: updatedFlows,
           flowChainMap: updatedFlowChainMap

@@ -1,10 +1,12 @@
+import { v4 as uuidv4 } from 'uuid';
 import { FlowData } from '../utils/data/importExportUtils';
 import { FlowExecutionContext } from '../core/FlowExecutionContext';
 import { Node as BaseNode } from '../core/Node';
-import { v4 as uuidv4 } from 'uuid';
+import { globalNodeFactory } from '../core/NodeFactory';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
+import { resolveFlowResultInputs } from '../utils/flowResultUtils';
 import { deepClone } from '../utils/helpers';
 import { ExecutionStatus } from '../store/useExecutorStateStore';
-import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
 
 // 출력 결과 타입 정의
 export interface NodeResult {
@@ -15,6 +17,9 @@ export interface NodeResult {
   result?: any;
 }
 
+// 실행 모드 타입 정의
+export type ExecutionMode = 'batch' | 'forEach';
+
 // 코드 흐름 개선: 실행을 위한 공통 인터페이스 정의
 export interface ExecuteFlowParams {
   flowJson: FlowData;
@@ -23,6 +28,9 @@ export interface ExecuteFlowParams {
   flowChainId?: string;
   onComplete?: (outputs: any) => void;
   onNodeStateChange?: (nodeId: string, status: string, result?: any, error?: string) => void;
+  // ForEach 실행 모드 지원
+  executionMode?: ExecutionMode; // 기본값: 'batch'
+  commonInputs?: any[]; // forEach 모드에서 사용할 공통 입력
 }
 
 export interface ExecutionResponse {
@@ -45,6 +53,10 @@ export interface ExecuteChainParams {
    * 기본값: sequential
    */
   executionStrategy?: ChainExecutionStrategy;
+  // 새로운 기능들
+  stopAtFlowId?: string; // 특정 Flow에서 실행 중단
+  maxIterations?: number; // 최대 반복 실행 횟수
+  contextStorage?: any[]; // Context 저장소
 }
 
 /**
@@ -76,6 +88,12 @@ async function executeChainSequential(params: ExecuteChainParams, store: any, fl
     }
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
+    
+    // 실행 모드와 입력 데이터를 저장된 executionConfig에서 가져오기 (단일 진입점 원칙)
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
+    
     let currentFlowInputs = flow.inputs;
     if ((!currentFlowInputs || currentFlowInputs.length === 0) && flowChain.flowIds.indexOf(flowId) > 0) {
       const previousFlowId = flowChain.flowIds[flowChain.flowIds.indexOf(flowId) - 1];
@@ -85,12 +103,16 @@ async function executeChainSequential(params: ExecuteChainParams, store: any, fl
         store.setFlowInputData(flowChainId, flowId, currentFlowInputs);
       }
     }
+    
     try {
+      // 단일 진입점: FlowDetailModal과 동일한 방식으로 실행
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: currentFlowInputs,
+        inputs: executionMode === 'forEach' ? forEachItems : currentFlowInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
         onComplete: (outputs) => {
           store.setFlowResult(flowChainId, flowId, outputs);
           chainResults.push({ flowId, outputs });
@@ -136,13 +158,22 @@ async function executeChainParallel(params: ExecuteChainParams, store: any, flow
     }
     onFlowStart?.(flowChainId, flowId);
     store.setFlowStatus(flowChainId, flowId, 'running');
+    
+    // 실행 모드와 입력 데이터를 저장된 executionConfig에서 가져오기 (단일 진입점 원칙)
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
+    
     let currentFlowInputs = flow.inputs;
     try {
+      // 단일 진입점: FlowDetailModal과 동일한 방식으로 실행
       const flowExecutionResult = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: currentFlowInputs,
+        inputs: executionMode === 'forEach' ? forEachItems : currentFlowInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
         onComplete: (outputs) => {
           store.setFlowResult(flowChainId, flowId, outputs);
           chainResults.push({ flowId, outputs });
@@ -224,44 +255,62 @@ class FlowExecutor {
    * @returns 실행 응답
    */
   async execute(params: ExecuteFlowParams): Promise<ExecutionResponse> {
-    const { flowJson, inputs, flowId, flowChainId: chainId } = params;
+    const { flowJson, inputs, flowId, flowChainId: chainId, executionMode = 'batch', commonInputs = [] } = params;
     const executionId = `exec-${uuidv4()}`;
     
     try {
-      console.log(`[FlowExecutor] Executing flow: ${flowId}${chainId ? ` (chain: ${chainId})` : ''}`);
+      console.log(`[FlowExecutor] Executing flow: ${flowId}${chainId ? ` (chain: ${chainId})` : ''}, mode: ${executionMode}`);
       
-      // 루트 노드 찾기
-      const rootNodes = this.findRootNodes(flowJson);
-      
-      if (rootNodes.length === 0) {
-        throw new Error("No root nodes found in flow");
+      // repeatCount 처리 (기본값: 1)
+      let repeatCount = 1;
+      if (chainId && flowId) {
+        const store = useFlowExecutorStore.getState();
+        const flow = store.getFlow(chainId, flowId);
+        repeatCount = flow?.executionConfig?.repeatCount || 1;
       }
       
-      // 실행 컨텍스트 생성
-      const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
+      console.log(`[FlowExecutor] Repeat count: ${repeatCount}`);
       
-      // 입력 설정
-      context.setInputs(inputs);
+      // 반복 실행을 위한 전체 결과 배열
+      const allRepeatResults: any[] = [];
       
-      // 루트 노드부터 실행
-      await this.executeRootNodes(rootNodes, inputs, context);
+      // repeatCount만큼 반복 실행
+      for (let repeat = 0; repeat < repeatCount; repeat++) {
+        console.log(`[FlowExecutor] Executing iteration ${repeat + 1}/${repeatCount}`);
+        
+        // 각 반복마다 새로운 실행 ID 생성
+        const iterationExecutionId = `${executionId}-repeat-${repeat}`;
+        
+        // 단일 반복 실행
+        const iterationResults = await this.executeSingleIteration({
+          ...params,
+          executionId: iterationExecutionId
+        });
+        
+        // 결과를 flat하게 쌓기
+        if (Array.isArray(iterationResults)) {
+          allRepeatResults.push(...iterationResults);
+        } else if (iterationResults) {
+          allRepeatResults.push(iterationResults);
+        }
+      }
       
-      // 결과 수집 및 반환
-      const outputs = getAllOutputs(context);
+      console.log(`[FlowExecutor] All repeat iterations completed. Total results: ${allRepeatResults.length}`);
       
       // 콜백 알림
       if (params.onComplete) {
-        params.onComplete(outputs);
+        params.onComplete(allRepeatResults);
       }
       
       // 등록된 콜백에 알림
-      notifyResultCallbacks(flowId, outputs);
+      notifyResultCallbacks(flowId, allRepeatResults);
       
       return {
         executionId,
-        outputs,
+        outputs: allRepeatResults,
         status: 'success'
       };
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[FlowExecutor] Error executing flow ${flowId}:`, errorMessage);
@@ -272,6 +321,76 @@ class FlowExecutor {
         status: 'error',
         error: errorMessage
       };
+    }
+  }
+  
+  /**
+   * 단일 반복 실행 (기존 execute 로직)
+   */
+  private async executeSingleIteration(params: ExecuteFlowParams & { executionId: string }): Promise<any> {
+    const { flowJson, inputs, flowId, flowChainId: chainId, executionMode = 'batch', commonInputs = [], executionId } = params;
+    
+    // 루트 노드 찾기
+    const rootNodes = this.findRootNodes(flowJson);
+    
+    if (rootNodes.length === 0) {
+      throw new Error("No root nodes found in flow");
+    }
+
+    if (executionMode === 'forEach') {
+      // ForEach 모드: 각 input에 대해 순차적으로 플로우 실행
+      console.log(`[FlowExecutor] ForEach mode: processing ${inputs.length} inputs sequentially`);
+      const allResults: any[] = [];
+      
+      for (let i = 0; i < inputs.length; i++) {
+        const currentInput = inputs[i];
+        const combinedInputs = [...commonInputs, currentInput];
+        
+        console.log(`[FlowExecutor] Processing item ${i + 1}/${inputs.length}:`, { currentInput, combinedInputs });
+        
+        // 실행 컨텍스트 생성 (각 실행마다 새로운 컨텍스트)
+        const context = this.createExecutionContext(`${executionId}-${i}`, flowJson, chainId, flowId);
+        
+        // 입력 설정
+        context.setInputs(combinedInputs);
+        
+        // 루트 노드부터 실행 (중단 체크 포함)
+        const shouldContinue = await this.executeRootNodes(rootNodes, combinedInputs, context);
+        if (!shouldContinue) {
+          console.log(`[FlowExecutor] Execution stopped at iteration ${i + 1}`);
+          break;
+        }
+        
+        // 결과 수집
+        const outputs = getAllOutputs(context);
+        
+        // 결과를 flat하게 수집: [...result1, ...result2, ...result3]
+        if (Array.isArray(outputs)) {
+          allResults.push(...outputs);
+        } else if (outputs) {
+          allResults.push(outputs);
+        }
+      }
+      
+      console.log(`[FlowExecutor] ForEach mode completed. Total results: ${allResults.length}`);
+      return allResults;
+      
+    } else {
+      // Batch 모드: 기존 방식
+      console.log(`[FlowExecutor] Batch mode: processing all inputs together`);
+      
+      // 실행 컨텍스트 생성
+      const context = this.createExecutionContext(executionId, flowJson, chainId, flowId);
+      
+      // 입력 설정
+      context.setInputs(inputs);
+      
+      // 루트 노드부터 실행 (중단 체크 포함)
+      await this.executeRootNodes(rootNodes, inputs, context);
+      
+      // 결과 수집 및 반환
+      const outputs = getAllOutputs(context);
+      return outputs;
     }
   }
   
@@ -314,7 +433,7 @@ class FlowExecutor {
    * @param inputs 입력 데이터
    * @param context 실행 컨텍스트
    */
-  private async executeRootNodes(rootNodes: FlowData['nodes'], inputs: any[], context: FlowExecutionContext): Promise<void> {
+  private async executeRootNodes(rootNodes: FlowData['nodes'], inputs: any[], context: FlowExecutionContext): Promise<boolean> {
     // 모든 루트 노드에 대해 병렬 실행
     const promises = rootNodes.map(async (rootNode) => {
       const node = context.createNodeInstance(rootNode.id, rootNode.type || '', rootNode.data);
@@ -324,6 +443,13 @@ class FlowExecutor {
     });
     
     await Promise.all(promises);
+    
+    // 중단 체크
+    const shouldContinue = !context.isStopRequested_();
+    if (!shouldContinue) {
+      console.log(`[FlowExecutor] Execution stopped by user request`);
+    }
+    return shouldContinue;
   }
 }
 
@@ -345,16 +471,52 @@ class ExecutorFlowExecutor extends FlowExecutor {
     chainId?: string,
     flowId?: string
   ): FlowExecutionContext {
-    if (!chainId || !flowId) {
-      throw new Error('chainId and flowId are required for ExecutorFlowExecutor context');
+    // ✅ Flow Executor store에서 실제 노드 데이터를 미리 가져와서 flowJson.nodes를 업데이트
+    try {
+      const store = useFlowExecutorStore.getState();
+      const nodeMap = chainId && flowId ? store.flowChainMap?.[chainId]?.flowMap?.[flowId]?.nodeMap : null;
+      
+      if (nodeMap) {
+        // flowJson.nodes의 data 필드를 store의 data로 업데이트
+        const updatedNodes = flowJson.nodes.map(node => {
+          const storeNode = nodeMap[node.id];
+          if (storeNode && storeNode.data && typeof storeNode.data === 'object') {
+            console.log(`[ExecutorFlowExecutor] Updated node ${node.id} data from store:`, {
+              originalKeys: node.data ? Object.keys(node.data) : 'no data',
+              storeKeys: Object.keys(storeNode.data),
+              ...(node.id.includes('html-parser') && {
+                originalExtractionRules: (node.data as any)?.extractionRules?.length || 0,
+                storeExtractionRules: (storeNode.data as any)?.extractionRules?.length || 0
+              })
+            });
+            
+            return {
+              ...node,
+              data: storeNode.data  // ✅ store의 데이터로 교체
+            };
+          }
+          return node;
+        });
+        
+        // 업데이트된 flowJson 생성
+        flowJson = {
+          ...flowJson,
+          nodes: updatedNodes
+        };
+      }
+    } catch (error) {
+      console.error('[ExecutorFlowExecutor] Error updating flowJson with store data:', error);
     }
-    // 실행기용 컨텍스트 생성
+    
+    // ✅ 수정: 항상 globalNodeFactory를 사용하여 단일 인스턴스 보장
+    // 업데이트된 flowJson으로 실행기용 컨텍스트 생성
+    // chainId나 flowId가 없어도 작동하도록 수정
     return FlowExecutionContext.createForExecutor(
       executionId, 
       flowJson, 
-      undefined, // nodeFactory는 context 내부에서 기본값으로 생성됨
-      chainId, 
-      flowId
+      globalNodeFactory,  // ✅ 수정: nodeFactory 매개변수 대신 globalNodeFactory 직접 사용
+      chainId,  // undefined일 수 있음
+      flowId    // undefined일 수 있음
     );
   }
 }
@@ -483,13 +645,32 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
       } else if (nodeType) {
         nodeName = nodeType;
       }
-      results.push({
-        nodeId,
-        nodeName,
-        nodeType,
-        outputs: nodeOutputs,
-        result: nodeOutputs && nodeOutputs.length === 1 ? nodeOutputs[0] : nodeOutputs
-      });
+
+      // 배열 결과를 flat하게 처리
+      if (nodeOutputs && nodeOutputs.length > 0) {
+        nodeOutputs.forEach((output, index) => {
+          // 각 output을 개별 NodeResult로 생성
+          const resultNodeName = nodeOutputs.length > 1 ? `${nodeName} [${index + 1}]` : nodeName;
+          const resultNodeId = nodeOutputs.length > 1 ? `${nodeId}_${index}` : nodeId;
+          
+          results.push({
+            nodeId: resultNodeId,
+            nodeName: resultNodeName,
+            nodeType,
+            outputs: [output],
+            result: output
+          });
+        });
+      } else {
+        // 출력이 없는 경우 기존 방식 유지
+        results.push({
+          nodeId,
+          nodeName,
+          nodeType,
+          outputs: nodeOutputs || [],
+          result: nodeOutputs && nodeOutputs.length === 1 ? nodeOutputs[0] : nodeOutputs
+        });
+      }
     } catch (error) {
       console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);
     }
@@ -511,26 +692,25 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
           nodeName = nodeType;
         }
         if (nodeOutputs && nodeOutputs.length > 0) {
-          for (const output of nodeOutputs) {
+          nodeOutputs.forEach((output, index) => {
+            // 각 output을 개별 NodeResult로 생성
+            const resultNodeName = nodeOutputs.length > 1 ? `${nodeName} [${index + 1}]` : nodeName;
+            const resultNodeId = nodeOutputs.length > 1 ? `${nodeId}_${index}` : nodeId;
+            
             // 파일 객체인 경우 파일명/경로만 남김
+            let processedResult = output;
             if (output && typeof output === 'object' && (output.name || output.path)) {
-              results.push({
-                nodeId,
-                nodeName,
-                nodeType,
-                outputs: [output],
-                result: output.name ? `${output.name}${output.path ? ` (${output.path})` : ''}` : JSON.stringify(output)
-              });
-            } else {
-              results.push({
-                nodeId,
-                nodeName,
-                nodeType,
-                outputs: [output],
-                result: output
-              });
+              processedResult = output.name ? `${output.name}${output.path ? ` (${output.path})` : ''}` : JSON.stringify(output);
             }
-          }
+            
+            results.push({
+              nodeId: resultNodeId,
+              nodeName: resultNodeName,
+              nodeType,
+              outputs: [output],
+              result: processedResult
+            });
+          });
         }
       } catch (error) {
         console.error(`[getAllOutputs] 노드 ${nodeId} 결과 처리 중 오류:`, error);
@@ -546,7 +726,7 @@ export const getAllOutputs = (context: FlowExecutionContext): NodeResult[] => {
  * 노드 및 자식 노드 실행 함수
  * 노드 실행 및 자식 노드 체인 처리를 담당
  * @param node 실행할 노드 인스턴스
- * @param input 입력 데이터
+ * @param input 입력 데이터 (원본)
  * @param context 실행 컨텍스트
  * @returns 노드 실행 결과
  */
@@ -560,14 +740,33 @@ export const executeNode = async (
   }
 
   const nodeId = node.id;
+  
+  // 실행 전 중단 체크
+  if (context.isStopRequested_()) {
+    console.log(`[executeNode] Execution stopped before executing node: ${nodeId}`);
+    throw new Error("Execution stopped by user request");
+  }
+  
   try {
     console.log(`[flowExecutionService] Executing node: ${nodeId} (type: ${node.type})`);
     
     // 노드 실행 상태 설정
     context.markNodeRunning(nodeId);
     
-    // 노드 실행
-    const result = await node.process(input, context);
+    // FlowExecutionContext에서 변환된 입력을 가져와서 사용
+    // 변환된 입력이 없으면 원본 입력 사용
+    const contextInputs = context.getInputs();
+    const actualInput = contextInputs.length > 0 ? contextInputs : input;
+    
+    // 노드 실행 (변환된 입력 전달)
+    const result = await node.process(actualInput, context);
+    
+    // 실행 후 중단 체크
+    if (context.isStopRequested_()) {
+      console.log(`[executeNode] Execution stopped after executing node: ${nodeId}`);
+      context.markNodeError(nodeId, "Execution stopped by user request");
+      throw new Error("Execution stopped by user request");
+    }
     
     // 성공 처리
     context.markNodeSuccess(nodeId, result);
@@ -578,81 +777,6 @@ export const executeNode = async (
     context.markNodeError(nodeId, errorMessage);
     throw error;
   }
-};
-
-/**
- * InputRow[] → value[] 변환 (flow-result row 치환 포함)
- */
-function resolveInputRowsToValues(inputs: any[], flowChainMap?: any): any[] {
-  if (!Array.isArray(inputs)) return [];
-  let result: any[] = [];
-  for (let i = 0; i < inputs.length; i++) {
-    const row = inputs[i];
-    if (row && typeof row === 'object' && row.type === 'flow-result') {
-      // flowChainId, sourceFlowId로 결과값 추출
-      const chain = flowChainMap?.[row.flowChainId];
-      if (!chain) continue;
-      if (!row.sourceFlowId) {
-        // FlowChain 전체 결과 (selectedFlowIds의 모든 outputs)
-        const outputs = chain.selectedFlowIds.flatMap((fid: string) => chain.flowMap[fid]?.lastResults || []);
-        result.push(...outputs);
-      } else {
-        // 특정 Flow 결과만
-        const flow = chain.flowMap[row.sourceFlowId];
-        if (flow && Array.isArray(flow.lastResults)) {
-          result.push(...flow.lastResults);
-        }
-      }
-    } else {
-      // 일반 row는 value만 추출
-      result.push(row && typeof row === 'object' && 'value' in row ? row.value : row);
-    }
-  }
-  return result;
-}
-
-/**
- * [Flow Editor용] 단일 Flow 실행
- * @param params 실행 매개변수
- * @returns 실행 응답
- */
-export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  const store = useFlowExecutorStore.getState();
-  const flowChainMap = store.flowChainMap;
-  const normalizedInputs = resolveInputRowsToValues(params.inputs, flowChainMap);
-  return editorFlowExecutor.execute({ ...params, inputs: normalizedInputs });
-};
-
-/**
- * Flow Executor를 위한 Flow 실행 함수
- * @param params 실행 매개변수
- * @returns 실행 응답
- */
-export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
-  let resolvedInputs = params.inputs;
-  if (Array.isArray(params.inputs) && params.inputs.length > 0 && typeof params.inputs[0] === 'object' && 'type' in params.inputs[0]) {
-    const store = useFlowExecutorStore.getState();
-    const flowChainMap = store.flowChainMap;
-    resolvedInputs = resolveInputRowsToValues(params.inputs, flowChainMap);
-  }
-  if (!params.flowChainId || !params.flowId) {
-    return editorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
-  }
-  const response = await executorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
-  if (response.status === 'success') {
-    const safeOutputs = response.outputs || [];
-    useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
-  }
-  if (params.onComplete && response.status === 'success') {
-    params.onComplete(response.outputs);
-    notifyResultCallbacks(params.flowId, {
-      status: response.status,
-      outputs: response.outputs,
-      error: response.error,
-      flowId: params.flowId
-    });
-  }
-  return response;
 };
 
 /**
@@ -703,4 +827,52 @@ export const processInputReferences = (inputs: any[], previousResults: Record<st
     
     return processValue(input);
   });
+};
+
+/**
+ * [Flow Editor용] 단일 Flow 실행
+ * @param params 실행 매개변수
+ * @returns 실행 응답
+ */
+export const executeFlow = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  const store = useFlowExecutorStore.getState();
+  const flowChainMap = store.flowChainMap;
+  const normalizedInputs = resolveFlowResultInputs(params.inputs, flowChainMap);
+  return editorFlowExecutor.execute({ ...params, inputs: normalizedInputs });
+};
+
+/**
+ * Flow Executor를 위한 Flow 실행 함수
+ * @param params 실행 매개변수
+ * @returns 실행 응답
+ */
+export const executeFlowExecutor = async (params: ExecuteFlowParams): Promise<ExecutionResponse> => {
+  let resolvedInputs = params.inputs;
+  if (Array.isArray(params.inputs) && params.inputs.length > 0 && typeof params.inputs[0] === 'object' && 'type' in params.inputs[0]) {
+    const store = useFlowExecutorStore.getState();
+    const flowChainMap = store.flowChainMap;
+    resolvedInputs = resolveFlowResultInputs(params.inputs, flowChainMap);
+  }
+  
+  // 단일 진입점 보장: 항상 executorFlowExecutor 사용
+  // flowChainId/flowId가 없어도 ExecutorFlowExecutor가 처리 가능
+  const response = await executorFlowExecutor.execute({ ...params, inputs: resolvedInputs });
+  
+  if (response.status === 'success') {
+    const safeOutputs = response.outputs || [];
+    // flowChainId와 flowId가 있는 경우에만 결과 저장
+    if (params.flowChainId && params.flowId) {
+      useFlowExecutorStore.getState().setFlowResult(params.flowChainId, params.flowId, safeOutputs);
+    }
+  }
+  if (params.onComplete && response.status === 'success') {
+    params.onComplete(response.outputs);
+    notifyResultCallbacks(params.flowId, {
+      status: response.status,
+      outputs: response.outputs,
+      error: response.error,
+      flowId: params.flowId
+    });
+  }
+  return response;
 }; 

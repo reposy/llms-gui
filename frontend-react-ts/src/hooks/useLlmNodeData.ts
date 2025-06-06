@@ -1,11 +1,11 @@
 import { useCallback } from 'react';
 import { createNodeDataHook } from './useNodeDataFactory';
-import { LLMNodeContent, LLMMode } from '../types/nodes';
+import { LlmNodeProperty, LLMMode } from '../types/nodes';
 
 /**
  * Default values for LLM node content
  */
-const LLM_DEFAULTS: Partial<LLMNodeContent> = {
+const LLM_DEFAULTS: Partial<LlmNodeProperty> = {
   prompt: '',
   model: '',
   temperature: 0.7,
@@ -21,7 +21,7 @@ const LLM_DEFAULTS: Partial<LLMNodeContent> = {
  * Return type for useLlmNodeData hook
  */
 interface LlmNodeDataHook {
-  content: LLMNodeContent | undefined;
+  content: LlmNodeProperty | undefined;
   prompt: string;
   model: string;
   temperature: number | undefined;
@@ -35,7 +35,7 @@ interface LlmNodeDataHook {
   label: string;
   responseContent: string | object;
   isDirty: boolean;
-  updateContent: (updates: Partial<LLMNodeContent>) => void;
+  updateContent: (updates: Partial<LlmNodeProperty>) => void;
   handlePromptChange: (value: string) => void;
   handleModelChange: (value: string) => void;
   handleTemperatureChange: (value: number) => void;
@@ -52,7 +52,7 @@ interface LlmNodeDataHook {
 /**
  * Custom hook for managing LLM node data
  */
-export const useLlmNodeData = createNodeDataHook<LLMNodeContent, LlmNodeDataHook>(
+export const useLlmNodeData = createNodeDataHook<LlmNodeProperty, LlmNodeDataHook>(
   'llm',
   (params) => {
     const { nodeId, content, updateContent, createChangeHandler } = params;

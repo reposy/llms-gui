@@ -115,22 +115,21 @@ const DOMTreeNode: React.FC<DOMTreeViewProps> = ({
         className={`py-1 pl-2 flex items-center cursor-pointer hover:bg-gray-100 rounded-md 
                     ${isSelected ? 'bg-blue-100 border border-blue-300' : ''} 
                     ${isHighlighted ? 'bg-yellow-100 border border-yellow-300' : ''}`}
-        onClickCapture={(e: React.MouseEvent) => {
+        onClick={(e: React.MouseEvent) => {
           e.stopPropagation(); 
           e.preventDefault();
           handleSelect(); 
-          if (elementChildren.length > 0) {
-            toggleExpand(currentPath);
-          }
         }}
       >
         <span 
-           className="text-xs mr-1 text-gray-500 cursor-pointer w-4 text-center" 
+           className="text-xs mr-1 text-gray-500 cursor-pointer w-4 text-center flex-shrink-0" 
            onClick={handleToggleClick}
         >
-          {elementChildren.length > 0 ? (isExpanded ? '▼' : '▶') : ''}
+          {elementChildren.length > 0 ? (isExpanded ? '▼' : '▶') : (
+            <span className="text-gray-300">•</span>
+          )}
         </span>
-        <span className="text-xs font-mono text-gray-700">
+        <span className="text-xs font-mono text-gray-700 flex-1">
           {`<${tagName}${attributes}>`}
         </span>
         {textContent && (

@@ -1,11 +1,14 @@
 import { ExecutionContext } from '../types/execution';
 import { getNodeState, setNodeState } from '../store/useNodeStateStore';
-import { NodeContent } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { Node as FlowNode, Edge } from '@xyflow/react';
 import { NodeFactory, globalNodeFactory } from './NodeFactory';
 import { Node } from './Node';
 import { FlowData } from '../utils/data/importExportUtils';
 import { useExecutorStateStore } from '../store/useExecutorStateStore';
+import { getNodeProperty } from '../store/useNodePropertyStore';
+import { useFlowExecutorStore } from '../store/useFlowExecutorStore';
+import { extractFlowResultText } from '../utils/flowResultUtils';
 
 /**
  * Implementation of the ExecutionContext interface for flow execution
@@ -78,7 +81,7 @@ export class FlowExecutionContext implements ExecutionContext {
   /**
    * Function to get a node's content
    */
-  getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent;
+  getNodePropertyFunc: (nodeId: string, nodeType?: string) => NodeProperty;
 
   /**
    * Full list of nodes in the current flow structure.
@@ -104,9 +107,22 @@ export class FlowExecutionContext implements ExecutionContext {
   private onStoreOutput?: (nodeId: string, output: any) => void;
 
   /**
+   * 실행 중단 요청 플래그
+   */
+  private isStopRequested: boolean = false;
+
+  /**
+   * 중단 요청 콜백 함수
+   */
+  private onStopRequested?: () => void;
+
+  // 동적으로 적용된 Property 저장
+  private dynamicNodeProperties: Map<string, any> = new Map();
+
+  /**
    * Create a new flow execution context
    * @param executionId Unique ID for this execution
-   * @param getNodeContentFunc Function to get a node's content
+   * @param getNodePropertyFunc Function to get a node's content
    * @param nodes Full list of nodes in the flow
    * @param edges Full list of edges in the flow
    * @param nodeFactory Node factory for creating node instances
@@ -118,7 +134,7 @@ export class FlowExecutionContext implements ExecutionContext {
    */
   constructor(
     executionId: string,
-    getNodeContentFunc: (nodeId: string, nodeType?: string) => NodeContent,
+    getNodePropertyFunc: (nodeId: string, nodeType?: string) => NodeProperty,
     nodes: FlowNode[],
     edges: Edge[],
     nodeFactory?: NodeFactory,
@@ -130,18 +146,18 @@ export class FlowExecutionContext implements ExecutionContext {
   ) {
     this.executionId = executionId;
     this.triggerNodeId = '';
-    this.getNodeContentFunc = getNodeContentFunc;
+    this.getNodePropertyFunc = getNodePropertyFunc;
     this.nodes = nodes;
     this.edges = edges;
     this.nodeFactory = nodeFactory || globalNodeFactory;
     this.isExecutorCtx = isExecutorContext;
-    if (this.isExecutorCtx) {
-      if (!chainId || !flowId) {
-        throw new Error('chainId and flowId are required for Executor context');
-      }
+    
+    // Executor 컨텍스트이지만 chainId/flowId가 없어도 허용
+    if (this.isExecutorCtx && chainId && flowId) {
       this.currentChainId = chainId;
       this.currentFlowId = flowId;
     }
+    
     this.onNodeStateChange = onNodeStateChange;
     this.onStoreOutput = onStoreOutput;
   }
@@ -159,8 +175,27 @@ export class FlowExecutionContext implements ExecutionContext {
   static createForEditor(executionId: string, flowData: FlowData): FlowExecutionContext {
     return new FlowExecutionContext(
       executionId,
-      (nodeId) => {
-        // Editor 모드: data만 반환
+      (nodeId, nodeType) => {
+        // 1. 먼저 NodeFactory의 동적 속성 확인 (최우선)
+        if (nodeType && globalNodeFactory) {
+          const dynamicProperty = globalNodeFactory.getDynamicProperties(nodeType);
+          if (dynamicProperty && typeof dynamicProperty === 'object') {
+            console.log(`[createForEditor] Using NodeFactory dynamic property for ${nodeType}:`, dynamicProperty);
+            return dynamicProperty;
+          }
+        }
+        
+        // 2. Editor 모드: useNodePropertyStore에서 최신 설정을 가져옴
+        try {
+          const storeProperty = getNodeProperty(nodeId);
+          if (storeProperty && typeof storeProperty === 'object') {
+            return storeProperty;
+          }
+        } catch (e) {
+          console.warn('[createForEditor] Failed to get property from store:', e);
+        }
+        
+        // 3. fallback to node.data
         const node = flowData.nodes.find(n => n.id === nodeId);
         return node && (node as any).data ? (node as any).data : {};
       },
@@ -178,7 +213,7 @@ export class FlowExecutionContext implements ExecutionContext {
   /**
    * 실행기용 실행 컨텍스트 생성 팩토리 메서드
    * @note 이 컨텍스트는 nodeMap, rootIds, leafIds 기반으로만 동작하며,
-   *       Editor store/NodeContent 등은 절대 참조하지 않는다.
+   *       Editor store/NodeProperty 등은 절대 참조하지 않는다.
    *       Editor store 접근 시도시 에러를 throw한다.
    * @param executionId 실행 ID
    * @param flowData Flow 데이터
@@ -198,30 +233,46 @@ export class FlowExecutionContext implements ExecutionContext {
     flowChainId?: string,
     flowId?: string
   ): FlowExecutionContext {
+    const factory = nodeFactory || globalNodeFactory;
+    
     return new FlowExecutionContext(
       executionId,
-      (nodeId) => {
-        // Executor 모드: property만 반환
-        try {
-          if (flowChainId && flowId) {
-            const { useFlowExecutorStore } = require('../store/useFlowExecutorStore');
+      (nodeId, nodeType) => {
+        // 1. 먼저 NodeFactory의 동적 속성 확인 (최우선)
+        if (nodeType && factory) {
+          const dynamicProperty = factory.getDynamicProperties(nodeType);
+          if (dynamicProperty && typeof dynamicProperty === 'object') {
+            console.log(`[createForExecutor] Using NodeFactory dynamic property for ${nodeType}:`, dynamicProperty);
+            return dynamicProperty;
+          }
+        }
+        
+        // 2. Executor 모드: Flow Executor store에서 data 필드를 property로 사용 (chainId/flowId가 있는 경우만)
+        if (flowChainId && flowId) {
+          try {
             const store = useFlowExecutorStore.getState();
             const nodeMap = store.flowChainMap?.[flowChainId]?.flowMap?.[flowId]?.nodeMap;
-            const storeProperty = nodeMap?.[nodeId]?.property;
-            if (storeProperty && typeof storeProperty === 'object' && 'prompt' in storeProperty) {
+            const storeProperty = nodeMap?.[nodeId]?.data;
+            
+            if (storeProperty && typeof storeProperty === 'object') {
               return storeProperty;
             }
+          } catch (e) {
+            console.error(`[createForExecutor] Error retrieving node ${nodeId}:`, e);
           }
-        } catch (e) {}
-        // property가 없으면 빈 객체 반환 (data로 fallback하지 않음)
+        }
+        
+        // 3. fallback을 buildGraphStructure에서 설정한 데이터로 변경
         const node = flowData.nodes.find(n => n.id === nodeId);
-        if (node && (node as any).property && 'prompt' in (node as any).property) return (node as any).property;
-        return {};
+        // buildGraphStructure에서 이미 올바른 데이터가 node.data에 설정되어 있어야 함
+        const fallbackData = node && node.data && typeof node.data === 'object' ? node.data : {} as any;
+        
+        return fallbackData;
       },
       flowData.nodes,
       flowData.edges,
-      nodeFactory || globalNodeFactory, // 항상 싱글턴 사용
-      true, // isExecutorContext 플래그
+      factory,
+      true,  // isExecutorContext
       flowChainId,
       flowId,
       undefined,
@@ -234,8 +285,136 @@ export class FlowExecutionContext implements ExecutionContext {
    * @param inputs 입력 배열
    */
   setInputs(inputs: any[]): void {
-    this.inputs = Array.isArray(inputs) ? [...inputs] : [inputs];
-    this.log(`설정된 입력: ${this.inputs.length}개 항목`);
+    const allInputs = Array.isArray(inputs) ? [...inputs] : [inputs];
+    
+    // 디버깅: 입력 구조 확인
+    this.log(`🔍 [DEBUG] setInputs 호출됨. 전체 입력 개수: ${allInputs.length}`);
+    allInputs.forEach((input, index) => {
+      this.log(`🔍 [DEBUG] Input[${index}]: ${JSON.stringify(input, null, 2)}`);
+    });
+    
+    // 기존 동적 Property 초기화
+    if (this.nodeFactory) {
+      this.nodeFactory.clearDynamicProperties();
+    }
+    
+    // Property 타입의 입력들을 찾아서 NodeFactory에 적용
+    // 1. 직접적인 Property 객체: { nodeType, property }
+    // 2. InputRow의 property 타입: { type: 'property', ... }
+    const propertyInputs = allInputs.filter(input => {
+      if (!input || typeof input !== 'object') return false;
+      
+      // Case 1: 직접적인 Property 객체 형태
+      if ('nodeType' in input && 'property' in input) {
+        this.log(`🔍 [DEBUG] Found Case 1 Property: ${JSON.stringify(input)}`);
+        return true;
+      }
+      
+      // Case 2: InputRow property 타입  
+      if (input.type === 'property') {
+        this.log(`🔍 [DEBUG] Found Case 2 Property InputRow: ${JSON.stringify(input)}`);
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // flow-result 타입의 입력들을 찾아서 실제 데이터로 변환
+    const flowResultInputs = allInputs.filter(input => {
+      if (!input || typeof input !== 'object') return false;
+      return input.type === 'flow-result';
+    });
+    
+    // 실제 처리할 입력들 (Property와 flow-result 타입 제외)
+    const nonSpecialInputs = allInputs.filter(input => {
+      if (!input || typeof input !== 'object') return true;
+      
+      // Property 객체 형태 또는 type === 'property' 제외
+      if (('nodeType' in input && 'property' in input) || input.type === 'property') {
+        return false;
+      }
+      
+      // flow-result 타입 제외
+      if (input.type === 'flow-result') {
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // Property 입력들을 NodeFactory에 적용
+    if (propertyInputs.length > 0) {
+      this.log(`Property 입력 ${propertyInputs.length}개를 NodeFactory에 전달하여 적용`);
+      propertyInputs.forEach(propertyInput => {
+        let nodeType: string | undefined;
+        let property: any | undefined;
+        
+        // Property 구조 파싱
+        if ('nodeType' in propertyInput && 'property' in propertyInput) {
+          // 직접적인 Property 객체
+          nodeType = propertyInput.nodeType;
+          property = propertyInput.property;
+        } else if (propertyInput.type === 'property') {
+          // InputRow property 타입 - value는 JSON 문자열 또는 객체
+          try {
+            const parsedValue = typeof propertyInput.value === 'string' 
+              ? JSON.parse(propertyInput.value) 
+              : propertyInput.value;
+            
+            nodeType = parsedValue.nodeType;
+            property = parsedValue.property;
+          } catch (error) {
+            this.log(`🔍 [DEBUG] Property 파싱 실패, 건너뜀: ${error}`);
+            return; // 파싱 실패시 건너뜀
+          }
+        }
+        
+        if (nodeType && property && this.nodeFactory) {
+          // NodeFactory에 동적 Property 설정
+          this.nodeFactory.setDynamicProperties(nodeType, property);
+          this.log(`Applied dynamic property for ${nodeType}: ${Object.keys(property).join(', ')}`);
+        }
+      });
+    }
+    
+    // flow-result 입력들을 실제 데이터로 변환
+    const convertedFlowResults: any[] = [];
+    if (flowResultInputs.length > 0) {
+      this.log(`flow-result 입력 ${flowResultInputs.length}개를 실제 데이터로 변환`);
+      
+      // Flow Executor store에서 flowChainMap 가져오기 (chainId가 있는 경우만)
+      const flowChainMap = this.isExecutorCtx && this.currentChainId ? 
+        (() => {
+          try {
+            const store = useFlowExecutorStore.getState();
+            return store.flowChainMap || {};
+          } catch (e) {
+            this.log(`flow-result 변환 중 store 접근 실패: ${e}`);
+            return {};
+          }
+        })() : {};
+      
+      flowResultInputs.forEach(flowResultInput => {
+        try {
+          const extractedText = extractFlowResultText(flowResultInput, flowChainMap);
+          if (extractedText) {
+            convertedFlowResults.push(extractedText);
+            this.log(`flow-result 변환 성공: ${extractedText.substring(0, 100)}${extractedText.length > 100 ? '...' : ''}`);
+          } else {
+            this.log(`flow-result 변환 결과가 비어있음: ${JSON.stringify(flowResultInput)}`);
+          }
+        } catch (error) {
+          this.log(`flow-result 변환 실패: ${error}`);
+        }
+      });
+    }
+    
+    // 최종 입력 배열 구성: 일반 입력 + 변환된 flow-result 데이터
+    const finalInputs = [...nonSpecialInputs, ...convertedFlowResults];
+    
+    // Property와 flow-result가 제거/변환된 입력들만 실제 inputs로 설정
+    this.inputs = finalInputs;
+    this.log(`설정된 입력: ${this.inputs.length}개 항목 (Property ${propertyInputs.length}개 제외, flow-result ${flowResultInputs.length}개 변환)`);
   }
 
   /**
@@ -460,4 +639,51 @@ export class FlowExecutionContext implements ExecutionContext {
   markNodeExecuted(nodeId: string): void {
     this.executedNodeIds.add(nodeId);
   }
-} 
+
+  /**
+   * Set node state change callback
+   * @param callback Callback function for node state changes
+   */
+  setNodeStateChangeCallback(callback: (nodeId: string, status: 'init' | 'running' | 'success' | 'error', result?: any, error?: any) => void): void {
+    this.onNodeStateChange = callback;
+  }
+
+  /**
+   * Set store output callback
+   * @param callback Callback function for node output storage
+   */
+  setStoreOutputCallback(callback: (nodeId: string, output: any) => void): void {
+    this.onStoreOutput = callback;
+  }
+
+  /**
+   * 실행 중단을 요청합니다
+   */
+  requestStop(): void {
+    this.isStopRequested = true;
+    if (this.onStopRequested) {
+      this.onStopRequested();
+    }
+  }
+
+  /**
+   * 실행 중단이 요청되었는지 확인합니다
+   */
+  isStopRequested_(): boolean {
+    return this.isStopRequested;
+  }
+
+  /**
+   * 중단 요청 콜백을 설정합니다
+   */
+  setStopRequestedCallback(callback: () => void): void {
+    this.onStopRequested = callback;
+  }
+
+  /**
+   * 중단 플래그를 초기화합니다
+   */
+  resetStopFlag(): void {
+    this.isStopRequested = false;
+  }
+}

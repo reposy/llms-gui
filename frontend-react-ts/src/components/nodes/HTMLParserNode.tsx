@@ -1,7 +1,7 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { useNodeContent, useNodeContentStore } from '../../store/useNodeContentStore';
-import { HTMLParserNodeContent, ExtractionRule } from '../../types/nodes';
+import { useNodeProperty, useNodePropertyStore } from '../../store/useNodePropertyStore';
+import { HTMLParserNodeProperty, ExtractionRule } from '../../types/nodes';
 import NodeErrorBoundary from './NodeErrorBoundary';
 import { getNodeState } from '../../store/useNodeStateStore';
 import clsx from 'clsx';
@@ -11,12 +11,12 @@ import { useFlowStructureStore, setNodes } from '../../store/useFlowStructureSto
 /**
  * HTML Parser 노드의 UI 컴포넌트
  */
-const HTMLParserNode: React.FC<NodeProps> = ({ id, selected, data }) => {
-  const { content } = useNodeContent<HTMLParserNodeContent>(id);
+const HTMLParserNode: React.FC<NodeProps> = ({ id, selected }) => {
+  const { content } = useNodeProperty<HTMLParserNodeProperty>(id);
   const extractionRules = content?.extractionRules;
   const label = content?.label;
   
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  const setNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
   const currentNodes = useFlowStructureStore(state => state.nodes);
   const nodeState = getNodeState(id);
   
@@ -28,7 +28,7 @@ const HTMLParserNode: React.FC<NodeProps> = ({ id, selected, data }) => {
   const errorMessage = nodeState?.error;
 
   const handleLabelUpdate = (updatedNodeId: string, newLabel: string) => {
-    setNodeContent(updatedNodeId, { label: newLabel });
+    setNodeProperty(updatedNodeId, { label: newLabel });
 
     const updatedNodes = currentNodes.map(node => 
       node.id === updatedNodeId
@@ -42,7 +42,7 @@ const HTMLParserNode: React.FC<NodeProps> = ({ id, selected, data }) => {
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[HTMLParserNode] Updated label for node ${updatedNodeId} in both stores.`);
+    // console.log(`[HTMLParserNode] Updated label for node ${updatedNodeId} in both stores.`);
   };
 
   const displayContent = () => {

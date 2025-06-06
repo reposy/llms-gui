@@ -1,7 +1,7 @@
 // src/components/nodes/JSONExtractorNode.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow, NodeProps } from '@xyflow/react';
-import { JSONExtractorNodeData } from '../../types/nodes';
+import { JSONExtractorNodeProperty } from '../../types/nodes';
 import { useIsRootNode } from '../../store/useNodeGraphUtils';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
@@ -12,32 +12,19 @@ import { NodeHeader } from './shared/NodeHeader';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { useStore as useViewModeStore, useNodeViewMode } from '../../store/viewModeStore';
 import { useFlowStructureStore } from '../../store/useFlowStructureStore';
-import { v4 as uuidv4 } from 'uuid';
-import { FlowExecutionContext } from '../../core/FlowExecutionContext';
-import { NodeFactory } from '../../core/NodeFactory';
-import { registerAllNodeTypes } from '../../core/NodeRegistry';
-import { useNodeContentStore, getNodeContent } from '../../store/useNodeContentStore';
-import { useNodeConnections } from '../../hooks/useNodeConnections';
 import { runSingleNodeExecution } from '../../core/executionUtils';
+import { useNodePropertyStore } from '../../store/useNodePropertyStore';
 
-interface Props {
-  id: string;
-  data: JSONExtractorNodeData;
-  isConnectable: boolean;
-  selected?: boolean;
-}
-
-const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, isConnectable = true }) => {
-  // Use a specific type assertion for clarity and safety
-  const data = nodeData as JSONExtractorNodeData;
+const JSONExtractorNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
+  const jsonData = data as JSONExtractorNodeProperty;
   
   // Use updateNode from Zustand store
-  const { nodes, edges } = useFlowStructureStore();
+  const { nodes } = useFlowStructureStore();
   
   const isRootNode = useIsRootNode(id);
   const nodeState = useNodeState(id);
   const { getZoom } = useReactFlow();
-  const setNodeContentLocal = useNodeContentStore(state => state.setNodeContent);
+  const setNodePropertyLocal = useNodePropertyStore(state => state.setNodeProperty);
   const setNodesLocal = useFlowStructureStore(state => state.setNodes);
   
   // Get from Zustand store instead of Redux
@@ -45,15 +32,15 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
   const globalViewMode = useViewModeStore(state => state.globalViewMode);
   const setNodeViewMode = useViewModeStore(state => state.setNodeViewMode);
   
-  const [pathDraft, setPathDraft] = useState<string>(data?.path || '');
+  const [pathDraft, setPathDraft] = useState<string>(jsonData?.path || '');
   const [isComposing, setIsComposing] = useState(false);
 
   // Update drafts when data changes externally
   useEffect(() => {
     if (!isComposing) {
-      setPathDraft(data.path || '');
+      setPathDraft(jsonData.path || '');
     }
-  }, [data.path, isComposing]);
+  }, [jsonData.path, isComposing]);
 
   const handlePathChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newPath = e.target.value;
@@ -64,8 +51,8 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
 
   // Encapsulate label update logic
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore (config state)
-    setNodeContentLocal(nodeId, { label: newLabel });
+    // 1. Update NodePropertyStore (config state)
+    setNodePropertyLocal(nodeId, { label: newLabel });
 
     // 2. Update FlowStructureStore (React Flow rendering state)
     const updatedNodes = nodes.map(node =>
@@ -80,13 +67,13 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
         : node
     );
     setNodesLocal(updatedNodes);
-    console.log(`[JSONExtractorNode] Updated label for node ${nodeId} in both stores.`);
-  }, [nodes, setNodesLocal, setNodeContentLocal]);
+    // console.log(`[JSONExtractorNode] Updated label for node ${nodeId} in both stores.`);
+  }, [nodes, setNodesLocal, setNodePropertyLocal]);
 
   const handleRun = useCallback(() => {
-    console.log(`[JSONExtractorNode] Triggering single execution for node ${id}`);
+    // console.log(`[JSONExtractorNode] Triggering single execution for node ${id}`);
     runSingleNodeExecution(id).catch(error => {
-      console.error(`[JSONExtractorNode] Error during single execution:`, error);
+      // console.error(`[JSONExtractorNode] Error during single execution:`, error);
       // Optionally, update node state to show error feedback
     });
   }, [id]);
@@ -163,7 +150,7 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
         >
           <NodeHeader
             nodeId={id}
-            label={data?.label || 'JSON Extractor'}
+            label={jsonData?.label || 'JSON Extractor'}
             placeholderLabel="JSON Extractor"
             isRootNode={isRootNode}
             isRunning={nodeStatus === 'running'}
@@ -180,7 +167,7 @@ const JSONExtractorNode: React.FC<NodeProps> = ({ id, data: nodeData, selected, 
             {viewMode === VIEW_MODES.COMPACT ? (
               <>
                 <div className="text-sm text-gray-600">
-                  Extract: {data?.path || 'No path set'}
+                  Extract: {jsonData?.path || 'No path set'}
                 </div>
                 <NodeStatusIndicator status={nodeStatus} error={nodeState?.error} />
               </>

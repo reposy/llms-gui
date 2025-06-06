@@ -1,10 +1,11 @@
 import { createWithEqualityFn } from 'zustand/traditional';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
-import { NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { createIDBStorage } from '../utils/storage/idbStorage';
 import { shallow } from 'zustand/shallow';
 import { useCallback } from 'react';
+import { createDefaultNodeProperty } from './useNodePropertyStore';
 
 // 로깅 설정 - 자세한 로그를 보고 싶을 때 true로 설정
 const VERBOSE_LOGGING = false;
@@ -12,12 +13,12 @@ const VERBOSE_LOGGING = false;
 // 플로우 구조 스토어 인터페이스
 interface FlowStructureState {
   // 상태 데이터
-  nodes: Node<NodeData>[];
+  nodes: Node<NodeProperty>[];
   edges: Edge[];
   selectedNodeIds: string[];
   
   // 액션
-  setNodes: (nodes: Node<NodeData>[]) => void;
+  setNodes: (nodes: Node<NodeProperty>[]) => void;
   setEdges: (edges: Edge[]) => void;
   setSelectedNodeIds: (nodeIds: string[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -33,11 +34,27 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
       selectedNodeIds: [],
       
       setNodes: (nodes) => {
+        // Normalize nodes: ensure every node has a valid 'data' field
+        const normalizedNodes = nodes.map((node) => {
+          if (!node.data) {
+            if (process.env.NODE_ENV === 'development') {
+              throw new Error(`[setNodes] data가 없는 노드가 감지됨: ${node.id}`);
+            }
+          if ((node as any).property) {
+            return { ...node, data: (node as any).property };
+          }
+          if (node.type) {
+            return { ...node, data: createDefaultNodeProperty(node.type as any, node.id) };
+            }
+            return node;
+          }
+          return node;
+        });
         // Only update if nodes have actually changed (basic check)
-        if (nodesEqual(get().nodes, nodes)) {
+        if (nodesEqual(get().nodes, normalizedNodes)) {
           return;
         }
-        set({ nodes });
+        set({ nodes: normalizedNodes });
       },
       
       setEdges: (edges) => {
@@ -66,10 +83,6 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
         set({
           nodes: applyNodeChanges(changes, get().nodes as any) as any,
         });
-        // 필요한 경우 변경 사항 로깅
-        if (VERBOSE_LOGGING) {
-          console.log(`[FlowStructureStore] Applied ${changes.length} node changes`);
-        }
       },
       
       onEdgesChange: (changes: EdgeChange[]) => {
@@ -77,20 +90,21 @@ export const useFlowStructureStore = createWithEqualityFn<FlowStructureState>()(
           edges: applyEdgeChanges(changes, get().edges),
         });
       },
+
+      onRehydrateStorage: () => (state: any) => {
+        return state;
+      }
     }),
     {
       name: 'flow-structure-storage',
       storage: createJSONStorage(() => createIDBStorage()),
-      onRehydrateStorage: () => (state) => {
-        console.log('Flow structure hydrated:', state);
-      }
     }
   ),
   shallow
 );
 
 // 직접 스토어 상태와 액션에 접근하기 위한 헬퍼 함수들
-export const setNodes = (nodes: Node<NodeData>[]) => 
+export const setNodes = (nodes: Node<NodeProperty>[]) => 
   useFlowStructureStore.getState().setNodes(nodes);
 
 export const setEdges = (edges: Edge[]) => 
@@ -131,7 +145,7 @@ export const useSelectedNodeIds = () =>
   );
 
 // Helper function to check if two Node arrays are equal (simple version)
-function nodesEqual(a: Node<NodeData>[], b: Node<NodeData>[]): boolean {
+function nodesEqual(a: Node<NodeProperty>[], b: Node<NodeProperty>[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((nodeA, i) => {
     const nodeB = b[i];

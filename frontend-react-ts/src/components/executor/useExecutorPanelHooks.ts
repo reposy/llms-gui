@@ -7,23 +7,12 @@ import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
  */
 export const useExecutorPanelHooks = () => {
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
   const store = useFlowExecutorStore();
-  const flowChainIds = store.flowChainIds;
-  const flowChainMap = store.flowChainMap;
-  const focusedFlowChainId = store.focusedFlowChainId;
-  const focusedChain = focusedFlowChainId ? flowChainMap[focusedFlowChainId] : undefined;
-  const flowIds = focusedChain ? focusedChain.flowIds : [];
-  const flowMap = focusedChain ? focusedChain.flowMap : {};
 
   return {
     exportModalOpen,
     setExportModalOpen,
-    isExecuting,
-    flowIds,
-    flowMap,
     handleImportFlowChain: () => {}, // TODO: 구현 필요시
     handleExportFlowChain: () => {}, // TODO: 구현 필요시
     handleExecuteChain: () => {}, // TODO: 구현 필요시

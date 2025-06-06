@@ -1,26 +1,23 @@
 import React, { useRef, useState } from 'react';
-import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
+import { useFlowExecutorStore, type FlowChain } from '../../store/useFlowExecutorStore';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import { TrashIcon } from '@heroicons/react/20/solid';
-import { PlayIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
+import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
+import { PlayIcon, PenLineIcon } from '../Icons';
 import { executeChain } from '../../services/flowExecutionService';
 import InlineEditInput from '../ui/InlineEditInput';
+import { useImportService } from '../../hooks/useImportService';
 
 interface FlowChainListViewProps {
   onFlowChainSelect: (flowChainId: string) => void;
 }
 
 const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect }) => {
-  const [newFlowChainName, setNewFlowChainName] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const store = useFlowExecutorStore();
-  const flowChainMap = store.flowChainMap;
-  const flowChainIds = store.flowChainIds;
-  const focusedFlowChainId = store.focusedFlowChainId;
-  const setStore = useFlowExecutorStore.setState;
+  const { openFileImport } = useImportService();
+  const [newFlowChainName, setNewFlowChainName] = useState('');
   const [editingChainId, setEditingChainId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { flowChainMap, flowChainIds, focusedFlowChainId } = store;
+  const setStore = useFlowExecutorStore.setState;
 
   const handleAddFlowChain = () => {
     const name = newFlowChainName.trim() || `새 Flow 체인 ${flowChainIds.length + 1}`;
@@ -44,6 +41,11 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
     store.setFocusedFlowChainId(flowChainId);
   };
 
+  const handleMoveFlowChain = (e: React.MouseEvent, flowChainId: string, direction: 'up' | 'down') => {
+    e.stopPropagation();
+    store.moveFlowChain(flowChainId, direction);
+  };
+
   const handleExportFlowChain = () => {
     if (!focusedFlowChainId) {
       alert('내보낼 체인을 먼저 선택하세요.');
@@ -54,7 +56,24 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
       alert('선택된 체인 정보를 찾을 수 없습니다.');
       return;
     }
-    const dataStr = JSON.stringify(flowChain, null, 2);
+    
+    // 새로운 export 형식으로 데이터 구성
+    const exportData = {
+      version: '1.2',
+      timestamp: new Date().toISOString(),
+      flowChains: [{
+        id: flowChain.id,
+        name: flowChain.name,
+        status: flowChain.status,
+        flowIds: flowChain.flowIds,
+        selectedFlowIds: flowChain.selectedFlowIds || [],
+        flowMap: flowChain.flowMap, // lastResults 포함된 전체 flow 데이터
+        ...(flowChain.inputs && { inputs: flowChain.inputs }),
+        ...(flowChain.error && { error: flowChain.error })
+      }]
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -69,43 +88,22 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
   };
 
   const handleImportFlowChain = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        if (!json.id || !json.name || !Array.isArray(json.flowIds) || typeof json.flowMap !== 'object') {
-          alert('유효하지 않은 Flow Chain 데이터입니다.');
-          return;
+    openFileImport({
+      onSuccess: (result) => {
+        console.log(`[FlowChainListView] Import 성공:`, result);
+        
+        // 새로 생성된 FlowChain으로 포커스 이동
+        if (result.chainId) {
+          onFlowChainSelect(result.chainId);
         }
-        let newId = json.id;
-        if (flowChainMap[newId]) {
-          newId = `${json.id}-copy-${Date.now()}`;
-        }
-        let newName = json.name;
-        if (Object.values(flowChainMap).some(c => c.name === newName)) {
-          newName = `${json.name} (복사본)`;
-        }
-        const newFlowChain = { ...json, id: newId, name: newName };
-        setStore(state => ({
-          flowChainMap: { ...state.flowChainMap, [newId]: newFlowChain },
-          flowChainIds: [...state.flowChainIds, newId],
-          focusedFlowChainId: newId
-        }));
-        onFlowChainSelect(newId);
-        alert('Flow Chain이 성공적으로 import되었습니다.');
-      } catch (err) {
-        alert('Flow Chain import 중 오류 발생: ' + (err instanceof Error ? err.message : String(err)));
-      } finally {
-        e.target.value = '';
+        
+        alert('Flow Chain이 성공적으로 가져왔습니다.');
+      },
+      onError: (error) => {
+        console.error('[FlowChainListView] Import 실패:', error);
+        alert(`Flow Chain 가져오기 실패: ${error.message}`);
       }
-    };
-    reader.readAsText(file);
+    });
   };
 
   function validateChainName(newName: string, currentId: string) {
@@ -123,6 +121,42 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
     setEditingChainId(null);
   }
 
+  // 상태 표시기 렌더링 함수
+  const renderStatusIndicator = (status: string) => {
+    switch (status) {
+      case 'idle':
+        return (
+          <div className="flex items-center gap-1 text-gray-500">
+            <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+            <span className="text-xs">대기</span>
+          </div>
+        );
+      case 'running':
+        return (
+          <div className="flex items-center gap-1 text-blue-600">
+            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+            <span className="text-xs">실행중</span>
+          </div>
+        );
+      case 'success':
+        return (
+          <div className="flex items-center gap-1 text-green-600">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span className="text-xs">완료</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex items-center gap-1 text-red-600">
+            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            <span className="text-xs">오류</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
@@ -135,13 +169,6 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
             <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
             Import
           </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept="application/json"
-            className="hidden"
-            onChange={handleFileChange}
-          />
           <button
             onClick={handleExportFlowChain}
             className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
@@ -192,35 +219,38 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                   onClick={() => handleFlowChainClick(flowChainId)}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="flex items-center gap-1">
-                      {editingChainId === flowChainId ? (
-                        <InlineEditInput
-                          value={flowChain.name}
-                          onSave={newName => handleSaveChainName(flowChainId, newName)}
-                          onCancel={handleCancelEdit}
-                          validate={v => validateChainName(v, flowChainId)}
-                        />
-                      ) : (
-                        <>
-                          <span
-                            className="font-medium cursor-pointer"
-                            onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
-                            tabIndex={0}
-                            aria-label="체인 이름 편집"
-                          >
-                            {flowChain.name}
-                          </span>
-                          <button
-                            className="ml-1 p-1 rounded hover:bg-gray-100"
-                            onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
-                            title="이름 편집"
-                            tabIndex={0}
-                          >
-                            <PenLineIcon size={16} />
-                          </button>
-                        </>
-                      )}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {renderStatusIndicator(flowChain.status)}
+                      <span className="flex items-center gap-1">
+                        {editingChainId === flowChainId ? (
+                          <InlineEditInput
+                            value={flowChain.name}
+                            onSave={newName => handleSaveChainName(flowChainId, newName)}
+                            onCancel={handleCancelEdit}
+                            validate={v => validateChainName(v, flowChainId)}
+                          />
+                        ) : (
+                          <>
+                            <span
+                              className="font-medium cursor-pointer"
+                              onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
+                              tabIndex={0}
+                              aria-label="체인 이름 편집"
+                            >
+                              {flowChain.name}
+                            </span>
+                            <button
+                              className="ml-1 p-1 rounded hover:bg-gray-100"
+                              onClick={e => { e.stopPropagation(); setEditingChainId(flowChainId); }}
+                              title="이름 편집"
+                              tabIndex={0}
+                            >
+                              <PenLineIcon size={16} />
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={async e => {
@@ -233,6 +263,22 @@ const FlowChainListView: React.FC<FlowChainListViewProps> = ({ onFlowChainSelect
                         disabled={flowChain.status === 'running'}
                       >
                         <PlayIcon size={18} />
+                      </button>
+                      <button
+                        onClick={e => handleMoveFlowChain(e, flowChainId, 'up')}
+                        disabled={flowChainIds.indexOf(flowChainId) === 0}
+                        className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="위로 이동"
+                      >
+                        <ChevronUpIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={e => handleMoveFlowChain(e, flowChainId, 'down')}
+                        disabled={flowChainIds.indexOf(flowChainId) === flowChainIds.length - 1}
+                        className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="아래로 이동"
+                      >
+                        <ChevronDownIcon className="h-5 w-5" />
                       </button>
                       <button
                         onClick={e => handleRemoveFlowChain(e, flowChainId)}

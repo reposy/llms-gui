@@ -1,10 +1,10 @@
 import { createNodeDataHook } from './useNodeDataFactory';
-import { ConditionalNodeContent, ConditionType } from '../types/nodes';
+import { ConditionalNodeProperty, ConditionType } from '../types/nodes';
 
 /**
  * Default values for Conditional node content
  */
-const CONDITIONAL_DEFAULTS: Partial<ConditionalNodeContent> = {
+const CONDITIONAL_DEFAULTS: Partial<ConditionalNodeProperty> = {
   conditionType: 'contains',
   conditionValue: '',
   label: 'Conditional Node'
@@ -14,13 +14,13 @@ const CONDITIONAL_DEFAULTS: Partial<ConditionalNodeContent> = {
  * Return type for useConditionalNodeData hook
  */
 interface ConditionalNodeDataHook {
-  content: ConditionalNodeContent | undefined;
+  content: ConditionalNodeProperty | undefined;
   conditionType: ConditionType | undefined;
   conditionValue: string;
   label: string;
   handleConditionTypeChange: (value: ConditionType) => void;
   handleValueChange: (value: string) => void;
-  updateContent: (updates: Partial<ConditionalNodeContent>) => void;
+  updateContent: (updates: Partial<ConditionalNodeProperty>) => void;
 }
 
 /**
@@ -29,7 +29,7 @@ interface ConditionalNodeDataHook {
  */
 export const useConditionalNodeData = ({ nodeId }: { nodeId: string }): ConditionalNodeDataHook => {
   // Use the factory to create the base hook functionality
-  return createNodeDataHook<ConditionalNodeContent, ConditionalNodeDataHook>(
+  return createNodeDataHook<ConditionalNodeProperty, ConditionalNodeDataHook>(
     'conditional',
     (params) => {
       const { 

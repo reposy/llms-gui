@@ -6,16 +6,16 @@ import { NodeBody } from './shared/NodeBody';
 import clsx from 'clsx';
 import { useNodeState } from '../../store/useNodeStateStore';
 import { VIEW_MODES } from '../../store/viewModeStore';
-import { useFlowStructureStore, setNodes as setNodesGlobal } from '../../store/useFlowStructureStore';
-import { WebCrawlerNodeData, WebCrawlerNodeContent } from '../../types/nodes';
-import { useNodeContent, setNodeContent as setNodeContentGlobal } from '../../store/useNodeContentStore';
+import { useFlowStructureStore } from '../../store/useFlowStructureStore';
+import { WebCrawlerNodeProperty } from '../../types/nodes';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { NodeStatusIndicator } from './shared/NodeStatusIndicator';
 import { NodeStatus } from '../../types/execution';
-import { runFlow } from '../../core/FlowRunner';
+import { runFlowEditorExecution } from '../../core/executionUtils';
 
-const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable = true }) => {
-  // Use useNodeContent hook correctly
-  const { content: crawlerData, setContent } = useNodeContent<WebCrawlerNodeContent>(id, 'web-crawler');
+const WebCrawlerNode: React.FC<NodeProps> = ({ id, selected, isConnectable = true }) => {
+  // Use useNodeProperty hook correctly
+  const { content: crawlerData, setContent } = useNodeProperty<WebCrawlerNodeProperty>(id, 'web-crawler');
 
   // Get node execution state
   const nodeState = useNodeState(id);
@@ -25,24 +25,19 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
   // Add view mode state
   const [viewMode, setViewMode] = useState<typeof VIEW_MODES.COMPACT | typeof VIEW_MODES.EXPANDED>(VIEW_MODES.EXPANDED);
   
-  // Get flow structure
-  const { nodes, edges } = useFlowStructureStore();
-  // Get the setNodes function from the store
-  const setNodes = useFlowStructureStore(state => state.setNodes);
-  
   // Handle run button click - Use runFlow helper
   const handleRun = useCallback(() => {
-    console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
+    // console.log(`[WebCrawlerNode] Triggering execution for node ${id} via runFlow`);
     // 수정된 부분: nodes, edges 인자 제거하고 노드 ID만 전달
-    runFlow(id).catch((error: Error) => {
-        console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
+    runFlowEditorExecution(id).catch((error: Error) => {
+        // console.error(`Error running flow triggered by WebCrawlerNode ${id}:`, error);
         // Optionally, mark the node as error in UI state here if needed
     });
   }, [id]); // 의존성 배열에서 nodes, edges 제거
   
   // Handle label update
   const handleLabelUpdate = useCallback((nodeId: string, newLabel: string) => {
-    // 1. Update NodeContentStore using the updateContent function from the hook
+    // 1. Update NodePropertyStore using the updateContent function from the hook
     setContent({ label: newLabel }); 
 
     // 2. Update FlowStructureStore (React Flow rendering state)
@@ -59,7 +54,7 @@ const WebCrawlerNode: React.FC<NodeProps> = ({ id, data, selected, isConnectable
         : node
     );
     setNodes(updatedNodes);
-    console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
+    // console.log(`[WebCrawlerNode] Updated label for node ${nodeId} in both stores.`);
   }, [id, setContent]);
   
   // Handle toggle view

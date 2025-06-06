@@ -1,23 +1,23 @@
 import { useCallback } from 'react';
-import { useNodeContentStore } from '../store/useNodeContentStore';
-import { OutputNodeContent, OutputFormat } from '../types/nodes';
+import { useNodePropertyStore } from '../store/useNodePropertyStore';
+import { OutputNodeProperty, OutputFormat } from '../types/nodes';
 import { isEqual } from 'lodash';
 
 /**
  * Custom hook to manage Output node state and operations.
- * All state is managed via useNodeContentStore.
+ * All state is managed via useNodePropertyStore.
  */
-export const useOutputNodeData = (nodeId: string) => {
+export const useOutputNodeProperty = (nodeId: string) => {
   // Get the content using proper selector pattern
-  const content = useNodeContentStore(
+  const content = useNodePropertyStore(
     useCallback(
-      (state) => state.getNodeContent(nodeId, 'output') as OutputNodeContent,
+      (state) => state.getNodeProperty(nodeId, 'output') as OutputNodeProperty,
       [nodeId]
     )
   );
   
-  // Get the setNodeContent function
-  const setNodeContent = useNodeContentStore(state => state.setNodeContent);
+  // Get the setNodeProperty function
+  const setNodeProperty = useNodePropertyStore(state => state.setNodeProperty);
 
   // Extract properties with defaults for safety
   const label = content?.label || 'Output Node';
@@ -28,21 +28,19 @@ export const useOutputNodeData = (nodeId: string) => {
   /**
    * Update content with deep equality check to prevent unnecessary updates
    */
-  const updateOutputContent = useCallback((updates: Partial<OutputNodeContent>) => {
+  const updateOutputContent = useCallback((updates: Partial<OutputNodeProperty>) => {
     // Check if any individual updates differ from current values
     const hasChanges = Object.entries(updates).some(([key, value]) => {
-      const currentValue = content[key as keyof OutputNodeContent];
+      const currentValue = content[key as keyof OutputNodeProperty];
       return !isEqual(currentValue, value);
     });
     
     if (!hasChanges) {
-      console.log(`[OutputNode ${nodeId}] Skipping content update - no changes (deep equal)`);
       return;
     }
     
-    console.log(`[OutputNode ${nodeId}] Updating content with:`, updates);
-    setNodeContent(nodeId, updates);
-  }, [nodeId, content, setNodeContent]);
+    setNodeProperty(nodeId, updates);
+  }, [nodeId, content, setNodeProperty]);
 
   // Change handlers using the central updater
   const handleLabelChange = useCallback((newLabel: string) => {
@@ -58,12 +56,10 @@ export const useOutputNodeData = (nodeId: string) => {
   }, [updateOutputContent]);
 
   const clearOutput = useCallback(() => {
-    console.log(`[OutputNode ${nodeId}] Clearing output content`);
     updateOutputContent({ content: undefined });
   }, [updateOutputContent, nodeId]);
 
   const handleContentChange = useCallback((newContent: any) => {
-    console.log(`[OutputNode ${nodeId}] Setting output content`);
     updateOutputContent({ content: newContent });
   }, [updateOutputContent, nodeId]);
 
@@ -100,7 +96,6 @@ export const useOutputNodeData = (nodeId: string) => {
           }
       }
     } catch (error) {
-      console.error('Error formatting output:', error);
       return String(data); // Fallback to simple string conversion on error
     }
   }, [result, format]);

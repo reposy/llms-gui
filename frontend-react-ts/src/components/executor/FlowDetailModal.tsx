@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef } from 'react';
 import { useFlowExecutorStore } from '../../store/useFlowExecutorStore';
-import FlowInputForm from './FlowInputForm';
+import FlowInputForm, { FlowInputFormRef } from './FlowInputForm';
 import { executeFlowExecutor } from '../../services/flowExecutionService';
 import { NodeStatusIndicator } from '../nodes/shared/NodeStatusIndicator';
-import ReactMarkdown from 'react-markdown';
 
 interface FlowDetailModalProps {
   flowChainId: string;
@@ -14,25 +13,47 @@ interface FlowDetailModalProps {
 const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, onClose }) => {
   const store = useFlowExecutorStore();
   const flowChainMap = store.flowChainMap;
-  const flowChainIds = store.flowChainIds;
   const chain = flowChainMap[flowChainId];
   const flow = chain?.flowMap[flowId];
+  const flowInputFormRef = useRef<FlowInputFormRef>(null);
 
-  if (!flow) return null;
+  if (!flow) {
+    return null;
+  }
 
   const handleExecuteFlow = async () => {
     if (!flow) return;
     try {
       store.setFlowStatus(flowChainId, flowId, 'running');
+      
+      // FlowInputForm에서 실행 모드 정보 가져오기 (현재 편집 중인 경우)
+      let executionMode = flowInputFormRef.current?.getExecutionMode();
+      let commonInputs = flowInputFormRef.current?.getCommonInputs();
+      let forEachItems = flowInputFormRef.current?.getForEachItems();
+      let executableInputs = flowInputFormRef.current?.getExecutableInputs();
+      
+      // FlowInputForm에서 데이터를 가져올 수 없는 경우, 저장된 설정 사용
+      if (!executionMode && flow.executionConfig) {
+        executionMode = flow.executionConfig.mode;
+        commonInputs = flow.executionConfig.commonInputs || [];
+        forEachItems = flow.executionConfig.forEachItems || [];
+      }
+      
+      // 기본값 설정
+      executionMode = executionMode || 'batch';
+      commonInputs = commonInputs || [];
+      forEachItems = forEachItems || [];
+      executableInputs = executableInputs || flow.inputs;
+      
       const response = await executeFlowExecutor({
         flowJson: flow.flowJson,
-        inputs: flow.inputs,
+        inputs: executionMode === 'forEach' ? forEachItems : executableInputs,
         flowId: flow.id,
         flowChainId: flowChainId,
-        onComplete: (outputs) => {
-          // 결과 핸들링 필요시 구현
-        }
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
       });
+      
       if (response.status === 'success') {
         store.setFlowStatus(flowChainId, flowId, 'success');
         store.setFlowResult(flowChainId, flowId, response.outputs);
@@ -40,7 +61,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
         store.setFlowStatus(flowChainId, flowId, 'error', response.error);
       }
     } catch (error) {
-      console.error(`[FlowDetailModal] Error executing flow ${flowId}:`, error);
+      // console.error(`[FlowDetailModal] Error executing flow ${flowId}:`, error);
       store.setFlowStatus(flowChainId, flowId, 'error', String(error));
     }
   };
@@ -49,9 +70,13 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
     store.setFlowInputData(flowChainId, flowId, inputs);
   };
 
+  const handleStopFlow = () => {
+    store.setFlowStatus(flowChainId, flowId, 'idle');
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-4/5 h-4/5 flex flex-col max-w-6xl">
+      <div className="bg-white rounded-lg shadow-lg w-[90%] h-[85%] flex flex-col max-w-7xl">
         {/* 모달 헤더 */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center">
@@ -82,6 +107,18 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
                 </>
               )}
             </button>
+            {flow.status === 'running' && (
+              <button
+                onClick={handleStopFlow}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors duration-150 flex items-center"
+                title="실행 중단"
+              >
+                <svg className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                중단
+              </button>
+            )}
             <button
               onClick={onClose}
               className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors duration-150"
@@ -91,7 +128,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
           </div>
         </div>
         {/* 모달 내용 */}
-        <div className="flex-grow overflow-auto p-4">
+        <div className="flex-grow overflow-auto p-4 bg-gray-50">
           <div className="grid grid-cols-1 gap-4">
             {/* Flow 입력 폼 */}
             <div className="col-span-1">
@@ -99,6 +136,7 @@ const FlowDetailModal: React.FC<FlowDetailModalProps> = ({ flowChainId, flowId, 
                 flowId={flowId} 
                 inputs={flow.inputs} 
                 onInputChange={handleInputChange} 
+                ref={flowInputFormRef}
               />
             </div>
           </div>

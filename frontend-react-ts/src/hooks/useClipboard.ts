@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { useReactFlow, XYPosition, Node, Edge } from '@xyflow/react';
-import { NodeData } from '../types/nodes';
+import { NodeProperty } from '../types/nodes';
 import { 
   pasteClipboardContents, 
   hasClipboardData,
@@ -8,33 +8,11 @@ import {
   copyNodesAndEdgesFromInstance
 } from '../utils/ui/clipboardUtils';
 import { useFlowStructureStore, setSelectedNodeIds as setZustandSelectedNodeIds } from '../store/useFlowStructureStore';
-import { setNodeContent, getAllNodeContents as getAllNodeContentsFromStore } from '../store/useNodeContentStore';
+import { setNodeProperty, getAllNodePropertys as getAllNodePropertysFromStore } from '../store/useNodePropertyStore';
 import { pushSnapshot } from '../store/useHistoryStore';
 import { cloneDeep } from 'lodash';
 
-// Remove complex _devFlags related to async paste logic
-declare global {
-  interface Window {
-    _devFlags?: { 
-      [key: string]: any; 
-      pasteVersion?: number; // Keep for potential key changes
-      debugMode?: boolean; 
-    };
-  }
-}
-
-// Initialize flags
-if (typeof window !== 'undefined') {
-  if (!window._devFlags) {
-    window._devFlags = { 
-      pasteVersion: 0,
-      debugMode: false 
-    };
-  } else {
-    window._devFlags.pasteVersion = window._devFlags.pasteVersion ?? 0;
-    window._devFlags.debugMode = window._devFlags.debugMode ?? false;
-  }
-}
+// NodeData 관련 dead code 제거, NodeProperty 기반으로만 동작
 
 // Keep z-index boost
 const PASTE_Z_INDEX_BOOST = 10;
@@ -52,7 +30,7 @@ export const useClipboard = (): UseClipboardReturnType => {
   const { nodes, edges, setNodes, setEdges } = useFlowStructureStore();
   
   // Keep pasteVersionRef if needed for key changes
-  const pasteVersionRef = useRef<number>(window._devFlags?.pasteVersion || 0);
+  const pasteVersionRef = useRef<number>(0);
   const isManualPasteInProgressRef = useRef<boolean>(false); // Keep simple lock
 
   // Keep calculateNodesBoundingBox and focusViewportOnNodes if used directly
@@ -140,7 +118,7 @@ export const useClipboard = (): UseClipboardReturnType => {
       console.log('[useClipboard DEBUG] 모든 엣지 수:', allEdges.length);
       
       // Assert the type of selectedNodes before passing
-      const copiedCount = copyNodesAndEdgesFromInstance(selectedNodes as Node<NodeData>[], allEdges);
+      const copiedCount = copyNodesAndEdgesFromInstance(selectedNodes as Node<NodeProperty>[], allEdges);
       
       if (copiedCount > 0) {
         console.log(`[Clipboard] Copied ${copiedCount} nodes to clipboard.`);
@@ -181,7 +159,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     const { 
       newNodes: pastedNodes, 
       newEdges: pastedEdges, 
-      nodeContents: pastedNodeContentsInfo,
+      nodeContents: pastedNodePropertysInfo,
       newNodeIds
     } = pasteResult;
 
@@ -192,7 +170,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     }
 
     // 3. Prepare final nodes/edges (apply z-index boost)
-    const finalNodes = pastedNodes.map((node: Node<NodeData>) => ({ 
+    const finalNodes = pastedNodes.map((node: Node<NodeProperty>) => ({ 
       ...node,
       selected: false, // Start deselected, select later
       zIndex: (node.zIndex || 0) + PASTE_Z_INDEX_BOOST 
@@ -207,22 +185,22 @@ export const useClipboard = (): UseClipboardReturnType => {
       // 1. Get current state from Zustand
       const currentNodes = useFlowStructureStore.getState().nodes;
       const currentEdges = useFlowStructureStore.getState().edges;
-      const currentContents = getAllNodeContentsFromStore();
+      const currentContents = getAllNodePropertysFromStore();
 
       // 2. Create new state arrays
       const nextNodes = [...currentNodes, ...finalNodes];
       const nextEdges = [...currentEdges, ...finalEdges];
       let nextContents = { ...currentContents };
-      Object.values(pastedNodeContentsInfo).forEach(({ nodeId, content }) => {
+      Object.values(pastedNodePropertysInfo).forEach(({ nodeId, content }) => {
          nextContents[nodeId] = content; // Assume content is already deep copied
       });
 
       // 3. Update Zustand stores
       setNodes(nextNodes); 
       setEdges(nextEdges);
-      // Directly update contents in the content store (assuming setNodeContent handles individual updates)
-      Object.values(pastedNodeContentsInfo).forEach(({ nodeId, content }) => {
-          setNodeContent(nodeId, content);
+      // Directly update contents in the content store (assuming setNodeProperty handles individual updates)
+      Object.values(pastedNodePropertysInfo).forEach(({ nodeId, content }) => {
+          setNodeProperty(nodeId, content);
       });
       console.log(`[Clipboard] Updated structure and content stores.`);
 
@@ -259,7 +237,7 @@ export const useClipboard = (): UseClipboardReturnType => {
     screenToFlowPosition, 
     setNodes, 
     setEdges, 
-    setNodeContent, 
+    setNodeProperty, 
     pushSnapshot, 
     getNodes, // Keep for focusViewportOnNodes
     focusViewportOnNodes,

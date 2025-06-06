@@ -5,14 +5,44 @@ import { executeChain, executeFlowExecutor } from '../../services/flowExecutionS
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { PlayIcon as PlayIconSolid } from '@heroicons/react/24/outline';
 import FlowChainResultDisplay from './FlowChainResultDisplay';
-import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon, CheckIcon, XIcon } from '../Icons';
+import { LargeCheckboxCheckedIcon, LargeCheckboxUncheckedIcon, PenLineIcon } from '../Icons';
 import InlineEditInput from '../ui/InlineEditInput';
+import { extractFlowResultText } from '../../utils/flowResultUtils';
 
 interface FlowChainDetailsViewProps {
   flowChainId: string;
   onFlowSelect: (flowId: string) => void;
   onImportFlow: () => void;
 }
+
+// Execution Mode Badge Component
+const ExecutionModeBadge: React.FC<{ mode: 'batch' | 'forEach'; repeatCount?: number }> = ({ mode, repeatCount = 1 }) => {
+  const displayText = repeatCount > 1 ? `${mode === 'forEach' ? 'ForEach' : 'Batch'} | ${repeatCount}` : (mode === 'forEach' ? 'ForEach' : 'Batch');
+  
+  if (mode === 'forEach') {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+        {displayText}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+      {displayText}
+    </span>
+  );
+};
+
+// Helper function to determine execution mode from flow inputs
+const getFlowExecutionMode = (flow: any): 'batch' | 'forEach' => {
+  // Check if flow has execution mode configuration stored in executionConfig
+  if (flow.executionConfig && flow.executionConfig.mode) {
+    return flow.executionConfig.mode;
+  }
+  
+  // Default to batch mode
+  return 'batch';
+};
 
 // Reusable, extensible large checkbox component using SVG
 const ExecutorCheckbox = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => {
@@ -48,8 +78,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingFlowId, setExecutingFlowId] = useState<string | null>(null);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
-  const [editFlowValue, setEditFlowValue] = useState('');
-  const [editFlowError, setEditFlowError] = useState<string | null>(null);
+  const [currentExecutionContext, setCurrentExecutionContext] = useState<any>(null);
 
   if (!flowChain) { 
     return (
@@ -87,7 +116,7 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
         }
       });
     } catch (error) {
-      console.error('Chain execution error in Detail:', error);
+      // console.error('Chain execution error in Detail:', error);
       useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, 'error');
     } finally {
       setIsExecuting(false);
@@ -98,15 +127,52 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     const flow = useFlowExecutorStore.getState().flowChainMap[flowChainId]?.flowMap[flowId];
     if (!flow) return;
     setExecutingFlowId(flowId);
-    const execInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
+    
+    // 실행 모드와 입력 데이터를 저장된 executionConfig에서 가져오기
+    const executionMode = flow.executionConfig?.mode || 'batch';
+    const commonInputs = flow.executionConfig?.commonInputs || [];
+    const forEachItems = flow.executionConfig?.forEachItems || [];
+    
+    // Flow inputs에서 실행 가능한 입력 생성 (FlowDetailModal과 동일한 로직)
+    let executableInputs = flow.inputs && Array.isArray(flow.inputs) ? flow.inputs : [];
+    
+    // flow-result 타입 변환
+    const hasFlowResultType = executableInputs.some((input: any) => 
+      input && typeof input === 'object' && input.type === 'flow-result'
+    );
+    
+    if (hasFlowResultType) {
+      const store = useFlowExecutorStore.getState();
+      const flowChainMap = store.flowChainMap;
+      
+      executableInputs = executableInputs.map((input: any) => {
+        if (input && typeof input === 'object' && input.type === 'flow-result') {
+          return extractFlowResultText(input, flowChainMap);
+        }
+        return input;
+      });
+    }
+    
+    console.log(`[FlowChainDetailsView] Executing flow ${flowId} in ${executionMode} mode`);
+    console.log(`[FlowChainDetailsView] Execution inputs:`, { 
+      mode: executionMode, 
+      executableInputs, 
+      commonInputs, 
+      forEachItems 
+    });
+    
     useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, 'running');
     try {
+      // FlowDetailModal과 동일한 방식으로 실행 (단일 진입점)
       const result = await executeFlowExecutor({
-        flowId: flowId,
-        flowChainId: flowChainId,
         flowJson: flow.flowJson,
-        inputs: execInputs
+        inputs: executionMode === 'forEach' ? forEachItems : executableInputs,
+        flowId: flow.id,
+        flowChainId: flowChainId,
+        executionMode: executionMode,
+        commonInputs: executionMode === 'forEach' ? commonInputs : undefined,
       });
+      
       useFlowExecutorStore.getState().setFlowResult(flowChainId, flowId, result.outputs || []);
       useFlowExecutorStore.getState().setFlowStatus(flowChainId, flowId, result.status === 'success' ? 'success' : 'error', result.error);
     } catch (error) {
@@ -154,6 +220,17 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
     setEditingFlowId(null);
   }
 
+  const handleStopExecution = () => {
+    console.log('[FlowChainDetailsView] Stop execution requested');
+    if (currentExecutionContext && typeof currentExecutionContext.requestStop === 'function') {
+      currentExecutionContext.requestStop();
+    }
+    // Flow Chain 상태를 idle로 변경
+    useFlowExecutorStore.getState().setFlowChainStatus(flowChainId, 'idle');
+    setIsExecuting(false);
+    setExecutingFlowId(null);
+  };
+
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-lg shadow">
       <div className="p-3 border-b border-gray-200 flex justify-between items-center">
@@ -191,6 +268,18 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
               </>
             )}
           </button>
+          {(flowChain.status === 'running' || isExecuting) && (
+            <button
+              onClick={handleStopExecution}
+              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm font-medium flex items-center transition-colors duration-150"
+              title="실행 중단"
+            >
+              <svg className="mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Stop
+            </button>
+          )}
         </div>
       </div>
       {flowIds.length === 0 ? (
@@ -217,13 +306,20 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
           <ul className="overflow-y-auto divide-y divide-gray-200 flex-grow">
             {flowIds.map((flowId, index) => {
               const flow = flowMap[flowId];
-              if (!flow) return null;
+              console.log('[FlowChainDetailsView] Rendering flow item:', { flowId, flow: !!flow, flowName: flow?.name });
+              if (!flow) {
+                console.warn('[FlowChainDetailsView] Flow not found in flowMap:', { flowId, availableFlowIds: Object.keys(flowMap) });
+                return null;
+              }
               const checked = selectedFlowIds.includes(flowId);
               return (
                 <li
                   key={flowId}
                   className="p-3 flex items-center transition-colors duration-150 group bg-white"
-                  onClick={() => onFlowSelect(flowId)}
+                  onClick={() => {
+                    console.log('[FlowChainDetailsView] Row clicked, calling onFlowSelect with flowId:', flowId);
+                    onFlowSelect(flowId);
+                  }}
                   style={{ cursor: 'pointer' }}
                 >
                   <ExecutorCheckbox
@@ -262,12 +358,15 @@ const FlowChainDetailsView: React.FC<FlowChainDetailsViewProps> = ({ flowChainId
                         </button>
                       </div>
                     )}
-                    <p className="text-xs text-gray-500 truncate">
-                      {flow.status === 'error' && flow.error ? <span className="text-red-500">Error: {flow.error}</span> : 
-                        (flow.lastResults ? `${Array.isArray(flow.lastResults) ? flow.lastResults.length : 1} result(s)` : 'No results')}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-gray-500 truncate">
+                        {flow.status === 'error' && flow.error ? <span className="text-red-500">Error: {flow.error}</span> : 
+                          (flow.lastResults ? `${Array.isArray(flow.lastResults) ? flow.lastResults.length : 1} result(s)` : 'No results')}
+                      </p>
+                    </div>
                   </div>
                   <div className="ml-2 flex-shrink-0 flex items-center space-x-1 opacity-100 transition-opacity duration-150">
+                    <ExecutionModeBadge mode={getFlowExecutionMode(flow)} repeatCount={flow.executionConfig?.repeatCount} />
                     <button
                       onClick={e => { e.stopPropagation(); handleExecuteFlow(flowId); }}
                       className={`p-1.5 rounded-md transition-colors duration-150 ${executingFlowId === flowId ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-100'}`}

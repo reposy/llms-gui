@@ -32,74 +32,46 @@ export async function crawling({
   extract_element_selector?: string;
   output_format?: string;
 }): Promise<any | null> { 
-  console.log(`[Crawler] Starting crawl request for URL: ${url}`);
-  console.log(`[Crawler] Page Wait Selector: ${waitForSelectorOnPage || 'N/A'}`);
-  console.log(`[Crawler] IFrame Selector: ${iframeSelector || 'N/A'}`);
-  console.log(`[Crawler] IFrame Wait Selector: ${waitForSelectorInIframe || 'N/A'}`);
-  console.log(`[Crawler] Extract Element Selector: ${extract_element_selector || 'N/A'}`);
-  console.log(`[Crawler] Output Format: ${output_format || 'N/A'}`);
-  console.log(`[Crawler] Timeout (ms): ${timeout}`);
-
-  if (headers && Object.keys(headers).length > 0) {
-    console.log(`[Crawler] Using custom headers:`, headers);
-  }
-  
   try {
-    // Use the correct backend API endpoint URL
-    const backendUrl = 'http://localhost:8000/api/web-crawler/fetch'; 
-    console.log(`[Crawler] Calling backend API: ${backendUrl}`);
+    console.log(`[crawling] Calling backend API for URL: ${url}`);
+    
+    // 백엔드 API URL 설정 (환경에 따라 변경 가능)
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    
+    // 백엔드 API 요청 본문 구성 (WebCrawlerRequest 모델에 맞춤)
+    const requestBody = {
+      url,
+      waitForSelectorOnPage,
+      iframeSelector,
+      waitForSelectorInIframe,
+      timeout,
+      headers: headers || {},
+      extractElementSelector: extract_element_selector,
+      output_format: output_format || 'html'
+    };
 
-    const response = await fetch(backendUrl, {
+    // 백엔드 API 호출
+    const response = await fetch(`${BACKEND_URL}/api/web-crawler/fetch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        url,
-        waitForSelectorOnPage: waitForSelectorOnPage,
-        iframeSelector: iframeSelector,
-        waitForSelectorInIframe: waitForSelectorInIframe,
-        timeout: timeout, // Pass timeout in milliseconds
-        headers: headers, // Pass headers
-        extractElementSelector: extract_element_selector,
-        outputFormat: output_format,
-      }),
+      body: JSON.stringify(requestBody),
     });
-    
-    if (!response.ok) {
-      let errorDetail = `HTTP error! Status: ${response.status}`;
-      try {
-        // Attempt to parse backend error message
-        const errorData = await response.json();
-        errorDetail = errorData.error || errorData.detail || errorDetail;
-      } catch (e) { 
-        // If response is not JSON or empty, use status text
-        errorDetail = `${errorDetail} - ${response.statusText}`;
-      } 
-      console.error(`[Crawler] Error fetching from backend: ${errorDetail}`);
-      // Return a structured error similar to backend for consistency?
-      // For now, return null to indicate frontend/network level failure
-      return null; 
-    }
-    
-    // Parse the JSON response from the backend
-    const data = await response.json();
-    
-    // Log status regardless of success/error for visibility
-    console.log(`[Crawler] Backend response status: ${data.status}`);
-    if (data.status !== 'success') {
-      console.error(`[Crawler] Backend API reported failure: ${data.error || 'Unknown backend error'}`);
-      // Return the structured error response from backend
-      return data; 
-    }
-    
-    console.log(`[Crawler] Successfully received data from backend for ${url}`);
-    // Return the entire result object from backend
-    return data;
 
+    if (!response.ok) {
+      console.error(`[crawling] Backend API returned status ${response.status}: ${response.statusText}`);
+      return null;
+    }
+
+    const result = await response.json();
+    console.log(`[crawling] Backend response status: ${result.status}`);
+    
+    // WebCrawlerResponse 모델에 따른 응답 처리
+    return result;
+    
   } catch (error) {
-    // Catch network errors or other exceptions during fetch
-    console.error('[Crawler] Exception during fetch operation:', error);
-    return null; // Indicate failure due to exception
+    console.error(`[crawling] Error during API call:`, error);
+    return null;
   }
 } 

@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { Node } from '@xyflow/react';
-import { MergerNodeData } from '../../types/nodes';
+import { MergerNodeProperty } from '../../types/nodes';
 import { useMergerNodeData } from '../../hooks/useMergerNodeData';
 import { ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/solid';
 import clsx from 'clsx';
 
 interface MergerConfigProps {
-  selectedNode: Node<MergerNodeData>;
+  selectedNode: Node<MergerNodeProperty>;
 }
 
 export const MergerConfig: React.FC<MergerConfigProps> = ({ selectedNode }) => {

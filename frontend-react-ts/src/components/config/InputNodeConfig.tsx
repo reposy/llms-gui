@@ -1,16 +1,13 @@
 // src/components/config/InputNodeConfig.tsx
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { InputNodeData } from '../../types/nodes';
 import { useInputNodeData } from '../../hooks/useInputNodeData';
-import { InputTextManagerSidebar } from '../input/InputTextManagerSidebar';
+import { useNodeProperty } from '../../store/useNodePropertyStore';
 import { InputFileUploader } from '../input/InputFileUploader';
 import { InputItemList } from '../input/InputItemList';
 import { InputSummaryBar } from '../input/InputSummaryBar';
-import { InputModeToggle } from '../input/InputModeToggle';
 import { formatItemsForDisplay } from '../../utils/ui/formatInputItems'; // Import the utility function
 import clsx from 'clsx';
-import { InputNodeContent } from '../../types/nodes';
-import { useNodeContent } from '../../store/useNodeContentStore';
+import { InputNodeProperty } from '../../types/nodes';
 import { ExclamationTriangleIcon, XCircleIcon } from '@heroicons/react/20/solid';
 
 interface InputNodeConfigProps {
@@ -72,7 +69,7 @@ export const InputNodeConfig: React.FC<InputNodeConfigProps> = ({ nodeId }) => {
     resetError,
   } = useInputNodeData({ nodeId });
   
-  const { content, setContent } = useNodeContent<InputNodeContent>(nodeId, 'input');
+  const { content, setContent } = useNodeProperty<InputNodeProperty>(nodeId, 'input');
 
   // 명시적으로 타입 캐스팅하여 계산
   const countableItems = items as (string | File)[];

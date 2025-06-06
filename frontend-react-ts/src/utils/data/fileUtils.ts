@@ -182,14 +182,8 @@ export function hasImageExtension(filename: string): boolean {
  * @returns Object containing file path and name
  */
 export function getImageFilePath(file: File, uploadDir: string = 'uploads/'): { path: string, name: string } {
-  // Get just the filename
   const fileName = file.name;
-  
-  // Create path that Ollama would use to access the file
   const filePath = `${uploadDir}/${fileName}`;
-  
-  console.log(`[getImageFilePath] Using file path: ${filePath} for ${fileName}`);
-  
   return {
     path: filePath,
     name: fileName

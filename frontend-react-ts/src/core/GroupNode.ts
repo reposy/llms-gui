@@ -1,15 +1,7 @@
 import { Node } from './Node';
 import { FlowExecutionContext } from './FlowExecutionContext';
 import { Node as FlowNode } from '@xyflow/react'; // Edge 타입은 직접 사용 안 할 수 있지만, FlowNode는 필요
-import { GroupNodeContent } from '../types/nodes';
-
-interface GroupNodeProperty {
-  label: string;
-  nodes?: any[]; // GroupNode 자체의 property에는 전체 노드/엣지 정보가 있을 수 있음 (초기 설정용)
-  edges?: any[];
-  nodeFactory?: any;
-  // executionGraph?: any; // 내부 실행 그래프는 동적으로 생성
-}
+import { GroupNodeProperty } from '../types/nodes';
 
 export class GroupNode extends Node {
   declare property: GroupNodeProperty;
@@ -138,7 +130,15 @@ export class GroupNode extends Node {
       const leafOutputs = currentContext.getOutput(leafNodeId);
       if (Array.isArray(leafOutputs) && leafOutputs.length > 0) {
         this._log(`Collecting ${leafOutputs.length} results for leaf node ${leafNodeId}`);
-        collectedItems.push(...leafOutputs);
+        // 각 output이 배열인지 확인하고 flat하게 처리
+        for (const output of leafOutputs) {
+          if (Array.isArray(output)) {
+            this._log(`Flattening array output from leaf node ${leafNodeId}: ${output.length} items`);
+            collectedItems.push(...output);
+          } else {
+            collectedItems.push(output);
+          }
+        }
       } else if (leafOutputs !== undefined && !Array.isArray(leafOutputs) && leafOutputs !== null) { 
         this._log(`Collecting single result for leaf node ${leafNodeId}`);
         collectedItems.push(leafOutputs);
@@ -150,7 +150,7 @@ export class GroupNode extends Node {
   }
 
   /**
-   * GroupNodeContent의 items 속성을 업데이트합니다.
+   * GroupNodeProperty의 items 속성을 업데이트합니다.
    */
   private _updateContentItems(items: any[]): void {
     // zustand store 제거: core에서는 store 업데이트하지 않음. 필요시 context에서 처리.
@@ -194,7 +194,7 @@ export class GroupNode extends Node {
       
       const finalResults = this._collectLeafNodeResults(internalLeafNodeIds, currentContext);
       
-      // execute의 최종 반환값으로 NodeContent를 업데이트
+      // execute의 최종 반환값으로 NodeProperty를 업데이트
       this._updateContentItems(finalResults);
 
       if (finalResults.length === 0) {
